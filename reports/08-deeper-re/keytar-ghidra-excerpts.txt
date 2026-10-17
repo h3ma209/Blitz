@@ -1,0 +1,802 @@
+PROGRAM=keytar.node
+LANGUAGE=AARCH64:LE:64:AppleSilicon
+IMAGE_BASE=00000000
+---EXTERNAL---
+EXT	EXTERNAL:00000007	/System/Library/Frameworks/CoreFoundation.framework/Versions/A/CoreFoundation::_CFStringCreateFromExternalRepresentation
+EXT	EXTERNAL:00000008	/System/Library/Frameworks/CoreFoundation.framework/Versions/A/CoreFoundation::_CFStringCreateWithCString
+EXT	EXTERNAL:0000000c	<EXTERNAL>::_SecCopyErrorMessageString
+EXT	EXTERNAL:0000000d	<EXTERNAL>::_SecItemCopyMatching
+EXT	EXTERNAL:0000000e	<EXTERNAL>::_SecKeychainAddGenericPassword
+EXT	EXTERNAL:0000000f	<EXTERNAL>::_SecKeychainFindGenericPassword
+EXT	EXTERNAL:00000010	<EXTERNAL>::_SecKeychainItemDelete
+EXT	EXTERNAL:00000011	<EXTERNAL>::_SecKeychainItemFreeContent
+EXT	EXTERNAL:00000012	<EXTERNAL>::_SecKeychainItemModifyAttributesAndData
+---FUNCTIONS---
+
+===== SetPasswordWorker::Execute =====
+
+/* SetPasswordWorker::Execute() */
+
+void __thiscall SetPasswordWorker::Execute(SetPasswordWorker *this)
+
+{
+  char ****ppppcVar1;
+  ulong uVar2;
+  int iVar3;
+  size_t sVar4;
+  char **ppcVar5;
+  string *this_00;
+  char *local_70;
+  size_t sStack_68;
+  undefined8 local_60;
+  char ***local_58;
+  undefined8 uStack_50;
+  long local_48;
+  
+  ppcVar5 = &local_70;
+  local_58 = (char ***)0x0;
+  uStack_50 = 0;
+  local_48 = 0;
+  iVar3 = keytar::SetPassword((string *)(this + 0x68),(string *)(this + 0x80),
+                              (string *)(this + 0x98),(string *)&local_58);
+  if (iVar3 != 1) goto joined_r0x00000d68;
+  ppppcVar1 = (char ****)local_58;
+  if (-1 < local_48) {
+    ppppcVar1 = &local_58;
+  }
+  sVar4 = _strlen((char *)ppppcVar1);
+  if (0x7ffffffffffffff7 < sVar4) {
+                    /* WARNING: Subroutine does not return */
+    std::string::__throw_length_error_abi_ne190102_();
+  }
+  if (sVar4 < 0x17) {
+    local_60 = CONCAT17((char)sVar4,(undefined7)local_60);
+    if (sVar4 != 0) goto LAB_00000cc4;
+                    /* WARNING: Ignoring partial resolution of indirect */
+    local_70._0_1_ = (SetPasswordWorker)0x0;
+    if (this + 0x48 != (SetPasswordWorker *)&local_70) goto LAB_00000ce8;
+  }
+  else {
+    uVar2 = 0x19;
+    if ((sVar4 | 7) != 0x17) {
+      uVar2 = (sVar4 | 7) + 1;
+    }
+    ppcVar5 = operator_new(uVar2);
+    local_60 = uVar2 | 0x8000000000000000;
+    local_70 = (char *)ppcVar5;
+    sStack_68 = sVar4;
+LAB_00000cc4:
+    _memmove(ppcVar5,ppppcVar1,sVar4);
+    *(char *)((long)ppcVar5 + sVar4) = '\0';
+    if (this + 0x48 != (SetPasswordWorker *)&local_70) {
+LAB_00000ce8:
+      this_00 = (string *)(this + 0x48);
+      if ((char)this[0x5f] < '\0') {
+        uVar2 = sStack_68;
+        ppcVar5 = (char **)local_70;
+        if (-1 < (long)local_60) {
+          uVar2 = local_60 >> 0x38;
+          ppcVar5 = &local_70;
+        }
+        std::string::__assign_no_alias<false>(this_00,(char *)ppcVar5,uVar2);
+      }
+      else if ((long)local_60 < 0) {
+        std::string::__assign_no_alias<true>(this_00,local_70,sStack_68);
+      }
+      else {
+        *(size_t *)(this + 0x50) = sStack_68;
+        *(char **)this_00 = local_70;
+        *(ulong *)(this + 0x58) = local_60;
+      }
+    }
+  }
+  if ((long)local_60 < 0) {
+    operator_delete(local_70);
+  }
+joined_r0x00000d68:
+  if (local_48 < 0) {
+    operator_delete(local_58);
+    return;
+  }
+  return;
+}
+
+
+END_PSEUDO SetPasswordWorker::Execute
+
+===== GetPasswordWorker::Execute =====
+
+/* WARNING: Type propagation algorithm not settling */
+/* GetPasswordWorker::Execute() */
+
+void __thiscall GetPasswordWorker::Execute(GetPasswordWorker *this)
+
+{
+  char *******pppppppcVar1;
+  ulong uVar2;
+  int iVar3;
+  size_t sVar4;
+  char **ppcVar5;
+  string *this_00;
+  char *local_70;
+  size_t sStack_68;
+  undefined8 local_60;
+  char *******local_58;
+  undefined8 uStack_50;
+  long local_48;
+  
+  ppcVar5 = &local_70;
+  local_58 = (char *******)0x0;
+  uStack_50 = 0;
+  local_48 = 0;
+  iVar3 = keytar::GetPassword((string *)(this + 0x68),(string *)(this + 0x80),
+                              (string *)(this + 0x98),(string *)&local_58);
+  if (iVar3 == 2) {
+    this[0xb0] = (GetPasswordWorker)0x0;
+    goto joined_r0x000017b0;
+  }
+  if (iVar3 != 1) {
+    this[0xb0] = (GetPasswordWorker)0x1;
+    goto joined_r0x000017b0;
+  }
+  pppppppcVar1 = local_58;
+  if (-1 < local_48) {
+    pppppppcVar1 = (char *******)&local_58;
+  }
+  sVar4 = _strlen((char *)pppppppcVar1);
+  if (0x7ffffffffffffff7 < sVar4) {
+                    /* WARNING: Subroutine does not return */
+    std::string::__throw_length_error_abi_ne190102_();
+  }
+  if (sVar4 < 0x17) {
+    local_60 = CONCAT17((char)sVar4,(undefined7)local_60);
+    if (sVar4 != 0) goto LAB_000017e0;
+                    /* WARNING: Ignoring partial resolution of indirect */
+    local_70._0_1_ = (GetPasswordWorker)0x0;
+    if (this + 0x48 != (GetPasswordWorker *)&local_70) goto LAB_00001804;
+  }
+  else {
+    uVar2 = 0x19;
+    if ((sVar4 | 7) != 0x17) {
+      uVar2 = (sVar4 | 7) + 1;
+    }
+    ppcVar5 = operator_new(uVar2);
+    local_60 = uVar2 | 0x8000000000000000;
+    local_70 = (char *)ppcVar5;
+    sStack_68 = sVar4;
+LAB_000017e0:
+    _memmove(ppcVar5,pppppppcVar1,sVar4);
+    *(char *)((long)ppcVar5 + sVar4) = '\0';
+    if (this + 0x48 != (GetPasswordWorker *)&local_70) {
+LAB_00001804:
+      this_00 = (string *)(this + 0x48);
+      if ((char)this[0x5f] < '\0') {
+        uVar2 = sStack_68;
+        ppcVar5 = (char **)local_70;
+        if (-1 < (long)local_60) {
+          uVar2 = local_60 >> 0x38;
+          ppcVar5 = &local_70;
+        }
+        std::string::__assign_no_alias<false>(this_00,(char *)ppcVar5,uVar2);
+      }
+      else if ((long)local_60 < 0) {
+        std::string::__assign_no_alias<true>(this_00,local_70,sStack_68);
+      }
+      else {
+        *(size_t *)(this + 0x50) = sStack_68;
+        *(char **)this_00 = local_70;
+        *(ulong *)(this + 0x58) = local_60;
+      }
+    }
+  }
+  if ((long)local_60 < 0) {
+    operator_delete(local_70);
+  }
+joined_r0x000017b0:
+  if (local_48 < 0) {
+    operator_delete(local_58);
+    return;
+  }
+  return;
+}
+
+
+END_PSEUDO GetPasswordWorker::Execute
+
+===== keytar::AddPassword =====
+
+/* keytar::AddPassword(std::string const&, std::string const&, std::string const&, std::string*) */
+
+keytar * keytar::AddPassword(string *param_1,string *param_2,string *param_3,string *param_4)
+
+{
+  string *psVar1;
+  string *psVar2;
+  string *psVar3;
+  char ***pppcVar4;
+  uint uVar5;
+  uint uVar6;
+  uint uVar7;
+  keytar *this;
+  undefined1 auVar8 [12];
+  char **local_38;
+  ulong uStack_30;
+  undefined7 local_28;
+  byte bStack_21;
+  
+  psVar1 = *(string **)param_1;
+  uVar5 = *(uint *)(param_1 + 8);
+  if (-1 < (char)param_1[0x17]) {
+    psVar1 = param_1;
+    uVar5 = (uint)(byte)param_1[0x17];
+  }
+  psVar2 = *(string **)param_2;
+  uVar6 = *(uint *)(param_2 + 8);
+  if (-1 < (char)param_2[0x17]) {
+    psVar2 = param_2;
+    uVar6 = (uint)(byte)param_2[0x17];
+  }
+  psVar3 = *(string **)param_3;
+  uVar7 = *(uint *)(param_3 + 8);
+  if (-1 < (char)param_3[0x17]) {
+    psVar3 = param_3;
+    uVar7 = (uint)(byte)param_3[0x17];
+  }
+  auVar8 = _SecKeychainAddGenericPassword(0,uVar5,psVar1,uVar6,psVar2,uVar7,psVar3,0);
+  this = auVar8._0_8_;
+  if (auVar8._0_4_ != 0) {
+    errorStatusToString(this,auVar8._8_4_);
+    if ((string *)&local_38 != param_4) {
+      if ((char)param_4[0x17] < '\0') {
+        pppcVar4 = (char ***)local_38;
+        if (-1 < (char)bStack_21) {
+          uStack_30 = (ulong)bStack_21;
+          pppcVar4 = &local_38;
+        }
+        std::string::__assign_no_alias<false>(param_4,(char *)pppcVar4,uStack_30);
+      }
+      else if ((char)bStack_21 < '\0') {
+        std::string::__assign_no_alias<true>(param_4,(char *)local_38,uStack_30);
+      }
+      else {
+        *(ulong *)(param_4 + 8) = uStack_30;
+        *(char ***)param_4 = local_38;
+        *(ulong *)(param_4 + 0x10) = CONCAT17(bStack_21,local_28);
+      }
+    }
+    if ((char)bStack_21 < '\0') {
+      operator_delete(local_38);
+    }
+    this = (keytar *)((long)&MACH_HEADER.magic + 1);
+  }
+  return this;
+}
+
+
+END_PSEUDO keytar::AddPassword
+
+===== keytar::SetPassword =====
+
+/* keytar::SetPassword(std::string const&, std::string const&, std::string const&, std::string*) */
+
+keytar * keytar::SetPassword(string *param_1,string *param_2,string *param_3,string *param_4)
+
+{
+  string *psVar1;
+  string *psVar2;
+  char **ppcVar3;
+  uint uVar4;
+  uint uVar5;
+  keytar *pkVar6;
+  int extraout_w1;
+  undefined1 auVar7 [12];
+  char *local_50;
+  ulong uStack_48;
+  undefined7 local_40;
+  byte bStack_39;
+  undefined8 local_38;
+  
+  psVar2 = *(string **)param_1;
+  uVar4 = *(uint *)(param_1 + 8);
+  if (-1 < (char)param_1[0x17]) {
+    psVar2 = param_1;
+    uVar4 = (uint)(byte)param_1[0x17];
+  }
+  psVar1 = *(string **)param_2;
+  uVar5 = *(uint *)(param_2 + 8);
+  if (-1 < (char)param_2[0x17]) {
+    psVar1 = param_2;
+    uVar5 = (uint)(byte)param_2[0x17];
+  }
+  auVar7 = _SecKeychainFindGenericPassword(0,uVar4,psVar2,uVar5,psVar1,0,0,&local_38);
+  if (auVar7._0_4_ == 0) {
+    psVar2 = *(string **)param_3;
+    uVar4 = *(uint *)(param_3 + 8);
+    if (-1 < (char)param_3[0x17]) {
+      psVar2 = param_3;
+      uVar4 = (uint)(byte)param_3[0x17];
+    }
+    pkVar6 = (keytar *)_SecKeychainItemModifyAttributesAndData(local_38,0,uVar4,psVar2);
+    _CFRelease(local_38);
+    if ((int)pkVar6 == 0) {
+      return pkVar6;
+    }
+    errorStatusToString(pkVar6,extraout_w1);
+    if ((string *)&local_50 == param_4) goto LAB_00007b58;
+    if ((char)param_4[0x17] < '\0') {
+      ppcVar3 = (char **)local_50;
+      if (-1 < (char)bStack_39) {
+        uStack_48 = (ulong)bStack_39;
+        ppcVar3 = &local_50;
+      }
+      std::string::__assign_no_alias<false>(param_4,(char *)ppcVar3,uStack_48);
+      goto LAB_00007b58;
+    }
+    if ((char)bStack_39 < '\0') {
+      std::string::__assign_no_alias<true>(param_4,local_50,uStack_48);
+      goto LAB_00007b58;
+    }
+  }
+  else {
+    if (auVar7._0_4_ == -0x62d4) {
+      pkVar6 = (keytar *)AddPassword(param_1,param_2,param_3,param_4);
+      return pkVar6;
+    }
+    errorStatusToString(auVar7._0_8_,auVar7._8_4_);
+    if ((string *)&local_50 == param_4) goto LAB_00007b58;
+    if ((char)param_4[0x17] < '\0') {
+      ppcVar3 = (char **)local_50;
+      if (-1 < (char)bStack_39) {
+        uStack_48 = (ulong)bStack_39;
+        ppcVar3 = &local_50;
+      }
+      std::string::__assign_no_alias<false>(param_4,(char *)ppcVar3,uStack_48);
+      goto LAB_00007b58;
+    }
+    if ((char)bStack_39 < '\0') {
+      std::string::__assign_no_alias<true>(param_4,local_50,uStack_48);
+      goto LAB_00007b58;
+    }
+  }
+  *(ulong *)(param_4 + 8) = uStack_48;
+  *(char **)param_4 = local_50;
+  *(ulong *)(param_4 + 0x10) = CONCAT17(bStack_39,local_40);
+LAB_00007b58:
+  if ((char)bStack_39 < '\0') {
+    operator_delete(local_50);
+    return (keytar *)((long)&MACH_HEADER.magic + 1);
+  }
+  return (keytar *)((long)&MACH_HEADER.magic + 1);
+}
+
+
+END_PSEUDO keytar::SetPassword
+
+===== keytar::GetPassword =====
+
+/* keytar::GetPassword(std::string const&, std::string const&, std::string*, std::string*) */
+
+undefined8 keytar::GetPassword(string *param_1,string *param_2,string *param_3,string *param_4)
+
+{
+  string *psVar1;
+  string *psVar2;
+  ulong uVar3;
+  string sVar4;
+  uint uVar5;
+  uint uVar6;
+  void *pvVar7;
+  char ****ppppcVar8;
+  ulong uVar9;
+  undefined1 auVar10 [12];
+  char ***local_68;
+  ulong uStack_60;
+  undefined8 local_58;
+  uint local_4c;
+  void *local_48;
+  
+  psVar1 = *(string **)param_1;
+  uVar5 = *(uint *)(param_1 + 8);
+  if (-1 < (char)param_1[0x17]) {
+    psVar1 = param_1;
+    uVar5 = (uint)(byte)param_1[0x17];
+  }
+  psVar2 = *(string **)param_2;
+  uVar6 = *(uint *)(param_2 + 8);
+  if (-1 < (char)param_2[0x17]) {
+    psVar2 = param_2;
+    uVar6 = (uint)(byte)param_2[0x17];
+  }
+  auVar10 = _SecKeychainFindGenericPassword(0,uVar5,psVar1,uVar6,psVar2,&local_4c,&local_48,0);
+  pvVar7 = local_48;
+  if (auVar10._0_4_ == -0x62d4) {
+    return 2;
+  }
+  if (auVar10._0_4_ != 0) {
+    errorStatusToString(auVar10._0_8_,auVar10._8_4_);
+    if ((string *)&local_68 != param_4) {
+      if ((char)param_4[0x17] < '\0') {
+        ppppcVar8 = (char ****)local_68;
+        if (-1 < (long)local_58) {
+          uStack_60 = local_58 >> 0x38;
+          ppppcVar8 = &local_68;
+        }
+        std::string::__assign_no_alias<false>(param_4,(char *)ppppcVar8,uStack_60);
+      }
+      else if ((long)local_58 < 0) {
+        std::string::__assign_no_alias<true>(param_4,(char *)local_68,uStack_60);
+      }
+      else {
+        *(ulong *)(param_4 + 8) = uStack_60;
+        *(char ****)param_4 = local_68;
+        *(ulong *)(param_4 + 0x10) = local_58;
+      }
+    }
+    if ((long)local_58 < 0) {
+      operator_delete(local_68);
+    }
+    return 1;
+  }
+  uVar9 = (ulong)local_4c;
+  if (local_4c < 0x17) {
+    local_58 = CONCAT17((char)local_4c,(undefined7)local_58);
+    ppppcVar8 = &local_68;
+    if (local_4c == 0) {
+                    /* WARNING: Ignoring partial resolution of indirect */
+      local_68._0_1_ = (string)0x0;
+      sVar4 = param_3[0x17];
+      goto joined_r0x00007d2c;
+    }
+  }
+  else {
+    uVar3 = 0x19;
+    if ((uVar9 | 7) != 0x17) {
+      uVar3 = (uVar9 | 7) + 1;
+    }
+    ppppcVar8 = operator_new(uVar3);
+    local_58 = uVar3 | 0x8000000000000000;
+    local_68 = (char ***)ppppcVar8;
+    uStack_60 = uVar9;
+  }
+  _memmove(ppppcVar8,pvVar7,uVar9);
+  *(undefined1 *)((long)ppppcVar8 + uVar9) = 0;
+  sVar4 = param_3[0x17];
+joined_r0x00007d2c:
+  if ((char)sVar4 < '\0') {
+    operator_delete(*(void **)param_3);
+  }
+  *(ulong *)(param_3 + 8) = uStack_60;
+  *(char ****)param_3 = local_68;
+  *(ulong *)(param_3 + 0x10) = local_58;
+  _SecKeychainItemFreeContent(0,local_48);
+  return 0;
+}
+
+
+END_PSEUDO keytar::GetPassword
+
+===== keytar::DeletePassword =====
+
+/* keytar::DeletePassword(std::string const&, std::string const&, std::string*) */
+
+keytar * keytar::DeletePassword(string *param_1,string *param_2,string *param_3)
+
+{
+  string *psVar1;
+  string *psVar2;
+  char **ppcVar3;
+  uint uVar4;
+  uint uVar5;
+  keytar *this;
+  int extraout_w1;
+  undefined1 auVar6 [12];
+  char *local_40;
+  ulong uStack_38;
+  undefined7 local_30;
+  byte bStack_29;
+  undefined8 local_28;
+  
+  psVar1 = *(string **)param_1;
+  uVar4 = *(uint *)(param_1 + 8);
+  if (-1 < (char)param_1[0x17]) {
+    psVar1 = param_1;
+    uVar4 = (uint)(byte)param_1[0x17];
+  }
+  psVar2 = *(string **)param_2;
+  uVar5 = *(uint *)(param_2 + 8);
+  if (-1 < (char)param_2[0x17]) {
+    psVar2 = param_2;
+    uVar5 = (uint)(byte)param_2[0x17];
+  }
+  auVar6 = _SecKeychainFindGenericPassword(0,uVar4,psVar1,uVar5,psVar2,0,0,&local_28);
+  if (auVar6._0_4_ == -0x62d4) {
+    return (keytar *)((long)&MACH_HEADER.magic + 2);
+  }
+  if (auVar6._0_4_ == 0) {
+    this = (keytar *)_SecKeychainItemDelete(local_28);
+    _CFRelease(local_28);
+    if ((int)this == 0) {
+      return this;
+    }
+    errorStatusToString(this,extraout_w1);
+    if ((string *)&local_40 == param_3) goto LAB_00007f18;
+    if ((char)param_3[0x17] < '\0') {
+      ppcVar3 = (char **)local_40;
+      if (-1 < (char)bStack_29) {
+        uStack_38 = (ulong)bStack_29;
+        ppcVar3 = &local_40;
+      }
+      std::string::__assign_no_alias<false>(param_3,(char *)ppcVar3,uStack_38);
+      goto LAB_00007f18;
+    }
+    if ((char)bStack_29 < '\0') {
+      std::string::__assign_no_alias<true>(param_3,local_40,uStack_38);
+      goto LAB_00007f18;
+    }
+  }
+  else {
+    errorStatusToString(auVar6._0_8_,auVar6._8_4_);
+    if ((string *)&local_40 == param_3) goto LAB_00007f18;
+    if ((char)param_3[0x17] < '\0') {
+      ppcVar3 = (char **)local_40;
+      if (-1 < (char)bStack_29) {
+        uStack_38 = (ulong)bStack_29;
+        ppcVar3 = &local_40;
+      }
+      std::string::__assign_no_alias<false>(param_3,(char *)ppcVar3,uStack_38);
+      goto LAB_00007f18;
+    }
+    if ((char)bStack_29 < '\0') {
+      std::string::__assign_no_alias<true>(param_3,local_40,uStack_38);
+      goto LAB_00007f18;
+    }
+  }
+  *(ulong *)(param_3 + 8) = uStack_38;
+  *(char **)param_3 = local_40;
+  *(ulong *)(param_3 + 0x10) = CONCAT17(bStack_29,local_30);
+LAB_00007f18:
+  if ((char)bStack_29 < '\0') {
+    operator_delete(local_40);
+    return (keytar *)((long)&MACH_HEADER.magic + 1);
+  }
+  return (keytar *)((long)&MACH_HEADER.magic + 1);
+}
+
+
+END_PSEUDO keytar::DeletePassword
+
+===== keytar::FindPassword =====
+
+/* keytar::FindPassword(std::string const&, std::string*, std::string*) */
+
+undefined8 keytar::FindPassword(string *param_1,string *param_2,string *param_3)
+
+{
+  string *psVar1;
+  ulong uVar2;
+  string sVar3;
+  uint uVar4;
+  void *pvVar5;
+  char **ppcVar6;
+  ulong uVar7;
+  undefined1 auVar8 [12];
+  char *local_70;
+  ulong uStack_68;
+  undefined8 local_60;
+  uint local_54;
+  void *local_50;
+  undefined8 local_48;
+  
+  ppcVar6 = &local_70;
+  psVar1 = *(string **)param_1;
+  uVar4 = *(uint *)(param_1 + 8);
+  if (-1 < (char)param_1[0x17]) {
+    psVar1 = param_1;
+    uVar4 = (uint)(byte)param_1[0x17];
+  }
+  auVar8 = _SecKeychainFindGenericPassword(0,uVar4,psVar1,0,0,&local_54,&local_50,&local_48);
+  pvVar5 = local_50;
+  if (auVar8._0_4_ == -0x62d4) {
+    return 2;
+  }
+  if (auVar8._0_4_ != 0) {
+    errorStatusToString(auVar8._0_8_,auVar8._8_4_);
+    if ((string *)&local_70 != param_3) {
+      if ((char)param_3[0x17] < '\0') {
+        ppcVar6 = (char **)local_70;
+        if (-1 < (long)local_60) {
+          uStack_68 = local_60 >> 0x38;
+          ppcVar6 = &local_70;
+        }
+        std::string::__assign_no_alias<false>(param_3,(char *)ppcVar6,uStack_68);
+      }
+      else if ((long)local_60 < 0) {
+        std::string::__assign_no_alias<true>(param_3,local_70,uStack_68);
+      }
+      else {
+        *(ulong *)(param_3 + 8) = uStack_68;
+        *(char **)param_3 = local_70;
+        *(ulong *)(param_3 + 0x10) = local_60;
+      }
+    }
+    if ((long)local_60 < 0) {
+      operator_delete(local_70);
+    }
+    return 1;
+  }
+  uVar7 = (ulong)local_54;
+  if (local_54 < 0x17) {
+    local_60 = CONCAT17((char)local_54,(undefined7)local_60);
+    if (local_54 == 0) {
+                    /* WARNING: Ignoring partial resolution of indirect */
+      local_70._0_1_ = (string)0x0;
+      sVar3 = param_2[0x17];
+      goto joined_r0x000080d4;
+    }
+  }
+  else {
+    uVar2 = 0x19;
+    if ((uVar7 | 7) != 0x17) {
+      uVar2 = (uVar7 | 7) + 1;
+    }
+    ppcVar6 = operator_new(uVar2);
+    local_60 = uVar2 | 0x8000000000000000;
+    local_70 = (char *)ppcVar6;
+    uStack_68 = uVar7;
+  }
+  _memmove(ppcVar6,pvVar5,uVar7);
+  *(char *)((long)ppcVar6 + uVar7) = '\0';
+  sVar3 = param_2[0x17];
+joined_r0x000080d4:
+  if ((char)sVar3 < '\0') {
+    operator_delete(*(void **)param_2);
+  }
+  *(ulong *)(param_2 + 8) = uStack_68;
+  *(char **)param_2 = local_70;
+  *(ulong *)(param_2 + 0x10) = local_60;
+  _SecKeychainItemFreeContent(0,local_50);
+  _CFRelease(local_48);
+  return 0;
+}
+
+
+END_PSEUDO keytar::FindPassword
+
+===== keytar::FindCredentials =====
+
+/* WARNING: Type propagation algorithm not settling */
+/* keytar::FindCredentials(std::string const&, std::vector<std::pair<std::string, std::string >,
+   std::allocator<std::pair<std::string, std::string > > >*, std::string*) */
+
+undefined8 keytar::FindCredentials(string *param_1,vector *param_2,string *param_3)
+
+{
+  string *psVar1;
+  char *******pppppppcVar2;
+  long lVar3;
+  undefined8 uVar4;
+  undefined8 uVar5;
+  keytar *this;
+  ulong uVar6;
+  pair *ppVar7;
+  int extraout_w1;
+  ulong uVar8;
+  undefined8 uVar9;
+  undefined1 auVar10 [16];
+  char *******local_78;
+  ulong uStack_70;
+  undefined7 local_68;
+  byte bStack_61;
+  char *local_60;
+  ulong uStack_58;
+  undefined7 local_50;
+  char cStack_49;
+  long local_48;
+  
+  psVar1 = *(string **)param_1;
+  if (-1 < (char)param_1[0x17]) {
+    psVar1 = param_1;
+  }
+  uVar4 = _CFStringCreateWithCString(0,psVar1,0x8000100);
+  uVar5 = _CFDictionaryCreateMutable
+                    (0,0,PTR__kCFTypeDictionaryKeyCallBacks_0000c038,
+                     PTR__kCFTypeDictionaryValueCallBacks_0000c040);
+  _CFDictionaryAddValue
+            (uVar5,*(undefined8 *)PTR__kSecClass_0000c0a0,
+             *(undefined8 *)PTR__kSecClassGenericPassword_0000c0a8);
+  _CFDictionaryAddValue(uVar5,*(undefined8 *)PTR__kSecAttrService_0000c098,uVar4);
+  _CFDictionaryAddValue
+            (uVar5,*(undefined8 *)PTR__kSecMatchLimit_0000c0b0,
+             *(undefined8 *)PTR__kSecMatchLimitAll_0000c0b8);
+  uVar9 = *(undefined8 *)PTR__kCFBooleanTrue_0000c030;
+  _CFDictionaryAddValue(uVar5,*(undefined8 *)PTR__kSecReturnRef_0000c0d8,uVar9);
+  _CFDictionaryAddValue(uVar5,*(undefined8 *)PTR__kSecReturnAttributes_0000c0c8,uVar9);
+  local_48 = 0;
+  this = (keytar *)_SecItemCopyMatching(uVar5,&local_48);
+  _CFRelease(uVar4);
+  _CFRelease(uVar5);
+  lVar3 = local_48;
+  if ((int)this == -0x62d4) {
+    uVar4 = 2;
+  }
+  else {
+    if ((int)this != 0) {
+      errorStatusToString(this,extraout_w1);
+      if ((string *)&local_78 != param_3) {
+        if ((char)param_3[0x17] < '\0') {
+          pppppppcVar2 = local_78;
+          if (-1 < (char)bStack_61) {
+            uStack_70 = (ulong)bStack_61;
+            pppppppcVar2 = (char *******)&local_78;
+          }
+          std::string::__assign_no_alias<false>(param_3,(char *)pppppppcVar2,uStack_70);
+        }
+        else if ((char)bStack_61 < '\0') {
+          std::string::__assign_no_alias<true>(param_3,(char *)local_78,uStack_70);
+        }
+        else {
+          *(ulong *)(param_3 + 8) = uStack_70;
+          *(char ********)param_3 = local_78;
+          *(ulong *)(param_3 + 0x10) = CONCAT17(bStack_61,local_68);
+        }
+      }
+      if ((char)bStack_61 < '\0') {
+        operator_delete(local_78);
+      }
+      return 1;
+    }
+    uVar6 = _CFArrayGetCount(local_48);
+    if (0 < (int)uVar6) {
+      uVar8 = 0;
+      do {
+        auVar10 = _CFArrayGetValueAtIndex(lVar3,uVar8);
+        getCredentialsForItem(auVar10._0_8_,auVar10._8_8_);
+        psVar1 = *(string **)(param_2 + 8);
+        if (psVar1 < *(string **)(param_2 + 0x10)) {
+          if ((char)bStack_61 < '\0') {
+            std::string::__init_copy_ctor_external(psVar1,(char *)local_78,uStack_70);
+          }
+          else {
+            *(ulong *)(psVar1 + 0x10) = CONCAT17(bStack_61,local_68);
+            *(ulong *)(psVar1 + 8) = uStack_70;
+            *(char ********)psVar1 = local_78;
+          }
+          if (cStack_49 < '\0') {
+            std::string::__init_copy_ctor_external(psVar1 + 0x18,local_60,uStack_58);
+          }
+          else {
+            *(ulong *)(psVar1 + 0x28) = CONCAT17(cStack_49,local_50);
+            *(ulong *)(psVar1 + 0x20) = uStack_58;
+            *(char **)(psVar1 + 0x18) = local_60;
+          }
+          *(string **)(param_2 + 8) = psVar1 + 0x30;
+          *(string **)(param_2 + 8) = psVar1 + 0x30;
+        }
+        else {
+          ppVar7 = std::
+                   vector<std::pair<std::string,std::string>,std::allocator<std::pair<std::string,std::string>>>
+                   ::__push_back_slow_path<std::pair<std::string,std::string>const&>
+                             ((vector<std::pair<std::string,std::string>,std::allocator<std::pair<std::string,std::string>>>
+                               *)param_2,(pair *)&local_78);
+          *(pair **)(param_2 + 8) = ppVar7;
+        }
+        if (cStack_49 < '\0') {
+          operator_delete(local_60);
+        }
+        if ((char)bStack_61 < '\0') {
+          operator_delete(local_78);
+        }
+        uVar8 = uVar8 + 1;
+      } while ((uVar6 & 0x7fffffff) != uVar8);
+    }
+    uVar4 = 0;
+    if (local_48 != 0) {
+      _CFRelease();
+      return 0;
+    }
+  }
+  return uVar4;
+}
+
+
+END_PSEUDO keytar::FindCredentials

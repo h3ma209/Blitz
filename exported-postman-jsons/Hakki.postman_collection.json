@@ -1,0 +1,4582 @@
+{
+  "info": {
+    "_postman_id": "3d092da0-504b-4929-ae0b-a4889dd04952",
+    "name": "Hakki",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "_exporter_id": "49384562",
+    "_collection_link": "https://go.postman.co/collection/34345086-3d092da0-504b-4929-ae0b-a4889dd04952?source=collection_link"
+  },
+  "item": [
+    {
+      "name": "User",
+      "item": [
+        {
+          "name": "Message",
+          "item": [
+            {
+              "name": "Clear Conversation",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "pageState",
+                    "value": "AAoACABMgmQ1QBAA8H////Xwf///9Q==",
+                    "type": "text",
+                    "disabled": true
+                  }
+                ],
+                "url": {
+                  "raw": "{{endpoint_hakki_user}}/messages/:roomID/:type?page_size=68",
+                  "host": [
+                    "{{endpoint_hakki_user}}"
+                  ],
+                  "path": [
+                    "messages",
+                    ":roomID",
+                    ":type"
+                  ],
+                  "query": [
+                    {
+                      "key": "page_size",
+                      "value": "68"
+                    }
+                  ],
+                  "variable": [
+                    {
+                      "key": "roomID",
+                      "value": ""
+                    },
+                    {
+                      "key": "type",
+                      "value": ""
+                    }
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "List",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "pageState",
+                    "value": "",
+                    "type": "text"
+                  }
+                ],
+                "url": {
+                  "raw": "{{endpoint_hakki_user}}/messages/:roomID/:type?page_size=40",
+                  "host": [
+                    "{{endpoint_hakki_user}}"
+                  ],
+                  "path": [
+                    "messages",
+                    ":roomID",
+                    ":type"
+                  ],
+                  "query": [
+                    {
+                      "key": "page_size",
+                      "value": "40"
+                    }
+                  ],
+                  "variable": [
+                    {
+                      "key": "roomID",
+                      "value": "226"
+                    },
+                    {
+                      "key": "type",
+                      "value": "all"
+                    }
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "List Copy",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "pageState",
+                    "value": "",
+                    "type": "text"
+                  }
+                ],
+                "url": {
+                  "raw": "{{endpoint_hakki_user}}/messages/:roomID/:type?page_size=40",
+                  "host": [
+                    "{{endpoint_hakki_user}}"
+                  ],
+                  "path": [
+                    "messages",
+                    ":roomID",
+                    ":type"
+                  ],
+                  "query": [
+                    {
+                      "key": "page_size",
+                      "value": "40"
+                    }
+                  ],
+                  "variable": [
+                    {
+                      "key": "roomID",
+                      "value": "78"
+                    },
+                    {
+                      "key": "type",
+                      "value": "all"
+                    }
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Search Chat",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "pageState",
+                    "value": "BAAAAAEgAAgAAAGR+sH2EBBMHRosdCUR77c3ABVd19rwBAAJLDXwf///6/B////r",
+                    "type": "text"
+                  }
+                ],
+                "url": {
+                  "raw": "{{endpoint_hakki_user}}/search-room/:roomID/:query",
+                  "host": [
+                    "{{endpoint_hakki_user}}"
+                  ],
+                  "path": [
+                    "search-room",
+                    ":roomID",
+                    ":query"
+                  ],
+                  "variable": [
+                    {
+                      "key": "roomID",
+                      "value": "240"
+                    },
+                    {
+                      "key": "query",
+                      "value": "Hello"
+                    }
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Send Document",
+              "request": {
+                "method": "POST",
+                "header": [],
+                "body": {
+                  "mode": "formdata",
+                  "formdata": [
+                    {
+                      "key": "attachments",
+                      "type": "file",
+                      "src": "postman-cloud:///1f0922a6-a130-4b00-a113-4d2f370af49b"
+                    },
+                    {
+                      "key": "room_id",
+                      "value": "189",
+                      "type": "text"
+                    },
+                    {
+                      "key": "type",
+                      "value": "media",
+                      "type": "text"
+                    },
+                    {
+                      "key": "reply_to_message_id",
+                      "value": "123",
+                      "type": "text",
+                      "disabled": true
+                    }
+                  ]
+                },
+                "url": {
+                  "raw": "{{endpoint_hakki_user}}/messages/document",
+                  "host": [
+                    "{{endpoint_hakki_user}}"
+                  ],
+                  "path": [
+                    "messages",
+                    "document"
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "SMS",
+              "request": {
+                "method": "POST",
+                "header": [],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n    \"des\":\"963500360397\",\n    \"message\":\"api 2\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{endpoint_hakki_user}}/sms",
+                  "host": [
+                    "{{endpoint_hakki_user}}"
+                  ],
+                  "path": [
+                    "sms"
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Seen Messages",
+              "request": {
+                "method": "PATCH",
+                "header": [],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\r\n    \"ids\": [169070571575840768],\r\n    \"room_id\": 56,\r\n    \"time_bucket\": \"b' AND message_id = 16900570892169216; DELETE FROM messages WHERE room_id=57 AND time_bucket='2025-Q3';--\",\r\n    \"seen_at\": \"2024-01-01T12:00:00Z\"\r\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{endpoint_hakki_user}}/seen-messages",
+                  "host": [
+                    "{{endpoint_hakki_user}}"
+                  ],
+                  "path": [
+                    "seen-messages"
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Delete",
+              "request": {
+                "method": "DELETE",
+                "header": [],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\r\n    \"id\": 153852729498800128,\r\n    \"room_id\":8,\r\n    \"time_bucket\":\"2025-Q3\"\r\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{endpoint_hakki_user}}/messages",
+                  "host": [
+                    "{{endpoint_hakki_user}}"
+                  ],
+                  "path": [
+                    "messages"
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Self Destruct",
+              "request": {
+                "method": "POST",
+                "header": [],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\r\n    \"id\": 180961407141941248,\r\n    \"time_bucket\":\"2026-Q1\",\r\n    \"room_id\": 57\r\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{endpoint_hakki_user}}/messages/destroy",
+                  "host": [
+                    "{{endpoint_hakki_user}}"
+                  ],
+                  "path": [
+                    "messages",
+                    "destroy"
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Send Message",
+              "request": {
+                "method": "POST",
+                "header": [],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\r\n    \"room_id\": 85,\r\n    \"message\": \"Hello Ahmad\"\r\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{endpoint_hakki_user}}/messages/",
+                  "host": [
+                    "{{endpoint_hakki_user}}"
+                  ],
+                  "path": [
+                    "messages",
+                    ""
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Edit",
+              "request": {
+                "method": "PATCH",
+                "header": [],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\r\n    \"id\": 41063738169626624,\r\n    \"room_id\":1,\r\n    \"time_bucket\":\"2024-Q3\",\r\n    \"content\":\"new test\"\r\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{endpoint_hakki_user}}/messages",
+                  "host": [
+                    "{{endpoint_hakki_user}}"
+                  ],
+                  "path": [
+                    "messages"
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "translate",
+              "request": {
+                "method": "POST",
+                "header": [],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"text\": \"مرحبا\",\n//   \"from_lang\": \"en\",\n  \"to_lang\": \"en\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{endpoint_hakki_user}}/translate",
+                  "host": [
+                    "{{endpoint_hakki_user}}"
+                  ],
+                  "path": [
+                    "translate"
+                  ]
+                }
+              },
+              "response": []
+            }
+          ]
+        },
+        {
+          "name": "Block",
+          "item": [
+            {
+              "name": "List",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "bearer {{token}}"
+                  },
+                  {
+                    "key": "Accept-Language",
+                    "value": "en"
+                  }
+                ],
+                "url": {
+                  "raw": "{{endpoint_hakki_user}}/blocks",
+                  "host": [
+                    "{{endpoint_hakki_user}}"
+                  ],
+                  "path": [
+                    "blocks"
+                  ],
+                  "query": [
+                    {
+                      "key": "",
+                      "value": "",
+                      "disabled": true
+                    }
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Blocked By",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "bearer {{token}}"
+                  },
+                  {
+                    "key": "Accept-Language",
+                    "value": "en"
+                  }
+                ],
+                "url": {
+                  "raw": "{{endpoint_hakki_user}}/blocked-by",
+                  "host": [
+                    "{{endpoint_hakki_user}}"
+                  ],
+                  "path": [
+                    "blocked-by"
+                  ],
+                  "query": [
+                    {
+                      "key": "",
+                      "value": "",
+                      "disabled": true
+                    }
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Create",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "bearer {{token}}"
+                  },
+                  {
+                    "key": "Accept-Language",
+                    "value": "en"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n    \"blocked_id\":600725\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{endpoint_hakki_user}}/blocks",
+                  "host": [
+                    "{{endpoint_hakki_user}}"
+                  ],
+                  "path": [
+                    "blocks"
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Delete",
+              "request": {
+                "method": "DELETE",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "bearer {{token}}"
+                  },
+                  {
+                    "key": "Accept-Language",
+                    "value": "en"
+                  }
+                ],
+                "url": {
+                  "raw": "{{endpoint_hakki_user}}/blocks/:blockID",
+                  "host": [
+                    "{{endpoint_hakki_user}}"
+                  ],
+                  "path": [
+                    "blocks",
+                    ":blockID"
+                  ],
+                  "query": [
+                    {
+                      "key": "",
+                      "value": null,
+                      "disabled": true
+                    }
+                  ],
+                  "variable": [
+                    {
+                      "key": "blockID",
+                      "value": "2"
+                    }
+                  ]
+                }
+              },
+              "response": []
+            }
+          ]
+        },
+        {
+          "name": "Call",
+          "item": [
+            {
+              "name": "Call Log",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "pageState",
+                    "value": "1",
+                    "type": "text",
+                    "disabled": true
+                  }
+                ],
+                "url": {
+                  "raw": "{{endpoint_hakki_user}}/call-logs?page_size=2",
+                  "host": [
+                    "{{endpoint_hakki_user}}"
+                  ],
+                  "path": [
+                    "call-logs"
+                  ],
+                  "query": [
+                    {
+                      "key": "page_size",
+                      "value": "2"
+                    }
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Join Token",
+              "request": {
+                "method": "POST",
+                "header": [],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\r\n    \"name\":\"6242b349-fcf8-4f6c-ad3c-07513a5fe703\"\r\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{endpoint_hakki_user}}/join-token",
+                  "host": [
+                    "{{endpoint_hakki_user}}"
+                  ],
+                  "path": [
+                    "join-token"
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Create Room",
+              "request": {
+                "method": "POST",
+                "header": [],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\r\n    \"receiver\":[600725],\r\n    \"is_video_call\":false,\r\n    \"chat_id\":\"5\"\r\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{endpoint_hakki_user}}/create-room",
+                  "host": [
+                    "{{endpoint_hakki_user}}"
+                  ],
+                  "path": [
+                    "create-room"
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Hakki-out",
+              "request": {
+                "method": "POST",
+                "header": [],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\r\n    \"call_to\":\"2223\"\r\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{endpoint_hakki_user}}/hakki-out",
+                  "host": [
+                    "{{endpoint_hakki_user}}"
+                  ],
+                  "path": [
+                    "hakki-out"
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Call Log",
+              "request": {
+                "method": "POST",
+                "header": [],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\r\n    \"time\": \"2024-07-09T10:46:16.13Z\",\r\n    \"is_video\": false,\r\n    \"status\": \"accepted\",\r\n    \"duration\": \"2:55\",\r\n    \"room_id\": 1\r\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{endpoint_hakki_user}}/call-logs",
+                  "host": [
+                    "{{endpoint_hakki_user}}"
+                  ],
+                  "path": [
+                    "call-logs"
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Delete Call Log",
+              "request": {
+                "method": "DELETE",
+                "header": [],
+                "url": {
+                  "raw": "{{endpoint_hakki_user}}/call-logs/:callLogID",
+                  "host": [
+                    "{{endpoint_hakki_user}}"
+                  ],
+                  "path": [
+                    "call-logs",
+                    ":callLogID"
+                  ],
+                  "variable": [
+                    {
+                      "key": "callLogID",
+                      "value": "26933572241723392"
+                    }
+                  ]
+                }
+              },
+              "response": []
+            }
+          ]
+        },
+        {
+          "name": "Account",
+          "item": [
+            {
+              "name": "Validate Account",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{endpoint_hakki_user}}/validate-account",
+                  "host": [
+                    "{{endpoint_hakki_user}}"
+                  ],
+                  "path": [
+                    "validate-account"
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "My Profile",
+              "protocolProfileBehavior": {
+                "disableBodyPruning": true
+              },
+              "request": {
+                "method": "GET",
+                "header": [],
+                "body": {
+                  "mode": "formdata",
+                  "formdata": []
+                },
+                "url": {
+                  "raw": "https://snbhakki.rcell.me/api/user/v1/my-profile",
+                  "protocol": "https",
+                  "host": [
+                    "snbhakki",
+                    "rcell",
+                    "me"
+                  ],
+                  "path": [
+                    "api",
+                    "user",
+                    "v1",
+                    "my-profile"
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Profile image",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "exec": [
+                      ""
+                    ],
+                    "type": "text/javascript",
+                    "packages": {}
+                  }
+                },
+                {
+                  "listen": "prerequest",
+                  "script": {
+                    "exec": [
+                      ""
+                    ],
+                    "type": "text/javascript",
+                    "packages": {}
+                  }
+                }
+              ],
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "image/jpeg",
+                    "type": "text"
+                  }
+                ],
+                "url": {
+                  "raw": "snbminioapi.rcell.me/hakki-profile-image/254f349d-78e8-4ad4-be5f-f7ef91686e4f.png",
+                  "host": [
+                    "snbminioapi",
+                    "rcell",
+                    "me"
+                  ],
+                  "path": [
+                    "hakki-profile-image",
+                    "254f349d-78e8-4ad4-be5f-f7ef91686e4f.png"
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Profile imag",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "exec": [
+                      ""
+                    ],
+                    "type": "text/javascript",
+                    "packages": {}
+                  }
+                },
+                {
+                  "listen": "prerequest",
+                  "script": {
+                    "exec": [
+                      ""
+                    ],
+                    "type": "text/javascript",
+                    "packages": {}
+                  }
+                }
+              ],
+              "request": {
+                "method": "DELETE",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "image/jpeg",
+                    "type": "text"
+                  }
+                ],
+                "url": {
+                  "raw": "{{endpoint_hakki_user}}/profile",
+                  "host": [
+                    "{{endpoint_hakki_user}}"
+                  ],
+                  "path": [
+                    "profile"
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Signup with Ana",
+              "request": {
+                "method": "POST",
+                "header": [],
+                "body": {
+                  "mode": "formdata",
+                  "formdata": [
+                    {
+                      "key": "name",
+                      "value": "Roijda",
+                      "type": "text"
+                    },
+                    {
+                      "key": "profile_attachment",
+                      "type": "file",
+                      "fileNotInWorkingDirectoryWarning": "This file isn't in your working directory. Teammates you share this request with won't be able to use this file. To make collaboration easier you can setup your working directory in Settings.",
+                      "filesNotInWorkingDirectory": [
+                        "/Users/bisar/Downloads/alpaca.jpeg"
+                      ],
+                      "value": null
+                    },
+                    {
+                      "key": "firebase_token",
+                      "value": "c3DNUT8fRdGwNJljvaP3N0:APA91bEo1lLPl7x43ODlu_aCDd4NzL5u99uFv18uWmWqSnTHRS5HCn_W0Vezilo1A8eUJ8OLLjc3qJZxW6bSm0MGjqRQ-bu3vr_HQSLfVOHjnsuK6iJvJRM",
+                      "type": "text"
+                    },
+                    {
+                      "key": "password",
+                      "value": "pppp",
+                      "type": "text",
+                      "uuid": "e455877d-17b1-44ff-8995-35f0f9c94d97"
+                    }
+                  ]
+                },
+                "url": {
+                  "raw": "{{endpoint_hakki_user}}/signup-with-ana",
+                  "host": [
+                    "{{endpoint_hakki_user}}"
+                  ],
+                  "path": [
+                    "signup-with-ana"
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Check Contacts",
+              "protocolProfileBehavior": {
+                "disableBodyPruning": true
+              },
+              "request": {
+                "method": "GET",
+                "header": [],
+                "body": {
+                  "mode": "raw",
+                  "raw": "",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{endpoint_hakki_user}}/contacts",
+                  "host": [
+                    "{{endpoint_hakki_user}}"
+                  ],
+                  "path": [
+                    "contacts"
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Upload contacts",
+              "request": {
+                "method": "POST",
+                "header": [],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\r\n   \"phone\":[\"+963500110027\",\"+963500456789\"]\r\n    // \"phone\": [\"500159911') OR '1'='1' OR ('1'='1\"]\r\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{endpoint_hakki_user}}/contacts/sync",
+                  "host": [
+                    "{{endpoint_hakki_user}}"
+                  ],
+                  "path": [
+                    "contacts",
+                    "sync"
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Check Contacts (Hemin)",
+              "request": {
+                "method": "POST",
+                "header": [],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\r\n    \"phone\":[\"963500159911\",\"963500456789\"]\r\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "192.168.15.222:6970/api/user/v1/check-contacts",
+                  "host": [
+                    "192",
+                    "168",
+                    "15",
+                    "222"
+                  ],
+                  "port": "6970",
+                  "path": [
+                    "api",
+                    "user",
+                    "v1",
+                    "check-contacts"
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Login to IDM",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "exec": [
+                      "pm.test(\"Barez\", function () {",
+                      "    var jsonData = pm.response.json();",
+                      "    var token = jsonData[\"data\"][\"token\"]",
+                      "    pm.collectionVariables.set(\"token_hakki\", token);",
+                      "    pm.environment.set(\"token_hakki\", token);",
+                      "});"
+                    ],
+                    "type": "text/javascript",
+                    "packages": {},
+                    "requests": {}
+                  }
+                },
+                {
+                  "listen": "prerequest",
+                  "script": {
+                    "exec": [
+                      ""
+                    ],
+                    "type": "text/javascript",
+                    "packages": {},
+                    "requests": {}
+                  }
+                }
+              ],
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "x-sub-msisdn",
+                    "value": "963500116796",
+                    "type": "text"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "// {\n//     \"username\":\"500110007\",\n//     \"password\":\"123456Aa\",\n//     //phone: 10108772\n//     \"app_secret\":\"poke7467384638746mm5465ds45sheisws\" // hakki \n// }\n// {\n//     \"username\":\"500110489\",\n//     \"password\":\"Aa123456\",\n//     //phone: 10108772\n//     \"app_secret\":\"poke7467384638746mm5465ds45sheisws\" // hakki \n// }\n// {\n//     \"username\":\"963500159970\",\n//     \"password\":\"123456Dd\",\n//     //phone 601164\n//     \"app_secret\":\"poke7467384638746mm5465ds45sheisws\" // hakki \n// }\n// }\n// {\n//     \"username\": \"500159911\",\n//     \"password\": \"Test1234\",\n//     \"app_secret\": \"poke7467384638746mm5465ds45sheisws\"\n// }\n// {\n//     \"username\":\"+963500110027\",\n//     \"password\":\"123456Dd\",\n//         // phone 601154\n//     \"app_secret\":\"poke7467384638746mm5465ds45sheisws\" // hakki \n// }",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "https://snbidm.rcell.me/api/idm/3p/v1/login",
+                  "protocol": "https",
+                  "host": [
+                    "snbidm",
+                    "rcell",
+                    "me"
+                  ],
+                  "path": [
+                    "api",
+                    "idm",
+                    "3p",
+                    "v1",
+                    "login"
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Login to Hakki with IDM",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "exec": [
+                      "pm.test(\"Barez\", function () {",
+                      "    var jsonData = pm.response.json();",
+                      "    var token = jsonData[\"data\"][\"token\"]",
+                      "    pm.collectionVariables.set(\"token_hakki\", token);",
+                      "    pm.environment.set(\"token_hakki\", token);",
+                      "});"
+                    ],
+                    "type": "text/javascript",
+                    "packages": {},
+                    "requests": {}
+                  }
+                },
+                {
+                  "listen": "prerequest",
+                  "script": {
+                    "exec": [
+                      ""
+                    ],
+                    "type": "text/javascript",
+                    "packages": {},
+                    "requests": {}
+                  }
+                }
+              ],
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "x-sub-msisdn",
+                    "value": "963500116796",
+                    "type": "text"
+                  }
+                ],
+                "url": {
+                  "raw": "{{endpoint_hakki_user}}/validate-account",
+                  "host": [
+                    "{{endpoint_hakki_user}}"
+                  ],
+                  "path": [
+                    "validate-account"
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Logout",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "exec": [
+                      ""
+                    ],
+                    "type": "text/javascript",
+                    "packages": {}
+                  }
+                },
+                {
+                  "listen": "prerequest",
+                  "script": {
+                    "exec": [
+                      ""
+                    ],
+                    "type": "text/javascript",
+                    "packages": {}
+                  }
+                }
+              ],
+              "request": {
+                "method": "POST",
+                "header": [],
+                "body": {
+                  "mode": "raw",
+                  "raw": "",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{endpoint_hakki_user}}/logout",
+                  "host": [
+                    "{{endpoint_hakki_user}}"
+                  ],
+                  "path": [
+                    "logout"
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Update Profile",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "exec": [
+                      ""
+                    ],
+                    "type": "text/javascript",
+                    "packages": {},
+                    "requests": {}
+                  }
+                },
+                {
+                  "listen": "prerequest",
+                  "script": {
+                    "exec": [
+                      ""
+                    ],
+                    "type": "text/javascript",
+                    "packages": {},
+                    "requests": {}
+                  }
+                }
+              ],
+              "request": {
+                "method": "POST",
+                "header": [],
+                "body": {
+                  "mode": "formdata",
+                  "formdata": [
+                    {
+                      "key": "attachments",
+                      "type": "file",
+                      "src": "postman-cloud:///1eefbc37-efb3-4190-8810-c8bd772203d6"
+                    }
+                  ]
+                },
+                "url": {
+                  "raw": "{{endpoint_hakki_user}}/update-profile-image",
+                  "host": [
+                    "{{endpoint_hakki_user}}"
+                  ],
+                  "path": [
+                    "update-profile-image"
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "User",
+              "request": {
+                "method": "PATCH",
+                "header": [],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\r\n    \"name\": \"hema 1\",\r\n    \r\n    \"bio\": \"salam, yoyo\",\r\n\r\n    \"firebase_token\": \"successfully\"\r\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{endpoint_hakki_user}}/user",
+                  "host": [
+                    "{{endpoint_hakki_user}}"
+                  ],
+                  "path": [
+                    "user"
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "AKAv1-MD5",
+              "request": {
+                "method": "POST",
+                "header": [],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n    \"nonce\":\"s90rSsg+1tB5F7gBPTarvCczyG3zx4AAJkdlwng5o=\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{endpoint_hakki_user}}/aka",
+                  "host": [
+                    "{{endpoint_hakki_user}}"
+                  ],
+                  "path": [
+                    "aka"
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Get OTP",
+              "request": {
+                "auth": {
+                  "type": "noauth"
+                },
+                "method": "POST",
+                "header": [],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n    \"phone\":\"\",\n    \"action\":\"register\" // forget_password\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{endpoint_hakki_user}}/account/get-otp/",
+                  "host": [
+                    "{{endpoint_hakki_user}}"
+                  ],
+                  "path": [
+                    "account",
+                    "get-otp",
+                    ""
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Verify OTP",
+              "request": {
+                "auth": {
+                  "type": "noauth"
+                },
+                "method": "POST",
+                "header": [],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n    \"phone\": \"\",\n    \"otp\": \"\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{endpoint_hakki_user}}/account/verify-otp",
+                  "host": [
+                    "{{endpoint_hakki_user}}"
+                  ],
+                  "path": [
+                    "account",
+                    "verify-otp"
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Reset Password",
+              "request": {
+                "auth": {
+                  "type": "noauth"
+                },
+                "method": "POST",
+                "header": [],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n    \"password\": \"\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{endpoint_hakki_user}}/account/reset-password",
+                  "host": [
+                    "{{endpoint_hakki_user}}"
+                  ],
+                  "path": [
+                    "account",
+                    "reset-password"
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Update Password",
+              "request": {
+                "auth": {
+                  "type": "noauth"
+                },
+                "method": "POST",
+                "header": [],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n    \"old_password\": \"\",\n    \"new_password\": \"\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{endpoint_hakki_user}}/update-password",
+                  "host": [
+                    "{{endpoint_hakki_user}}"
+                  ],
+                  "path": [
+                    "update-password"
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Generate Password",
+              "protocolProfileBehavior": {
+                "disableBodyPruning": true
+              },
+              "request": {
+                "auth": {
+                  "type": "noauth"
+                },
+                "method": "GET",
+                "header": [],
+                "body": {
+                  "mode": "raw",
+                  "raw": "",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{endpoint_hakki_user}}/account/gen_pass/hemn1234",
+                  "host": [
+                    "{{endpoint_hakki_user}}"
+                  ],
+                  "path": [
+                    "account",
+                    "gen_pass",
+                    "hemn1234"
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Login Hakki Account",
+              "request": {
+                "auth": {
+                  "type": "noauth"
+                },
+                "method": "POST",
+                "header": [],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n    \"phone\":\"+9647711572091\",\n    \"password\":\"password\",\n    \"firebase_token\":\"c3DNUT8fRdGwNJljvaP3N0:APA91bEo1lLPl7x43ODlu_aCDd4NzL5u99uFv18uWmWqSnTHRS5HCn_W0Vezilo1A8eUJ8OLLjc3qJZxW6bSm0MGjqRQ-bu3vr_HQSLfVOHjnsuK6iJvJRM\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{endpoint_hakki_user}}/account/login",
+                  "host": [
+                    "{{endpoint_hakki_user}}"
+                  ],
+                  "path": [
+                    "account",
+                    "login"
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Refresh Hakki Token",
+              "request": {
+                "auth": {
+                  "type": "bearer",
+                  "bearer": [
+                    {
+                      "key": "token",
+                      "value": "{{token_hakki}}",
+                      "type": "string"
+                    }
+                  ]
+                },
+                "method": "POST",
+                "header": [],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n    \"phone\": \"+963500110489\",\n    \"password\": \"password\",\n    \"refreshToken\": \"{{refresh_token}}\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{endpoint_hakki_user}}/refresh-token",
+                  "host": [
+                    "{{endpoint_hakki_user}}"
+                  ],
+                  "path": [
+                    "refresh-token"
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Create Hakki Account",
+              "request": {
+                "auth": {
+                  "type": "noauth"
+                },
+                "method": "POST",
+                "header": [],
+                "body": {
+                  "mode": "formdata",
+                  "formdata": [
+                    {
+                      "key": "name",
+                      "value": "Hemn",
+                      "type": "text",
+                      "uuid": "54cbd967-c4ab-4cfd-a377-68939319a058"
+                    },
+                    {
+                      "key": "profile_attachment",
+                      "type": "file",
+                      "uuid": "d2c47263-0c82-43f2-ab81-5b80a9f54b11",
+                      "src": "postman-cloud:///1eefbc37-efb3-4190-8810-c8bd772203d6"
+                    },
+                    {
+                      "key": "bio",
+                      "value": "Hi",
+                      "type": "text",
+                      "uuid": "8b64aa49-190f-47a6-aac6-e60696e325f5"
+                    },
+                    {
+                      "key": "phone",
+                      "value": "+9647771516197",
+                      "type": "text",
+                      "uuid": "d4245920-c315-422f-8b86-6b7e6ebe2877"
+                    },
+                    {
+                      "key": "firebase_token",
+                      "value": "c3DNUT8fRdGwNJljvaP3N0:APA91bEo1lLPl7x43ODlu_aCDd4NzL5u99uFv18uWmWqSnTHRS5HCn_W0Vezilo1A8eUJ8OLLjc3qJZxW6bSm0MGjqRQ-bu3vr_HQSLfVOHjnsuK6iJvJRM",
+                      "type": "text",
+                      "uuid": "2e06c481-e38f-48fa-b6da-e0a4231e3865"
+                    },
+                    {
+                      "key": "password",
+                      "value": "hema1234",
+                      "type": "text",
+                      "uuid": "8a3c26ac-079c-415a-83de-d61c1de96441"
+                    }
+                  ]
+                },
+                "url": {
+                  "raw": "{{endpoint_hakki_user}}/account/create",
+                  "host": [
+                    "{{endpoint_hakki_user}}"
+                  ],
+                  "path": [
+                    "account",
+                    "create"
+                  ]
+                }
+              },
+              "response": []
+            }
+          ]
+        },
+        {
+          "name": "Group Chat",
+          "item": [
+            {
+              "name": "Profile Pic",
+              "protocolProfileBehavior": {
+                "disableBodyPruning": true
+              },
+              "request": {
+                "method": "GET",
+                "header": [],
+                "body": {
+                  "mode": "raw",
+                  "raw": "",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{endpoint_hakki_user}}/profile/:filename",
+                  "host": [
+                    "{{endpoint_hakki_user}}"
+                  ],
+                  "path": [
+                    "profile",
+                    ":filename"
+                  ],
+                  "variable": [
+                    {
+                      "key": "filename",
+                      "value": "459eafb2-e8af-452a-9adb-0ad8e7103672.jpeg"
+                    }
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Members",
+              "protocolProfileBehavior": {
+                "disableBodyPruning": true
+              },
+              "request": {
+                "method": "GET",
+                "header": [],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\r\n    \"roome_id\":12,\r\n    \"user_id\":22\r\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{endpoint_hakki_user}}/group-member/:roomID",
+                  "host": [
+                    "{{endpoint_hakki_user}}"
+                  ],
+                  "path": [
+                    "group-member",
+                    ":roomID"
+                  ],
+                  "variable": [
+                    {
+                      "key": "roomID",
+                      "value": "4"
+                    }
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Add Member",
+              "request": {
+                "method": "POST",
+                "header": [],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\r\n    \"room_id\":63,\r\n    \"user_id\":[601164, 600725, 10108772]\r\n}\r\n",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{endpoint_hakki_user}}/group-member",
+                  "host": [
+                    "{{endpoint_hakki_user}}"
+                  ],
+                  "path": [
+                    "group-member"
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Patch Group",
+              "request": {
+                "method": "PATCH",
+                "header": [],
+                "body": {
+                  "mode": "formdata",
+                  "formdata": [
+                    {
+                      "key": "id",
+                      "value": "12",
+                      "type": "text"
+                    },
+                    {
+                      "key": "name",
+                      "value": "FootBall",
+                      "type": "text"
+                    },
+                    {
+                      "key": "profile_attachment",
+                      "type": "file",
+                      "src": "/Users/hemnnetspot/Desktop/Birds-for-Beginners.jpg"
+                    }
+                  ]
+                },
+                "url": {
+                  "raw": "{{endpoint_hakki_user}}/group-chat",
+                  "host": [
+                    "{{endpoint_hakki_user}}"
+                  ],
+                  "path": [
+                    "group-chat"
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Delete Member",
+              "request": {
+                "method": "DELETE",
+                "header": [],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\r\n    \"room_id\":63,\r\n    \"user_id\":600725\r\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{endpoint_hakki_user}}/group-member",
+                  "host": [
+                    "{{endpoint_hakki_user}}"
+                  ],
+                  "path": [
+                    "group-member"
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Delete Group",
+              "request": {
+                "method": "DELETE",
+                "header": [],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\r\n    \"roome_id\":35,\r\n    \"user_id\":601164\r\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{endpoint_hakki_user}}/chat/:roomID",
+                  "host": [
+                    "{{endpoint_hakki_user}}"
+                  ],
+                  "path": [
+                    "chat",
+                    ":roomID"
+                  ],
+                  "variable": [
+                    {
+                      "key": "roomID",
+                      "value": "37"
+                    }
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Delete Group pfp",
+              "request": {
+                "method": "DELETE",
+                "header": [],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\r\n    \"id\":3\r\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{endpoint_hakki_user}}/group-chat-pfp",
+                  "host": [
+                    "{{endpoint_hakki_user}}"
+                  ],
+                  "path": [
+                    "group-chat-pfp"
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Leave",
+              "request": {
+                "method": "DELETE",
+                "header": [],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\r\n    \"room_id\":38\r\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{endpoint_hakki_user}}/leave-chat",
+                  "host": [
+                    "{{endpoint_hakki_user}}"
+                  ],
+                  "path": [
+                    "leave-chat"
+                  ]
+                }
+              },
+              "response": []
+            }
+          ]
+        },
+        {
+          "name": "Chat",
+          "item": [
+            {
+              "name": "Common Groups",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{endpoint_hakki_user}}/common-groups/:userID",
+                  "host": [
+                    "{{endpoint_hakki_user}}"
+                  ],
+                  "path": [
+                    "common-groups",
+                    ":userID"
+                  ],
+                  "variable": [
+                    {
+                      "key": "userID",
+                      "value": "601154"
+                    }
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Chats",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{endpoint_hakki_user}}/chats?page=1",
+                  "host": [
+                    "{{endpoint_hakki_user}}"
+                  ],
+                  "path": [
+                    "chats"
+                  ],
+                  "query": [
+                    {
+                      "key": "page",
+                      "value": "1"
+                    }
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Chats",
+              "request": {
+                "method": "POST",
+                "header": [],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\r\n    \"name\": \"\",\r\n    \"is_group\": false,\r\n    \"members\": [\r\n        {\r\n      \r\n            // \"user_id\": 600901\r\n            \"user_id\": 601164\r\n            // \"user_id\":1234567 // ai\r\n\r\n        }\r\n   \r\n        \r\n    ]\r\n}\r\n\r\n\r\n",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{endpoint_hakki_user}}/chats",
+                  "host": [
+                    "{{endpoint_hakki_user}}"
+                  ],
+                  "path": [
+                    "chats"
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Mute",
+              "request": {
+                "method": "PATCH",
+                "header": [],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\r\n    \"room_id\": 1,\r\n    \"is_mute\": true\r\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{endpoint_hakki_user}}/mute-chat",
+                  "host": [
+                    "{{endpoint_hakki_user}}"
+                  ],
+                  "path": [
+                    "mute-chat"
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Delete Chat",
+              "request": {
+                "method": "DELETE",
+                "header": [],
+                "body": {
+                  "mode": "raw",
+                  "raw": "",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{endpoint_hakki_user}}/chats/74",
+                  "host": [
+                    "{{endpoint_hakki_user}}"
+                  ],
+                  "path": [
+                    "chats",
+                    "74"
+                  ]
+                }
+              },
+              "response": []
+            }
+          ]
+        },
+        {
+          "name": "Presence",
+          "item": [
+            {
+              "name": "Subscribe Presence",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{endpoint_hakki_presence}}/subscribe/:user_id",
+                  "host": [
+                    "{{endpoint_hakki_presence}}"
+                  ],
+                  "path": [
+                    "subscribe",
+                    ":user_id"
+                  ],
+                  "variable": [
+                    {
+                      "key": "user_id",
+                      "value": "2"
+                    }
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Presence",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{endpoint_hakki_presence}}/:user_id",
+                  "host": [
+                    "{{endpoint_hakki_presence}}"
+                  ],
+                  "path": [
+                    ":user_id"
+                  ],
+                  "variable": [
+                    {
+                      "key": "user_id",
+                      "value": "2"
+                    }
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Hearbeat",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{endpoint_hakki_presence}}/heartbeat",
+                  "host": [
+                    "{{endpoint_hakki_presence}}"
+                  ],
+                  "path": [
+                    "heartbeat"
+                  ]
+                }
+              },
+              "response": []
+            }
+          ]
+        },
+        {
+          "name": "Emergency Contact",
+          "item": [
+            {
+              "name": "List",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "pageState",
+                    "value": "1",
+                    "type": "text",
+                    "disabled": true
+                  }
+                ],
+                "url": {
+                  "raw": "{{endpoint_hakki_user}}/emergency-contacts",
+                  "host": [
+                    "{{endpoint_hakki_user}}"
+                  ],
+                  "path": [
+                    "emergency-contacts"
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Add",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "pageState",
+                    "value": "1",
+                    "type": "text",
+                    "disabled": true
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n    \"name\":\"b' AND 1=1; DELETE FROM base_emergency_contacts WHERE *;--\",\n    \"phone\": \"0022221010\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{endpoint_hakki_user}}/emergency-contacts",
+                  "host": [
+                    "{{endpoint_hakki_user}}"
+                  ],
+                  "path": [
+                    "emergency-contacts"
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "GetByID",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "pageState",
+                    "value": "1",
+                    "type": "text",
+                    "disabled": true
+                  }
+                ],
+                "url": {
+                  "raw": "{{endpoint_hakki_user}}/emergency-contacts/2",
+                  "host": [
+                    "{{endpoint_hakki_user}}"
+                  ],
+                  "path": [
+                    "emergency-contacts",
+                    "2"
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Remove",
+              "request": {
+                "method": "DELETE",
+                "header": [
+                  {
+                    "key": "pageState",
+                    "value": "1",
+                    "type": "text",
+                    "disabled": true
+                  }
+                ],
+                "url": {
+                  "raw": "{{endpoint_hakki_user}}/emergency-contacts/1",
+                  "host": [
+                    "{{endpoint_hakki_user}}"
+                  ],
+                  "path": [
+                    "emergency-contacts",
+                    "1"
+                  ]
+                }
+              },
+              "response": []
+            }
+          ]
+        },
+        {
+          "name": "Reactions",
+          "item": [
+            {
+              "name": "All Reactions MSG ID",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{endpoint_hakki_user}}/chats/reactions/160015131948879872?pagSize=10&include_users=true",
+                  "host": [
+                    "{{endpoint_hakki_user}}"
+                  ],
+                  "path": [
+                    "chats",
+                    "reactions",
+                    "160015131948879872"
+                  ],
+                  "query": [
+                    {
+                      "key": "pagSize",
+                      "value": "10"
+                    },
+                    {
+                      "key": "include_users",
+                      "value": "true"
+                    }
+                  ]
+                }
+              },
+              "response": []
+            }
+          ]
+        },
+        {
+          "name": "Firebase Push Notification",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "AAAA7migkFw:APA91bHsHE-sboVZHY8jxr0u35w8vlfXvRbOL6pGEvXhh56F7SHWig0NcbLD4lrp1G-4xNYlmTjlsuq18Bps0cTASpp6Fhc8CvMRiAspcMxsCM7dvd-WjTYmn9DpmOK1WgQV0X-PS561",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"notification\": {\n    \"title\": \"Notification Title\",\n    \"body\": \"Hello Kak Abdullah\"\n \n  },\n    \"data\": {\n    \"key1\": \"value1\",\n    \"key2\": \"value2\"\n  },\n  \"to\": \"/topics/all\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "https://fcm.googleapis.com/fcm/send",
+              "protocol": "https",
+              "host": [
+                "fcm",
+                "googleapis",
+                "com"
+              ],
+              "path": [
+                "fcm",
+                "send"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Live Kit",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJleHAiOjE3MTU1ODU3NDUsImlzcyI6ImRldmtleSIsIm5iZiI6MTcxNTU4MjE0NSwic3ViIjoiOTYzNTAwMTU5OTcwIiwidmlkZW8iOnsicm9vbSI6IjU2OGRjZjAxLTM4MzItNGNmNy05YmQ4LTRlZTcxNjk2ZGUwZiIsInJvb21Kb2luIjp0cnVlfX0.vLH4urdG__tEaLaEl2az-od8ECzmf0DT7cfLRzd77bo",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "http://192.168.15.222:7880",
+              "protocol": "http",
+              "host": [
+                "192",
+                "168",
+                "15",
+                "222"
+              ],
+              "port": "7880"
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Common Groups Copy",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{endpoint_hakki_user}}/webhook",
+              "host": [
+                "{{endpoint_hakki_user}}"
+              ],
+              "path": [
+                "webhook"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Translate",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"text\": \"Hello\",\n\n  \"to_lang\": \"kmr\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{endpoint_hakki_user}}/translate",
+              "host": [
+                "{{endpoint_hakki_user}}"
+              ],
+              "path": [
+                "translate"
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Admin",
+      "item": [
+        {
+          "name": "Message",
+          "item": [
+            {
+              "name": "List",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "pageState",
+                    "value": "",
+                    "type": "text",
+                    "disabled": true
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "bearer {{token}}",
+                    "type": "text"
+                  }
+                ],
+                "url": {
+                  "raw": "{{endpoint_hakki_admin}}/messages/:roomID/:type?page_size=30",
+                  "host": [
+                    "{{endpoint_hakki_admin}}"
+                  ],
+                  "path": [
+                    "messages",
+                    ":roomID",
+                    ":type"
+                  ],
+                  "query": [
+                    {
+                      "key": "pageState",
+                      "value": "EMnNTE822hHvpVEAFV16+5YA8H////0A",
+                      "disabled": true
+                    },
+                    {
+                      "key": "page_size",
+                      "value": "30"
+                    }
+                  ],
+                  "variable": [
+                    {
+                      "key": "roomID",
+                      "value": "57"
+                    },
+                    {
+                      "key": "type",
+                      "value": "all"
+                    }
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Chats",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{endpoint_hakki_admin}}/chats?page=1",
+                  "host": [
+                    "{{endpoint_hakki_admin}}"
+                  ],
+                  "path": [
+                    "chats"
+                  ],
+                  "query": [
+                    {
+                      "key": "page",
+                      "value": "1"
+                    }
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Chats By User",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{endpoint_hakki_admin}}/chats/:userID",
+                  "host": [
+                    "{{endpoint_hakki_admin}}"
+                  ],
+                  "path": [
+                    "chats",
+                    ":userID"
+                  ],
+                  "variable": [
+                    {
+                      "key": "userID",
+                      "value": "600725"
+                    }
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "members",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{endpoint_hakki_admin}}/members/:roomID",
+                  "host": [
+                    "{{endpoint_hakki_admin}}"
+                  ],
+                  "path": [
+                    "members",
+                    ":roomID"
+                  ],
+                  "variable": [
+                    {
+                      "key": "roomID",
+                      "value": "29"
+                    }
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Search Chat",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "pageState",
+                    "value": "BAAAAAEgAAgAAAGR+sH2EBBMHRosdCUR77c3ABVd19rwBAAJLDXwf///6/B////r",
+                    "type": "text"
+                  }
+                ],
+                "url": {
+                  "raw": "{{endpoint_hakki_admin}}/search-room/:roomID/:query",
+                  "host": [
+                    "{{endpoint_hakki_admin}}"
+                  ],
+                  "path": [
+                    "search-room",
+                    ":roomID",
+                    ":query"
+                  ],
+                  "variable": [
+                    {
+                      "key": "roomID",
+                      "value": "83"
+                    },
+                    {
+                      "key": "query",
+                      "value": "hema"
+                    }
+                  ]
+                }
+              },
+              "response": []
+            }
+          ]
+        },
+        {
+          "name": "Surveillance",
+          "item": [
+            {
+              "name": "GetByID",
+              "protocolProfileBehavior": {
+                "disableBodyPruning": true
+              },
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "earer {{token}}"
+                  },
+                  {
+                    "key": "Accept-Language",
+                    "value": "en"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{endpoint_hakki_admin}}/surveillances/1",
+                  "host": [
+                    "{{endpoint_hakki_admin}}"
+                  ],
+                  "path": [
+                    "surveillances",
+                    "1"
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "All",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "bearer {{token}}"
+                  },
+                  {
+                    "key": "Accept-Language",
+                    "value": "en"
+                  }
+                ],
+                "url": {
+                  "raw": "{{endpoint_hakki_admin}}/all/surveillances",
+                  "host": [
+                    "{{endpoint_hakki_admin}}"
+                  ],
+                  "path": [
+                    "all",
+                    "surveillances"
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "List",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "bearer {{token}}"
+                  },
+                  {
+                    "key": "Accept-Language",
+                    "value": "en"
+                  }
+                ],
+                "url": {
+                  "raw": "{{endpoint_hakki_admin}}/surveillances",
+                  "host": [
+                    "{{endpoint_hakki_admin}}"
+                  ],
+                  "path": [
+                    "surveillances"
+                  ],
+                  "query": [
+                    {
+                      "key": "",
+                      "value": "",
+                      "disabled": true
+                    }
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Create",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "earer {{token}}"
+                  },
+                  {
+                    "key": "Accept-Language",
+                    "value": "en"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n    \"id\":1,\n    \"user_id\":44\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{endpoint_hakki_admin}}/surveillances",
+                  "host": [
+                    "{{endpoint_hakki_admin}}"
+                  ],
+                  "path": [
+                    "surveillances"
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Update",
+              "request": {
+                "method": "PUT",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "bearer {{token}}"
+                  },
+                  {
+                    "key": "Accept-Language",
+                    "value": "en"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n    \"id\":1,\n    \"user_id\":44\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{endpoint_hakki_admin}}/surveillances/1",
+                  "host": [
+                    "{{endpoint_hakki_admin}}"
+                  ],
+                  "path": [
+                    "surveillances",
+                    "1"
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Delete",
+              "request": {
+                "method": "DELETE",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "bearer {{token}}"
+                  },
+                  {
+                    "key": "Accept-Language",
+                    "value": "en"
+                  }
+                ],
+                "url": {
+                  "raw": "{{endpoint_hakki_admin}}/surveillances/17",
+                  "host": [
+                    "{{endpoint_hakki_admin}}"
+                  ],
+                  "path": [
+                    "surveillances",
+                    "17"
+                  ]
+                }
+              },
+              "response": []
+            }
+          ]
+        },
+        {
+          "name": "Emergency Contact",
+          "item": [
+            {
+              "name": "GetByID",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "earer {{token}}"
+                  },
+                  {
+                    "key": "Accept-Language",
+                    "value": "en"
+                  }
+                ],
+                "url": {
+                  "raw": "{{endpoint_hakki_admin}}/emergency-contacts/1",
+                  "host": [
+                    "{{endpoint_hakki_admin}}"
+                  ],
+                  "path": [
+                    "emergency-contacts",
+                    "1"
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "All",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "bearer {{token}}"
+                  },
+                  {
+                    "key": "Accept-Language",
+                    "value": "en"
+                  }
+                ],
+                "url": {
+                  "raw": "{{endpoint_hakki_admin}}/all/emergency-contacts",
+                  "host": [
+                    "{{endpoint_hakki_admin}}"
+                  ],
+                  "path": [
+                    "all",
+                    "emergency-contacts"
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "List",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "bearer {{token}}"
+                  },
+                  {
+                    "key": "Accept-Language",
+                    "value": "en"
+                  }
+                ],
+                "url": {
+                  "raw": "{{endpoint_hakki_admin}}/emergency-contacts",
+                  "host": [
+                    "{{endpoint_hakki_admin}}"
+                  ],
+                  "path": [
+                    "emergency-contacts"
+                  ],
+                  "query": [
+                    {
+                      "key": "",
+                      "value": "",
+                      "disabled": true
+                    }
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Create",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "earer {{token}}"
+                  },
+                  {
+                    "key": "Accept-Language",
+                    "value": "en"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n    \"name\":\"Police\",\n    \"phone\":\"110\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{endpoint_hakki_admin}}/emergency-contacts",
+                  "host": [
+                    "{{endpoint_hakki_admin}}"
+                  ],
+                  "path": [
+                    "emergency-contacts"
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Update",
+              "request": {
+                "method": "PUT",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "bearer {{token}}"
+                  },
+                  {
+                    "key": "Accept-Language",
+                    "value": "en"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n    \"name\":\"Firefighter\",\n    \"phone\":\"115\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{endpoint_hakki_admin}}/emergency-contacts/1",
+                  "host": [
+                    "{{endpoint_hakki_admin}}"
+                  ],
+                  "path": [
+                    "emergency-contacts",
+                    "1"
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Delete",
+              "request": {
+                "method": "DELETE",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "bearer {{token}}"
+                  },
+                  {
+                    "key": "Accept-Language",
+                    "value": "en"
+                  }
+                ],
+                "url": {
+                  "raw": "{{endpoint_hakki_admin}}/emergency-contacts/17",
+                  "host": [
+                    "{{endpoint_hakki_admin}}"
+                  ],
+                  "path": [
+                    "emergency-contacts",
+                    "17"
+                  ]
+                }
+              },
+              "response": []
+            }
+          ]
+        },
+        {
+          "name": "Voice Message",
+          "item": [
+            {
+              "name": "GetByID",
+              "protocolProfileBehavior": {
+                "disableBodyPruning": true
+              },
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "earer {{token}}"
+                  },
+                  {
+                    "key": "Accept-Language",
+                    "value": "en"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{endpoint_hakki_admin}}/voice-messages-transcribe/1",
+                  "host": [
+                    "{{endpoint_hakki_admin}}"
+                  ],
+                  "path": [
+                    "voice-messages-transcribe",
+                    "1"
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "All",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "bearer {{token}}"
+                  },
+                  {
+                    "key": "Accept-Language",
+                    "value": "en"
+                  }
+                ],
+                "url": {
+                  "raw": "{{endpoint_hakki_admin}}/all/voice-messages-transcribe",
+                  "host": [
+                    "{{endpoint_hakki_admin}}"
+                  ],
+                  "path": [
+                    "all",
+                    "voice-messages-transcribe"
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "List",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "bearer {{token}}"
+                  },
+                  {
+                    "key": "Accept-Language",
+                    "value": "en"
+                  }
+                ],
+                "url": {
+                  "raw": "{{endpoint_hakki_admin}}/voice-messages-transcribe",
+                  "host": [
+                    "{{endpoint_hakki_admin}}"
+                  ],
+                  "path": [
+                    "voice-messages-transcribe"
+                  ],
+                  "query": [
+                    {
+                      "key": "",
+                      "value": "",
+                      "disabled": true
+                    }
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Create",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "earer {{token}}"
+                  },
+                  {
+                    "key": "Accept-Language",
+                    "value": "en"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n    \"id\":1,\n    \"user_id\":44\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{endpoint_hakki_admin}}/voice-messages-transcribe",
+                  "host": [
+                    "{{endpoint_hakki_admin}}"
+                  ],
+                  "path": [
+                    "voice-messages-transcribe"
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Update",
+              "request": {
+                "method": "PUT",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "bearer {{token}}"
+                  },
+                  {
+                    "key": "Accept-Language",
+                    "value": "en"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n    \"id\":1,\n    \"user_id\":44\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{endpoint_hakki_admin}}/voice-messages-transcribe/1",
+                  "host": [
+                    "{{endpoint_hakki_admin}}"
+                  ],
+                  "path": [
+                    "voice-messages-transcribe",
+                    "1"
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Delete",
+              "request": {
+                "method": "DELETE",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "bearer {{token}}"
+                  },
+                  {
+                    "key": "Accept-Language",
+                    "value": "en"
+                  }
+                ],
+                "url": {
+                  "raw": "{{endpoint_hakki_admin}}/voice-messages-transcribe/17",
+                  "host": [
+                    "{{endpoint_hakki_admin}}"
+                  ],
+                  "path": [
+                    "voice-messages-transcribe",
+                    "17"
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Transcribe",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "pageState",
+                    "value": "EMnNTE822hHvpVEAFV16+5YA8H////0A",
+                    "type": "text",
+                    "disabled": true
+                  }
+                ],
+                "url": {
+                  "raw": "{{endpoint_hakki_admin}}/voice-messages-transcribe/transcribe/:objectName",
+                  "host": [
+                    "{{endpoint_hakki_admin}}"
+                  ],
+                  "path": [
+                    "voice-messages-transcribe",
+                    "transcribe",
+                    ":objectName"
+                  ],
+                  "variable": [
+                    {
+                      "key": "objectName",
+                      "value": "5ccaaa7c-84df-4191-80e5-bd4cca6adfef.ogg"
+                    }
+                  ]
+                }
+              },
+              "response": []
+            }
+          ]
+        },
+        {
+          "name": "Threat Message",
+          "item": [
+            {
+              "name": "GetByID",
+              "protocolProfileBehavior": {
+                "disableBodyPruning": true
+              },
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "earer {{token}}"
+                  },
+                  {
+                    "key": "Accept-Language",
+                    "value": "en"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{endpoint_hakki_admin}}/threat-messages/1",
+                  "host": [
+                    "{{endpoint_hakki_admin}}"
+                  ],
+                  "path": [
+                    "threat-messages",
+                    "1"
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "All",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "bearer {{token}}"
+                  },
+                  {
+                    "key": "Accept-Language",
+                    "value": "en"
+                  }
+                ],
+                "url": {
+                  "raw": "{{endpoint_hakki_admin}}/threat-messages",
+                  "host": [
+                    "{{endpoint_hakki_admin}}"
+                  ],
+                  "path": [
+                    "threat-messages"
+                  ],
+                  "query": [
+                    {
+                      "key": "",
+                      "value": "",
+                      "disabled": true
+                    }
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "FIlter",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "bearer {{token}}"
+                  },
+                  {
+                    "key": "Accept-Language",
+                    "value": "en"
+                  }
+                ],
+                "url": {
+                  "raw": "{{endpoint_hakki_admin}}/threat-messages/reported?page_size=5",
+                  "host": [
+                    "{{endpoint_hakki_admin}}"
+                  ],
+                  "path": [
+                    "threat-messages",
+                    "reported"
+                  ],
+                  "query": [
+                    {
+                      "key": "page_size",
+                      "value": "5"
+                    },
+                    {
+                      "key": "message_id",
+                      "value": "163994802084384768",
+                      "disabled": true
+                    },
+                    {
+                      "key": "page_state",
+                      "value": "AAAABQ==",
+                      "disabled": true
+                    },
+                    {
+                      "key": "flagged_for_review",
+                      "value": "true",
+                      "disabled": true
+                    },
+                    {
+                      "key": "room_id",
+                      "value": "35",
+                      "disabled": true
+                    }
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Create",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "earer {{token}}"
+                  },
+                  {
+                    "key": "Accept-Language",
+                    "value": "en"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n    \"id\":1,\n    \"user_id\":44\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{endpoint_hakki_admin}}/threat-messages",
+                  "host": [
+                    "{{endpoint_hakki_admin}}"
+                  ],
+                  "path": [
+                    "threat-messages"
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Update",
+              "request": {
+                "method": "PUT",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "bearer {{token}}"
+                  },
+                  {
+                    "key": "Accept-Language",
+                    "value": "en"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n    \"id\":1,\n    \"user_id\":44\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{endpoint_hakki_admin}}/threat-messages/1",
+                  "host": [
+                    "{{endpoint_hakki_admin}}"
+                  ],
+                  "path": [
+                    "threat-messages",
+                    "1"
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Delete",
+              "request": {
+                "method": "DELETE",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "bearer {{token}}"
+                  },
+                  {
+                    "key": "Accept-Language",
+                    "value": "en"
+                  }
+                ],
+                "url": {
+                  "raw": "{{endpoint_hakki_admin}}/threat-messages/17",
+                  "host": [
+                    "{{endpoint_hakki_admin}}"
+                  ],
+                  "path": [
+                    "threat-messages",
+                    "17"
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "List",
+              "protocolProfileBehavior": {
+                "disableBodyPruning": true
+              },
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "bearer {{token}}"
+                  },
+                  {
+                    "key": "Accept-Language",
+                    "value": "en"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": ""
+                },
+                "url": {
+                  "raw": "{{endpoint_hakki_admin}}/threat-messages/reported?order_by=message_id&direction=asc&filter=message_id[eq]'175227663009452032'&page_size=10",
+                  "host": [
+                    "{{endpoint_hakki_admin}}"
+                  ],
+                  "path": [
+                    "threat-messages",
+                    "reported"
+                  ],
+                  "query": [
+                    {
+                      "key": "order_by",
+                      "value": "message_id"
+                    },
+                    {
+                      "key": "direction",
+                      "value": "asc"
+                    },
+                    {
+                      "key": "select",
+                      "value": "base_regions.id,base_regions.name",
+                      "disabled": true
+                    },
+                    {
+                      "key": "page",
+                      "value": "1",
+                      "disabled": true
+                    },
+                    {
+                      "key": "filter",
+                      "value": "message_id[eq]'175227663009452032'"
+                    },
+                    {
+                      "key": "page_size",
+                      "value": "10"
+                    }
+                  ]
+                }
+              },
+              "response": []
+            }
+          ]
+        },
+        {
+          "name": "Blocked Words",
+          "item": [
+            {
+              "name": "GetByID",
+              "protocolProfileBehavior": {
+                "disableBodyPruning": true
+              },
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "earer {{token}}"
+                  },
+                  {
+                    "key": "Accept-Language",
+                    "value": "en"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{endpoint_hakki_admin}}/blocked-words/1",
+                  "host": [
+                    "{{endpoint_hakki_admin}}"
+                  ],
+                  "path": [
+                    "blocked-words",
+                    "1"
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "All",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "bearer {{token}}"
+                  },
+                  {
+                    "key": "Accept-Language",
+                    "value": "en"
+                  }
+                ],
+                "url": {
+                  "raw": "{{endpoint_hakki_admin}}/all/blocked-words",
+                  "host": [
+                    "{{endpoint_hakki_admin}}"
+                  ],
+                  "path": [
+                    "all",
+                    "blocked-words"
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "List",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{token}}",
+                    "disabled": true
+                  },
+                  {
+                    "key": "Accept-Language",
+                    "value": "en"
+                  }
+                ],
+                "url": {
+                  "raw": "{{endpoint_hakki_admin}}/blocked-words",
+                  "host": [
+                    "{{endpoint_hakki_admin}}"
+                  ],
+                  "path": [
+                    "blocked-words"
+                  ],
+                  "query": [
+                    {
+                      "key": "",
+                      "value": "",
+                      "disabled": true
+                    }
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Create",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "earer {{token}}"
+                  },
+                  {
+                    "key": "Accept-Language",
+                    "value": "en"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n    \"id\":1,\n    \"user_id\":44\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{endpoint_hakki_admin}}/blocked-words",
+                  "host": [
+                    "{{endpoint_hakki_admin}}"
+                  ],
+                  "path": [
+                    "blocked-words"
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Update",
+              "request": {
+                "method": "PUT",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "bearer {{token}}"
+                  },
+                  {
+                    "key": "Accept-Language",
+                    "value": "en"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n    \"id\":1,\n    \"user_id\":44\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{endpoint_hakki_admin}}/blocked-words/1",
+                  "host": [
+                    "{{endpoint_hakki_admin}}"
+                  ],
+                  "path": [
+                    "blocked-words",
+                    "1"
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Delete",
+              "request": {
+                "method": "DELETE",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "bearer {{token}}"
+                  },
+                  {
+                    "key": "Accept-Language",
+                    "value": "en"
+                  }
+                ],
+                "url": {
+                  "raw": "{{endpoint_hakki_admin}}/blocked-words/17",
+                  "host": [
+                    "{{endpoint_hakki_admin}}"
+                  ],
+                  "path": [
+                    "blocked-words",
+                    "17"
+                  ]
+                }
+              },
+              "response": []
+            }
+          ]
+        },
+        {
+          "name": "User",
+          "item": [
+            {
+              "name": "GetByID",
+              "protocolProfileBehavior": {
+                "disableBodyPruning": true
+              },
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "earer {{token}}"
+                  },
+                  {
+                    "key": "Accept-Language",
+                    "value": "en"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{endpoint_hakki_admin}}/users/1",
+                  "host": [
+                    "{{endpoint_hakki_admin}}"
+                  ],
+                  "path": [
+                    "users",
+                    "1"
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "GetByPhone",
+              "protocolProfileBehavior": {
+                "disableBodyPruning": true
+              },
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "bearer {{token}}"
+                  },
+                  {
+                    "key": "Accept-Language",
+                    "value": "en"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{endpoint_hakki_admin}}/users/963500110027",
+                  "host": [
+                    "{{endpoint_hakki_admin}}"
+                  ],
+                  "path": [
+                    "users",
+                    "963500110027"
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "All",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "bearer {{token}}"
+                  },
+                  {
+                    "key": "Accept-Language",
+                    "value": "en"
+                  }
+                ],
+                "url": {
+                  "raw": "{{endpoint_hakki_admin}}/all/users",
+                  "host": [
+                    "{{endpoint_hakki_admin}}"
+                  ],
+                  "path": [
+                    "all",
+                    "users"
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "List",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{token}}"
+                  },
+                  {
+                    "key": "Accept-Language",
+                    "value": "en"
+                  }
+                ],
+                "url": {
+                  "raw": "{{endpoint_hakki_admin}}/users",
+                  "host": [
+                    "{{endpoint_hakki_admin}}"
+                  ],
+                  "path": [
+                    "users"
+                  ],
+                  "query": [
+                    {
+                      "key": "",
+                      "value": "",
+                      "disabled": true
+                    }
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Update",
+              "request": {
+                "method": "PUT",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "bearer {{token}}"
+                  },
+                  {
+                    "key": "Accept-Language",
+                    "value": "en"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{endpoint_hakki_admin}}/users/1",
+                  "host": [
+                    "{{endpoint_hakki_admin}}"
+                  ],
+                  "path": [
+                    "users",
+                    "1"
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Delete",
+              "request": {
+                "method": "DELETE",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "bearer {{token}}"
+                  },
+                  {
+                    "key": "Accept-Language",
+                    "value": "en"
+                  }
+                ],
+                "url": {
+                  "raw": "{{endpoint_hakki_admin}}/users/17",
+                  "host": [
+                    "{{endpoint_hakki_admin}}"
+                  ],
+                  "path": [
+                    "users",
+                    "17"
+                  ]
+                }
+              },
+              "response": []
+            }
+          ]
+        },
+        {
+          "name": "Call Records",
+          "item": [
+            {
+              "name": "List",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "pageState",
+                    "value": "EMnNTE822hHvpVEAFV16+5YA8H////0A",
+                    "type": "text",
+                    "disabled": true
+                  }
+                ],
+                "url": {
+                  "raw": "{{endpoint_hakki_admin}}/call-records?page=1&page_size=10",
+                  "host": [
+                    "{{endpoint_hakki_admin}}"
+                  ],
+                  "path": [
+                    "call-records"
+                  ],
+                  "query": [
+                    {
+                      "key": "pageState",
+                      "value": "EMnNTE822hHvpVEAFV16+5YA8H////0A",
+                      "disabled": true
+                    },
+                    {
+                      "key": "page",
+                      "value": "1"
+                    },
+                    {
+                      "key": "page_size",
+                      "value": "10"
+                    }
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Update",
+              "request": {
+                "method": "PUT",
+                "header": [
+                  {
+                    "key": "pageState",
+                    "value": "EMnNTE822hHvpVEAFV16+5YA8H////0A",
+                    "type": "text",
+                    "disabled": true
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n    \"file_name\": \"601164-2025-03-10 14:19:48.ogg\",\n    \"transcribe\": \"تێست\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{endpoint_hakki_admin}}/call-records/:callRecordID",
+                  "host": [
+                    "{{endpoint_hakki_admin}}"
+                  ],
+                  "path": [
+                    "call-records",
+                    ":callRecordID"
+                  ],
+                  "query": [
+                    {
+                      "key": "pageState",
+                      "value": "EMnNTE822hHvpVEAFV16+5YA8H////0A",
+                      "disabled": true
+                    }
+                  ],
+                  "variable": [
+                    {
+                      "key": "callRecordID",
+                      "value": ""
+                    }
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Transcribe",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "pageState",
+                    "value": "EMnNTE822hHvpVEAFV16+5YA8H////0A",
+                    "type": "text",
+                    "disabled": true
+                  }
+                ],
+                "url": {
+                  "raw": "{{endpoint_hakki_admin}}/transcribe/:objectName",
+                  "host": [
+                    "{{endpoint_hakki_admin}}"
+                  ],
+                  "path": [
+                    "transcribe",
+                    ":objectName"
+                  ],
+                  "variable": [
+                    {
+                      "key": "objectName",
+                      "value": "600901-601164-2025-04-07 14:27:26.ogg"
+                    }
+                  ]
+                }
+              },
+              "response": []
+            }
+          ]
+        },
+        {
+          "name": "Auth",
+          "item": [
+            {
+              "name": "Login",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "exec": [
+                      "pm.test(\"Barez\", function () {",
+                      "    var jsonData = pm.response.json();",
+                      "    var token = jsonData[\"data\"][\"token\"]",
+                      "    pm.environment.set(\"token_hakki\", token);",
+                      "});"
+                    ],
+                    "type": "text/javascript",
+                    "packages": {}
+                  }
+                }
+              ],
+              "request": {
+                "auth": {
+                  "type": "noauth"
+                },
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "{{share_basic_auth}}",
+                    "type": "text"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n\t\"username\": \"admin\",\n\t\"password\": \"admin123A\",\n\t\"domain_name\": \"hakki\"\n}\n",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{endpoint_rcell_auth}}/auth/login",
+                  "host": [
+                    "{{endpoint_rcell_auth}}"
+                  ],
+                  "path": [
+                    "auth",
+                    "login"
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Profile",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "type": "text",
+                    "value": "bearer {{token}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{endpoint_rcell_auth}}/profile",
+                  "host": [
+                    "{{endpoint_rcell_auth}}"
+                  ],
+                  "path": [
+                    "profile"
+                  ]
+                }
+              },
+              "response": []
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "HakkiSpeech",
+      "item": [
+        {
+          "name": "transcribe",
+          "request": {
+            "auth": {
+              "type": "basic",
+              "basic": [
+                {
+                  "key": "password",
+                  "value": "secret123",
+                  "type": "string"
+                },
+                {
+                  "key": "username",
+                  "value": "admin",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "file",
+                  "type": "file",
+                  "uuid": "5ab0b3a6-205b-4f23-8973-896bfee69a8f",
+                  "src": "/Users/bisar/Projects/HakkiSpeech/data/kurmanji.wav"
+                },
+                {
+                  "key": "language",
+                  "value": "fa",
+                  "type": "text",
+                  "uuid": "126e0076-fb6f-4a5c-ae1b-c4df63e271e7"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{endpoint_hakki_admin}}/transcribe",
+              "host": [
+                "{{endpoint_hakki_admin}}"
+              ],
+              "path": [
+                "transcribe"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "transcribe locally",
+          "request": {
+            "auth": {
+              "type": "basic",
+              "basic": [
+                {
+                  "key": "password",
+                  "value": "secret123",
+                  "type": "string"
+                },
+                {
+                  "key": "username",
+                  "value": "admin",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "file",
+                  "type": "file",
+                  "uuid": "5ab0b3a6-205b-4f23-8973-896bfee69a8f",
+                  "src": "/Users/bisar/Downloads/6ffbe3ae-8e9f-40ff-a832-8568c5fb3e71.mp3"
+                },
+                {
+                  "key": "language",
+                  "value": "fa",
+                  "type": "text",
+                  "uuid": "126e0076-fb6f-4a5c-ae1b-c4df63e271e7"
+                }
+              ]
+            },
+            "url": {
+              "raw": "http://172.16.5.78:80/transcribe",
+              "protocol": "http",
+              "host": [
+                "172",
+                "16",
+                "5",
+                "78"
+              ],
+              "port": "80",
+              "path": [
+                "transcribe"
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Hakki-AI",
+      "item": [
+        {
+          "name": "ping",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "http://localhost:6973/api/ai/v1/ping",
+              "protocol": "http",
+              "host": [
+                "localhost"
+              ],
+              "port": "6973",
+              "path": [
+                "api",
+                "ai",
+                "v1",
+                "ping"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "chat",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"google/gemma-3-1b-it\",\n  \"messages\": [\n    \n    {\n        \"role\":\"user\",\n        \"content\":\"hello whats your name\"\n    }\n  ],\n  \"max_tokens\": 512,\n  \"temperature\": 0.7,\n  \"top_p\": 0.9\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "http://localhost:6979/api/ai/v1/chat-with-ai",
+              "protocol": "http",
+              "host": [
+                "localhost"
+              ],
+              "port": "6979",
+              "path": [
+                "api",
+                "ai",
+                "v1",
+                "chat-with-ai"
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "HAKKIOTP",
+      "item": [
+        {
+          "name": "vendor",
+          "item": [
+            {
+              "name": "create otp for vendor by user-id",
+              "event": [
+                {
+                  "listen": "prerequest",
+                  "script": {
+                    "exec": [
+                      ""
+                    ],
+                    "type": "text/javascript",
+                    "packages": {},
+                    "requests": {}
+                  }
+                },
+                {
+                  "listen": "test",
+                  "script": {
+                    "exec": [
+                      "const res = pm.response.json();",
+                      "",
+                      "pm.test(\"vendor created\", function () {",
+                      "    pm.response.to.have.status(200);",
+                      "    pm.expect(res.data).to.have.property(\"api_secret\");",
+                      "    pm.expect(res.data).to.have.property(\"key_prefix\");",
+                      "});",
+                      "",
+                      "if (pm.response.code === 200 && res.data) {",
+                      "    pm.environment.set(\"api_secret\", res.data.api_secret);",
+                      "    pm.environment.set(\"key_prefix\", res.data.key_prefix);",
+                      "",
+                      "    if (res.data.vendor) {",
+                      "        pm.environment.set(\"vendor_id\", res.data.vendor.id);",
+                      "        pm.environment.set(\"vendor_user_id\", res.data.vendor.vendor_user_id);",
+                      "        pm.environment.set(\"vendor_name\", res.data.vendor.name);",
+                      "    }",
+                      "",
+                      "    console.log(\"saved key_prefix:\", res.data.key_prefix);",
+                      "    console.log(\"saved api_secret: (hidden)\");",
+                      "}"
+                    ],
+                    "type": "text/javascript",
+                    "packages": {},
+                    "requests": {}
+                  }
+                }
+              ],
+              "request": {
+                "method": "POST",
+                "header": [],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"client_user_id\": 10108893,\n  \"name\": \"Massary App\",\n  \"monthly_limit\": 1000,\n  \"monthly_used\": 0,\n  \"status\": \"active\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "https://snbhakkiportal.rcell.me/api/hakkiotp/v1/hakki-otp-client/create",
+                  "protocol": "https",
+                  "host": [
+                    "snbhakkiportal",
+                    "rcell",
+                    "me"
+                  ],
+                  "path": [
+                    "api",
+                    "hakkiotp",
+                    "v1",
+                    "hakki-otp-client",
+                    "create"
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Update otp for vendor by id",
+              "request": {
+                "method": "PUT",
+                "header": [],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"vendor_user_id\": 10108785,\n  \"name\": \"Massary App\",\n  \"monthly_limit\": 1000,\n  \"monthly_used\": 0,\n  \"status\": \"active\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{endpoint_hakki_otp}}/hakki-otp-vendor/update/:hakkiotpvendorID",
+                  "host": [
+                    "{{endpoint_hakki_otp}}"
+                  ],
+                  "path": [
+                    "hakki-otp-vendor",
+                    "update",
+                    ":hakkiotpvendorID"
+                  ],
+                  "variable": [
+                    {
+                      "key": "hakkiotpvendorID",
+                      "value": "3"
+                    }
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Delete otp for vendor by id",
+              "request": {
+                "method": "DELETE",
+                "header": [],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"vendor_user_id\": 10108785,\n  \"name\": \"Massary App\",\n  \"monthly_limit\": 1000,\n  \"monthly_used\": 0,\n  \"status\": \"active\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{endpoint_hakki_otp}}/hakki-otp-vendor/delete/:hakkiotpvendorID",
+                  "host": [
+                    "{{endpoint_hakki_otp}}"
+                  ],
+                  "path": [
+                    "hakki-otp-vendor",
+                    "delete",
+                    ":hakkiotpvendorID"
+                  ],
+                  "variable": [
+                    {
+                      "key": "hakkiotpvendorID",
+                      "value": "3"
+                    }
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "otp vendor list",
+              "protocolProfileBehavior": {
+                "disableBodyPruning": true
+              },
+              "request": {
+                "method": "GET",
+                "header": [],
+                "body": {
+                  "mode": "raw",
+                  "raw": "",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "https://snbhakkiportal.rcell.me/api/hakkiotp/v1/hakki-otp-client/list",
+                  "protocol": "https",
+                  "host": [
+                    "snbhakkiportal",
+                    "rcell",
+                    "me"
+                  ],
+                  "path": [
+                    "api",
+                    "hakkiotp",
+                    "v1",
+                    "hakki-otp-client",
+                    "list"
+                  ],
+                  "query": [
+                    {
+                      "key": "limit",
+                      "value": null,
+                      "disabled": true
+                    },
+                    {
+                      "key": "offset",
+                      "value": null,
+                      "disabled": true
+                    },
+                    {
+                      "key": "order",
+                      "value": null,
+                      "disabled": true
+                    },
+                    {
+                      "key": "params",
+                      "value": "status[eq]active[and]vendor_user_id[eq]12&order_by=base_hakkiotpvendors.created_at&direction=desc",
+                      "disabled": true
+                    }
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "otp vendor by id",
+              "protocolProfileBehavior": {
+                "disableBodyPruning": true
+              },
+              "request": {
+                "method": "GET",
+                "header": [],
+                "body": {
+                  "mode": "raw",
+                  "raw": "",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{endpoint_hakki_otp}}/hakki-otp-vendor/get/:hakkiotpvendorID",
+                  "host": [
+                    "{{endpoint_hakki_otp}}"
+                  ],
+                  "path": [
+                    "hakki-otp-vendor",
+                    "get",
+                    ":hakkiotpvendorID"
+                  ],
+                  "variable": [
+                    {
+                      "key": "hakkiotpvendorID",
+                      "value": "3"
+                    }
+                  ]
+                }
+              },
+              "response": []
+            }
+          ]
+        },
+        {
+          "name": "OTP",
+          "item": [
+            {
+              "name": "Create OTP to phone",
+              "event": [
+                {
+                  "listen": "prerequest",
+                  "script": {
+                    "exec": [
+                      "const secret = pm.environment.get(\"api_secret\");",
+                      "const keyPrefix = pm.environment.get(\"key_prefix\");",
+                      "const apiPrefix = pm.environment.get(\"api_prefix\") || \"/api/hakkiotp/v1\";",
+                      "",
+                      "if (!secret || !keyPrefix) {",
+                      "    throw new Error(\"Missing api_secret or key_prefix — run vendor create first\");",
+                      "}",
+                      "",
+                      "const method = pm.request.method.toUpperCase();",
+                      "",
+                      "// getPath() can miss prefix if base_url includes /api/...",
+                      "let path = pm.request.url.getPath();",
+                      "if (!path.startsWith(apiPrefix)) {",
+                      "    path = apiPrefix + (path.startsWith(\"/\") ? path : \"/\" + path);",
+                      "}",
+                      "",
+                      "const timestamp = new Date().toISOString();",
+                      "",
+                      "let body = \"\";",
+                      "if (pm.request.body && pm.request.body.mode === \"raw\" && pm.request.body.raw) {",
+                      "    body = pm.variables.replaceIn(pm.request.body.raw);",
+                      "}",
+                      "",
+                      "const bodyHash = CryptoJS.SHA256(body).toString(CryptoJS.enc.Hex);",
+                      "const baseString = method + \"\\n\" + path + \"\\n\" + timestamp + \"\\n\" + bodyHash;",
+                      "const signature = CryptoJS.HmacSHA256(baseString, secret).toString(CryptoJS.enc.Base64);",
+                      "",
+                      "pm.request.headers.upsert({ key: \"X-Api-Key\", value: keyPrefix });",
+                      "pm.request.headers.upsert({ key: \"X-Api-Timestamp\", value: timestamp });",
+                      "pm.request.headers.upsert({ key: \"X-Api-Signature\", value: signature });",
+                      "",
+                      "console.log(\"PATH:\", path);",
+                      "console.log(\"BODY:\", JSON.stringify(body));",
+                      "console.log(\"BODY_HASH:\", bodyHash);",
+                      "console.log(\"BASE:\", baseString);",
+                      "console.log(\"SIG:\", signature);"
+                    ],
+                    "type": "text/javascript",
+                    "packages": {},
+                    "requests": {}
+                  }
+                }
+              ],
+              "request": {
+                "method": "POST",
+                "header": [],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"phone_number\": \"500110006\",\n  \"otp\": \"328231\",\n  \"expired_at\": \"2026-06-22T18:00:00+03:00\",\n  \"status\": \"pending\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{endpoint_hakki_otp}}/hakki-otp/create",
+                  "host": [
+                    "{{endpoint_hakki_otp}}"
+                  ],
+                  "path": [
+                    "hakki-otp",
+                    "create"
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Verify OTP phone",
+              "event": [
+                {
+                  "listen": "prerequest",
+                  "script": {
+                    "exec": [
+                      "const secret = pm.environment.get(\"api_secret\");",
+                      "const keyPrefix = pm.environment.get(\"key_prefix\");",
+                      "const apiPrefix = pm.environment.get(\"api_prefix\") || \"/api/hakkiotp/v1\";",
+                      "",
+                      "if (!secret || !keyPrefix) {",
+                      "    throw new Error(\"Missing api_secret or key_prefix — run vendor create first\");",
+                      "}",
+                      "",
+                      "const method = pm.request.method.toUpperCase();",
+                      "",
+                      "// getPath() can miss prefix if base_url includes /api/...",
+                      "let path = pm.request.url.getPath();",
+                      "if (!path.startsWith(apiPrefix)) {",
+                      "    path = apiPrefix + (path.startsWith(\"/\") ? path : \"/\" + path);",
+                      "}",
+                      "",
+                      "const timestamp = new Date().toISOString();",
+                      "",
+                      "let body = \"\";",
+                      "if (pm.request.body && pm.request.body.mode === \"raw\" && pm.request.body.raw) {",
+                      "    body = pm.variables.replaceIn(pm.request.body.raw);",
+                      "}",
+                      "",
+                      "const bodyHash = CryptoJS.SHA256(body).toString(CryptoJS.enc.Hex);",
+                      "const baseString = method + \"\\n\" + path + \"\\n\" + timestamp + \"\\n\" + bodyHash;",
+                      "const signature = CryptoJS.HmacSHA256(baseString, secret).toString(CryptoJS.enc.Base64);",
+                      "",
+                      "pm.request.headers.upsert({ key: \"X-Api-Key\", value: keyPrefix });",
+                      "pm.request.headers.upsert({ key: \"X-Api-Timestamp\", value: timestamp });",
+                      "pm.request.headers.upsert({ key: \"X-Api-Signature\", value: signature });",
+                      "",
+                      "console.log(\"PATH:\", path);",
+                      "console.log(\"BODY:\", JSON.stringify(body));",
+                      "console.log(\"BODY_HASH:\", bodyHash);",
+                      "console.log(\"BASE:\", baseString);",
+                      "console.log(\"SIG:\", signature);"
+                    ],
+                    "type": "text/javascript",
+                    "packages": {},
+                    "requests": {}
+                  }
+                }
+              ],
+              "request": {
+                "method": "POST",
+                "header": [],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"phone_number\": \"500456789\",\n  \"otp\": \"482910\",\n  \"expired_at\": \"2026-06-22T18:00:00+03:00\",\n  \"status\": \"pending\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{endpoint_hakki_otp}}/hakki-otp/verify/:phoneNumber/:inputOtp",
+                  "host": [
+                    "{{endpoint_hakki_otp}}"
+                  ],
+                  "path": [
+                    "hakki-otp",
+                    "verify",
+                    ":phoneNumber",
+                    ":inputOtp"
+                  ],
+                  "variable": [
+                    {
+                      "key": "phoneNumber",
+                      "value": "500456789"
+                    },
+                    {
+                      "key": "inputOtp",
+                      "value": "482910"
+                    }
+                  ]
+                }
+              },
+              "response": []
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{token_hakki}}",
+        "type": "string"
+      }
+    ]
+  },
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "packages": {},
+        "requests": {},
+        "exec": [
+          ""
+        ]
+      }
+    },
+    {
+      "listen": "test",
+      "script": {
+        "type": "text/javascript",
+        "packages": {},
+        "requests": {},
+        "exec": [
+          ""
+        ]
+      }
+    }
+  ],
+  "variable": [
+    {
+      "key": "endpoint_hakki_otp",
+      "value": ""
+    },
+    {
+      "key": "token_hakki",
+      "value": ""
+    }
+  ]
+}
