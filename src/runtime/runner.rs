@@ -274,6 +274,7 @@ pub fn run_collection_with_config(
                     inherited_post: inherited_post.clone(),
                     iteration_data_json: Some(&iter_json),
                     execution: Some(&mut hints),
+                    cancel: None,
                 },
             );
 

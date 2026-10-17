@@ -6,11 +6,26 @@ use crate::core::{ConsoleLevel, ConsoleLine};
 pub fn ConsolePanel(
     open: bool,
     lines: Vec<ConsoleLine>,
+    resizing: bool,
     on_toggle: EventHandler<()>,
     on_clear: EventHandler<()>,
+    on_resize_start: EventHandler<f64>,
 ) -> Element {
     rsx! {
         div { class: "console-wrap",
+            div {
+                class: if resizing {
+                    "console-resize active"
+                } else {
+                    "console-resize"
+                },
+                title: "Drag to resize console",
+                onmousedown: move |evt| {
+                    evt.prevent_default();
+                    evt.stop_propagation();
+                    on_resize_start.call(evt.client_coordinates().y);
+                },
+            }
             div { class: "console-bar",
                 button {
                     class: "builder-tab",

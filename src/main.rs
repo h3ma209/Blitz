@@ -1,6 +1,6 @@
-//! notPostman — local-first API client (Dioxus desktop).
+//! EvilPostman — local-first API client (Dioxus desktop).
 //! Architecture mirrors reports/: requester workbench UI → runtime send pipeline.
-//! CLI: `not_postman run collection.json [--env env.json]`
+//! CLI: `evil_postman run collection.json [--env env.json]`
 
 use dioxus::prelude::*;
 

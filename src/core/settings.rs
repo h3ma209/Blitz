@@ -65,6 +65,14 @@ fn default_sidebar_width_px() -> u32 {
     268
 }
 
+fn default_request_pane_height_px() -> u32 {
+    220
+}
+
+fn default_console_height_px() -> u32 {
+    148
+}
+
 /// Font sizes + shell layout prefs (persisted in snapshot).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct UiSettings {
@@ -77,6 +85,12 @@ pub struct UiSettings {
     /// Left sidebar width in px (`--sidebar-w`).
     #[serde(default = "default_sidebar_width_px")]
     pub sidebar_width_px: u32,
+    /// Request builder pane height in px (`--request-h`).
+    #[serde(default = "default_request_pane_height_px")]
+    pub request_pane_height_px: u32,
+    /// Console body height in px when open (`--console-h`).
+    #[serde(default = "default_console_height_px")]
+    pub console_height_px: u32,
 }
 
 impl Default for UiSettings {
@@ -85,6 +99,8 @@ impl Default for UiSettings {
             ui_font_size_px: default_ui_font_size_px(),
             editor_font_size_px: default_editor_font_size_px(),
             sidebar_width_px: default_sidebar_width_px(),
+            request_pane_height_px: default_request_pane_height_px(),
+            console_height_px: default_console_height_px(),
         }
     }
 }
@@ -94,6 +110,10 @@ impl UiSettings {
     pub const FONT_MAX_PX: u32 = 22;
     pub const SIDEBAR_MIN_PX: u32 = 180;
     pub const SIDEBAR_MAX_PX: u32 = 480;
+    pub const REQUEST_PANE_MIN_PX: u32 = 120;
+    pub const REQUEST_PANE_MAX_PX: u32 = 560;
+    pub const CONSOLE_MIN_PX: u32 = 72;
+    pub const CONSOLE_MAX_PX: u32 = 420;
 
     pub fn clamp_font_size(px: u32) -> u32 {
         px.clamp(Self::FONT_MIN_PX, Self::FONT_MAX_PX)
@@ -103,11 +123,21 @@ impl UiSettings {
         px.clamp(Self::SIDEBAR_MIN_PX, Self::SIDEBAR_MAX_PX)
     }
 
+    pub fn clamp_request_pane_height(px: u32) -> u32 {
+        px.clamp(Self::REQUEST_PANE_MIN_PX, Self::REQUEST_PANE_MAX_PX)
+    }
+
+    pub fn clamp_console_height(px: u32) -> u32 {
+        px.clamp(Self::CONSOLE_MIN_PX, Self::CONSOLE_MAX_PX)
+    }
+
     /// Normalize all fields into allowed ranges.
     pub fn clamped(mut self) -> Self {
         self.ui_font_size_px = Self::clamp_font_size(self.ui_font_size_px);
         self.editor_font_size_px = Self::clamp_font_size(self.editor_font_size_px);
         self.sidebar_width_px = Self::clamp_sidebar_width(self.sidebar_width_px);
+        self.request_pane_height_px = Self::clamp_request_pane_height(self.request_pane_height_px);
+        self.console_height_px = Self::clamp_console_height(self.console_height_px);
         self
     }
 }
@@ -154,10 +184,16 @@ mod tests {
         assert_eq!(ui.ui_font_size_px, 13);
         assert_eq!(ui.editor_font_size_px, 14);
         assert_eq!(ui.sidebar_width_px, 268);
+        assert_eq!(ui.request_pane_height_px, 220);
+        assert_eq!(ui.console_height_px, 148);
         assert_eq!(UiSettings::clamp_sidebar_width(100), 180);
         assert_eq!(UiSettings::clamp_sidebar_width(999), 480);
         assert_eq!(UiSettings::clamp_font_size(8), 10);
         assert_eq!(UiSettings::clamp_font_size(40), 22);
+        assert_eq!(UiSettings::clamp_request_pane_height(40), 120);
+        assert_eq!(UiSettings::clamp_request_pane_height(900), 560);
+        assert_eq!(UiSettings::clamp_console_height(10), 72);
+        assert_eq!(UiSettings::clamp_console_height(900), 420);
     }
 
     #[test]

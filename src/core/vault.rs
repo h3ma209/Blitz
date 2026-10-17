@@ -1,7 +1,7 @@
 //! Local vault file + `{{vault:key}}` resolution (beside `secret://`).
 //!
-//! File: `{data_dir}/notpostman/vault.json` — flat `{ "key": "value", … }`.
-//! Also falls back to SecretsStore service `notPostman (vault)` / account=`key`.
+//! File: `{data_dir}/evilpostman/vault.json` — flat `{ "key": "value", … }`.
+//! Also falls back to SecretsStore service `EvilPostman (vault)` / account=`key`.
 
 use std::collections::HashMap;
 use std::fs;
@@ -23,7 +23,7 @@ pub enum VaultError {
     Json(#[from] serde_json::Error),
 }
 
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct VaultStore {
     #[serde(default)]
     pub entries: HashMap<String, String>,
@@ -85,7 +85,7 @@ mod tests {
 
     #[test]
     fn vault_file_roundtrip() {
-        let dir = env::temp_dir().join(format!("notpostman-vault-{}", uuid::Uuid::new_v4()));
+        let dir = env::temp_dir().join(format!("evilpostman-vault-{}", uuid::Uuid::new_v4()));
         let mut v = VaultStore::default();
         v.set("api_token", "tok-1");
         v.save(&dir).unwrap();

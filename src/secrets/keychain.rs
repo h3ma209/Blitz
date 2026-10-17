@@ -3,7 +3,7 @@
 //! # Service / account naming
 //!
 //! Mirrors Postman's observed CryptoService layout (reports/05, reports/08):
-//! - **service**: `{APP_NAME} ({account_id})` — e.g. `notPostman (local)`
+//! - **service**: `{APP_NAME} ({account_id})` — e.g. `EvilPostman (local)`
 //! - **account**: typically [`DEFAULT_ACCOUNT`] (`userKey`) for the local user key;
 //!   other account labels may store bearer tokens, etc.
 //!
@@ -11,7 +11,7 @@
 //!
 //! - [`OsKeychainSecrets`] — macOS Keychain via the `keyring` crate (`apple-native`).
 //! - [`InMemorySecrets`] — process-local map; used in tests/CI or when keychain
-//!   is unavailable / forced via `NOTPOSTMAN_SECRETS=memory`.
+//!   is unavailable / forced via `EVILPOSTMAN_SECRETS=memory`.
 //!
 //! Prefer [`open_default_store`] at call sites.
 
@@ -21,14 +21,14 @@ use std::sync::Mutex;
 use thiserror::Error;
 
 /// App name embedded in Keychain service strings (Postman uses `app.getName()`).
-pub const APP_NAME: &str = "notPostman";
+pub const APP_NAME: &str = "EvilPostman";
 
 /// Default Keychain account label for the local encryption / user key
 /// (Postman CryptoService uses the literal `"userKey"`).
 pub const DEFAULT_ACCOUNT: &str = "userKey";
 
 /// Env var: set to `memory` to force the in-memory backend (CI / headless).
-pub const SECRETS_BACKEND_ENV: &str = "NOTPOSTMAN_SECRETS";
+pub const SECRETS_BACKEND_ENV: &str = "EVILPOSTMAN_SECRETS";
 
 #[derive(Debug, Error)]
 pub enum SecretError {
@@ -47,7 +47,7 @@ pub trait SecretsStore: Send + Sync {
     fn delete(&self, service: &str, account: &str) -> Result<(), SecretError>;
 }
 
-/// Build Keychain service name: `notPostman ({account_id})`.
+/// Build Keychain service name: `EvilPostman ({account_id})`.
 pub fn service_name(account_id: &str) -> String {
     format!("{APP_NAME} ({account_id})")
 }
@@ -150,7 +150,7 @@ fn map_keyring_err(err: keyring::Error) -> SecretError {
 
 /// Open preferred secrets backend: OS keychain when usable, else in-memory.
 ///
-/// Force memory with `NOTPOSTMAN_SECRETS=memory`.
+/// Force memory with `EVILPOSTMAN_SECRETS=memory`.
 pub fn open_default_store() -> Box<dyn SecretsStore> {
     if force_memory_backend() {
         return Box::new(InMemorySecrets::default());
@@ -240,7 +240,7 @@ mod tests {
 
     #[test]
     fn service_name_matches_postman_pattern() {
-        assert_eq!(service_name("abc-123"), "notPostman (abc-123)");
+        assert_eq!(service_name("abc-123"), "EvilPostman (abc-123)");
     }
 
     #[test]
@@ -318,7 +318,7 @@ mod tests {
     #[ignore = "touches real macOS Keychain; interactive / machine-local"]
     fn keychain_roundtrip() {
         let store = OsKeychainSecrets;
-        let svc = service_name("__notpostman_test__");
+        let svc = service_name("__evilpostman_test__");
         let acct = "unit-test";
         let _ = store.delete(&svc, acct);
         store.set(&svc, acct, "roundtrip-value").unwrap();
