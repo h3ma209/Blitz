@@ -122,7 +122,8 @@ pub fn RunnerPanel(
                                     td { "{r.iteration}" }
                                     td {
                                         span {
-                                            class: if r.passed { "status-ok" } else { "status-err" },
+                                            class: if r.passed { "status-chip status-ok" } else { "status-chip status-err" },
+                                            span { class: "status-tag", if r.passed { "OK" } else { "Fail" } }
                                             if r.passed { "PASS" } else { "FAIL" }
                                         }
                                     }

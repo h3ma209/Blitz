@@ -15,15 +15,15 @@ notPostman is a single-window desktop workbench for building, sending, scripting
 
 | Area | Maturity |
 |------|----------|
-| HTTP request / response workbench | Complete for day-to-day REST/GraphQL-over-HTTP; Postman Runtime default headers + JSON comment strip |
-| WebSocket / gRPC unary / MQTT / MCP STDIO | Minimal local clients (protocol selector) |
-| Variables, environments, vault | Complete (local scopes) |
-| Auth (incl. OAuth2 + Digest) | Complete for common types |
-| Scripts + Collection Runner + Perf VUs | Complete / minimal for focused `pm` + VUs |
-| Capture proxy | Lightweight HTTP absolute-form logger |
-| Collections / history / trash | Complete for local tree ops |
-| Import / export / snippets / mock | Complete for happy-path use |
-| Cloud / AI / Socket.IO / Interceptor | Out of scope |
+| HTTP request / response workbench | Complete for day-to-day REST/GraphQL-over-HTTP; binary body; Docs / Visualize / Timeline tabs |
+| Multi-protocol | HTTP, WS, gRPC unary, MQTT, MCP, **Socket.IO**, **SSE**, **GraphQL-WS** |
+| Variables, environments, vault | Complete (local scopes) + collection vars editor + env JSON impex |
+| Auth | Bearer/Basic/API Key/Digest/OAuth2 + **OAuth1 / Hawk / AWS SigV4 / EdgeGrid**; NTLM Type1 partial |
+| Scripts + Collection Runner + Perf VUs + CLI | `pm` sandbox + `pm.visualizer`; `not_postman run` CLI |
+| Capture proxy | HTTP forward + CONNECT tunnel (no MITM decrypt) |
+| Collections / history / trash | Tree search, sibling reorder, CRUD/DnD |
+| Import / export / snippets / mock | v2.1 + HAR + OpenAPI YAML; Java/Go/C# snippets; mock scenarios |
+| Cloud / AI / Spec Hub / Flows / SSO | Out of scope |
 
 ---
 
@@ -31,8 +31,8 @@ notPostman is a single-window desktop workbench for building, sending, scripting
 
 ### 2.1 Shell layout
 
-- **Top bar:** brand, shortcut hint, **File** menu (Import from Postman export / paste / bundled samples / export), Runner, Perf, Proxy, Settings, environment selector, variables eye (👁), code snippets (`</>`), Mock start/stop, Trash.
-- **Left sidebar:** collections tree + history.
+- **Top bar:** brand, shortcut hint, **File** menu (collections / env / HAR / OpenAPI), Runner, Perf, Proxy, Cookies, Col vars, Settings, environment selector, variables eye (👁), code snippets (`</>`), Mock start/stop, Trash.
+- **Left sidebar:** collections tree (search box) + history; **drag right edge** to resize (180–480px, persisted).
 - **Center:** multi-tab request strip, request builder, response pane, console.
 - **Modals:** settings, runner, env manager, import/export, command palette, trash, snippets.
 
@@ -46,6 +46,8 @@ notPostman is a single-window desktop workbench for building, sending, scripting
 | ⌘/Ctrl + W | Close / reset current tab |
 | ⌘/Ctrl + Shift + P | Command palette |
 | ⌘/Ctrl + Alt + C | Toggle console |
+| ⌘/Ctrl + / | Toggle `//` line comments in body / Scripts / Docs editors |
+| ⌘/Ctrl + Shift + / | Toggle `/* … */` block comment around selection |
 
 - **Multi-tab:** open several drafts; switch by tab; `+` opens a new untitled request.
 - **Palette:** Send, Save, New, Runner, Console, Settings.
@@ -60,19 +62,22 @@ Eye pane lists values in scope: local, environment, collection, global, plus vau
 
 ### 3.1 Basics
 
-- **Protocol selector:** HTTP | WebSocket | gRPC | MQTT | MCP (draft fields persisted in snapshot).
+- **Protocol selector:** HTTP | WebSocket | gRPC | MQTT | MCP | Socket.IO | SSE | GraphQL-WS.
 - Methods (HTTP): GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS.
-- URL bar with `{{variable}}` substitution (HTTP); WS/MQTT/gRPC use URL as endpoint.
-- HTTP tabs: **Params**, **Headers**, **Body**, **Auth**, **Scripts**, **Settings**.
+- URL bar with `{{variable}}` substitution (HTTP); other protocols use URL as endpoint.
+- HTTP tabs: **Params**, **Headers**, **Body**, **Auth**, **Scripts**, **Docs**, **Settings**.
 
 ### 3.1b Multi-protocol (local)
 
 | Protocol | Actions | Notes / limits |
 |----------|---------|----------------|
-| WebSocket | Connect / Send message / Disconnect | `tokio-tungstenite`; event log in protocol pane |
-| gRPC | Invoke unary | JSON → `google.protobuf.Struct` over HTTP/2; server must accept Struct (or raw b64 fallback) |
-| MQTT | Publish / Subscribe once | `rumqttc`; `mqtt://host:port` |
-| MCP | List tools / Call tool | STDIO JSON-RPC; command + args |
+| WebSocket | Connect / Send / Disconnect | `tokio-tungstenite` |
+| gRPC | Invoke unary | Struct JSON; reflection list stub (no .proto) |
+| MQTT | Publish / Subscribe once | `rumqttc` |
+| MCP | List tools / Call tool | STDIO JSON-RPC |
+| Socket.IO | Connect / emit / listen | `rust_socketio` session |
+| SSE | Listen (max events) | GET `text/event-stream` |
+| GraphQL-WS | Subscribe | `graphql-transport-ws` / legacy start |
 
 ### 3.2 Params & headers
 
@@ -89,6 +94,7 @@ Eye pane lists values in scope: local, environment, collection, global, plus vau
 | x-www-form-urlencoded | Key/value → encoded body |
 | form-data | Multipart; text fields, or **file** when “File?” + local path |
 | GraphQL | Query + variables JSON → `{"query","variables"}` over HTTP (forces POST if method was GET) |
+| binary | Local file path → raw bytes (`application/octet-stream`) |
 
 ### 3.4 Per-request settings
 
@@ -109,6 +115,11 @@ Eye pane lists values in scope: local, environment, collection, global, plus vau
 | API Key | Custom header name (default `X-Api-Key`) |
 | Digest | RFC 2617 MD5 / `qop=auth` after 401 challenge |
 | OAuth 2.0 | **Client credentials** or **authorization code** (loopback redirect, “Get New Access Token”); token injected as Bearer |
+| OAuth 1.0 | HMAC-SHA1 / HMAC-SHA256 / PLAINTEXT |
+| Hawk | HMAC header (sha256/sha1) |
+| AWS Signature | SigV4 (region + service) |
+| Akamai EdgeGrid | EG1-HMAC-SHA256 |
+| NTLM | **Partial** — Type1 negotiate only |
 
 Secret references in auth fields:
 
@@ -133,7 +144,14 @@ Substitution: `{{name}}` in URL, params, headers, body, auth fields.
 - List / create environments  
 - Vars with **initial** + **current** values  
 - Activate from top-right selector  
+- File → Import / Export Postman environment JSON  
 - Persisted in snapshot  
+
+### 5.2b Collection variables
+
+- **Col vars** toolbar → edit active collection `variables`  
+- Synced into `VariableContext.collection` on select / edit  
+- Imported/exported with collection v2.1 `variable[]`  
 
 ### 5.3 Vault
 
@@ -175,6 +193,7 @@ JavaScript via **`boa_engine`** (not full Postman sandbox / uvm).
 | `pm.response` | `.code`, `.status`, `.text()`, `.json()`, `.headers.get`, `.to.have.status` |
 | `pm.test` / `pm.expect` | equal/eql/include/be.ok/have.status/have.property |
 | `pm.sendRequest` | Sync nested HTTP via blocking reqwest + callback |
+| `pm.visualizer.set(template, data)` | → Visualize tab (simple `{{key}}` / `{{data}}` replacement) |
 | `console.log` | → Console panel |
 
 ### 6.4 Not supported (yet)
@@ -182,9 +201,9 @@ JavaScript via **`boa_engine`** (not full Postman sandbox / uvm).
 - Full Chai / async tests / `require` / package library  
 - Exact Postman sandbox isolation (uniscope/uvm)  
 
-### 6.5 Test Results
+### 6.5 Test Results / Visualize / Timeline
 
-Response pane shows PASS/FAIL per `pm.test`. Runner aggregates pass/fail per request × iteration.
+Response pane: PASS/FAIL, Visualize HTML source, Timeline bars (DNS/connect/TLS/TTFB/download/total — approximated).
 
 ---
 
@@ -214,6 +233,8 @@ On Send (simplified):
 | Headers | Response headers list |
 | Cookies | `Set-Cookie` headers from this response |
 | Test Results | Script assertions |
+| Visualize | `pm.visualizer` HTML or HTML response body |
+| Timeline | Approximated phase bars |
 | **Save example** | Stores response on the request for local mocks |
 
 ---
@@ -242,9 +263,10 @@ Dismiss: click outside or Escape. Hover row icons still available as shortcuts.
 ### Drag and drop
 
 - Drag **request** or **folder** onto a **collection** or **folder** → reparent (persisted)  
+- Drop onto a **request** → sibling reorder (`sort_key`)  
 - Reject drop into self / descendant folder  
 - Drop target highlighted in accent orange  
-- Sibling reorder not modeled (no sort_key); reparent-only  
+- Sidebar **search** filters tree by name (keeps ancestors)
 
 ### Trash
 
@@ -284,11 +306,21 @@ Dismiss: click outside or Escape. Hover row icons still available as shortcuts.
 - **Perf** modal: N concurrent VUs × duration (seconds) against active collection  
 - Reuses HTTP send pipeline; shows total requests, errors, avg/min/max latency  
 
-### 12c. Capture proxy
+### 12c. Capture proxy / interceptor limits
 
-- **Proxy** top-bar: bind `127.0.0.1:ephemeral` HTTP forward proxy  
-- Logs absolute-form requests into history on stop  
-- **No** CONNECT / TLS MITM (browser Interceptor not shipped)  
+- **Proxy** top-bar: bind `127.0.0.1:ephemeral`  
+- HTTP absolute-form forward + log  
+- **CONNECT** = blind TLS tunnel (no decrypt; no local CA install)  
+- Browser Interceptor bridge not shipped — point HTTP proxy here for plaintext only  
+
+### 12d. CLI (Newman-like)
+
+```
+not_postman run collection.json [--env environment.json]
+not_postman help
+```
+
+(No args → GUI.)
 
 ---
 
@@ -296,10 +328,11 @@ Dismiss: click outside or Escape. Hover row icons still available as shortcuts.
 
 1. Send a request → **Save example**  
 2. Click **Mock** → binds `http://127.0.0.1:{ephemeralPort}`  
-3. Matches **method + path** (simple `:param` wildcards) to first saved example  
-4. **Stop mock** tears down the listener  
+3. Matches **method + path** (simple `:param` wildcards)  
+4. Optional **scenarios:** `mock_match_header` (`Name: value`) and/or `mock_match_name` on draft filters examples  
+5. **Stop mock** tears down the listener  
 
-No cloud mock URL; no scenario headers UI yet.
+No cloud mock URL.
 
 ---
 
@@ -307,15 +340,17 @@ No cloud mock URL; no scenario headers UI yet.
 
 | Format | Direction | Notes |
 |--------|-----------|--------|
-| Postman Collection **v2.1** JSON | Import + export | HTTP subset (folders, scripts, common auth/bodies) |
+| Postman Collection **v2.1** JSON | Import + export | Folders, scripts, auth/bodies, **collection variables**, descriptions |
+| Postman **environment** JSON | Import + export | File menu |
+| **HAR** 1.2 | Import | One request per `log.entries` |
 | **cURL** paste | Import | Detects `curl` → one-request collection |
-| **OpenAPI 3** JSON | Import | One request per path+method; uses `servers[0].url` when present |
+| **OpenAPI 3** JSON **or YAML** | Import | One request per path+method; `servers[0].url` |
 
-**File ▾** menu: *Import from Postman export…* (native multi-file picker), *Paste Postman / cURL / OpenAPI…*, *Load bundled sample exports*, *Export active collection…*. Sidebar ↓ / ↑ still work.  
+**File ▾:** Import Postman export / env / HAR / OpenAPI, paste, bundled samples, export collection / env.  
 
-**Default seed:** first launch / empty snapshot loads collections from `exported-postman-jsons/` (Hakki + Initiate Envs), embedded via `bundled_postman_collections()`.
+**Default seed:** `exported-postman-jsons/` (Hakki + Initiate Envs).
 
-**Not imported:** gRPC, full OAuth token dances from file, rich docs, collection v3 YAML.
+**Not imported:** gRPC, RAML/WSDL, collection v2.0, rich `$ref` graphs.
 
 ---
 
@@ -326,6 +361,9 @@ Languages (from `</>` modal):
 - cURL  
 - JavaScript `fetch`  
 - Python `requests`  
+- **Java OkHttp**  
+- **Go net/http**  
+- **C# HttpClient**  
 
 Generated from the current draft (URL, method, headers, auth, body).
 
@@ -333,9 +371,9 @@ Generated from the current draft (URL, method, headers, auth, body).
 
 ## 16. Cookies
 
-- In-memory / persisted jar  
+- Persisted jar + **Cookies** toolbar manager (edit/delete/add/clear)  
 - Set-Cookie on responses → jar  
-- Cookie header attached on later requests to matching host/path  
+- Cookie header attached on matching host/path  
 - Response Cookies tab shows Set-Cookie for the last response  
 
 ---
@@ -343,7 +381,8 @@ Generated from the current draft (URL, method, headers, auth, body).
 ## 17. App settings
 
 - **Proxy:** env (`HTTP(S)_PROXY`), none, or custom `host:port`  
-- **Client certificate:** PEM identity path (cert+key); PKCS#12 paths get a clear “convert to PEM” error  
+- **Client certificate:** PEM, or **PKCS#12** via `openssl pkcs12` conversion when openssl is on PATH  
+- **Appearance:** UI font size, editor (mono/body) font size, sidebar width — CSS vars on `.app-shell` (`--fs-base`, `--fs-editor`, `--sidebar-w`); Reset in Settings  
 - Persisted in snapshot  
 
 ---
@@ -368,10 +407,10 @@ These appear in Postman docs / RE reports but are **not** implemented:
 - Agent Mode / AI requests / Passport / Fabric  
 - Spec Hub, Flows, cloud Monitors, API Catalog / Insights  
 - Native Git (Local/Cloud views)  
-- Socket.IO client / GraphQL subscriptions / full protoset gRPC reflection UI  
-- Browser Interceptor / CONNECT TLS MITM  
-- Newman / Postman CLI clone  
-- Package library / exact uvm sandbox  
+- Full gRPC `.proto` / tonic reflection + client/bidi streaming  
+- HTTPS MITM with installed local CA / Browser Interceptor bridge  
+- Package library / exact uvm sandbox / ASAP auth  
+- Themes, bulk edit, scheduled runs  
 
 ---
 
@@ -381,13 +420,16 @@ These appear in Postman docs / RE reports but are **not** implemented:
 |--------|----------------|
 | `src/ui/*` | Dioxus workbench |
 | `src/core/request.rs` | Draft, protocol, body, auth, examples |
-| `src/core/protocols/*` | WS / gRPC unary / MQTT / MCP |
-| `src/core/capture_proxy.rs` | Local HTTP capture proxy |
+| `src/core/protocols/*` | WS / gRPC / MQTT / MCP / Socket.IO / SSE / GraphQL-WS |
+| `src/core/capture_proxy.rs` | Local HTTP + CONNECT tunnel proxy |
+| `src/core/cli_runner.rs` | `run` CLI |
+| `src/core/auth_extra.rs` | OAuth1 / Hawk / AWS / EdgeGrid / NTLM |
+| `src/core/pkcs12_util.rs` | PKCS#12 → PEM |
 | `src/core/perf_runner.rs` | Concurrent VU runner |
-| `src/core/collection.rs` | Tree, favorite, trash helpers |
-| `src/core/variables.rs` / `environment.rs` / `vault.rs` | Scopes |
-| `src/core/sandbox.rs` / `scripts.rs` | JS `pm` (+ sendRequest) |
-| `src/core/oauth.rs` / `digest.rs` | Auth helpers |
+| `src/core/collection.rs` | Tree, search filter, reorder, trash |
+| `src/core/variables.rs` / `environment.rs` / `vault.rs` | Scopes + env JSON |
+| `src/core/sandbox.rs` / `scripts.rs` | JS `pm` (+ visualizer) |
+| `src/core/oauth.rs` / `digest.rs` | OAuth2 / Digest |
 | `src/core/impex.rs` / `codegen.rs` / `mock_server.rs` | Import, snippets, mock |
 | `src/runtime/pipeline.rs` | Send path |
 | `src/runtime/runner.rs` | Collection runs |
@@ -404,6 +446,7 @@ These appear in Postman docs / RE reports but are **not** implemented:
 - [reports/11-docs-gap-refresh/gap-refresh.md](reports/11-docs-gap-refresh/gap-refresh.md) — docs × RE × app matrix  
 - [reports/12-contents-grab/inventory.md](reports/12-contents-grab/inventory.md) — Contents / ASAR grab inventory  
 - [reports/12-contents-grab/app-shipped.md](reports/12-contents-grab/app-shipped.md) — Phase B ship checklist  
+- [reports/13-remaining-gaps/remaining-gaps.md](reports/13-remaining-gaps/remaining-gaps.md) — shipped vs deferred  
 
 ---
 

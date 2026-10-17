@@ -17,6 +17,10 @@ pub struct MockRoute {
     pub method: HttpMethod,
     pub path: String,
     pub example: SavedExample,
+    /// Optional: require request header `name: value` substring match.
+    pub match_header: Option<(String, String)>,
+    /// Optional: example name must contain this (scenario picker).
+    pub match_name: Option<String>,
 }
 
 #[derive(Debug, Default)]
@@ -26,7 +30,8 @@ pub struct MockServerState {
     pub running: bool,
 }
 
-/// Build routes from all requests that have examples (first example wins per method+path).
+/// Build routes from all requests that have examples.
+/// When `mock_match_name` / examples named, each example becomes a scenario route.
 pub fn routes_from_collections(collections: &[Collection]) -> Vec<MockRoute> {
     let mut out = Vec::new();
     for col in collections {
@@ -40,11 +45,33 @@ fn walk_items(items: &[super::collection::CollectionItem], out: &mut Vec<MockRou
     for item in items {
         match item {
             CollectionItem::Request(r) => {
-                if let Some(ex) = r.examples.first() {
+                let header_match = if !r.mock_match_header.is_empty() {
+                    let (name, val) = r
+                        .mock_match_header
+                        .split_once(':')
+                        .map(|(a, b)| (a.trim().to_string(), b.trim().to_string()))
+                        .unwrap_or((r.mock_match_header.clone(), String::new()));
+                    Some((name, val))
+                } else {
+                    None
+                };
+                let name_filter = if r.mock_match_name.is_empty() {
+                    None
+                } else {
+                    Some(r.mock_match_name.clone())
+                };
+                for ex in &r.examples {
+                    if let Some(ref nf) = name_filter {
+                        if !ex.name.to_ascii_lowercase().contains(&nf.to_ascii_lowercase()) {
+                            continue;
+                        }
+                    }
                     out.push(MockRoute {
                         method: r.method,
                         path: path_only(&r.url),
                         example: ex.clone(),
+                        match_header: header_match.clone(),
+                        match_name: name_filter.clone(),
                     });
                 }
             }
@@ -123,10 +150,31 @@ fn handle_conn(stream: &mut TcpStream, routes: &Arc<Mutex<Vec<MockRoute>>>) -> s
     let mut parts = first.split_whitespace();
     let method = parts.next().unwrap_or("GET");
     let path = parts.next().unwrap_or("/").split('?').next().unwrap_or("/");
+    let req_headers: Vec<(String, String)> = req
+        .lines()
+        .skip(1)
+        .take_while(|l| !l.is_empty())
+        .filter_map(|l| {
+            let (k, v) = l.split_once(':')?;
+            Some((k.trim().to_string(), v.trim().to_string()))
+        })
+        .collect();
 
     let routes = routes.lock().unwrap();
     let found = routes.iter().find(|r| {
-        r.method.as_str().eq_ignore_ascii_case(method) && paths_match(&r.path, path)
+        if !r.method.as_str().eq_ignore_ascii_case(method) || !paths_match(&r.path, path) {
+            return false;
+        }
+        if let Some((ref name, ref val)) = r.match_header {
+            let ok = req_headers.iter().any(|(k, v)| {
+                k.eq_ignore_ascii_case(name)
+                    && (val.is_empty() || v.to_ascii_lowercase().contains(&val.to_ascii_lowercase()))
+            });
+            if !ok {
+                return false;
+            }
+        }
+        true
     });
 
     let response = match found {

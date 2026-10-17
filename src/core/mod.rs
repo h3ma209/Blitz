@@ -3,7 +3,9 @@
 
 #![allow(unused_imports)] // re-exports form public module surface
 
+pub mod auth_extra;
 pub mod capture_proxy;
+pub mod cli_runner;
 pub mod codegen;
 pub mod collection;
 pub mod console;
@@ -15,6 +17,7 @@ pub mod impex;
 pub mod mock_server;
 pub mod oauth;
 pub mod perf_runner;
+pub mod pkcs12_util;
 pub mod protocols;
 pub mod request;
 pub mod sandbox;
@@ -23,25 +26,28 @@ pub mod settings;
 pub mod variables;
 pub mod vault;
 
-pub use capture_proxy::{start_capture_proxy, CaptureProxyHandle, CapturedRequest};
+pub use capture_proxy::{
+    interceptor_limits_blurb, start_capture_proxy, CaptureProxyHandle, CapturedRequest,
+};
 pub use codegen::{generate_snippet, snippet_languages};
 pub use collection::{
-    add_folder_under, add_request_under, demo_collections, duplicate_across, find_request_across,
-    flatten_collections, flatten_collections_filtered, folder_path_to_request, item_contains_id,
-    move_item_to, purge_from_trash, remove_across, rename_across, restore_from_trash,
-    save_request_to_collections, sort_collections, trash_collection, Collection, CollectionItem,
-    Folder, TreeRow, TreeRowKind,
+    add_folder_under, add_request_under, demo_collections, duplicate_across, filter_tree_rows,
+    find_request_across, flatten_collections, flatten_collections_filtered, folder_path_to_request,
+    item_contains_id, move_item_to, purge_from_trash, remove_across, rename_across,
+    reorder_before, reorder_within_parent, restore_from_trash, save_request_to_collections,
+    sort_collections, trash_collection, Collection, CollectionItem, Folder, TreeRow, TreeRowKind,
 };
 pub use console::{push_console, ConsoleLevel, ConsoleLine, CONSOLE_MAX};
 pub use cookies::{Cookie, CookieJar};
 pub use digest::{build_digest_authorization, digest_uri, DigestChallenge};
 pub use environment::{
-    demo_environments, find_environment, find_environment_by_name, EnvVar, Environment,
+    demo_environments, export_environment_json, find_environment, find_environment_by_name,
+    import_environment_json, EnvVar, Environment,
 };
 pub use history::{push_history, HistoryEntry, HISTORY_MAX};
 pub use impex::{
-    bundled_postman_collections, export_collection_v21, import_collection_v21,
-    import_curl, import_openapi3, import_postman_export_texts, limitations_blurb, ImpexError,
+    bundled_postman_collections, export_collection_v21, import_collection_v21, import_curl,
+    import_har, import_openapi3, import_postman_export_texts, limitations_blurb, ImpexError,
 };
 pub use mock_server::{
     draft_mock_path, routes_from_collections, save_example_to_request, start_mock, MockHandle,
@@ -50,13 +56,15 @@ pub use mock_server::{
 pub use oauth::{fetch_oauth2_token, OAuthError};
 pub use perf_runner::{run_performance, PerfReport};
 pub use protocols::{
-    grpc_unary, mcp_call_tool, mcp_list_tools, mqtt_publish, mqtt_subscribe_once,
-    split_mcp_args, ws_connect_session, GrpcUnaryResult, McpToolInfo, MqttActionResult, WsSession,
+    graphql_ws_subscribe, grpc_reflection_list, grpc_server_stream_stub, grpc_unary, mcp_call_tool,
+    mcp_list_tools, mqtt_publish, mqtt_subscribe_once, socketio_session, split_mcp_args, sse_listen,
+    ws_connect_session, GrpcUnaryResult, McpToolInfo, MqttActionResult, SseEvent, WsSession,
     WsSessionEvent,
 };
 pub use request::{
-    AuthConfig, AuthType, BodyMode, FormDataField, HttpMethod, KeyValue, OAuth2Config, OAuth2Grant,
-    RequestDraft, RequestProtocol, ResponseView, SavedExample, TestResult,
+    AuthConfig, AuthExtra, AuthType, BodyMode, FormDataField, HttpMethod, KeyValue, OAuth2Config,
+    OAuth2Grant, RequestDraft, RequestProtocol, ResponseView, SavedExample, TestResult,
+    TimingBreakdown,
 };
 pub use sandbox::{
     run_js_sandbox, run_js_sandbox_ex, SandboxExecution, SandboxExtras, SandboxOutcome,
@@ -64,7 +72,7 @@ pub use sandbox::{
 };
 pub use scripts::{run_script, run_script_ex, run_script_helpers, ScriptRunOutcome};
 pub use settings::{
-    AppSettings, ClientCertSettings, ProxyMode, ProxySettings, RequestSettings,
+    AppSettings, ClientCertSettings, ProxyMode, ProxySettings, RequestSettings, UiSettings,
 };
 pub use variables::{VariableContext, VariableScope};
 pub use vault::{resolve_vault_key, VaultStore, VAULT_ACCOUNT_ID};

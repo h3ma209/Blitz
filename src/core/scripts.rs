@@ -17,6 +17,7 @@ pub struct ScriptRunOutcome {
     pub tests: Vec<TestResult>,
     pub error: Option<String>,
     pub execution: SandboxExecution,
+    pub visualizer_html: String,
 }
 
 /// Run pre-request or test script via JS sandbox.
@@ -49,6 +50,7 @@ pub fn run_script_ex(
         tests: js.tests,
         error: js.error,
         execution: js.execution,
+        visualizer_html: js.visualizer_html,
     }
 }
 

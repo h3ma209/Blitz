@@ -61,6 +61,38 @@ impl CookieJar {
             Some(matching.join("; "))
         }
     }
+
+    /// Remove cookie at index. Returns true if removed.
+    pub fn remove_at(&mut self, index: usize) -> bool {
+        if index < self.cookies.len() {
+            self.cookies.remove(index);
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Delete by domain+name+path.
+    pub fn remove_cookie(&mut self, domain: &str, name: &str, path: &str) -> bool {
+        let before = self.cookies.len();
+        self.cookies
+            .retain(|c| !(c.domain == domain && c.name == name && c.path == path));
+        self.cookies.len() < before
+    }
+
+    pub fn clear(&mut self) {
+        self.cookies.clear();
+    }
+
+    /// Update cookie at index; no-op if OOB.
+    pub fn update_at(&mut self, index: usize, cookie: Cookie) -> bool {
+        if let Some(slot) = self.cookies.get_mut(index) {
+            *slot = cookie;
+            true
+        } else {
+            false
+        }
+    }
 }
 
 fn host_to_domain(host: &str) -> String {

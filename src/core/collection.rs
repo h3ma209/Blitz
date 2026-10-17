@@ -20,6 +20,9 @@ pub struct Collection {
     pub pre_request_script: String,
     #[serde(default)]
     pub test_script: String,
+    /// Collection variables (synced → VariableContext.collection when active).
+    #[serde(default)]
+    pub variables: Vec<KeyValue>,
 }
 
 impl Default for Collection {
@@ -36,6 +39,7 @@ impl Default for Collection {
             favorite: false,
             pre_request_script: String::new(),
             test_script: String::new(),
+            variables: vec![],
         }
     }
 }
@@ -54,7 +58,17 @@ impl Collection {
             favorite: false,
             pre_request_script: String::new(),
             test_script: String::new(),
+            variables: vec![],
         }
+    }
+
+    /// Flat map of enabled collection variables.
+    pub fn variables_map(&self) -> std::collections::HashMap<String, String> {
+        self.variables
+            .iter()
+            .filter(|v| v.enabled && !v.key.is_empty())
+            .map(|v| (v.key.clone(), v.value.clone()))
+            .collect()
     }
 
     pub fn duplicate(&self) -> Self {
@@ -135,6 +149,8 @@ pub struct Folder {
     pub pre_request_script: String,
     #[serde(default)]
     pub test_script: String,
+    #[serde(default)]
+    pub sort_key: i64,
 }
 
 impl Folder {
@@ -145,6 +161,7 @@ impl Folder {
             items: vec![],
             pre_request_script: String::new(),
             test_script: String::new(),
+            sort_key: 0,
         }
     }
 
@@ -178,7 +195,7 @@ pub struct TreeRow {
     pub favorite: bool,
 }
 
-/// Sort collections: favorites first, then name; folders before requests within a level.
+/// Sort collections: favorites first, then name; within a level: sort_key then folders first then name.
 pub fn sort_collections(collections: &mut [Collection]) {
     collections.sort_by(|a, b| {
         b.favorite
@@ -190,22 +207,249 @@ pub fn sort_collections(collections: &mut [Collection]) {
     }
 }
 
+fn item_sort_key(item: &CollectionItem) -> i64 {
+    match item {
+        CollectionItem::Folder(f) => f.sort_key,
+        CollectionItem::Request(r) => r.sort_key,
+    }
+}
+
 fn sort_items_folders_first(items: &mut [CollectionItem]) {
-    items.sort_by(|a, b| match (a, b) {
-        (CollectionItem::Folder(_), CollectionItem::Request(_)) => std::cmp::Ordering::Less,
-        (CollectionItem::Request(_), CollectionItem::Folder(_)) => std::cmp::Ordering::Greater,
-        (CollectionItem::Folder(fa), CollectionItem::Folder(fb)) => {
-            fa.name.to_lowercase().cmp(&fb.name.to_lowercase())
-        }
-        (CollectionItem::Request(ra), CollectionItem::Request(rb)) => {
-            ra.name.to_lowercase().cmp(&rb.name.to_lowercase())
-        }
+    items.sort_by(|a, b| {
+        item_sort_key(a)
+            .cmp(&item_sort_key(b))
+            .then_with(|| match (a, b) {
+                (CollectionItem::Folder(_), CollectionItem::Request(_)) => std::cmp::Ordering::Less,
+                (CollectionItem::Request(_), CollectionItem::Folder(_)) => {
+                    std::cmp::Ordering::Greater
+                }
+                (CollectionItem::Folder(fa), CollectionItem::Folder(fb)) => {
+                    fa.name.to_lowercase().cmp(&fb.name.to_lowercase())
+                }
+                (CollectionItem::Request(ra), CollectionItem::Request(rb)) => {
+                    ra.name.to_lowercase().cmp(&rb.name.to_lowercase())
+                }
+            })
     });
     for item in items.iter_mut() {
         if let CollectionItem::Folder(f) = item {
             sort_items_folders_first(&mut f.items);
         }
     }
+}
+
+/// Reorder `item_id` to sit immediately before `before_id` under the same parent.
+/// If `before_id` is None, move to end of sibling list. Returns true on success.
+pub fn reorder_before(
+    collections: &mut [Collection],
+    item_id: Uuid,
+    before_id: Option<Uuid>,
+) -> bool {
+    if before_id == Some(item_id) {
+        return false;
+    }
+    let Some(item) = take_item(collections, item_id) else {
+        return false;
+    };
+    // Find sibling list containing before_id (or original parent if None → end of that list hard).
+    // Simpler: find parent of before_id, or if None use parent we had — we already took item.
+    // Insert into target list.
+    if let Some(before) = before_id {
+        if let Some(siblings) = find_sibling_list_mut(collections, before) {
+            if let Some(pos) = siblings.iter().position(|i| i.id() == before) {
+                siblings.insert(pos, item);
+                rekey_sort(siblings);
+                return true;
+            }
+        }
+        // before not found — put back at collection root
+        if let Some(col) = collections.first_mut() {
+            col.items.push(item);
+            rekey_sort(&mut col.items);
+            return true;
+        }
+        return false;
+    }
+    // before_id None: append to first collection (caller should pass parent via before of last sibling)
+    if let Some(col) = collections.first_mut() {
+        col.items.push(item);
+        rekey_sort(&mut col.items);
+        true
+    } else {
+        false
+    }
+}
+
+/// Move item to index within its current parent (sibling reorder).
+pub fn reorder_within_parent(
+    collections: &mut [Collection],
+    item_id: Uuid,
+    new_index: usize,
+) -> bool {
+    let parent = parent_of(collections, item_id);
+    let Some(item) = take_item(collections, item_id) else {
+        return false;
+    };
+    let parent_id = parent.unwrap_or_else(|| collections.first().map(|c| c.id).unwrap_or(item_id));
+    match try_insert_item_under_at(collections, parent_id, item, new_index) {
+        Ok(()) => true,
+        Err(orphaned) => {
+            if let Some(col) = collections.first_mut() {
+                col.items.push(orphaned);
+            }
+            false
+        }
+    }
+}
+
+fn rekey_sort(items: &mut [CollectionItem]) {
+    for (i, item) in items.iter_mut().enumerate() {
+        let key = i as i64;
+        match item {
+            CollectionItem::Folder(f) => f.sort_key = key,
+            CollectionItem::Request(r) => r.sort_key = key,
+        }
+    }
+}
+
+fn find_sibling_list_mut(
+    collections: &mut [Collection],
+    item_id: Uuid,
+) -> Option<&mut Vec<CollectionItem>> {
+    for col in collections.iter_mut() {
+        if col.items.iter().any(|i| i.id() == item_id) {
+            return Some(&mut col.items);
+        }
+        if let Some(list) = find_sibling_list_in_items(&mut col.items, item_id) {
+            return Some(list);
+        }
+    }
+    None
+}
+
+fn find_sibling_list_in_items(
+    items: &mut Vec<CollectionItem>,
+    item_id: Uuid,
+) -> Option<&mut Vec<CollectionItem>> {
+    let mut path = Vec::new();
+    if !sibling_path(items, item_id, &mut path) {
+        return None;
+    }
+    let mut cur: &mut Vec<CollectionItem> = items;
+    for (depth, &idx) in path.iter().enumerate() {
+        if depth + 1 == path.len() {
+            // last index is the folder whose `.items` contains the target
+            let CollectionItem::Folder(f) = &mut cur[idx] else {
+                return None;
+            };
+            return Some(&mut f.items);
+        }
+        let CollectionItem::Folder(f) = &mut cur[idx] else {
+            return None;
+        };
+        cur = &mut f.items;
+    }
+    None
+}
+
+/// Path of folder indices from `items` root to the folder that directly contains `item_id`.
+fn sibling_path(items: &[CollectionItem], item_id: Uuid, path: &mut Vec<usize>) -> bool {
+    for (i, item) in items.iter().enumerate() {
+        if let CollectionItem::Folder(f) = item {
+            if f.items.iter().any(|x| x.id() == item_id) {
+                path.push(i);
+                return true;
+            }
+            path.push(i);
+            if sibling_path(&f.items, item_id, path) {
+                return true;
+            }
+            path.pop();
+        }
+    }
+    false
+}
+
+fn try_insert_item_under_at(
+    collections: &mut [Collection],
+    parent_id: Uuid,
+    item: CollectionItem,
+    index: usize,
+) -> Result<(), CollectionItem> {
+    for col in collections.iter_mut() {
+        if col.id == parent_id {
+            let idx = index.min(col.items.len());
+            col.items.insert(idx, item);
+            rekey_sort(&mut col.items);
+            return Ok(());
+        }
+    }
+    let mut pending = Some(item);
+    for col in collections.iter_mut() {
+        if let Some(it) = pending.take() {
+            match try_insert_under_items_at(&mut col.items, parent_id, it, index) {
+                Ok(()) => return Ok(()),
+                Err(back) => pending = Some(back),
+            }
+        }
+    }
+    Err(pending.expect("item"))
+}
+
+fn try_insert_under_items_at(
+    items: &mut Vec<CollectionItem>,
+    parent_id: Uuid,
+    item: CollectionItem,
+    index: usize,
+) -> Result<(), CollectionItem> {
+    for existing in items.iter_mut() {
+        if let CollectionItem::Folder(f) = existing {
+            if f.id == parent_id {
+                let idx = index.min(f.items.len());
+                f.items.insert(idx, item);
+                rekey_sort(&mut f.items);
+                return Ok(());
+            }
+        }
+    }
+    let mut pending = Some(item);
+    for existing in items.iter_mut() {
+        if let CollectionItem::Folder(f) = existing {
+            if let Some(it) = pending.take() {
+                match try_insert_under_items_at(&mut f.items, parent_id, it, index) {
+                    Ok(()) => return Ok(()),
+                    Err(back) => pending = Some(back),
+                }
+            }
+        }
+    }
+    Err(pending.expect("item"))
+}
+
+/// Filter tree rows whose name contains `query` (case-insensitive), keeping ancestors.
+pub fn filter_tree_rows(rows: Vec<TreeRow>, query: &str) -> Vec<TreeRow> {
+    let q = query.trim().to_ascii_lowercase();
+    if q.is_empty() {
+        return rows;
+    }
+    let match_ids: std::collections::HashSet<Uuid> = rows
+        .iter()
+        .filter(|r| r.name.to_ascii_lowercase().contains(&q))
+        .map(|r| r.id)
+        .collect();
+    // Keep matching rows + all ancestors
+    let mut keep = match_ids.clone();
+    for r in &rows {
+        if match_ids.contains(&r.id) {
+            let mut pid = r.parent_id;
+            while let Some(p) = pid {
+                keep.insert(p);
+                pid = rows.iter().find(|x| x.id == p).and_then(|x| x.parent_id);
+            }
+            keep.insert(r.collection_id);
+        }
+    }
+    rows.into_iter().filter(|r| keep.contains(&r.id)).collect()
 }
 
 /// Walk all collections into indented rows for the sidebar tree.

@@ -20,6 +20,8 @@ pub struct SandboxOutcome {
     pub tests: Vec<TestResult>,
     pub error: Option<String>,
     pub execution: SandboxExecution,
+    /// HTML from `pm.visualizer.set(template, data)`.
+    pub visualizer_html: String,
 }
 
 /// Response snapshot injected into `pm.response`.
@@ -200,6 +202,29 @@ var pm = {{
       cb(err, res);
     }}
     return res;
+  }},
+  visualizer: {{
+    set: function(template, data) {{
+      var tpl = String(template || "");
+      var html = tpl;
+      if (data !== undefined && data !== null) {{
+        try {{
+          var json = typeof data === "string" ? data : JSON.stringify(data);
+          html = tpl.split("{{{{data}}}}").join(json);
+          // naive {{key}} replacement from object
+          if (typeof data === "object") {{
+            for (var k in data) {{
+              if (Object.prototype.hasOwnProperty.call(data, k)) {{
+                html = html.split("{{{{" + k + "}}}}").join(String(data[k]));
+              }}
+            }}
+          }}
+        }} catch (e) {{
+          html = tpl + "<!-- visualizer data error -->";
+        }}
+      }}
+      __np.visualizerHtml = html;
+    }}
   }}
 }};
 pm.expect = function(actual) {{
@@ -398,6 +423,7 @@ fn build_bridge_json(
             extras.iteration_data_json.clone()
         },
         "execution": { "nextRequest": null, "skipRequest": false },
+        "visualizerHtml": "",
     })
 }
 
@@ -488,6 +514,12 @@ fn apply_bridge(json_str: &str, ctx: &mut VariableContext, out: &mut SandboxOutc
             .get("skipRequest")
             .and_then(|b| b.as_bool())
             .unwrap_or(false);
+    }
+
+    if let Some(html) = v.get("visualizerHtml").and_then(|h| h.as_str()) {
+        if !html.is_empty() {
+            out.visualizer_html = html.to_string();
+        }
     }
 }
 

@@ -4,13 +4,23 @@
 use super::request::{AuthType, BodyMode, RequestDraft};
 
 pub fn snippet_languages() -> &'static [&'static str] {
-    &["cURL", "JavaScript fetch", "Python requests"]
+    &[
+        "cURL",
+        "JavaScript fetch",
+        "Python requests",
+        "Java OkHttp",
+        "Go net/http",
+        "C# HttpClient",
+    ]
 }
 
 pub fn generate_snippet(lang: &str, draft: &RequestDraft) -> String {
     match lang {
         "JavaScript fetch" => js_fetch(draft),
         "Python requests" => python_requests(draft),
+        "Java OkHttp" => java_okhttp(draft),
+        "Go net/http" => go_nethttp(draft),
+        "C# HttpClient" => csharp_httpclient(draft),
         _ => curl(draft),
     }
 }
@@ -81,6 +91,7 @@ fn body_payload(draft: &RequestDraft) -> Option<String> {
             Some(s)
         }
         BodyMode::FormData => Some("(multipart form-data — see UI)".into()),
+        BodyMode::Binary => Some(format!("@{}", draft.binary_path)),
     }
 }
 
@@ -151,6 +162,103 @@ fn js_fetch(draft: &RequestDraft) -> String {
         "fetch(\"{}\", {{\n  method: \"{}\",\n  headers: {headers}{body}\n}});",
         url_with_params(draft),
         draft.method.as_str()
+    )
+}
+
+fn java_okhttp(draft: &RequestDraft) -> String {
+    let mut hdrs = String::new();
+    for (k, v) in enabled_headers(draft) {
+        hdrs.push_str(&format!(
+            "    .addHeader(\"{}\", \"{}\")\n",
+            k,
+            v.replace('"', "\\\"")
+        ));
+    }
+    if let Some((k, v)) = auth_header(draft) {
+        hdrs.push_str(&format!(
+            "    .addHeader(\"{k}\", \"{}\")\n",
+            v.replace('"', "\\\"")
+        ));
+    }
+    let body = body_payload(draft)
+        .map(|b| {
+            format!(
+                "RequestBody body = RequestBody.create(\"{}\", MediaType.parse(\"application/json\"));\n",
+                b.replace('\\', "\\\\").replace('"', "\\\"")
+            )
+        })
+        .unwrap_or_default();
+    let body_arg = if body.is_empty() {
+        "null"
+    } else {
+        "body"
+    };
+    format!(
+        "OkHttpClient client = new OkHttpClient();\n{body}\
+Request request = new Request.Builder()\n    .url(\"{}\")\n    .method(\"{}\", {body_arg})\n{hdrs}    .build();\n\
+try (Response response = client.newCall(request).execute()) {{\n    System.out.println(response.body().string());\n}}",
+        url_with_params(draft),
+        draft.method.as_str(),
+    )
+}
+
+fn go_nethttp(draft: &RequestDraft) -> String {
+    let mut hdrs = String::new();
+    for (k, v) in enabled_headers(draft) {
+        hdrs.push_str(&format!(
+            "\treq.Header.Set(\"{k}\", \"{}\")\n",
+            v.replace('"', "\\\"")
+        ));
+    }
+    if let Some((k, v)) = auth_header(draft) {
+        hdrs.push_str(&format!(
+            "\treq.Header.Set(\"{k}\", \"{}\")\n",
+            v.replace('"', "\\\"")
+        ));
+    }
+    let body = body_payload(draft)
+        .map(|b| format!("strings.NewReader(`{b}`)"))
+        .unwrap_or_else(|| "nil".into());
+    format!(
+        "package main\n\nimport (\n\t\"fmt\"\n\t\"io\"\n\t\"net/http\"\n\t\"strings\"\n)\n\nfunc main() {{\n\tbody := {body}\n\treq, _ := http.NewRequest(\"{}\", \"{}\", body)\n{hdrs}\tres, err := http.DefaultClient.Do(req)\n\tif err != nil {{ panic(err) }}\n\tdefer res.Body.Close()\n\tb, _ := io.ReadAll(res.Body)\n\tfmt.Println(res.Status, string(b))\n}}",
+        draft.method.as_str(),
+        url_with_params(draft),
+    )
+}
+
+fn csharp_httpclient(draft: &RequestDraft) -> String {
+    let mut hdrs = String::new();
+    for (k, v) in enabled_headers(draft) {
+        hdrs.push_str(&format!(
+            "client.DefaultRequestHeaders.TryAddWithoutValidation(\"{k}\", \"{}\");\n",
+            v.replace('"', "\\\"")
+        ));
+    }
+    if let Some((k, v)) = auth_header(draft) {
+        hdrs.push_str(&format!(
+            "client.DefaultRequestHeaders.TryAddWithoutValidation(\"{k}\", \"{}\");\n",
+            v.replace('"', "\\\"")
+        ));
+    }
+    let body = body_payload(draft).unwrap_or_default();
+    format!(
+        "using var client = new HttpClient();\n{hdrs}var content = new StringContent(@\"{body}\", System.Text.Encoding.UTF8, \"application/json\");\nvar response = await client.{method}Async(\"{url}\"{content_arg});\nConsole.WriteLine(await response.Content.ReadAsStringAsync());",
+        method = match draft.method {
+            crate::core::request::HttpMethod::Post => "Post",
+            crate::core::request::HttpMethod::Put => "Put",
+            crate::core::request::HttpMethod::Delete => "Delete",
+            _ => "Get",
+        },
+        url = url_with_params(draft),
+        content_arg = if matches!(
+            draft.method,
+            crate::core::request::HttpMethod::Get | crate::core::request::HttpMethod::Head
+        ) {
+            ""
+        } else {
+            ", content"
+        },
+        body = body.replace('"', "\"\""),
     )
 }
 

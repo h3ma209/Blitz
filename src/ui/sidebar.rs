@@ -4,7 +4,8 @@ use dioxus::prelude::*;
 use uuid::Uuid;
 
 use crate::core::{
-    flatten_collections_filtered, Collection, HistoryEntry, HttpMethod, TreeRowKind,
+    filter_tree_rows, flatten_collections_filtered, Collection, HistoryEntry, HttpMethod,
+    TreeRowKind,
 };
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -84,8 +85,12 @@ pub fn Sidebar(
     let mut ctx_menu = use_signal(|| None::<ContextMenuState>);
     let mut renaming_id = use_signal(|| None::<Uuid>);
     let mut rename_draft = use_signal(String::new);
+    let mut search = use_signal(String::new);
 
-    let rows = flatten_collections_filtered(&collections, &collapsed());
+    let rows = {
+        let flat = flatten_collections_filtered(&collections, &collapsed());
+        filter_tree_rows(flat, &search())
+    };
     let empty = collections.is_empty();
 
     let dismiss_menu = move |_| {
@@ -169,6 +174,13 @@ pub fn Sidebar(
                         "+"
                     }
                 }
+            }
+            input {
+                class: "sidebar-search",
+                r#type: "search",
+                placeholder: "Search collections…",
+                value: "{search}",
+                oninput: move |evt: Event<FormData>| search.set(evt.value()),
             }
 
             if empty {
@@ -366,7 +378,11 @@ pub fn Sidebar(
                                             },
                                             "{glyph}"
                                         }
-                                        if let TreeRowKind::Request { method } = kind {
+                                        if is_col {
+                                            span { class: "kind-badge kind-collection", "Col" }
+                                        } else if is_folder {
+                                            span { class: "kind-badge kind-folder", "Folder" }
+                                        } else if let TreeRowKind::Request { method } = kind {
                                             span { class: "method-badge method-{method_class(method)}",
                                                 "{method.as_str()}"
                                             }
@@ -564,6 +580,11 @@ pub fn Sidebar(
                                 .status
                                 .map(|s| s.to_string())
                                 .unwrap_or_else(|| "—".into());
+                            let status_cls = match entry.status {
+                                Some(s) if (200..400).contains(&s) => "history-status status-ok",
+                                Some(_) => "history-status status-err",
+                                None => "history-status status-pending",
+                            };
                             let when = entry.at.format("%H:%M:%S").to_string();
                             rsx! {
                                 div { class: "history-row",
@@ -578,7 +599,7 @@ pub fn Sidebar(
                                         span { class: "method-badge method-{method_class(method)}",
                                             "{method.as_str()}"
                                         }
-                                        span { class: "history-status", "{status}" }
+                                        span { class: "{status_cls}", "{status}" }
                                         span { class: "tree-label", "{url}" }
                                         span { class: "history-time", "{when}" }
                                     }
@@ -897,6 +918,7 @@ fn method_class(m: HttpMethod) -> &'static str {
         HttpMethod::Put => "put",
         HttpMethod::Patch => "patch",
         HttpMethod::Delete => "delete",
-        HttpMethod::Head | HttpMethod::Options => "get",
+        HttpMethod::Head => "head",
+        HttpMethod::Options => "options",
     }
 }

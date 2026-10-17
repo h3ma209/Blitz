@@ -26,6 +26,7 @@ Architecture reverse-engineering of `/Applications/Postman.app` (v **12.32.4**) 
 | 11r | [11-docs-gap-refresh/re-notes.md](11-docs-gap-refresh/re-notes.md) | Targeted RE: OAuth2, codegen, mock matching, script inheritance |
 | 12 | [12-contents-grab/inventory.md](12-contents-grab/inventory.md) | **Contents grab** — MacOS/Resources/ASAR protocols vs notPostman |
 | 12s | [12-contents-grab/app-shipped.md](12-contents-grab/app-shipped.md) | Phase B ship checklist (WS/gRPC/MQTT/MCP/proxy/perf) |
+| 13 | [13-remaining-gaps/remaining-gaps.md](13-remaining-gaps/remaining-gaps.md) | **Still missing** vs Postman (local grab vs cloud) |
 
 ## Target
 

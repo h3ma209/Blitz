@@ -8,11 +8,13 @@ use reqwest::header::{HeaderMap, HeaderName, HeaderValue};
 use reqwest::redirect::Policy;
 use thiserror::Error;
 
+use crate::core::auth_extra::{auth_type_label, inject_extra_auth};
+use crate::core::pkcs12_util::load_client_identity_pem;
 use crate::core::{
     build_digest_authorization, digest_uri, run_script_ex, AuthConfig, AuthType, BodyMode,
     CookieJar, DigestChallenge, FormDataField, HttpMethod, KeyValue, RequestDraft, RequestSettings,
-    ResponseView, SandboxExtras, SandboxResponse, TestResult, VariableContext, AppSettings,
-    ProxyMode,
+    ResponseView, SandboxExtras, SandboxResponse, TestResult, TimingBreakdown, VariableContext,
+    AppSettings, ProxyMode,
 };
 use crate::runtime::postman_defaults::{
     inject_postman_system_headers, prepare_raw_body_for_send,
@@ -91,12 +93,17 @@ fn resolve_draft(
     out.params = resolve_kv(&draft.params);
     out.headers = resolve_kv(&draft.headers);
     out.body = resolve(&draft.body);
+    out.binary_path = resolve(&draft.binary_path);
     out.body_urlencoded = resolve_kv(&draft.body_urlencoded);
     out.body_formdata = resolve_fd(&draft.body_formdata);
     out.auth.token = resolve(&draft.auth.token);
     out.auth.username = resolve(&draft.auth.username);
     out.auth.password = resolve(&draft.auth.password);
     out.auth.api_key_header = resolve(&draft.auth.api_key_header);
+    out.auth.extra.key = resolve(&draft.auth.extra.key);
+    out.auth.extra.secret = resolve(&draft.auth.extra.secret);
+    out.auth.extra.token = resolve(&draft.auth.extra.token);
+    out.auth.extra.token_secret = resolve(&draft.auth.extra.token_secret);
     out
 }
 
@@ -156,15 +163,7 @@ fn resolve_inherit_auth(
 }
 
 fn auth_label(t: AuthType) -> &'static str {
-    match t {
-        AuthType::NoAuth => "noauth",
-        AuthType::Inherit => "inherit",
-        AuthType::Bearer => "bearer",
-        AuthType::Basic => "basic",
-        AuthType::ApiKey => "apikey",
-        AuthType::Digest => "digest",
-        AuthType::Oauth2 => "oauth2",
-    }
+    auth_type_label(t)
 }
 
 /// Inject auth headers (Basic / Bearer / API Key). Digest handled at HTTP layer.
@@ -225,6 +224,13 @@ fn inject_auth(draft: &mut RequestDraft, log: &mut Vec<String>) {
             } else {
                 log.push("auth: oauth2 skipped (empty access_token — use Get Token)".into());
             }
+        }
+        AuthType::Oauth1
+        | AuthType::Hawk
+        | AuthType::Ntlm
+        | AuthType::AwsSigV4
+        | AuthType::EdgeGrid => {
+            inject_extra_auth(draft, log);
         }
     }
 }
@@ -398,26 +404,23 @@ fn build_client(
             }
         }
 
-        // Client cert — PEM identity when path set + enabled
+        // Client cert — PEM or PKCS#12 (via openssl conversion)
         if app.client_cert.enabled && !app.client_cert.cert_path.trim().is_empty() {
             let path = app.client_cert.cert_path.trim();
-            match fs::read(path) {
+            match load_client_identity_pem(path, &app.client_cert.passphrase) {
                 Ok(pem) => match reqwest::Identity::from_pem(&pem) {
                     Ok(id) => {
                         builder = builder.identity(id);
-                        log.push(format!("client-cert: loaded PEM {path}"));
+                        log.push(format!("client-cert: loaded {path}"));
                     }
                     Err(e) => {
-                        let hint = if path.ends_with(".p12") || path.ends_with(".pfx") {
-                            "PKCS#12 not supported with rustls identity — convert to PEM (cert+key)"
-                        } else {
-                            "expected PEM (certificate + private key)"
-                        };
-                        log.push(format!("client-cert: identity failed ({e}) — {hint}"));
+                        log.push(format!(
+                            "client-cert: identity failed ({e}) — need PEM cert+key"
+                        ));
                     }
                 },
                 Err(e) => {
-                    log.push(format!("client-cert: read failed {path}: {e}"));
+                    log.push(format!("client-cert: {e}"));
                 }
             }
         } else if !app.client_cert.cert_path.trim().is_empty() {
@@ -603,6 +606,8 @@ pub fn send_request_with_options(
             console_messages: console,
             test_results: vec![],
             resolved_url: String::new(),
+            timing: TimingBreakdown::default(),
+            visualizer_html: String::new(),
         });
     }
 
@@ -691,6 +696,28 @@ pub fn send_request_with_options(
                 log.push("body: urlencoded".into());
             }
         }
+        BodyMode::Binary => {
+            let path = resolved.binary_path.trim();
+            if path.is_empty() {
+                log.push("body: binary skipped (empty path)".into());
+            } else {
+                match fs::read(path) {
+                    Ok(bytes) => {
+                        log.push(format!("body: binary {} bytes from {path}", bytes.len()));
+                        body_bytes = Some(bytes);
+                        if !has_header(&resolved, "Content-Type") {
+                            resolved.headers.push(KeyValue::new(
+                                "Content-Type",
+                                "application/octet-stream",
+                            ));
+                        }
+                    }
+                    Err(e) => {
+                        log.push(format!("body: binary read failed {path}: {e}"));
+                    }
+                }
+            }
+        }
     }
 
     // 5. HTTP client
@@ -721,10 +748,12 @@ pub fn send_request_with_options(
     };
 
     let started = Instant::now();
+    let ttfb_mark = Instant::now();
     let mut response = {
         let builder = client.request(method.clone(), &url).headers(headers.clone());
         attach_body(builder, &resolved.body_formdata, &body_bytes, &mut log)?.send()?
     };
+    let ttfb_ms = ttfb_mark.elapsed().as_millis();
 
     // Digest challenge/response
     if resolved.auth.auth_type == AuthType::Digest && response.status().as_u16() == 401 {
@@ -796,11 +825,26 @@ pub fn send_request_with_options(
     }
 
     let body = response.text().unwrap_or_default();
+    let download_ms = started.elapsed().as_millis().saturating_sub(ttfb_ms);
     log.push(format!("http: {status} in {elapsed_ms}ms"));
     console.push(format!(
         "← {status} {status_text} ({elapsed_ms} ms, {} bytes)",
         body.len()
     ));
+
+    // Approximate timing waterfall (reqwest blocking lacks fine DNS/connect hooks).
+    let timing = TimingBreakdown {
+        dns_ms: (ttfb_ms / 10).min(30),
+        connect_ms: (ttfb_ms / 5).min(80),
+        tls_ms: if url.starts_with("https") {
+            (ttfb_ms / 4).min(100)
+        } else {
+            0
+        },
+        ttfb_ms,
+        download_ms,
+        total_ms: elapsed_ms,
+    };
 
     // 6. Post-response / tests: request → folder → collection
     let sandbox_resp = SandboxResponse {
@@ -810,6 +854,7 @@ pub fn send_request_with_options(
         headers: resp_headers.clone(),
     };
     let mut test_results: Vec<TestResult> = Vec::new();
+    let mut visualizer_html = String::new();
     let mut run_post = |script: &str, phase: &str| {
         let tests = run_script_ex(script, phase, &mut ctx, Some(&sandbox_resp), &extras);
         log.extend(tests.messages.iter().cloned());
@@ -818,6 +863,9 @@ pub fn send_request_with_options(
             log.push(err);
         }
         test_results.extend(tests.tests);
+        if !tests.visualizer_html.is_empty() {
+            visualizer_html = tests.visualizer_html;
+        }
         if let Some(h) = opts.execution.as_mut() {
             if tests.execution.skip_request {
                 h.skip_request = true;
@@ -832,6 +880,14 @@ pub fn send_request_with_options(
         run_post(script, &format!("tests/inherited-{i}"));
     }
 
+    // Fallback visualizer: raw HTML response
+    if visualizer_html.is_empty() {
+        let t = body.trim_start().to_ascii_lowercase();
+        if t.starts_with("<!doctype html") || t.starts_with("<html") {
+            visualizer_html = body.clone();
+        }
+    }
+
     Ok(ResponseView {
         status,
         status_text,
@@ -843,6 +899,8 @@ pub fn send_request_with_options(
         console_messages: console,
         test_results,
         resolved_url: url,
+        timing,
+        visualizer_html,
     })
 }
 

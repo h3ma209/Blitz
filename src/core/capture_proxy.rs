@@ -46,7 +46,14 @@ impl CaptureProxyHandle {
     }
 }
 
-/// Bind `127.0.0.1:port` (0 = ephemeral). Absolute-form HTTP proxy only (no CONNECT MITM).
+/// Limits of the capture / interceptor proxy (shown in UI).
+pub fn interceptor_limits_blurb() -> &'static str {
+    "Capture proxy: HTTP absolute-form logged + forwarded. CONNECT tunnels TLS bytes \
+     (no MITM decrypt on macOS without installing a local CA into the trust store). \
+     Browser Interceptor bridge is not shipped — point browser HTTP proxy here for plaintext only."
+}
+
+/// Bind `127.0.0.1:port` (0 = ephemeral). HTTP absolute-form + CONNECT tunnel (no MITM decrypt).
 pub fn start_capture_proxy(port: u16) -> Result<CaptureProxyHandle, String> {
     let listener = TcpListener::bind(("127.0.0.1", port)).map_err(|e| e.to_string())?;
     listener.set_nonblocking(true).map_err(|e| e.to_string())?;
@@ -103,19 +110,37 @@ fn handle_client(mut client: TcpStream, log: Arc<Mutex<Vec<CapturedRequest>>>) {
     let target = parts[1].to_string();
 
     if method.eq_ignore_ascii_case("CONNECT") {
-        let _ = client.write_all(b"HTTP/1.1 502 Bad Gateway\r\nContent-Length: 0\r\n\r\n");
-        push(
-            &log,
-            CapturedRequest {
-                id: Uuid::new_v4(),
-                method,
-                url: target,
-                status: Some(502),
-                elapsed_ms: Some(0),
-                at: Utc::now().to_rfc3339(),
-                error: Some("CONNECT/TLS MITM not supported".into()),
-            },
-        );
+        // Blind tunnel — no TLS MITM (macOS trust-store install required for decrypt).
+        let started = Instant::now();
+        match connect_tunnel(&mut client, &target) {
+            Ok(()) => push(
+                &log,
+                CapturedRequest {
+                    id: Uuid::new_v4(),
+                    method,
+                    url: format!("CONNECT {target}"),
+                    status: Some(200),
+                    elapsed_ms: Some(started.elapsed().as_millis()),
+                    at: Utc::now().to_rfc3339(),
+                    error: Some("tunneled (encrypted; no MITM)".into()),
+                },
+            ),
+            Err(e) => {
+                let _ = client.write_all(b"HTTP/1.1 502 Bad Gateway\r\nContent-Length: 0\r\n\r\n");
+                push(
+                    &log,
+                    CapturedRequest {
+                        id: Uuid::new_v4(),
+                        method,
+                        url: target,
+                        status: Some(502),
+                        elapsed_ms: Some(started.elapsed().as_millis()),
+                        at: Utc::now().to_rfc3339(),
+                        error: Some(format!("CONNECT tunnel failed: {e}")),
+                    },
+                );
+            }
+        }
         return;
     }
 
@@ -170,6 +195,49 @@ fn handle_client(mut client: TcpStream, log: Arc<Mutex<Vec<CapturedRequest>>>) {
         }
     }
     let _ = client.shutdown(Shutdown::Both);
+}
+
+/// CONNECT: reply 200 then bidirectional copy until EOF.
+fn connect_tunnel(client: &mut TcpStream, host_port: &str) -> Result<(), String> {
+    let mut upstream = TcpStream::connect(host_port).map_err(|e| e.to_string())?;
+    client
+        .write_all(b"HTTP/1.1 200 Connection Established\r\n\r\n")
+        .map_err(|e| e.to_string())?;
+    let _ = client.set_nonblocking(true);
+    let _ = upstream.set_nonblocking(true);
+    let mut cbuf = [0u8; 16384];
+    let mut ubuf = [0u8; 16384];
+    let deadline = Instant::now() + std::time::Duration::from_secs(120);
+    loop {
+        if Instant::now() > deadline {
+            break;
+        }
+        let mut progress = false;
+        match client.read(&mut cbuf) {
+            Ok(0) => break,
+            Ok(n) => {
+                progress = true;
+                upstream.write_all(&cbuf[..n]).map_err(|e| e.to_string())?;
+            }
+            Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {}
+            Err(_) => break,
+        }
+        match upstream.read(&mut ubuf) {
+            Ok(0) => break,
+            Ok(n) => {
+                progress = true;
+                client.write_all(&ubuf[..n]).map_err(|e| e.to_string())?;
+            }
+            Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {}
+            Err(_) => break,
+        }
+        if !progress {
+            thread::sleep(std::time::Duration::from_millis(5));
+        }
+    }
+    let _ = client.shutdown(Shutdown::Both);
+    let _ = upstream.shutdown(Shutdown::Both);
+    Ok(())
 }
 
 fn forward_http(url: &str, method: &str, original: &[u8]) -> Result<(u16, Vec<u8>), String> {

@@ -239,6 +239,34 @@ fn value_to_json(v: &Value) -> JsonValue {
     }
 }
 
+/// Server-streaming stub: sends unary request, reads multiple gRPC frames from response body.
+/// Full client/bidi streaming + reflection require `.proto` / tonic — documented gap.
+pub fn grpc_server_stream_stub(
+    endpoint: &str,
+    method: &str,
+    json_body: &str,
+    max_frames: usize,
+) -> GrpcUnaryResult {
+    let mut result = grpc_unary(endpoint, method, json_body);
+    result.log.push(format!(
+        "grpc: server-stream stub (max_frames={max_frames}) — parsed first frame only; use unary for Struct APIs"
+    ));
+    result.log.push(
+        "grpc: reflection / .proto / client+bidi streaming not wired (need tonic+prost codegen)"
+            .into(),
+    );
+    result
+}
+
+/// List reflection services — stub message until tonic-reflection client lands.
+pub fn grpc_reflection_list(endpoint: &str) -> Vec<String> {
+    vec![
+        format!("grpc reflection: endpoint={endpoint}"),
+        "grpc reflection: not implemented — load .proto manually or use unary Struct".into(),
+        "hint: set method to package.Service/Method and POST JSON as google.protobuf.Struct".into(),
+    ]
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

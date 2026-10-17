@@ -1,9 +1,9 @@
-//! Postman Collection v2.1 import / export (best-effort subset).
+//! Postman Collection v2.1 / env / HAR / OpenAPI import / export (best-effort subset).
 //!
 //! **Supported:** info.name, item[] (folder/request), request.method/url/header/body/auth,
-//! event scripts (prerequest / test).
-//! **Not supported:** proto/gRPC, GraphQL as first-class, OAuth2 flows, responses examples,
-//! collection variables beyond flat key/value, description rich text.
+//! event scripts (prerequest / test), collection `variable`, Postman env JSON, HAR entries,
+//! OpenAPI 3 JSON + YAML happy-path.
+//! **Not supported:** proto/gRPC full, RAML/WSDL, rich description HTML.
 
 use serde_json::{json, Value};
 use uuid::Uuid;
@@ -51,6 +51,25 @@ pub fn import_collection_v21(text: &str) -> Result<Collection, ImpexError> {
     col.description = description;
     col.items = items;
     col.auth = import_auth(root.get("auth"));
+    if let Some(vars) = root.get("variable").and_then(|v| v.as_array()) {
+        col.variables = vars
+            .iter()
+            .filter_map(|v| {
+                let key = v.get("key")?.as_str()?.to_string();
+                let value = v
+                    .get("value")
+                    .and_then(|x| x.as_str())
+                    .unwrap_or("")
+                    .to_string();
+                let disabled = v.get("disabled").and_then(|d| d.as_bool()).unwrap_or(false);
+                Some(KeyValue {
+                    key,
+                    value,
+                    enabled: !disabled,
+                })
+            })
+            .collect();
+    }
     Ok(col)
 }
 
@@ -83,6 +102,13 @@ fn import_request(item: &Value) -> Result<RequestDraft, ImpexError> {
         .get("name")
         .and_then(|v| v.as_str())
         .unwrap_or("Request")
+        .to_string();
+    draft.description = item
+        .get("request")
+        .and_then(|r| r.get("description"))
+        .and_then(|d| d.as_str())
+        .or_else(|| item.get("description").and_then(|d| d.as_str()))
+        .unwrap_or("")
         .to_string();
 
     let req = item
@@ -162,6 +188,15 @@ fn import_request(item: &Value) -> Result<RequestDraft, ImpexError> {
             "formdata" => {
                 draft.body_mode = BodyMode::FormData;
                 draft.body = String::new();
+            }
+            "file" | "binary" => {
+                draft.body_mode = BodyMode::Binary;
+                draft.binary_path = body
+                    .get("file")
+                    .or_else(|| body.get("src"))
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string();
             }
             _ => {
                 draft.body_mode = BodyMode::None;
@@ -302,6 +337,18 @@ fn parse_method(s: &str) -> HttpMethod {
 
 /// Export a [`Collection`] as Postman Collection v2.1 JSON text.
 pub fn export_collection_v21(col: &Collection) -> Result<String, ImpexError> {
+    let variables: Vec<Value> = col
+        .variables
+        .iter()
+        .filter(|v| !v.key.is_empty())
+        .map(|v| {
+            json!({
+                "key": v.key,
+                "value": v.value,
+                "disabled": !v.enabled,
+            })
+        })
+        .collect();
     let doc = json!({
         "info": {
             "name": col.name,
@@ -310,6 +357,7 @@ pub fn export_collection_v21(col: &Collection) -> Result<String, ImpexError> {
             "_postman_id": col.id.to_string(),
         },
         "auth": export_auth(&col.auth),
+        "variable": variables,
         "item": export_items(&col.items),
     });
     serde_json::to_string_pretty(&doc).map_err(|e| ImpexError::Json(e.to_string()))
@@ -364,6 +412,12 @@ fn export_request(r: &RequestDraft) -> Value {
                 }
             });
         }
+        BodyMode::Binary => {
+            body = json!({
+                "mode": "file",
+                "src": r.binary_path,
+            });
+        }
     }
 
     let headers: Vec<Value> = r
@@ -407,6 +461,7 @@ fn export_request(r: &RequestDraft) -> Value {
             "body": body,
             "url": r.url,
             "auth": export_auth(&r.auth),
+            "description": r.description,
         },
         "event": events,
     })
@@ -449,13 +504,18 @@ fn export_auth(auth: &AuthConfig) -> Value {
                 { "key": "tokenUrl", "value": auth.oauth2.token_url, "type": "string" },
             ]
         }),
+        AuthType::Oauth1 => json!({ "type": "oauth1" }),
+        AuthType::Hawk => json!({ "type": "hawk" }),
+        AuthType::Ntlm => json!({ "type": "ntlm" }),
+        AuthType::AwsSigV4 => json!({ "type": "awsv4" }),
+        AuthType::EdgeGrid => json!({ "type": "edgegrid" }),
     }
 }
 
 /// Limitations blurb for UI / README.
 pub fn limitations_blurb() -> &'static str {
-    "Import/export: Postman Collection v2.1 + cURL paste + OpenAPI 3 happy-path. \
-     HTTP requests, folders, bodies, scripts. No gRPC/WS full clients."
+    "Import/export: Postman Collection v2.1 + env JSON + HAR + cURL + OpenAPI 3 JSON/YAML. \
+     HTTP requests, folders, bodies, scripts, collection vars."
 }
 
 /// Bundled Postman Collection v2.1 exports shipped under `exported-postman-jsons/`.
@@ -594,15 +654,24 @@ fn shellish_tokens(s: &str) -> Vec<String> {
     out
 }
 
-/// OpenAPI 3 JSON/YAML-ish (JSON only) → collection with one request per path+method.
+/// Parse OpenAPI root from JSON or YAML text.
+fn parse_openapi_root(text: &str) -> Result<Value, ImpexError> {
+    let trimmed = text.trim_start();
+    if trimmed.starts_with('{') {
+        serde_json::from_str(text).map_err(|e| ImpexError::Json(format!("OpenAPI JSON: {e}")))
+    } else {
+        serde_yaml::from_str(text).map_err(|e| ImpexError::Json(format!("OpenAPI YAML: {e}")))
+    }
+}
+
+/// OpenAPI 3 JSON or YAML → collection with one request per path+method.
 pub fn import_openapi3(text: &str) -> Result<Collection, ImpexError> {
-    let root: Value =
-        serde_json::from_str(text).map_err(|e| ImpexError::Json(format!("OpenAPI JSON: {e}")))?;
+    let root = parse_openapi_root(text)?;
     let openapi = root.get("openapi").and_then(|v| v.as_str()).unwrap_or("");
     if !openapi.starts_with('3') && root.get("swagger").is_none() {
         // still try if paths exist
         if root.get("paths").is_none() {
-            return Err(ImpexError::Unsupported("not OpenAPI 3 JSON".into()));
+            return Err(ImpexError::Unsupported("not OpenAPI 3 JSON/YAML".into()));
         }
     }
     let title = root
@@ -647,6 +716,82 @@ pub fn import_openapi3(text: &str) -> Result<Collection, ImpexError> {
     Ok(col)
 }
 
+/// Import HAR 1.2 log → collection (one request per entry).
+pub fn import_har(text: &str) -> Result<Collection, ImpexError> {
+    let root: Value =
+        serde_json::from_str(text).map_err(|e| ImpexError::Json(format!("HAR: {e}")))?;
+    let entries = root
+        .pointer("/log/entries")
+        .and_then(|v| v.as_array())
+        .ok_or_else(|| ImpexError::Unsupported("not a HAR log (missing log.entries)".into()))?;
+    let mut col = Collection::new("HAR import");
+    for (i, entry) in entries.iter().enumerate() {
+        let req = entry.get("request").ok_or_else(|| {
+            ImpexError::Json(format!("entry {i}: missing request"))
+        })?;
+        let mut draft = RequestDraft::default();
+        draft.name = req
+            .get("url")
+            .and_then(|u| u.as_str())
+            .map(|u| {
+                u.split('?')
+                    .next()
+                    .unwrap_or(u)
+                    .rsplit('/')
+                    .next()
+                    .unwrap_or(u)
+                    .to_string()
+            })
+            .filter(|s| !s.is_empty())
+            .unwrap_or_else(|| format!("entry-{i}"));
+        draft.method = parse_method(req.get("method").and_then(|m| m.as_str()).unwrap_or("GET"));
+        draft.url = req
+            .get("url")
+            .and_then(|u| u.as_str())
+            .unwrap_or("")
+            .to_string();
+        if let Some(headers) = req.get("headers").and_then(|h| h.as_array()) {
+            draft.headers = headers
+                .iter()
+                .filter_map(|h| {
+                    Some(KeyValue::new(
+                        h.get("name")?.as_str()?,
+                        h.get("value").and_then(|v| v.as_str()).unwrap_or(""),
+                    ))
+                })
+                .collect();
+            draft.headers.push(KeyValue::new("", ""));
+        }
+        if let Some(post) = req.get("postData") {
+            let mime = post
+                .get("mimeType")
+                .and_then(|m| m.as_str())
+                .unwrap_or("");
+            let text_body = post
+                .get("text")
+                .and_then(|t| t.as_str())
+                .unwrap_or("")
+                .to_string();
+            if !text_body.is_empty() {
+                draft.body_mode = BodyMode::Raw;
+                draft.body = text_body;
+                if mime.contains("json")
+                    && !draft
+                        .headers
+                        .iter()
+                        .any(|h| h.key.eq_ignore_ascii_case("Content-Type"))
+                {
+                    draft
+                        .headers
+                        .push(KeyValue::new("Content-Type", "application/json"));
+                }
+            }
+        }
+        col.add_request(draft);
+    }
+    Ok(col)
+}
+
 #[cfg(test)]
 mod import_extra_tests {
     use super::*;
@@ -670,6 +815,40 @@ mod import_extra_tests {
         let col = import_openapi3(spec).unwrap();
         assert_eq!(col.name, "Demo");
         assert_eq!(col.items.len(), 2);
+    }
+
+    #[test]
+    fn openapi_yaml() {
+        let spec = r#"
+openapi: "3.0.0"
+info:
+  title: YamlDemo
+servers:
+  - url: https://api.example.com
+paths:
+  /pets:
+    get: {}
+"#;
+        let col = import_openapi3(spec).unwrap();
+        assert_eq!(col.name, "YamlDemo");
+        assert_eq!(col.items.len(), 1);
+    }
+
+    #[test]
+    fn har_entries() {
+        let har = r#"{
+          "log": {
+            "entries": [{
+              "request": {
+                "method": "GET",
+                "url": "https://example.com/api/hello",
+                "headers": [{"name":"Accept","value":"*/*"}]
+              }
+            }]
+          }
+        }"#;
+        let col = import_har(har).unwrap();
+        assert_eq!(col.items.len(), 1);
     }
 }
 
