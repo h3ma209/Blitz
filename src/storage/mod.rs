@@ -1,4 +1,4 @@
-//! Local persistence stub — JSON files under app data dir (no cloud sync).
+//! Local persistence — JSON snapshot under app data dir; optional git cloud sync.
 
 #![allow(unused_imports)]
 

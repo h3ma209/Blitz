@@ -6,8 +6,9 @@ use thiserror::Error;
 use uuid::Uuid;
 
 use crate::core::{
-    bundled_postman_collections, demo_environments, flatten_collections, AppSettings, CookieJar,
-    Environment, HistoryEntry, TreeRowKind, VariableContext, VaultStore,
+    bundled_postman_collections, demo_environments, ensure_default_environments,
+    flatten_collections, AppSettings, CookieJar, Environment, HistoryEntry, TreeRowKind,
+    VariableContext, VaultStore,
 };
 
 #[derive(Debug, Error)]
@@ -104,6 +105,9 @@ impl JsonStore {
                     }
                 }
             }
+        } else {
+            // Always keep Local / Development / Production present (don't wipe others).
+            let _ = ensure_default_environments(&mut snap.environments);
         }
         if snap.active_environment_id.is_none() {
             if !snap.active_environment.is_empty() {

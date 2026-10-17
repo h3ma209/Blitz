@@ -27,6 +27,8 @@ Architecture reverse-engineering of `/Applications/Postman.app` (v **12.32.4**) 
 | 12 | [12-contents-grab/inventory.md](12-contents-grab/inventory.md) | **Contents grab** — MacOS/Resources/ASAR protocols vs notPostman |
 | 12s | [12-contents-grab/app-shipped.md](12-contents-grab/app-shipped.md) | Phase B ship checklist (WS/gRPC/MQTT/MCP/proxy/perf) |
 | 13 | [13-remaining-gaps/remaining-gaps.md](13-remaining-gaps/remaining-gaps.md) | **Still missing** vs Postman (local grab vs cloud) |
+| 14a | [14-cloud-sync-re/postman-cloud-sync.md](14-cloud-sync-re/postman-cloud-sync.md) | **Cloud sync RE** — Bifrost, changesets, identity hosts |
+| 14b | [14-cloud-sync-re/git-team-sync-design.md](14-cloud-sync-re/git-team-sync-design.md) | **notPostman git team sync** design (local-first) |
 
 ## Target
 
@@ -84,3 +86,4 @@ Architecture reverse-engineering of `/Applications/Postman.app` (v **12.32.4**) 
 | `analyze_javascript_application` (sandbox/runner/process-manager) | parent `ev_1928090e472b3d7f11485511165bfd8a5525e92bdf672d5e651b9e9b63b65c16` · view `ev_83bf3a53940a46f8c383ad77804fc098343d3055980bf32ffdcd7dc9b1b958ad` |
 | `analyze_javascript_application` (proxy/perftest/webProxy) | parent `ev_f6e411837034f68b751a4997db2feb6f489aa5e6f497cb99a912dadba3fa918c` · view `ev_f5596f19ce230732fdecff6b12d550134346b55618e45071204694d2d9d9283b` |
 | Offline ASAR extract | `.rea-scratch/re-complete-extract/` |
+| `analyze_javascript_application` (auth/config/sync WP URLs) | parent `ev_a64944ae7e90306d5fce7fd132bde66b97b62c22914f89c2112be519a6c7e52e` · summary `ev_d2087bf28b59d2988f57e97d847aa397b63113d56c95a7b40cdeccb104c979cd` |

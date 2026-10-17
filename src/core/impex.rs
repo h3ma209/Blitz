@@ -97,7 +97,13 @@ fn import_items(val: &Value) -> Result<Vec<CollectionItem>, ImpexError> {
 
 fn import_request(item: &Value) -> Result<RequestDraft, ImpexError> {
     let mut draft = RequestDraft::default();
-    draft.id = Uuid::new_v4();
+    draft.id = item
+        .get("id")
+        .or_else(|| item.get("_postman_id"))
+        .or_else(|| item.get("_evilpostman_id"))
+        .and_then(|v| v.as_str())
+        .and_then(|s| Uuid::parse_str(s).ok())
+        .unwrap_or_else(Uuid::new_v4);
     draft.name = item
         .get("name")
         .and_then(|v| v.as_str())
@@ -454,6 +460,8 @@ fn export_request(r: &RequestDraft) -> Value {
     }
 
     json!({
+        "id": r.id.to_string(),
+        "_postman_id": r.id.to_string(),
         "name": r.name,
         "request": {
             "method": r.method.as_str(),
@@ -465,6 +473,18 @@ fn export_request(r: &RequestDraft) -> Value {
         },
         "event": events,
     })
+}
+
+/// Export a single request as a Postman v2.1 `item` object (for split tree files).
+pub fn export_request_item(r: &RequestDraft) -> Value {
+    export_request(r)
+}
+
+/// Import a single request item JSON (one-file-per-request on disk).
+pub fn import_request_item(text: &str) -> Result<RequestDraft, ImpexError> {
+    let item: Value =
+        serde_json::from_str(text).map_err(|e| ImpexError::Json(e.to_string()))?;
+    import_request(&item)
 }
 
 fn export_auth(auth: &AuthConfig) -> Value {

@@ -465,6 +465,18 @@ body {
   border-color: rgba(78, 161, 255, 0.3);
 }
 
+.live-cloud {
+  color: var(--text-secondary, #b3b3b3);
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.12);
+  text-transform: none;
+  letter-spacing: 0.02em;
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .menu-file {
   position: relative;
 }
@@ -513,6 +525,7 @@ body {
 }
 
 .env-selector-wrap {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 2px;
@@ -522,18 +535,124 @@ body {
   border: var(--glass-border);
 }
 
-.env-select {
+.env-select-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   min-width: 120px;
   max-width: 180px;
   height: 28px;
   padding: 0 8px;
-  border: none !important;
-  background: transparent !important;
-  box-shadow: none !important;
+  border: none;
+  background: transparent;
+  color: var(--white);
   font-size: var(--fs-caption);
   font-weight: 600;
-  color: var(--white);
   cursor: pointer;
+  border-radius: var(--radius-pill);
+}
+
+.env-select-trigger:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.env-select-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+  text-align: left;
+}
+
+.env-select-caret {
+  opacity: 0.55;
+  font-size: 10px;
+}
+
+.env-menu-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+}
+
+.env-menu {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 90;
+  min-width: 220px;
+  max-height: 320px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px;
+  background: rgba(18, 18, 18, 0.94);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  border: var(--glass-border);
+  border-radius: 12px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.45);
+}
+
+.env-menu-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 4px 4px 4px 8px;
+  border-radius: 8px;
+  border: none;
+  background: transparent;
+  color: var(--text, #eee);
+  font-size: var(--fs-caption);
+  cursor: pointer;
+  text-align: left;
+}
+
+button.env-menu-row:hover,
+.env-menu-row:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.env-menu-row-active {
+  background: rgba(29, 185, 84, 0.12);
+}
+
+.env-menu-name,
+.env-menu-name-btn {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  padding: 4px 0;
+}
+
+.env-sync-btn {
+  flex-shrink: 0;
+  height: 24px;
+  padding: 0 10px;
+  border-radius: var(--radius-pill);
+  border: 1px solid rgba(29, 185, 84, 0.35);
+  background: rgba(29, 185, 84, 0.12);
+  color: var(--spot-green-bright, #1db954);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.env-sync-btn:hover {
+  background: rgba(29, 185, 84, 0.22);
+  border-color: rgba(29, 185, 84, 0.55);
 }
 
 .env-selector-wrap .btn-icon {

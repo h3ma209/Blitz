@@ -11,7 +11,7 @@ This document lists what the **app actually does today**: shipped behavior, part
 
 ## 1. Summary
 
-EvilPostman is a single-window desktop workbench for building, sending, scripting, organizing, and locally mocking API traffic. Data lives on disk under the platform data directory (`…/evilpostman/`). Secrets can use the macOS Keychain. There is **no** Postman Cloud account, sync, Agent Mode, Spec Hub, Flows, or billing.
+EvilPostman is a single-window desktop workbench for building, sending, scripting, organizing, and locally mocking API traffic. Data lives on disk under the platform data directory (`…/evilpostman/`). Secrets can use the macOS Keychain. Optional **git cloud sync** pushes collections/envs to a GitHub remote (not Postman Cloud). No Agent Mode, Spec Hub, Flows, or billing.
 
 | Area | Maturity |
 |------|----------|
@@ -23,7 +23,8 @@ EvilPostman is a single-window desktop workbench for building, sending, scriptin
 | Capture proxy | HTTP forward + CONNECT tunnel (no MITM decrypt) |
 | Collections / history / trash | Tree search, sibling reorder, CRUD/DnD |
 | Import / export / snippets / mock | v2.1 + HAR + OpenAPI YAML; Java/Go/C# snippets; mock scenarios |
-| Cloud / AI / Spec Hub / Flows / SSO | Out of scope |
+| Git cloud sync | Optional: save → split tree → commit → push; envs = `env/<slug>` branches |
+| AI / Spec Hub / Flows / SSO / Postman Cloud | Out of scope |
 
 ---
 
@@ -142,9 +143,9 @@ Hover / caret on `{{var}}` in URL (and header/param values) → popover with res
 
 ### 5.2 Environments UI
 
-- List / create environments  
+- Defaults: **Local**, **Development**, **Production** (seeded; extras kept)  
 - Vars with **initial** + **current** values  
-- Activate from top-right selector  
+- Top-right custom menu: click name to select; **Sync** per env when git cloud on  
 - File → Import / Export Postman environment JSON  
 - Persisted in snapshot  
 
@@ -404,14 +405,32 @@ Demo collection/env seeded when snapshot empty.
 
 ---
 
+## 18b. Git cloud sync (optional)
+
+Settings → **Git cloud sync**: enable save → export split tree → `git commit` → `git push`.
+
+| Item | Behavior |
+|------|----------|
+| Canonical remote | `https://github.com/h3ma209/evilpostman-cloud.git` (overridable) |
+| Clone path | `{data_dir}/evilpostman/cloud/` (or custom) |
+| On-disk layout | `.evilpostman/project.json`, `collections/<slug>/` (one `*.request.json` per request), `environments/*.environment.json` |
+| Environments | Defaults Local/Development/Production → branches `env/local` etc.; menu **Sync** = checkout + commit + push |
+| Secrets | Redacted in git; vault / cookies / history / tabs stay in local `snapshot.json` |
+| Auth | System `git` + SSH agent or `gh auth login` / credential helper — no force-push |
+| Conflicts | Status message only this pass; resolve in clone then save again |
+
+Design: [`reports/14-cloud-sync-re/git-team-sync-design.md`](reports/14-cloud-sync-re/git-team-sync-design.md).
+
+---
+
 ## 19. Explicit non-goals (not in the app)
 
 These appear in Postman docs / RE reports but are **not** implemented:
 
-- Postman Cloud sync, workspaces, roles, SSO, SCIM, billing  
+- Postman Cloud sync (Bifrost), workspaces, roles, SSO, SCIM, billing  
 - Agent Mode / AI requests / Passport / Fabric  
 - Spec Hub, Flows, cloud Monitors, API Catalog / Insights  
-- Native Git (Local/Cloud views)  
+- Full conflict-resolution UI / PR create from app  
 - Full gRPC `.proto` / tonic reflection + client/bidi streaming  
 - HTTPS MITM with installed local CA / Browser Interceptor bridge  
 - Package library / exact uvm sandbox / ASAP auth  
@@ -440,6 +459,7 @@ These appear in Postman docs / RE reports but are **not** implemented:
 | `src/runtime/runner.rs` | Collection runs |
 | `src/secrets/*` | Keychain / memory |
 | `src/storage/json_store.rs` | Snapshot I/O |
+| `src/core/cloud_sync/` | Git tree export + shell `git` push / env branches |
 | `reports/` | RE evidence (not runtime) |
 
 ---

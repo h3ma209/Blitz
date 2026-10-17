@@ -142,6 +142,57 @@ impl UiSettings {
     }
 }
 
+/// Default GitHub remote for EvilPostman team sync.
+pub const DEFAULT_CLOUD_REMOTE: &str = "https://github.com/h3ma209/evilpostman-cloud.git";
+
+/// Git-backed cloud sync prefs (collections/envs → remote; secrets stay local).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CloudSyncSettings {
+    /// When true, each local save also exports tree → commit → push.
+    #[serde(default)]
+    pub enabled: bool,
+    /// Remote URL (HTTPS or SSH).
+    #[serde(default = "default_cloud_remote")]
+    pub remote_url: String,
+    /// Override clone dir; empty = `{data_root}/cloud`.
+    #[serde(default)]
+    pub clone_path: String,
+    /// Last sync / git status message for UI.
+    #[serde(default)]
+    pub last_status: String,
+    /// Branch checked out after last env switch / sync (`env/<slug>`).
+    #[serde(default)]
+    pub last_branch: String,
+}
+
+fn default_cloud_remote() -> String {
+    DEFAULT_CLOUD_REMOTE.to_string()
+}
+
+impl Default for CloudSyncSettings {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            remote_url: default_cloud_remote(),
+            clone_path: String::new(),
+            last_status: String::new(),
+            last_branch: String::new(),
+        }
+    }
+}
+
+impl CloudSyncSettings {
+    /// Resolve working clone path under app data (or override).
+    pub fn resolved_clone_path(&self, data_root: &std::path::Path) -> PathBuf {
+        let custom = self.clone_path.trim();
+        if custom.is_empty() {
+            data_root.join("cloud")
+        } else {
+            PathBuf::from(custom)
+        }
+    }
+}
+
 /// App-wide settings persisted in the snapshot.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub struct AppSettings {
@@ -149,6 +200,8 @@ pub struct AppSettings {
     pub client_cert: ClientCertSettings,
     #[serde(default)]
     pub ui: UiSettings,
+    #[serde(default)]
+    pub cloud_sync: CloudSyncSettings,
 }
 
 impl AppSettings {
@@ -200,5 +253,7 @@ mod tests {
     fn app_settings_ui_serde_default() {
         let s: AppSettings = serde_json::from_str(r#"{"proxy":{"mode":"env","host_port":""},"client_cert":{"cert_path":"","passphrase":"","enabled":false}}"#).unwrap();
         assert_eq!(s.ui, UiSettings::default());
+        assert!(!s.cloud_sync.enabled);
+        assert_eq!(s.cloud_sync.remote_url, DEFAULT_CLOUD_REMOTE);
     }
 }
