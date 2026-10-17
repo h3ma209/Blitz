@@ -4,8 +4,8 @@ use dioxus::prelude::*;
 use uuid::Uuid;
 
 use crate::core::{
-    filter_tree_rows, flatten_collections_filtered, Collection, HistoryEntry, HttpMethod,
-    TreeRowKind,
+    collapsed_except_expanded, filter_tree_rows, flatten_collections_filtered, Collection,
+    HistoryEntry, HttpMethod, TreeRowKind,
 };
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -79,7 +79,8 @@ pub fn Sidebar(
     history: Vec<HistoryEntry>,
     on_event: EventHandler<SidebarEvent>,
 ) -> Element {
-    let mut collapsed = use_signal(HashSet::<Uuid>::new);
+    // Empty = all folded (Postman-style). Parent remounts via `key=fold_epoch` to refold.
+    let mut expanded = use_signal(HashSet::<Uuid>::new);
     let mut dragging = use_signal(|| None::<Uuid>);
     let mut drop_target = use_signal(|| None::<Uuid>);
     let mut ctx_menu = use_signal(|| None::<ContextMenuState>);
@@ -88,7 +89,8 @@ pub fn Sidebar(
     let mut search = use_signal(String::new);
 
     let rows = {
-        let flat = flatten_collections_filtered(&collections, &collapsed());
+        let collapsed = collapsed_except_expanded(&collections, &expanded());
+        let flat = flatten_collections_filtered(&collections, &collapsed);
         filter_tree_rows(flat, &search())
     };
     let empty = collections.is_empty();
@@ -229,7 +231,7 @@ pub fn Sidebar(
                             } else {
                                 false
                             };
-                            let is_collapsed = collapsed().contains(&row_id);
+                            let is_collapsed = !expanded().contains(&row_id);
                             let is_drop = drop_target() == Some(row_id);
                             let can_drop = is_col || is_folder;
                             let is_renaming = renaming_id() == Some(row_id);
@@ -348,13 +350,13 @@ pub fn Sidebar(
                                                     Some(col_id),
                                                     Some(col_id),
                                                 ));
-                                                let mut set = collapsed();
+                                                let mut set = expanded();
                                                 if set.contains(&row_id) {
                                                     set.remove(&row_id);
                                                 } else {
                                                     set.insert(row_id);
                                                 }
-                                                collapsed.set(set);
+                                                expanded.set(set);
                                             }
                                         },
                                         span {
@@ -362,13 +364,13 @@ pub fn Sidebar(
                                             onclick: move |evt| {
                                                 if is_col || is_folder {
                                                     evt.stop_propagation();
-                                                    let mut set = collapsed();
+                                                    let mut set = expanded();
                                                     if set.contains(&row_id) {
                                                         set.remove(&row_id);
                                                     } else {
                                                         set.insert(row_id);
                                                     }
-                                                    collapsed.set(set);
+                                                    expanded.set(set);
                                                     on_event.call(SidebarEvent::new(
                                                         SidebarAction::ToggleExpand,
                                                         Some(row_id),

@@ -3,6 +3,7 @@
 use std::path::Path;
 use std::process::Command;
 
+use chrono::{SecondsFormat, Utc};
 use thiserror::Error;
 
 #[derive(Debug, Error)]
@@ -237,77 +238,296 @@ pub fn checkout_env_branch(cwd: &Path, branch: &str) -> Result<(), CloudGitError
     Ok(())
 }
 
-/// `git add -A` → commit (skip empty) → `git push -u origin HEAD`. Never force-push.
-pub fn push_commit(cwd: &Path, message: &str) -> Result<SyncResult, CloudGitError> {
+/// UTC timestamp for commit messages (`2026-10-17T16:03:00Z`).
+pub fn commit_timestamp_utc() -> String {
+    Utc::now().to_rfc3339_opts(SecondsFormat::Secs, true)
+}
+
+/// Build one-line commit message from `git diff --cached --name-status` (or porcelain-ish) text.
+///
+/// Format: `{ISO8601} A file.json M other.json` — or `{ISO8601} update N files` when many.
+pub fn build_commit_message(name_status: &str, timestamp: &str) -> String {
+    let mut entries: Vec<(char, String)> = Vec::new();
+    for line in name_status.lines() {
+        let line = line.trim();
+        if line.is_empty() {
+            continue;
+        }
+        // name-status: "M\tpath" or "A\tpath"; rename: "R100\told\tnew"
+        let mut parts = line.split('\t');
+        let status_tok = match parts.next() {
+            Some(s) => s.trim(),
+            None => continue,
+        };
+        let status = status_tok.chars().next().unwrap_or('M');
+        let path = match parts.next_back().or_else(|| parts.next()) {
+            Some(p) => p.trim(),
+            None => continue,
+        };
+        if path.is_empty() {
+            continue;
+        }
+        let file = Path::new(path)
+            .file_name()
+            .and_then(|s| s.to_str())
+            .unwrap_or(path)
+            .to_string();
+        entries.push((status, file));
+    }
+
+    if entries.is_empty() {
+        return format!("{timestamp} sync");
+    }
+    const MAX_LISTED: usize = 5;
+    if entries.len() > MAX_LISTED {
+        return format!("{timestamp} update {} files", entries.len());
+    }
+    let body = entries
+        .iter()
+        .map(|(s, f)| format!("{s} {f}"))
+        .collect::<Vec<_>>()
+        .join(" ");
+    format!("{timestamp} {body}")
+}
+
+/// Resolve commit message: non-empty override wins; else auto from cached name-status.
+pub fn resolve_commit_message(override_msg: Option<&str>, name_status: &str) -> String {
+    if let Some(m) = override_msg.map(str::trim).filter(|s| !s.is_empty()) {
+        return m.to_string();
+    }
+    build_commit_message(name_status, &commit_timestamp_utc())
+}
+
+/// `git add -A` → commit if dirty. **Never push.** Skip empty commit.
+///
+/// `message_override`: when Some(non-empty), use as-is; else auto from name-status.
+pub fn commit_local_changes(
+    cwd: &Path,
+    message_override: Option<&str>,
+) -> Result<SyncResult, CloudGitError> {
     let branch = run_git(cwd, &["rev-parse", "--abbrev-ref", "HEAD"]).unwrap_or_default();
 
     run_git(cwd, &["add", "-A"])?;
 
     let porcelain = run_git(cwd, &["status", "--porcelain"])?;
     if porcelain.is_empty() {
-        // Still try push in case ahead of remote
-        match run_git(cwd, &["push", "-u", "origin", "HEAD"]) {
-            Ok(_) => {
-                return Ok(SyncResult {
-                    ok: true,
-                    skipped: true,
-                    message: format!("cloud synced · {branch} (nothing to commit)"),
-                    branch,
-                });
-            }
-            Err(e) => {
-                let msg = e.to_string();
-                // "everything up-to-date" style may still fail if no upstream yet with empty
-                if msg.to_lowercase().contains("up-to-date")
-                    || msg.to_lowercase().contains("no upstream")
-                    || msg.to_lowercase().contains("does not have")
-                {
-                    return Ok(SyncResult {
-                        ok: true,
-                        skipped: true,
-                        message: format!("cloud · {branch} clean"),
-                        branch,
-                    });
-                }
-                // If nothing committed and push fails because no commits, soft-ok
-                if msg.to_lowercase().contains("src refspec")
-                    || msg.to_lowercase().contains("no commits yet")
-                {
-                    return Ok(SyncResult {
-                        ok: true,
-                        skipped: true,
-                        message: format!("cloud · {branch} (no commits yet)"),
-                        branch,
-                    });
-                }
-                return Ok(SyncResult {
-                    ok: false,
-                    skipped: false,
-                    message: format!("cloud push: {msg}"),
-                    branch,
-                });
-            }
-        }
+        return Ok(SyncResult {
+            ok: true,
+            skipped: true,
+            message: format!("committed · {branch} (nothing to commit)"),
+            branch,
+        });
     }
 
-    // Commit; allow empty skip via status check already done
-    match run_git(cwd, &["commit", "-m", message]) {
-        Ok(_) => {}
+    let name_status = run_git(cwd, &["diff", "--cached", "--name-status"]).unwrap_or_default();
+    let message = resolve_commit_message(message_override, &name_status);
+
+    match run_git(cwd, &["commit", "-m", &message]) {
+        Ok(_) => Ok(SyncResult {
+            ok: true,
+            skipped: false,
+            message: format!("committed · {branch}: {message}"),
+            branch,
+        }),
         Err(e) => {
             let msg = e.to_string().to_lowercase();
             if msg.contains("nothing to commit") || msg.contains("no changes added") {
-                // fall through to push
+                Ok(SyncResult {
+                    ok: true,
+                    skipped: true,
+                    message: format!("committed · {branch} (nothing to commit)"),
+                    branch,
+                })
             } else {
-                return Ok(SyncResult {
+                Ok(SyncResult {
                     ok: false,
                     skipped: false,
                     message: format!("cloud commit: {e}"),
                     branch,
-                });
+                })
             }
         }
     }
+}
 
+/// Commit local changes then push (never force). Used by Cloud → Push.
+pub fn push_commit(cwd: &Path, message: &str) -> Result<SyncResult, CloudGitError> {
+    let override_msg = if message.trim().is_empty() {
+        None
+    } else {
+        Some(message)
+    };
+    let commit = commit_local_changes(cwd, override_msg)?;
+    if !commit.ok {
+        return Ok(commit);
+    }
+    let branch = commit.branch.clone();
+    match run_git(cwd, &["push", "-u", "origin", "HEAD"]) {
+        Ok(_) => {
+            let detail = if commit.skipped {
+                format!("cloud pushed · {branch} (nothing new to commit)")
+            } else {
+                format!("cloud pushed · {branch}")
+            };
+            Ok(SyncResult {
+                ok: true,
+                skipped: commit.skipped,
+                message: detail,
+                branch,
+            })
+        }
+        Err(e) => {
+            let msg = e.to_string();
+            let lower = msg.to_lowercase();
+            if commit.skipped
+                && (lower.contains("up-to-date")
+                    || lower.contains("no upstream")
+                    || lower.contains("does not have")
+                    || lower.contains("src refspec")
+                    || lower.contains("no commits yet"))
+            {
+                return Ok(SyncResult {
+                    ok: true,
+                    skipped: true,
+                    message: format!("cloud · {branch} clean"),
+                    branch,
+                });
+            }
+            Ok(SyncResult {
+                ok: false,
+                skipped: false,
+                message: format!("cloud push: {msg}"),
+                branch,
+            })
+        }
+    }
+}
+
+/// Pull --rebase, then push current HEAD (never force). Caller handles export/commit/import.
+pub fn sync_pull_push(cwd: &Path) -> Result<SyncResult, CloudGitError> {
+    let pull = pull_rebase(cwd)?;
+    if !pull.ok {
+        return Ok(pull);
+    }
+    let push = push_only(cwd)?;
+    let branch = if push.branch.is_empty() {
+        pull.branch.clone()
+    } else {
+        push.branch.clone()
+    };
+    let status = status_detail(cwd)
+        .map(|s| s.summary_line())
+        .unwrap_or_else(|_| branch.clone());
+    Ok(SyncResult {
+        ok: push.ok,
+        skipped: false,
+        message: if push.ok {
+            format!("synced · {status}")
+        } else {
+            format!("{} · then {}", pull.message, push.message)
+        },
+        branch,
+    })
+}
+
+/// Branch + dirty + ahead/behind for UI.
+#[derive(Debug, Clone, Default)]
+pub struct GitStatus {
+    pub branch: String,
+    pub dirty: usize,
+    pub ahead: u32,
+    pub behind: u32,
+}
+
+impl GitStatus {
+    pub fn summary_line(&self) -> String {
+        let mut parts = vec![self.branch.clone()];
+        if self.dirty > 0 {
+            parts.push(format!("{} dirty", self.dirty));
+        }
+        if self.ahead > 0 {
+            parts.push(format!("↑{}", self.ahead));
+        }
+        if self.behind > 0 {
+            parts.push(format!("↓{}", self.behind));
+        }
+        if self.dirty == 0 && self.ahead == 0 && self.behind == 0 {
+            parts.push("synced".into());
+        }
+        parts.join(" · ")
+    }
+}
+
+/// Short branch + dirty summary for status bar.
+pub fn status_summary(cwd: &Path) -> Result<String, CloudGitError> {
+    Ok(status_detail(cwd)?.summary_line())
+}
+
+/// Full status: dirty count + ahead/behind vs upstream (after best-effort fetch).
+pub fn status_detail(cwd: &Path) -> Result<GitStatus, CloudGitError> {
+    let branch = run_git(cwd, &["rev-parse", "--abbrev-ref", "HEAD"])?;
+    let porcelain = run_git(cwd, &["status", "--porcelain"])?;
+    let dirty = porcelain.lines().filter(|l| !l.is_empty()).count();
+
+    let mut ahead = 0u32;
+    let mut behind = 0u32;
+    // Best-effort fetch so ahead/behind is fresh; ignore network failures.
+    let _ = run_git(cwd, &["fetch", "origin", "--quiet"]);
+    if let Ok(counts) = run_git(
+        cwd,
+        &[
+            "rev-list",
+            "--left-right",
+            "--count",
+            "HEAD...@{upstream}",
+        ],
+    ) {
+        // "ahead behind" from --left-right --count
+        let mut it = counts.split_whitespace();
+        if let (Some(a), Some(b)) = (it.next(), it.next()) {
+            ahead = a.parse().unwrap_or(0);
+            behind = b.parse().unwrap_or(0);
+        }
+    }
+
+    Ok(GitStatus {
+        branch,
+        dirty,
+        ahead,
+        behind,
+    })
+}
+
+/// `git pull --rebase` (never force). Caller should reload tree after success.
+pub fn pull_rebase(cwd: &Path) -> Result<SyncResult, CloudGitError> {
+    let branch = run_git(cwd, &["rev-parse", "--abbrev-ref", "HEAD"]).unwrap_or_default();
+    let _ = run_git(cwd, &["fetch", "origin"]);
+    // Prefer explicit branch; fall back to configured upstream.
+    let result = run_git(cwd, &["pull", "--rebase", "origin", &branch])
+        .or_else(|_| run_git(cwd, &["pull", "--rebase"]));
+    match result {
+        Ok(out) => Ok(SyncResult {
+            ok: true,
+            skipped: false,
+            message: if out.is_empty() {
+                format!("pulled · {branch}")
+            } else {
+                format!("pulled · {branch}: {out}")
+            },
+            branch,
+        }),
+        Err(e) => Ok(SyncResult {
+            ok: false,
+            skipped: false,
+            message: format!("cloud pull: {e}"),
+            branch,
+        }),
+    }
+}
+
+/// Push current HEAD without committing (never force).
+pub fn push_only(cwd: &Path) -> Result<SyncResult, CloudGitError> {
+    let branch = run_git(cwd, &["rev-parse", "--abbrev-ref", "HEAD"]).unwrap_or_default();
     match run_git(cwd, &["push", "-u", "origin", "HEAD"]) {
         Ok(_) => Ok(SyncResult {
             ok: true,
@@ -324,14 +544,118 @@ pub fn push_commit(cwd: &Path, message: &str) -> Result<SyncResult, CloudGitErro
     }
 }
 
-/// Short branch + dirty summary for status bar.
-pub fn status_summary(cwd: &Path) -> Result<String, CloudGitError> {
-    let branch = run_git(cwd, &["rev-parse", "--abbrev-ref", "HEAD"])?;
-    let porcelain = run_git(cwd, &["status", "--porcelain"])?;
-    let dirty = porcelain.lines().filter(|l| !l.is_empty()).count();
-    if dirty == 0 {
-        Ok(format!("{branch} · synced"))
-    } else {
-        Ok(format!("{branch} · {dirty} dirty"))
+/// Open clone folder in OS file manager (macOS `open`, Linux `xdg-open`, Windows `explorer`).
+pub fn open_in_file_manager(path: &Path) -> Result<(), CloudGitError> {
+    if !path.exists() {
+        return Err(CloudGitError::Cmd(format!(
+            "path does not exist: {}",
+            path.display()
+        )));
+    }
+    #[cfg(target_os = "macos")]
+    {
+        Command::new("open")
+            .arg(path)
+            .output()
+            .map_err(CloudGitError::Io)?;
+    }
+    #[cfg(target_os = "linux")]
+    {
+        Command::new("xdg-open")
+            .arg(path)
+            .output()
+            .map_err(CloudGitError::Io)?;
+    }
+    #[cfg(target_os = "windows")]
+    {
+        Command::new("explorer")
+            .arg(path)
+            .output()
+            .map_err(CloudGitError::Io)?;
+    }
+    #[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "windows")))]
+    {
+        let _ = path;
+        return Err(CloudGitError::Cmd("open folder unsupported on this OS".into()));
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    fn temp_git_repo() -> std::path::PathBuf {
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        // Prefer workspace-local tmp so sandboxed `cargo test` can write `.git`.
+        let root = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("target")
+            .join("test-tmp")
+            .join(format!("evilpostman-git-{nanos}"));
+        fs::create_dir_all(&root).unwrap();
+        // Empty template avoids installing hooks (sandbox often blocks hook dirs).
+        run_git(&root, &["init", "--template="]).unwrap();
+        run_git(&root, &["config", "user.email", "test@example.com"]).unwrap();
+        run_git(&root, &["config", "user.name", "Test"]).unwrap();
+        let _ = run_git(&root, &["checkout", "-b", "main"]);
+        root
+    }
+
+    #[test]
+    fn build_commit_message_lists_few_files() {
+        let msg = build_commit_message(
+            "A\tcollections/hakki/folders/auth/login.request.json\nM\tcollections/hakki/requests/health.request.json\n",
+            "2026-10-17T16:03:00Z",
+        );
+        assert_eq!(
+            msg,
+            "2026-10-17T16:03:00Z A login.request.json M health.request.json"
+        );
+    }
+
+    #[test]
+    fn build_commit_message_summarizes_many_files() {
+        let mut status = String::new();
+        for i in 0..6 {
+            status.push_str(&format!("M\tfile{i}.json\n"));
+        }
+        let msg = build_commit_message(&status, "2026-10-17T16:03:00Z");
+        assert_eq!(msg, "2026-10-17T16:03:00Z update 6 files");
+    }
+
+    #[test]
+    fn resolve_commit_message_override() {
+        assert_eq!(
+            resolve_commit_message(Some("  custom msg  "), "M\ta.json\n"),
+            "custom msg"
+        );
+        let auto = resolve_commit_message(None, "D\told.request.json\n");
+        assert!(auto.contains("D old.request.json"), "{auto}");
+    }
+
+    #[test]
+    fn commit_local_changes_no_push() {
+        let root = temp_git_repo();
+        fs::write(root.join("hello.txt"), "one").unwrap();
+        let r = commit_local_changes(&root, None).unwrap();
+        assert!(r.ok, "{}", r.message);
+        assert!(!r.skipped);
+        assert!(r.message.contains("committed"), "{}", r.message);
+
+        // Second call: clean → skipped, still ok (no push attempted).
+        let r2 = commit_local_changes(&root, None).unwrap();
+        assert!(r2.ok);
+        assert!(r2.skipped);
+
+        // Confirm we have a commit locally.
+        let log = run_git(&root, &["log", "-1", "--pretty=%s"]).unwrap();
+        assert!(!log.is_empty());
+
+        let _ = fs::remove_dir_all(&root);
     }
 }

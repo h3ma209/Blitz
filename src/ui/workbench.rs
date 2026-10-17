@@ -3,20 +3,21 @@ use uuid::Uuid;
 
 use crate::core::{
     add_folder_under, add_request_under, apply_collection_var_edit, apply_env_var_edit,
-    branch_name_for_env, bundled_postman_collections, duplicate_across, export_collection_v21,
-    export_environment_json, find_environment, find_request_across, generate_snippet,
-    graphql_ws_subscribe, grpc_reflection_list, grpc_unary, import_collection_v21, import_curl,
-    import_environment_json, import_har, import_openapi3, interceptor_limits_blurb,
-    limitations_blurb, mcp_call_tool, mcp_list_tools, mqtt_publish, mqtt_subscribe_once,
-    move_item_to, purge_from_trash, push_console, push_history, remove_across, rename_across,
-    reorder_before, restore_from_trash, routes_from_collections, run_performance,
+    branch_name_for_env, bundled_postman_collections, clone_or_ensure, duplicate_across,
+    ensure_default_environments, export_collection_v21, export_environment_json, find_environment,
+    find_request_across, generate_snippet, graphql_ws_subscribe, grpc_reflection_list, grpc_unary,
+    import_collection_v21, import_curl, import_environment_json, import_har, import_openapi3,
+    interceptor_limits_blurb, limitations_blurb, link_folder, mcp_call_tool, mcp_list_tools,
+    mqtt_publish, mqtt_subscribe_once, move_item_to, open_in_file_manager, pull_workspace,
+    purge_from_trash, push_console, push_history, push_workspace, refresh_status, remove_across,
+    rename_across, reorder_before, restore_from_trash, routes_from_collections, run_performance,
     save_example_to_request, save_request_to_collections, snippet_languages, socketio_session,
     sort_collections, split_mcp_args, sse_listen, start_capture_proxy, start_mock,
-    ensure_default_environments, switch_env_branch, sync_environment, sync_on_save,
-    trash_collection, ws_connect_session, AppSettings, CaptureProxyHandle, Collection, ConsoleLine,
-    Cookie, CookieJar, EnvVar, Environment, Folder, HistoryEntry, KeyValue, MockHandle, PerfReport,
-    RequestDraft, RequestProtocol, ResponseView, SavedExample, UiSettings, VarResolveScope,
-    VariableContext, VaultStore, WsSession, HISTORY_MAX,
+    switch_env_branch, sync_environment, sync_on_save, trash_collection, ws_connect_session,
+    AppSettings, CaptureProxyHandle, Collection, ConsoleLine, Cookie, CookieJar, EnvVar,
+    Environment, Folder, HistoryEntry, KeyValue, MockHandle, PerfReport, RequestDraft,
+    RequestProtocol, ResponseView, SavedExample, UiSettings, VarResolveScope, VariableContext,
+    VaultStore, WsSession, DEFAULT_CLOUD_REMOTE, HISTORY_MAX,
 };
 use crate::runtime::{
     run_collection_with_config, send_request_with_options, RunnerConfig, RunnerReport, SendError,
@@ -70,6 +71,10 @@ pub fn Workbench() -> Element {
     let mut status_msg = use_signal(|| String::new());
     let mut impex_modal = use_signal(|| None::<ImpexModal>);
     let mut loaded = use_signal(|| false);
+    let mut splash_visible = use_signal(|| true);
+    let mut splash_leaving = use_signal(|| false);
+    // Remount sidebar (via `key`) so tree starts fully folded after load/import/sync.
+    let mut fold_epoch = use_signal(|| 0u64);
     let mut app_settings = use_signal(AppSettings::default);
     let mut data_root = use_signal(|| String::new());
     let mut show_settings = use_signal(|| false);
@@ -94,6 +99,7 @@ pub fn Workbench() -> Element {
     let mut perf_secs = use_signal(|| 5u64);
     let mut file_menu_open = use_signal(|| false);
     let mut tools_menu_open = use_signal(|| false);
+    let mut cloud_menu_open = use_signal(|| false);
     let mut show_cookies = use_signal(|| false);
     let mut show_col_vars = use_signal(|| false);
     // false = active collection, true = browse all collections.
@@ -109,7 +115,6 @@ pub fn Workbench() -> Element {
         if loaded() {
             return;
         }
-        loaded.set(true);
         if let Ok(store) = JsonStore::open_default() {
             match store.load() {
                 Ok(snap) => {
@@ -134,7 +139,42 @@ pub fn Workbench() -> Element {
                 Err(e) => status_msg.set(format!("load error: {e}")),
             }
         }
+        fold_epoch.set(fold_epoch() + 1);
+        loaded.set(true);
+        // Paint opaque splash first, then fade out (not a bare grid child).
+        spawn(async move {
+            tokio::time::sleep(Duration::from_millis(80)).await;
+            splash_leaving.set(true);
+            tokio::time::sleep(Duration::from_millis(320)).await;
+            splash_visible.set(false);
+        });
     });
+
+    // Write snapshot (+ vault) without git push — for Cloud menu / after explicit sync.
+    let persist_local = move || {
+        if let Ok(store) = JsonStore::open_default() {
+            let active_environment = find_environment(&environments(), active_env_id())
+                .map(|e| e.name.clone())
+                .unwrap_or_else(|| "No Environment".into());
+            let v = vars();
+            let _ = v.vault.save(store.root());
+            let settings = app_settings();
+            let snap = AppSnapshot {
+                collections: collections(),
+                variables: v,
+                active_environment,
+                environments: environments(),
+                active_environment_id: active_env_id(),
+                history: history(),
+                cookies: cookies(),
+                active_collection_id: active_collection_id(),
+                active_request_id: active_request_id(),
+                settings,
+                trash: trash(),
+            };
+            let _ = store.save(&snap);
+        }
+    };
 
     let mut persist = move || {
         if let Ok(store) = JsonStore::open_default() {
@@ -152,6 +192,7 @@ pub fn Workbench() -> Element {
                     &collections(),
                     &environments(),
                     &active_environment,
+                    &v,
                 );
                 app_settings.set(settings.clone());
                 Some(result.message)
@@ -220,11 +261,13 @@ pub fn Workbench() -> Element {
             &envs,
             &from_name,
             &to_name,
+            &vars(),
         ) {
             Ok((cols, loaded_envs)) => {
                 app_settings.set(settings);
                 if !cols.is_empty() {
                     collections.set(cols);
+                    fold_epoch.set(fold_epoch() + 1);
                 }
                 let pick = if loaded_envs.is_empty() {
                     new_id
@@ -955,6 +998,7 @@ pub fn Workbench() -> Element {
                         title: "File",
                         onclick: move |_| {
                             tools_menu_open.set(false);
+                            cloud_menu_open.set(false);
                             file_menu_open.set(!file_menu_open());
                         },
                         "File"
@@ -1004,6 +1048,7 @@ pub fn Workbench() -> Element {
                                         if let Some(id) = last_id {
                                             active_collection_id.set(Some(id));
                                         }
+                                        fold_epoch.set(fold_epoch() + 1);
                                         persist();
                                     }
                                     if errs.is_empty() {
@@ -1042,6 +1087,7 @@ pub fn Workbench() -> Element {
                                     if let Some(id) = last_id {
                                         active_collection_id.set(Some(id));
                                     }
+                                    fold_epoch.set(fold_epoch() + 1);
                                     persist();
                                     status_msg.set(format!(
                                         "loaded {n} bundled Postman export(s)"
@@ -1176,6 +1222,7 @@ pub fn Workbench() -> Element {
                                                     cols.push(c);
                                                     collections.set(cols);
                                                     active_collection_id.set(Some(id));
+                                                    fold_epoch.set(fold_epoch() + 1);
                                                     persist();
                                                     status_msg.set("imported HAR/OpenAPI/collection".into());
                                                 }
@@ -1198,6 +1245,7 @@ pub fn Workbench() -> Element {
                     onclick: move |_| {
                         file_menu_open.set(false);
                         tools_menu_open.set(false);
+                        cloud_menu_open.set(false);
                         show_runner.set(true);
                     },
                     "Runner"
@@ -1213,6 +1261,7 @@ pub fn Workbench() -> Element {
                         title: "Tools",
                         onclick: move |_| {
                             file_menu_open.set(false);
+                            cloud_menu_open.set(false);
                             tools_menu_open.set(!tools_menu_open());
                         },
                         "Tools"
@@ -1350,6 +1399,197 @@ pub fn Workbench() -> Element {
                         }
                     }
                 }
+
+                div { class: "menu-file",
+                    button {
+                        class: if cloud_menu_open() || app_settings().cloud_sync.enabled {
+                            "top-link top-link-active"
+                        } else {
+                            "top-link"
+                        },
+                        title: "Git cloud — Pull / Push / status (evilpostman-cloud)",
+                        onclick: move |_| {
+                            file_menu_open.set(false);
+                            tools_menu_open.set(false);
+                            cloud_menu_open.set(!cloud_menu_open());
+                        },
+                        "Cloud"
+                        span { class: "top-caret", "▾" }
+                    }
+                    if cloud_menu_open() {
+                        div { class: "menu-dropdown menu-dropdown-wide",
+                            button {
+                                class: "menu-item",
+                                onclick: move |_| {
+                                    cloud_menu_open.set(false);
+                                    let Ok(store) = JsonStore::open_default() else {
+                                        status_msg.set("cloud: cannot open store".into());
+                                        return;
+                                    };
+                                    let mut settings = app_settings();
+                                    if settings.cloud_sync.remote_url.trim().is_empty() {
+                                        settings.cloud_sync.remote_url =
+                                            DEFAULT_CLOUD_REMOTE.to_string();
+                                    }
+                                    match clone_or_ensure(store.root(), &mut settings) {
+                                        Ok(r) => {
+                                            app_settings.set(settings);
+                                            status_msg.set(r.message);
+                                            persist_local();
+                                        }
+                                        Err(e) => status_msg.set(format!("clone: {e}")),
+                                    }
+                                },
+                                "Clone / link remote…"
+                            }
+                            button {
+                                class: "menu-item",
+                                onclick: move |_| {
+                                    cloud_menu_open.set(false);
+                                    let picked = rfd::FileDialog::new()
+                                        .set_title("Link existing git workspace folder")
+                                        .pick_folder();
+                                    let Some(folder) = picked else {
+                                        status_msg.set("link cancelled".into());
+                                        return;
+                                    };
+                                    let Ok(store) = JsonStore::open_default() else {
+                                        status_msg.set("cloud: cannot open store".into());
+                                        return;
+                                    };
+                                    let mut settings = app_settings();
+                                    match link_folder(store.root(), &mut settings, &folder) {
+                                        Ok((cols, envs, r)) => {
+                                            app_settings.set(settings);
+                                            if !cols.is_empty() {
+                                                collections.set(cols);
+                                                fold_epoch.set(fold_epoch() + 1);
+                                            }
+                                            if !envs.is_empty() {
+                                                environments.set(envs);
+                                            }
+                                            status_msg.set(r.message);
+                                            persist_local();
+                                        }
+                                        Err(e) => status_msg.set(format!("link: {e}")),
+                                    }
+                                },
+                                "Link folder…"
+                            }
+                            button {
+                                class: "menu-item",
+                                onclick: move |_| {
+                                    cloud_menu_open.set(false);
+                                    let Ok(store) = JsonStore::open_default() else {
+                                        status_msg.set("cloud: cannot open store".into());
+                                        return;
+                                    };
+                                    let mut settings = app_settings();
+                                    settings.cloud_sync.enabled = true;
+                                    let r = refresh_status(store.root(), &mut settings);
+                                    app_settings.set(settings);
+                                    status_msg.set(r.message);
+                                    persist_local();
+                                },
+                                "Sync status"
+                            }
+                            button {
+                                class: "menu-item",
+                                onclick: move |_| {
+                                    cloud_menu_open.set(false);
+                                    let Ok(store) = JsonStore::open_default() else {
+                                        status_msg.set("cloud: cannot open store".into());
+                                        return;
+                                    };
+                                    let mut settings = app_settings();
+                                    settings.cloud_sync.enabled = true;
+                                    match pull_workspace(
+                                        store.root(),
+                                        &mut settings,
+                                        &environments(),
+                                    ) {
+                                        Ok((cols, envs, r)) => {
+                                            app_settings.set(settings);
+                                            if !cols.is_empty() {
+                                                collections.set(cols);
+                                                fold_epoch.set(fold_epoch() + 1);
+                                            }
+                                            if !envs.is_empty() {
+                                                let mut v = vars();
+                                                sync_env_vars(&envs, active_env_id(), &mut v);
+                                                vars.set(v);
+                                                environments.set(envs);
+                                            }
+                                            status_msg.set(r.message);
+                                            persist_local();
+                                        }
+                                        Err(e) => status_msg.set(format!("pull: {e}")),
+                                    }
+                                },
+                                "Pull"
+                            }
+                            button {
+                                class: "menu-item",
+                                onclick: move |_| {
+                                    cloud_menu_open.set(false);
+                                    let Ok(store) = JsonStore::open_default() else {
+                                        status_msg.set("cloud: cannot open store".into());
+                                        return;
+                                    };
+                                    let mut settings = app_settings();
+                                    settings.cloud_sync.enabled = true;
+                                    if settings.cloud_sync.remote_url.trim().is_empty() {
+                                        settings.cloud_sync.remote_url =
+                                            DEFAULT_CLOUD_REMOTE.to_string();
+                                    }
+                                    let active_environment =
+                                        find_environment(&environments(), active_env_id())
+                                            .map(|e| e.name.clone())
+                                            .unwrap_or_else(|| "No Environment".into());
+                                    let commit = settings.cloud_sync.commit_message.clone();
+                                    let r = push_workspace(
+                                        store.root(),
+                                        &mut settings,
+                                        &collections(),
+                                        &environments(),
+                                        &active_environment,
+                                        Some(commit.as_str()),
+                                        &vars(),
+                                    );
+                                    app_settings.set(settings);
+                                    status_msg.set(r.message);
+                                    persist_local();
+                                },
+                                "Push"
+                            }
+                            button {
+                                class: "menu-item",
+                                onclick: move |_| {
+                                    cloud_menu_open.set(false);
+                                    let Ok(store) = JsonStore::open_default() else {
+                                        status_msg.set("cloud: cannot open store".into());
+                                        return;
+                                    };
+                                    let settings = app_settings();
+                                    let path = settings.cloud_sync.resolved_clone_path(store.root());
+                                    match open_in_file_manager(&path) {
+                                        Ok(()) => status_msg.set(format!("opened {}", path.display())),
+                                        Err(e) => status_msg.set(format!("open folder: {e}")),
+                                    }
+                                },
+                                "Open folder"
+                            }
+                            button {
+                                class: "menu-item",
+                                onclick: move |_| {
+                                    cloud_menu_open.set(false);
+                                    show_settings.set(true);
+                                },
+                                "Cloud settings…"
+                            }
+                        }
+                    }
+                }
                 } // top-nav
 
                 span { class: "spacer" }
@@ -1359,6 +1599,7 @@ pub fn Workbench() -> Element {
                         span {
                             class: "live-chip live-cloud",
                             title: "{app_settings().cloud_sync.last_status}",
+                            onclick: move |_| cloud_menu_open.set(!cloud_menu_open()),
                             {
                                 let cs = app_settings().cloud_sync;
                                 let branch = if cs.last_branch.is_empty() {
@@ -1376,6 +1617,7 @@ pub fn Workbench() -> Element {
                                     "err".to_string()
                                 } else if cs.last_status.to_lowercase().contains("push")
                                     || cs.last_status.to_lowercase().contains("synced")
+                                    || cs.last_status.to_lowercase().contains("pulled")
                                 {
                                     "ok".to_string()
                                 } else {
@@ -1397,7 +1639,7 @@ pub fn Workbench() -> Element {
                     }
                     button {
                         class: if show_vars() { "top-icon top-icon-on" } else { "top-icon" },
-                        title: "Variables (environment, collection, global, vault)",
+                        title: "Variables (environment, collection, global, vault; local stays on this machine)",
                         onclick: move |_| show_vars.set(!show_vars()),
                         "Vars"
                     }
@@ -1410,7 +1652,6 @@ pub fn Workbench() -> Element {
                     EnvSelector {
                         environments: environments(),
                         active_id: active_env_id(),
-                        cloud_enabled: app_settings().cloud_sync.enabled,
                         on_change: move |id| {
                             let id = apply_env_cloud_switch(id);
                             active_env_id.set(id);
@@ -1439,39 +1680,79 @@ pub fn Workbench() -> Element {
                                 return;
                             };
                             let mut settings = app_settings();
+                            // First Sync turns cloud on with canonical remote (no Settings hunt).
+                            if !settings.cloud_sync.enabled {
+                                settings.cloud_sync.enabled = true;
+                                if settings.cloud_sync.remote_url.trim().is_empty() {
+                                    settings.cloud_sync.remote_url =
+                                        DEFAULT_CLOUD_REMOTE.to_string();
+                                }
+                                status_msg.set(format!(
+                                    "cloud sync enabled → syncing {env_name}…"
+                                ));
+                            }
                             // Ensure default trio present before sync.
                             let mut envs_mut = envs;
                             let _ = ensure_default_environments(&mut envs_mut);
                             environments.set(envs_mut.clone());
 
-                            let result = sync_environment(
+                            match sync_environment(
                                 store.root(),
                                 &mut settings,
                                 &collections(),
                                 &envs_mut,
                                 &env_name,
-                            );
-                            app_settings.set(settings.clone());
-                            status_msg.set(result.message.clone());
+                                &vars(),
+                            ) {
+                                Ok((cols, loaded_envs, result)) => {
+                                    app_settings.set(settings.clone());
+                                    if !cols.is_empty() {
+                                        collections.set(cols);
+                                        fold_epoch.set(fold_epoch() + 1);
+                                    }
+                                    let final_envs = if loaded_envs.is_empty() {
+                                        envs_mut
+                                    } else {
+                                        // Remap active id if import assigned new UUIDs.
+                                        let pick = loaded_envs
+                                            .iter()
+                                            .find(|e| e.name == env_name)
+                                            .map(|e| e.id)
+                                            .unwrap_or(id);
+                                        active_env_id.set(Some(pick));
+                                        editing_env_id.set(Some(pick));
+                                        let mut v = vars();
+                                        sync_env_vars(&loaded_envs, Some(pick), &mut v);
+                                        vars.set(v);
+                                        environments.set(loaded_envs.clone());
+                                        loaded_envs
+                                    };
+                                    status_msg.set(result.message.clone());
 
-                            // Persist local snapshot + cloud status (skip second push if just synced).
-                            let active_environment = env_name.clone();
-                            let vault = vars();
-                            let _ = vault.vault.save(store.root());
-                            let snap = AppSnapshot {
-                                collections: collections(),
-                                variables: vault,
-                                active_environment,
-                                environments: envs_mut,
-                                active_environment_id: Some(id),
-                                history: history(),
-                                cookies: cookies(),
-                                active_collection_id: active_collection_id(),
-                                active_request_id: active_request_id(),
-                                settings,
-                                trash: trash(),
-                            };
-                            let _ = store.save(&snap);
+                                    // Persist local snapshot + cloud status (Save already committed; no push).
+                                    let active_environment = env_name.clone();
+                                    let vault = vars();
+                                    let _ = vault.vault.save(store.root());
+                                    let snap = AppSnapshot {
+                                        collections: collections(),
+                                        variables: vault,
+                                        active_environment,
+                                        environments: final_envs,
+                                        active_environment_id: active_env_id(),
+                                        history: history(),
+                                        cookies: cookies(),
+                                        active_collection_id: active_collection_id(),
+                                        active_request_id: active_request_id(),
+                                        settings,
+                                        trash: trash(),
+                                    };
+                                    let _ = store.save(&snap);
+                                }
+                                Err(e) => {
+                                    app_settings.set(settings);
+                                    status_msg.set(format!("sync: {e}"));
+                                }
+                            }
                         },
                         on_manage: move |_| {
                             show_env_manager.set(true);
@@ -1693,7 +1974,7 @@ pub fn Workbench() -> Element {
                         // —— Local (read-only) ——
                         div { class: "vars-section",
                             h4 { "Local" }
-                            p { class: "hint", "Script / request-local — read-only here." }
+                            p { class: "hint", "Script / request-local — machine only; never git synced." }
                             {
                                 let local = sorted_map_rows(&vars().local);
                                 if local.is_empty() {
@@ -2002,6 +2283,7 @@ pub fn Workbench() -> Element {
             } else {
                 div { class: "sidebar-slot",
                     Sidebar {
+                        key: "{fold_epoch()}",
                         collections: collections(),
                         active_collection_id: active_collection_id(),
                         active_request_id: active_request_id(),
@@ -2784,6 +3066,7 @@ pub fn Workbench() -> Element {
                                 cols.push(col);
                                 collections.set(cols);
                                 active_collection_id.set(Some(id));
+                                fold_epoch.set(fold_epoch() + 1);
                                 impex_modal.set(None);
                                 persist();
                                 status_msg.set("imported collection".into());
@@ -2791,6 +3074,33 @@ pub fn Workbench() -> Element {
                             Err(e) => status_msg.set(format!("import error: {e}")),
                         }
                     },
+                }
+            }
+
+            // Overlay inside `.app-shell` (fixed) — never a bare grid child.
+            if splash_visible() {
+                div {
+                    class: if splash_leaving() {
+                        "startup-splash leaving"
+                    } else {
+                        "startup-splash"
+                    },
+                    div { class: "startup-splash-inner",
+                        img {
+                            class: "startup-splash-logo",
+                            src: asset!("/assets/logo.png"),
+                            alt: "EvilPostman",
+                        }
+                        div { class: "startup-splash-wordmark",
+                            span { class: "brand-evil", "Evil" }
+                            span { class: "brand-name", "Postman" }
+                        }
+                        div { class: "startup-splash-dots", aria_hidden: "true",
+                            span {}
+                            span {}
+                            span {}
+                        }
+                    }
                 }
             }
         }

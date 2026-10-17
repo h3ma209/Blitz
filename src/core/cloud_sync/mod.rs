@@ -9,14 +9,19 @@
 //! ```
 //!
 //! Environments map to branches: `env/<sanitized-name>`.
-//! Vault, cookies, history, and secret values stay in local `snapshot.json` only.
+//! Vault, cookies, history, secret values, and [`VariableContext::local`] stay in
+//! local `snapshot.json` only — never written into the git working tree.
+//!
+//! **Save** → local `snapshot.json` + (if cloud on + clone + active env) export → commit only.
+//! **Sync** → pull --rebase → export/commit → push → reload tree. Never force-push.
 
 mod git;
 mod tree;
 
 pub use git::{
-    checkout_env_branch, ensure_clone, git_available, push_commit, status_summary, CloudGitError,
-    SyncResult,
+    build_commit_message, checkout_env_branch, commit_local_changes, ensure_clone, git_available,
+    open_in_file_manager, pull_rebase, push_commit, push_only, resolve_commit_message,
+    status_detail, status_summary, sync_pull_push, CloudGitError, GitStatus, SyncResult,
 };
 pub use tree::{
     branch_name_for_env, export_workspace_tree, import_workspace_tree, merge_secret_values,
@@ -26,22 +31,73 @@ pub use tree::{
 
 use std::path::Path;
 
-use super::{AppSettings, Collection, Environment};
+use super::{AppSettings, Collection, Environment, VariableContext};
 use crate::storage::AppSnapshot;
 
-/// High-level: ensure clone, checkout env branch, write tree, commit+push.
+fn is_no_environment(name: &str) -> bool {
+    let t = name.trim();
+    t.is_empty() || t.eq_ignore_ascii_case("No Environment")
+}
+
+fn export_to_clone(
+    clone: &Path,
+    remote: &str,
+    active_env_name: &str,
+    collections: &[Collection],
+    environments: &[Environment],
+    variables: &VariableContext,
+) -> Result<(), String> {
+    let project_name = collections
+        .first()
+        .map(|c| c.name.clone())
+        .unwrap_or_else(|| "EvilPostman workspace".into());
+    export_workspace_tree(
+        clone,
+        &project_name,
+        remote,
+        active_env_name,
+        collections,
+        environments,
+        variables,
+    )
+    .map_err(|e| e.to_string())
+}
+
+/// On Save: export tree → `git add` → **commit only** (never push).
+/// Skips when cloud disabled, no linked clone, or no active env ("No Environment").
+/// `variables.local` is never exported.
 pub fn sync_on_save(
     data_root: &Path,
     settings: &mut AppSettings,
     collections: &[Collection],
     environments: &[Environment],
     active_env_name: &str,
+    variables: &VariableContext,
 ) -> SyncResult {
     if !settings.cloud_sync.enabled {
         return SyncResult {
             ok: true,
             skipped: true,
             message: "cloud sync disabled".into(),
+            branch: String::new(),
+        };
+    }
+
+    if is_no_environment(active_env_name) {
+        return SyncResult {
+            ok: true,
+            skipped: true,
+            message: "no environment — local save only".into(),
+            branch: String::new(),
+        };
+    }
+
+    let clone = settings.cloud_sync.resolved_clone_path(data_root);
+    if !clone.join(".git").is_dir() {
+        return SyncResult {
+            ok: true,
+            skipped: true,
+            message: "no clone — local save only".into(),
             branch: String::new(),
         };
     }
@@ -58,21 +114,6 @@ pub fn sync_on_save(
         };
     }
 
-    let clone = settings.cloud_sync.resolved_clone_path(data_root);
-    match ensure_clone(remote, &clone) {
-        Ok(()) => {}
-        Err(e) => {
-            let msg = format!("cloud sync: {e}");
-            settings.cloud_sync.last_status = msg.clone();
-            return SyncResult {
-                ok: false,
-                skipped: false,
-                message: msg,
-                branch: String::new(),
-            };
-        }
-    }
-
     let branch = branch_name_for_env(active_env_name);
     if let Err(e) = checkout_env_branch(&clone, &branch) {
         let msg = format!("cloud sync checkout: {e}");
@@ -85,17 +126,13 @@ pub fn sync_on_save(
         };
     }
 
-    let project_name = collections
-        .first()
-        .map(|c| c.name.clone())
-        .unwrap_or_else(|| "EvilPostman workspace".into());
-    if let Err(e) = export_workspace_tree(
+    if let Err(e) = export_to_clone(
         &clone,
-        &project_name,
         remote,
         active_env_name,
         collections,
         environments,
+        variables,
     ) {
         let msg = format!("cloud sync write: {e}");
         settings.cloud_sync.last_status = msg.clone();
@@ -107,11 +144,15 @@ pub fn sync_on_save(
         };
     }
 
-    let commit_msg = format!(
-        "chore(evilpostman): sync {active_env_name} ({})",
-        chrono::Local::now().format("%Y-%m-%d %H:%M")
-    );
-    match push_commit(&clone, &commit_msg) {
+    let override_msg = {
+        let custom = settings.cloud_sync.commit_message.trim();
+        if custom.is_empty() {
+            None
+        } else {
+            Some(custom)
+        }
+    };
+    match commit_local_changes(&clone, override_msg) {
         Ok(r) => {
             settings.cloud_sync.last_branch = branch.clone();
             settings.cloud_sync.last_status = r.message.clone();
@@ -135,28 +176,112 @@ pub fn sync_on_save(
     }
 }
 
-/// Explicit Sync for one environment: checkout `env/<slug>`, export tree, commit, push.
-/// Does not require the env to already be active; caller should set active afterward.
+/// Explicit Sync for one environment (primary “share with team” action):
+/// 1. checkout `env/<slug>`
+/// 2. export + commit any local changes (so pull can rebase)
+/// 3. `git pull --rebase`
+/// 4. import tree (teammates’ changes)
+/// 5. `git push` (never force)
+///
+/// Returns reloaded collections/environments on success (empty vecs if pull failed early).
+/// Never syncs [`VariableContext::local`].
 pub fn sync_environment(
     data_root: &Path,
     settings: &mut AppSettings,
     collections: &[Collection],
     environments: &[Environment],
     env_name: &str,
-) -> SyncResult {
-    if !settings.cloud_sync.enabled {
-        return SyncResult {
-            ok: false,
-            skipped: true,
-            message: "cloud sync disabled — enable in Settings".into(),
-            branch: String::new(),
-        };
+    variables: &VariableContext,
+) -> Result<(Vec<Collection>, Vec<Environment>, SyncResult), String> {
+    if is_no_environment(env_name) {
+        return Err("pick an environment before Sync".into());
     }
-    // Reuse save pipeline targeted at this env's branch.
-    sync_on_save(data_root, settings, collections, environments, env_name)
+    if !settings.cloud_sync.enabled {
+        return Err("cloud sync disabled — enable in Settings or Cloud menu".into());
+    }
+
+    let remote = settings.cloud_sync.remote_url.trim();
+    if remote.is_empty() {
+        return Err("cloud sync: remote URL empty".into());
+    }
+
+    let clone = settings.cloud_sync.resolved_clone_path(data_root);
+    ensure_clone(remote, &clone).map_err(|e| e.to_string())?;
+
+    let branch = branch_name_for_env(env_name);
+    checkout_env_branch(&clone, &branch).map_err(|e| e.to_string())?;
+
+    export_to_clone(
+        &clone,
+        remote,
+        env_name,
+        collections,
+        environments,
+        variables,
+    )?;
+
+    let override_msg = {
+        let custom = settings.cloud_sync.commit_message.trim();
+        if custom.is_empty() {
+            None
+        } else {
+            Some(custom)
+        }
+    };
+    let commit = commit_local_changes(&clone, override_msg).map_err(|e| e.to_string())?;
+    if !commit.ok {
+        settings.cloud_sync.last_status = commit.message.clone();
+        return Ok((Vec::new(), Vec::new(), commit));
+    }
+
+    let pull = pull_rebase(&clone).map_err(|e| e.to_string())?;
+    if !pull.ok {
+        settings.cloud_sync.last_status = pull.message.clone();
+        settings.cloud_sync.last_branch = branch.clone();
+        return Ok((Vec::new(), Vec::new(), pull));
+    }
+
+    let (mut cols, mut envs) = import_workspace_tree(&clone).map_err(|e| e.to_string())?;
+    merge_secret_values(&mut envs, environments);
+    if cols.is_empty() {
+        cols = collections.to_vec();
+    }
+    if envs.is_empty() {
+        envs = environments.to_vec();
+    }
+
+    let push = push_only(&clone).map_err(|e| e.to_string())?;
+    let status = status_detail(&clone)
+        .map(|s| s.summary_line())
+        .unwrap_or_else(|_| branch.clone());
+
+    let message = if push.ok {
+        let commit_note = if commit.skipped {
+            "no local commit"
+        } else {
+            "committed"
+        };
+        format!("synced · {status} · {commit_note}")
+    } else {
+        format!("{} · {}", pull.message, push.message)
+    };
+
+    settings.cloud_sync.last_branch = branch.clone();
+    settings.cloud_sync.last_status = message.clone();
+
+    Ok((
+        cols,
+        envs,
+        SyncResult {
+            ok: push.ok,
+            skipped: false,
+            message,
+            branch,
+        },
+    ))
 }
 
-/// Switch environment branch: commit current tree, checkout target, reload from files.
+/// Switch environment branch: commit current tree (no push), checkout target, reload from files.
 /// Returns updated collections/environments when reload succeeds.
 pub fn switch_env_branch(
     data_root: &Path,
@@ -165,6 +290,7 @@ pub fn switch_env_branch(
     environments: &[Environment],
     from_env_name: &str,
     to_env_name: &str,
+    variables: &VariableContext,
 ) -> Result<(Vec<Collection>, Vec<Environment>), String> {
     if !settings.cloud_sync.enabled {
         return Ok((collections.to_vec(), environments.to_vec()));
@@ -175,28 +301,30 @@ pub fn switch_env_branch(
         return Err("cloud sync: remote URL empty".into());
     }
     let clone = settings.cloud_sync.resolved_clone_path(data_root);
-    ensure_clone(remote, &clone).map_err(|e| e.to_string())?;
+    if !clone.join(".git").is_dir() {
+        // No linked clone yet — local env switch only.
+        return Ok((collections.to_vec(), environments.to_vec()));
+    }
 
-    // Save current branch state first.
-    let from_branch = branch_name_for_env(from_env_name);
-    let _ = checkout_env_branch(&clone, &from_branch);
-    let project_name = collections
-        .first()
-        .map(|c| c.name.clone())
-        .unwrap_or_else(|| "EvilPostman workspace".into());
-    export_workspace_tree(
-        &clone,
-        &project_name,
-        remote,
-        from_env_name,
-        collections,
-        environments,
-    )
-    .map_err(|e| e.to_string())?;
-    let commit_msg = format!(
-        "chore(evilpostman): before switch → {to_env_name}"
-    );
-    let _ = push_commit(&clone, &commit_msg);
+    // Save current branch state first (commit only — Sync pushes).
+    if !is_no_environment(from_env_name) {
+        let from_branch = branch_name_for_env(from_env_name);
+        let _ = checkout_env_branch(&clone, &from_branch);
+        export_to_clone(
+            &clone,
+            remote,
+            from_env_name,
+            collections,
+            environments,
+            variables,
+        )?;
+        let _ = commit_local_changes(&clone, None);
+    }
+
+    if is_no_environment(to_env_name) {
+        settings.cloud_sync.last_status = "local (no environment)".into();
+        return Ok((collections.to_vec(), environments.to_vec()));
+    }
 
     let to_branch = branch_name_for_env(to_env_name);
     checkout_env_branch(&clone, &to_branch).map_err(|e| e.to_string())?;
@@ -227,5 +355,250 @@ pub fn apply_sync_to_snapshot(snap: &mut AppSnapshot, result: &SyncResult) {
     snap.settings.cloud_sync.last_status = result.message.clone();
     if !result.branch.is_empty() {
         snap.settings.cloud_sync.last_branch = result.branch.clone();
+    }
+}
+
+/// Clone remote into configured path (or verify existing `.git`).
+pub fn clone_or_ensure(
+    data_root: &Path,
+    settings: &mut AppSettings,
+) -> Result<SyncResult, String> {
+    let remote = settings.cloud_sync.remote_url.trim();
+    if remote.is_empty() {
+        return Err("cloud sync: remote URL empty".into());
+    }
+    let clone = settings.cloud_sync.resolved_clone_path(data_root);
+    ensure_clone(remote, &clone).map_err(|e| e.to_string())?;
+    settings.cloud_sync.enabled = true;
+    let status = status_detail(&clone)
+        .map(|s| s.summary_line())
+        .unwrap_or_else(|_| "cloned".into());
+    settings.cloud_sync.last_status = status.clone();
+    if let Ok(s) = status_detail(&clone) {
+        settings.cloud_sync.last_branch = s.branch;
+    }
+    Ok(SyncResult {
+        ok: true,
+        skipped: false,
+        message: format!("linked · {} · {status}", clone.display()),
+        branch: settings.cloud_sync.last_branch.clone(),
+    })
+}
+
+/// Link an existing folder (must contain `.git` and preferably `.evilpostman/`).
+pub fn link_folder(
+    data_root: &Path,
+    settings: &mut AppSettings,
+    folder: &Path,
+) -> Result<(Vec<Collection>, Vec<Environment>, SyncResult), String> {
+    if !folder.join(".git").is_dir() {
+        return Err(format!(
+            "not a git repo (missing .git): {}",
+            folder.display()
+        ));
+    }
+    settings.cloud_sync.enabled = true;
+    settings.cloud_sync.clone_path = folder.display().to_string();
+    if settings.cloud_sync.remote_url.trim().is_empty() {
+        settings.cloud_sync.remote_url = crate::core::settings::DEFAULT_CLOUD_REMOTE.to_string();
+    }
+    let _ = data_root; // link uses absolute folder; data_root unused
+    let (cols, envs) = import_workspace_tree(folder).unwrap_or_default();
+    let status = status_detail(folder)
+        .map(|s| {
+            settings.cloud_sync.last_branch = s.branch.clone();
+            s.summary_line()
+        })
+        .unwrap_or_else(|_| "linked".into());
+    settings.cloud_sync.last_status = status.clone();
+    Ok((
+        cols,
+        envs,
+        SyncResult {
+            ok: true,
+            skipped: false,
+            message: format!("linked folder · {status}"),
+            branch: settings.cloud_sync.last_branch.clone(),
+        },
+    ))
+}
+
+/// Refresh git status into settings (no network mutate beyond fetch).
+pub fn refresh_status(data_root: &Path, settings: &mut AppSettings) -> SyncResult {
+    if !settings.cloud_sync.enabled {
+        return SyncResult {
+            ok: false,
+            skipped: true,
+            message: "cloud sync disabled".into(),
+            branch: String::new(),
+        };
+    }
+    let clone = settings.cloud_sync.resolved_clone_path(data_root);
+    if !clone.join(".git").is_dir() {
+        let msg = format!("no clone yet — use Cloud → Clone ({})", clone.display());
+        settings.cloud_sync.last_status = msg.clone();
+        return SyncResult {
+            ok: false,
+            skipped: false,
+            message: msg,
+            branch: String::new(),
+        };
+    }
+    match status_detail(&clone) {
+        Ok(s) => {
+            let line = s.summary_line();
+            settings.cloud_sync.last_branch = s.branch.clone();
+            settings.cloud_sync.last_status = line.clone();
+            SyncResult {
+                ok: true,
+                skipped: false,
+                message: line,
+                branch: s.branch,
+            }
+        }
+        Err(e) => {
+            let msg = format!("status: {e}");
+            settings.cloud_sync.last_status = msg.clone();
+            SyncResult {
+                ok: false,
+                skipped: false,
+                message: msg,
+                branch: settings.cloud_sync.last_branch.clone(),
+            }
+        }
+    }
+}
+
+/// Pull with rebase, then import tree into app (merge local secrets).
+pub fn pull_workspace(
+    data_root: &Path,
+    settings: &mut AppSettings,
+    local_envs: &[Environment],
+) -> Result<(Vec<Collection>, Vec<Environment>, SyncResult), String> {
+    if !settings.cloud_sync.enabled {
+        return Err("cloud sync disabled — enable in Settings or Cloud menu".into());
+    }
+    let remote = settings.cloud_sync.remote_url.trim();
+    if remote.is_empty() {
+        return Err("cloud sync: remote URL empty".into());
+    }
+    let clone = settings.cloud_sync.resolved_clone_path(data_root);
+    ensure_clone(remote, &clone).map_err(|e| e.to_string())?;
+    let result = pull_rebase(&clone).map_err(|e| e.to_string())?;
+    settings.cloud_sync.last_status = result.message.clone();
+    if !result.branch.is_empty() {
+        settings.cloud_sync.last_branch = result.branch.clone();
+    }
+    if !result.ok {
+        return Ok((Vec::new(), Vec::new(), result));
+    }
+    let (cols, mut envs) = import_workspace_tree(&clone).map_err(|e| e.to_string())?;
+    merge_secret_values(&mut envs, local_envs);
+    Ok((cols, envs, result))
+}
+
+/// Export current workspace, commit (optional message), push. Never force.
+/// Cloud menu advanced Push — not used on Save.
+/// Never syncs [`VariableContext::local`].
+pub fn push_workspace(
+    data_root: &Path,
+    settings: &mut AppSettings,
+    collections: &[Collection],
+    environments: &[Environment],
+    active_env_name: &str,
+    commit_message: Option<&str>,
+    variables: &VariableContext,
+) -> SyncResult {
+    if !settings.cloud_sync.enabled {
+        return SyncResult {
+            ok: false,
+            skipped: true,
+            message: "cloud sync disabled".into(),
+            branch: String::new(),
+        };
+    }
+    if is_no_environment(active_env_name) {
+        return SyncResult {
+            ok: false,
+            skipped: true,
+            message: "pick an environment before Push".into(),
+            branch: String::new(),
+        };
+    }
+    let remote = settings.cloud_sync.remote_url.trim();
+    if remote.is_empty() {
+        let msg = "cloud sync: remote URL empty".to_string();
+        settings.cloud_sync.last_status = msg.clone();
+        return SyncResult {
+            ok: false,
+            skipped: false,
+            message: msg,
+            branch: String::new(),
+        };
+    }
+    let clone = settings.cloud_sync.resolved_clone_path(data_root);
+    if let Err(e) = ensure_clone(remote, &clone) {
+        let msg = format!("cloud sync: {e}");
+        settings.cloud_sync.last_status = msg.clone();
+        return SyncResult {
+            ok: false,
+            skipped: false,
+            message: msg,
+            branch: String::new(),
+        };
+    }
+    let branch = branch_name_for_env(active_env_name);
+    if let Err(e) = checkout_env_branch(&clone, &branch) {
+        let msg = format!("cloud sync checkout: {e}");
+        settings.cloud_sync.last_status = msg.clone();
+        return SyncResult {
+            ok: false,
+            skipped: false,
+            message: msg,
+            branch,
+        };
+    }
+    if let Err(e) = export_to_clone(
+        &clone,
+        remote,
+        active_env_name,
+        collections,
+        environments,
+        variables,
+    ) {
+        let msg = format!("cloud sync write: {e}");
+        settings.cloud_sync.last_status = msg.clone();
+        return SyncResult {
+            ok: false,
+            skipped: false,
+            message: msg,
+            branch,
+        };
+    }
+    let msg = commit_message
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .unwrap_or("");
+    match push_commit(&clone, msg) {
+        Ok(r) => {
+            settings.cloud_sync.last_branch = branch.clone();
+            settings.cloud_sync.last_status = r.message.clone();
+            SyncResult {
+                ok: r.ok,
+                skipped: r.skipped,
+                message: r.message,
+                branch,
+            }
+        }
+        Err(e) => {
+            let msg = format!("cloud sync git: {e}");
+            settings.cloud_sync.last_status = msg.clone();
+            SyncResult {
+                ok: false,
+                skipped: false,
+                message: msg,
+                branch,
+            }
+        }
     }
 }

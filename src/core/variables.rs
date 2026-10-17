@@ -101,6 +101,7 @@ pub struct VariableContext {
     pub global: HashMap<String, String>,
     pub collection: HashMap<String, String>,
     pub environment: HashMap<String, String>,
+    /// Script / request-local — persisted in app snapshot only; **never** written to git cloud tree.
     pub local: HashMap<String, String>,
     /// In-memory vault keys (loaded from `vault.json` at startup).
     #[serde(default, skip)]

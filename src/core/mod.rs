@@ -32,11 +32,12 @@ pub use capture_proxy::{
 };
 pub use codegen::{generate_snippet, snippet_languages};
 pub use collection::{
-    add_folder_under, add_request_under, demo_collections, duplicate_across, filter_tree_rows,
-    find_request_across, flatten_collections, flatten_collections_filtered, folder_path_to_request,
-    item_contains_id, move_item_to, purge_from_trash, remove_across, rename_across,
-    reorder_before, reorder_within_parent, restore_from_trash, save_request_to_collections,
-    sort_collections, trash_collection, Collection, CollectionItem, Folder, TreeRow, TreeRowKind,
+    add_folder_under, add_request_under, collapsed_except_expanded, collapsible_tree_ids,
+    demo_collections, duplicate_across, filter_tree_rows, find_request_across, flatten_collections,
+    flatten_collections_filtered, folder_path_to_request, item_contains_id, move_item_to,
+    purge_from_trash, remove_across, rename_across, reorder_before, reorder_within_parent,
+    restore_from_trash, save_request_to_collections, sort_collections, trash_collection,
+    Collection, CollectionItem, Folder, TreeRow, TreeRowKind,
 };
 pub use console::{push_console, ConsoleLevel, ConsoleLine, CONSOLE_MAX};
 pub use cookies::{Cookie, CookieJar};
@@ -74,8 +75,9 @@ pub use sandbox::{
 };
 pub use scripts::{run_script, run_script_ex, run_script_helpers, ScriptRunOutcome};
 pub use cloud_sync::{
-    apply_sync_to_snapshot, branch_name_for_env, git_available, status_summary, switch_env_branch,
-    sync_environment, sync_on_save, SyncResult,
+    apply_sync_to_snapshot, branch_name_for_env, clone_or_ensure, git_available, link_folder,
+    open_in_file_manager, pull_workspace, push_workspace, refresh_status, status_summary,
+    switch_env_branch, sync_environment, sync_on_save, SyncResult,
 };
 pub use settings::{
     AppSettings, ClientCertSettings, CloudSyncSettings, ProxyMode, ProxySettings, RequestSettings,
