@@ -70,8 +70,8 @@ pub use request::{
     TimingBreakdown,
 };
 pub use sandbox::{
-    run_js_sandbox, run_js_sandbox_ex, SandboxExecution, SandboxExtras, SandboxOutcome,
-    SandboxResponse,
+    apply_request_header_upserts, body_mode_label, run_js_sandbox, run_js_sandbox_ex,
+    SandboxExecution, SandboxExtras, SandboxOutcome, SandboxResponse,
 };
 pub use scripts::{run_script, run_script_ex, run_script_helpers, ScriptRunOutcome};
 pub use cloud_sync::{

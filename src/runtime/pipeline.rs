@@ -15,9 +15,10 @@ use thiserror::Error;
 use crate::core::auth_extra::{auth_type_label, inject_extra_auth};
 use crate::core::pkcs12_util::load_client_identity_pem;
 use crate::core::{
-    build_digest_authorization, digest_uri, run_script_ex, AuthConfig, AuthType, BodyMode,
-    CookieJar, DigestChallenge, FormDataField, HttpMethod, KeyValue, RequestDraft, RequestSettings,
-    ResponseView, SandboxExtras, SandboxResponse, TestResult, TimingBreakdown, VariableContext,
+    apply_request_header_upserts, body_mode_label, build_digest_authorization, digest_uri,
+    run_script_ex, AuthConfig, AuthType, BodyMode, Cookie, CookieJar, DigestChallenge,
+    FormDataField, HttpMethod, KeyValue, RequestDraft, RequestSettings, ResponseView,
+    SandboxExtras, SandboxResponse, TestResult, TimingBreakdown, VariableContext,
     AppSettings, ProxyMode,
 };
 use crate::runtime::postman_defaults::{
@@ -420,6 +421,60 @@ fn parse_host_path(url: &str) -> (String, String) {
     (host.to_string(), path)
 }
 
+fn script_cookie_host(url: &str) -> String {
+    let (host, _) = parse_host_path(url);
+    host.split(':')
+        .next()
+        .unwrap_or(&host)
+        .to_lowercase()
+}
+
+fn absorb_script_side_effects(
+    pre: &crate::core::ScriptRunOutcome,
+    extras: &mut SandboxExtras,
+    header_upserts: &mut Vec<(String, String)>,
+    cookie_jar: Option<&mut CookieJar>,
+    draft_url: &str,
+) {
+    for (k, v) in &pre.request_header_upserts {
+        if let Some((_, existing)) = extras
+            .request_headers
+            .iter_mut()
+            .find(|(ek, _)| ek.eq_ignore_ascii_case(k))
+        {
+            *existing = v.clone();
+        } else {
+            extras.request_headers.push((k.clone(), v.clone()));
+        }
+        if let Some((_, existing)) = header_upserts
+            .iter_mut()
+            .find(|(ek, _)| ek.eq_ignore_ascii_case(k))
+        {
+            *existing = v.clone();
+        } else {
+            header_upserts.push((k.clone(), v.clone()));
+        }
+    }
+    if let Some(cookies) = &pre.cookies {
+        extras.cookies = cookies.clone();
+        if let Some(jar) = cookie_jar {
+            let host = script_cookie_host(draft_url);
+            if cookies.is_empty() {
+                jar.cookies.retain(|c| c.domain != host);
+            } else {
+                for (name, value) in cookies {
+                    jar.upsert(Cookie {
+                        domain: host.clone(),
+                        name: name.clone(),
+                        value: value.clone(),
+                        path: "/".into(),
+                    });
+                }
+            }
+        }
+    }
+}
+
 fn build_client(
     settings: &RequestSettings,
     app: Option<&AppSettings>,
@@ -596,7 +651,7 @@ pub fn send_request_with_options(
         }
     };
 
-    let extras = SandboxExtras {
+    let mut extras = SandboxExtras {
         vault: ctx.vault.entries.clone(),
         cookies: opts
             .cookie_jar
@@ -610,11 +665,24 @@ pub fn send_request_with_options(
             .unwrap_or_default(),
         request_url: draft.url.clone(),
         request_method: draft.method.as_str().into(),
+        request_headers: draft
+            .headers
+            .iter()
+            .filter(|h| h.enabled && !h.key.is_empty())
+            .map(|h| (h.key.clone(), h.value.clone()))
+            .collect(),
+        request_body_mode: body_mode_label(draft.body_mode).into(),
+        request_body_raw: draft.body.clone(),
         iteration_data_json: opts
             .iteration_data_json
             .unwrap_or("{}")
             .to_string(),
+        request_name: draft.name.clone(),
+        event_name: "prerequest".into(),
+        iteration: 0,
     };
+
+    let mut header_upserts: Vec<(String, String)> = Vec::new();
 
     // 1. Pre-request: collection → folder → request
     let mut apply_exec = |exec: crate::core::SandboxExecution| {
@@ -636,11 +704,18 @@ pub fn send_request_with_options(
             &extras,
         );
         log.extend(pre.messages.iter().cloned());
-        console.extend(pre.messages);
-        if let Some(err) = pre.error {
+        console.extend(pre.messages.iter().cloned());
+        if let Some(err) = pre.error.clone() {
             log.push(err);
         }
-        apply_exec(pre.execution);
+        apply_exec(pre.execution.clone());
+        absorb_script_side_effects(
+            &pre,
+            &mut extras,
+            &mut header_upserts,
+            opts.cookie_jar.as_deref_mut(),
+            &draft.url,
+        );
     }
     let pre = run_script_ex(
         &draft.pre_request_script,
@@ -650,11 +725,18 @@ pub fn send_request_with_options(
         &extras,
     );
     log.extend(pre.messages.iter().cloned());
-    console.extend(pre.messages);
-    if let Some(err) = pre.error {
+    console.extend(pre.messages.iter().cloned());
+    if let Some(err) = pre.error.clone() {
         log.push(err);
     }
-    apply_exec(pre.execution);
+    apply_exec(pre.execution.clone());
+    absorb_script_side_effects(
+        &pre,
+        &mut extras,
+        &mut header_upserts,
+        opts.cookie_jar.as_deref_mut(),
+        &draft.url,
+    );
     if opts
         .execution
         .as_ref()
@@ -681,6 +763,15 @@ pub fn send_request_with_options(
     // 2. Variable + vault resolution
     let mut resolved = resolve_draft(draft, &ctx, secrets_ref);
     log.push("vars: resolved {{…}} / {{vault:…}}".into());
+
+    // 2a. Headers from pm.request.headers.upsert (pre-request scripts)
+    if !header_upserts.is_empty() {
+        apply_request_header_upserts(&mut resolved, &header_upserts);
+        log.push(format!(
+            "scripts: applied {} request header upsert(s)",
+            header_upserts.len()
+        ));
+    }
 
     // 2b. Inherit auth
     resolve_inherit_auth(&mut resolved, opts.collection_auth, &mut log);
@@ -929,7 +1020,10 @@ pub fn send_request_with_options(
         status_text: status_text.clone(),
         body: body.clone(),
         headers: resp_headers.clone(),
+        response_time: elapsed_ms as u64,
     };
+    extras.event_name = "test".into();
+    extras.vault = ctx.vault.entries.clone();
     let mut test_results: Vec<TestResult> = Vec::new();
     let mut visualizer_html = String::new();
     let mut run_post = |script: &str, phase: &str| {

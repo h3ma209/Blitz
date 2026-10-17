@@ -10,6 +10,7 @@ use super::variables::VariableContext;
 use super::sandbox::{
     run_js_sandbox_ex, SandboxExecution, SandboxExtras, SandboxResponse,
 };
+use std::collections::HashMap;
 
 #[derive(Debug, Default)]
 pub struct ScriptRunOutcome {
@@ -18,6 +19,8 @@ pub struct ScriptRunOutcome {
     pub error: Option<String>,
     pub execution: SandboxExecution,
     pub visualizer_html: String,
+    pub request_header_upserts: Vec<(String, String)>,
+    pub cookies: Option<HashMap<String, String>>,
 }
 
 /// Run pre-request or test script via JS sandbox.
@@ -51,6 +54,8 @@ pub fn run_script_ex(
         error: js.error,
         execution: js.execution,
         visualizer_html: js.visualizer_html,
+        request_header_upserts: js.request_header_upserts,
+        cookies: js.cookies,
     }
 }
 

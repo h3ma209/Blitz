@@ -19,7 +19,7 @@ EvilPostman is a single-window desktop workbench for building, sending, scriptin
 | Multi-protocol | HTTP, WS, gRPC unary, MQTT, MCP, **Socket.IO**, **SSE**, **GraphQL-WS** |
 | Variables, environments, vault | Complete (local scopes) + collection vars editor + env JSON impex |
 | Auth | Bearer/Basic/API Key/Digest/OAuth2 + **OAuth1 / Hawk / AWS SigV4 / EdgeGrid**; NTLM Type1 partial |
-| Scripts + Collection Runner + Perf VUs + CLI | `pm` sandbox + `pm.visualizer`; `evil_postman run` CLI |
+| Scripts + Collection Runner + Perf VUs + CLI | Expanded `pm.*` / CryptoJS subset + `pm.visualizer`; `evil_postman run` CLI |
 | Capture proxy | HTTP forward + CONNECT tunnel (no MITM decrypt) |
 | Collections / history / trash | Tree search, sibling reorder, CRUD/DnD |
 | Import / export / snippets / mock | v2.1 + HAR + OpenAPI YAML; Java/Go/C# snippets; mock scenarios |
@@ -188,22 +188,28 @@ JavaScript via **`boa_engine`** (not full Postman sandbox / uvm).
 
 | API | Support |
 |-----|---------|
-| `pm.variables` / `pm.environment` / `pm.collectionVariables` / `pm.globals` | `.get` / `.set` / `.unset` |
+| `pm.variables` / `pm.environment` / `pm.collectionVariables` / `pm.globals` | `.get` / `.set` / `.unset` / `.has` / `.toObject` / `.clear` |
+| `pm.variables.replaceIn(str)` | `{{var}}` from local → env → collection → globals → iterationData → vault |
 | `pm.vault` | `.get` / `.set` / `.unset` |
-| `pm.cookies` | `.get` (name → value) |
-| `pm.request` | `.url`, `.method` (read) |
+| `pm.cookies` | `.get` / `.set` / `.clear` (jar sync on send path) |
+| `pm.request` | `.url` (+ `.getPath()`), `.method`, `.headers.get/upsert/add/remove`, `.body.mode` / `.body.raw` — upserts applied to outgoing request |
+| `pm.info` | `.eventName`, `.requestName`, `.iteration` (stubs) |
 | `pm.iterationData` | Object from runner data row |
 | `pm.execution.setNextRequest` / `skipRequest` | Runner control |
-| `pm.response` | `.code`, `.status`, `.text()`, `.json()`, `.headers.get`, `.to.have.status` |
-| `pm.test` / `pm.expect` | equal/eql/include/be.ok/have.status/have.property |
-| `pm.sendRequest` | Sync nested HTTP via blocking reqwest + callback |
+| `pm.response` | `.code`, `.status`, `.responseTime`, `.text()`, `.json()`, `.headers.get`, `.to.have.status`, `.to.have.jsonBody` |
+| `pm.test` / `pm.expect` | equal/eql/include/be.ok/above/below/a(type)/have.status/have.property(+value)/not.* |
+| `pm.sendRequest` | Sync nested HTTP via blocking reqwest + callback (pre + tests) |
 | `pm.visualizer.set(template, data)` | → Visualize tab (simple `{{key}}` / `{{data}}` replacement) |
-| `console.log` | → Console panel |
+| `console.log` / `warn` / `error` / `info` | → Console panel |
+| `CryptoJS.SHA256` / `HmacSHA256` | Host-backed Hex / Base64 (Hakki OTP signing) |
+| `require` | Stub: `crypto-js` → CryptoJS; else `{}` + warn (no npm) |
 
 ### 6.4 Not supported (yet)
 
-- Full Chai / async tests / `require` / package library  
+- Full Chai / chai-postman deep `jsonBody` paths / async tests  
+- Arbitrary `require('lodash')` / package library  
 - Exact Postman sandbox isolation (uniscope/uvm)  
+- Full `pm.request.url` Url SDK / `pm.execution.runRequest` / cookie jar API object 
 
 ### 6.5 Test Results / Visualize / Timeline
 
