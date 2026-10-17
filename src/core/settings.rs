@@ -53,11 +53,72 @@ pub struct ClientCertSettings {
     pub enabled: bool,
 }
 
+fn default_ui_font_size_px() -> u32 {
+    13
+}
+
+fn default_editor_font_size_px() -> u32 {
+    14
+}
+
+fn default_sidebar_width_px() -> u32 {
+    268
+}
+
+/// Font sizes + shell layout prefs (persisted in snapshot).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct UiSettings {
+    /// Base UI font size in px (drives `--fs-base` / type scale).
+    #[serde(default = "default_ui_font_size_px")]
+    pub ui_font_size_px: u32,
+    /// Mono editor / body textarea font size (`--fs-editor`).
+    #[serde(default = "default_editor_font_size_px")]
+    pub editor_font_size_px: u32,
+    /// Left sidebar width in px (`--sidebar-w`).
+    #[serde(default = "default_sidebar_width_px")]
+    pub sidebar_width_px: u32,
+}
+
+impl Default for UiSettings {
+    fn default() -> Self {
+        Self {
+            ui_font_size_px: default_ui_font_size_px(),
+            editor_font_size_px: default_editor_font_size_px(),
+            sidebar_width_px: default_sidebar_width_px(),
+        }
+    }
+}
+
+impl UiSettings {
+    pub const FONT_MIN_PX: u32 = 10;
+    pub const FONT_MAX_PX: u32 = 22;
+    pub const SIDEBAR_MIN_PX: u32 = 180;
+    pub const SIDEBAR_MAX_PX: u32 = 480;
+
+    pub fn clamp_font_size(px: u32) -> u32 {
+        px.clamp(Self::FONT_MIN_PX, Self::FONT_MAX_PX)
+    }
+
+    pub fn clamp_sidebar_width(px: u32) -> u32 {
+        px.clamp(Self::SIDEBAR_MIN_PX, Self::SIDEBAR_MAX_PX)
+    }
+
+    /// Normalize all fields into allowed ranges.
+    pub fn clamped(mut self) -> Self {
+        self.ui_font_size_px = Self::clamp_font_size(self.ui_font_size_px);
+        self.editor_font_size_px = Self::clamp_font_size(self.editor_font_size_px);
+        self.sidebar_width_px = Self::clamp_sidebar_width(self.sidebar_width_px);
+        self
+    }
+}
+
 /// App-wide settings persisted in the snapshot.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub struct AppSettings {
     pub proxy: ProxySettings,
     pub client_cert: ClientCertSettings,
+    #[serde(default)]
+    pub ui: UiSettings,
 }
 
 impl AppSettings {
@@ -80,5 +141,28 @@ impl AppSettings {
     /// Default directory hint for client certs under app data.
     pub fn certs_dir_hint(data_root: &std::path::Path) -> PathBuf {
         data_root.join("certs")
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn ui_defaults_and_clamp() {
+        let ui = UiSettings::default();
+        assert_eq!(ui.ui_font_size_px, 13);
+        assert_eq!(ui.editor_font_size_px, 14);
+        assert_eq!(ui.sidebar_width_px, 268);
+        assert_eq!(UiSettings::clamp_sidebar_width(100), 180);
+        assert_eq!(UiSettings::clamp_sidebar_width(999), 480);
+        assert_eq!(UiSettings::clamp_font_size(8), 10);
+        assert_eq!(UiSettings::clamp_font_size(40), 22);
+    }
+
+    #[test]
+    fn app_settings_ui_serde_default() {
+        let s: AppSettings = serde_json::from_str(r#"{"proxy":{"mode":"env","host_port":""},"client_cert":{"cert_path":"","passphrase":"","enabled":false}}"#).unwrap();
+        assert_eq!(s.ui, UiSettings::default());
     }
 }

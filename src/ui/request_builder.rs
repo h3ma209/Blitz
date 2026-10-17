@@ -4,6 +4,7 @@ use crate::core::{
     fetch_oauth2_token, AuthConfig, AuthType, BodyMode, FormDataField, HttpMethod, KeyValue,
     OAuth2Grant, RequestDraft, RequestProtocol, RequestSettings,
 };
+use super::CommentableTextarea;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum BuilderTab {
@@ -12,6 +13,7 @@ pub enum BuilderTab {
     Body,
     Auth,
     Scripts,
+    Docs,
     Settings,
 }
 
@@ -58,11 +60,15 @@ pub fn RequestBuilder(
         }
     };
 
+    let proto_class = protocol_class(draft.protocol);
+    let method_class = method_class_name(draft.method);
+
     rsx! {
         div { class: "request-row",
             select {
-                class: "method-select protocol-select",
+                class: "method-select protocol-select protocol-{proto_class}",
                 value: "{draft.protocol}",
+                title: "Protocol",
                 onchange: set_protocol,
                 for p in RequestProtocol::all() {
                     option { value: "{p}", selected: *p == draft.protocol, "{p}" }
@@ -70,8 +76,9 @@ pub fn RequestBuilder(
             }
             if draft.protocol == RequestProtocol::Http {
                 select {
-                    class: "method-select",
+                    class: "method-select method-{method_class}",
                     value: "{draft.method}",
+                    title: "HTTP method",
                     onchange: set_method,
                     for m in HttpMethod::all() {
                         option { value: "{m}", selected: *m == draft.method, "{m}" }
@@ -88,6 +95,9 @@ pub fn RequestBuilder(
                     RequestProtocol::Grpc => "http://127.0.0.1:50051",
                     RequestProtocol::Mqtt => "mqtt://127.0.0.1:1883",
                     RequestProtocol::Mcp => "(STDIO — use MCP fields below)",
+                    RequestProtocol::SocketIo => "http://127.0.0.1:3000",
+                    RequestProtocol::Sse => "https://example.com/events",
+                    RequestProtocol::GraphqlWs => "ws://127.0.0.1:4000/graphql",
                 },
                 oninput: set_url,
             }
@@ -120,6 +130,7 @@ pub fn RequestBuilder(
                 ("Body", BuilderTab::Body),
                 ("Auth", BuilderTab::Auth),
                 ("Scripts", BuilderTab::Scripts),
+                ("Docs", BuilderTab::Docs),
                 ("Settings", BuilderTab::Settings),
             ] {
                 button {
@@ -162,16 +173,18 @@ pub fn RequestBuilder(
                     BodyEditor {
                         mode: draft.body_mode,
                         body: draft.body.clone(),
+                        binary_path: draft.binary_path.clone(),
                         urlencoded: draft.body_urlencoded.clone(),
                         formdata: draft.body_formdata.clone(),
                         graphql_query: draft.graphql_query.clone(),
                         graphql_variables: draft.graphql_variables.clone(),
                         on_change: {
                             let draft = draft.clone();
-                            move |(mode, body, urlencoded, formdata, gql_q, gql_v)| {
+                            move |(mode, body, binary_path, urlencoded, formdata, gql_q, gql_v)| {
                                 let mut d = draft.clone();
                                 d.body_mode = mode;
                                 d.body = body;
+                                d.binary_path = binary_path;
                                 d.body_urlencoded = urlencoded;
                                 d.body_formdata = formdata;
                                 d.graphql_query = gql_q;
@@ -204,6 +217,23 @@ pub fn RequestBuilder(
                                 let mut d = draft.clone();
                                 d.pre_request_script = pre;
                                 d.test_script = test;
+                                on_change.call(d);
+                            }
+                        }
+                    }
+                },
+                BuilderTab::Docs => rsx! {
+                    label { class: "hint", "Request description / docs" }
+                    CommentableTextarea {
+                        class: "body-editor".to_string(),
+                        value: draft.description.clone(),
+                        rows: Some("10"),
+                        placeholder: "Markdown or plain text — shown for teammates / import".to_string(),
+                        on_change: {
+                            let draft = draft.clone();
+                            move |text: String| {
+                                let mut d = draft.clone();
+                                d.description = text;
                                 on_change.call(d);
                             }
                         }
@@ -246,7 +276,35 @@ fn parse_protocol(s: &str) -> RequestProtocol {
         "gRPC" => RequestProtocol::Grpc,
         "MQTT" => RequestProtocol::Mqtt,
         "MCP" => RequestProtocol::Mcp,
+        "Socket.IO" => RequestProtocol::SocketIo,
+        "SSE" => RequestProtocol::Sse,
+        "GraphQL-WS" => RequestProtocol::GraphqlWs,
         _ => RequestProtocol::Http,
+    }
+}
+
+fn protocol_class(p: RequestProtocol) -> &'static str {
+    match p {
+        RequestProtocol::Http => "http",
+        RequestProtocol::WebSocket => "websocket",
+        RequestProtocol::Grpc => "grpc",
+        RequestProtocol::Mqtt => "mqtt",
+        RequestProtocol::Mcp => "mcp",
+        RequestProtocol::SocketIo => "socketio",
+        RequestProtocol::Sse => "sse",
+        RequestProtocol::GraphqlWs => "graphqlws",
+    }
+}
+
+fn method_class_name(m: HttpMethod) -> &'static str {
+    match m {
+        HttpMethod::Get => "get",
+        HttpMethod::Post => "post",
+        HttpMethod::Put => "put",
+        HttpMethod::Patch => "patch",
+        HttpMethod::Delete => "delete",
+        HttpMethod::Head => "head",
+        HttpMethod::Options => "options",
     }
 }
 
@@ -264,15 +322,15 @@ fn ProtocolFields(
             match draft.protocol {
                 RequestProtocol::WebSocket => rsx! {
                     label { class: "hint", "Message" }
-                    textarea {
-                        class: "body-editor",
-                        value: "{draft.ws_message}",
-                        rows: "3",
-                        oninput: {
+                    CommentableTextarea {
+                        class: "body-editor".to_string(),
+                        value: draft.ws_message.clone(),
+                        rows: Some("3"),
+                        on_change: {
                             let draft = draft.clone();
-                            move |evt: Event<FormData>| {
+                            move |text: String| {
                                 let mut d = draft.clone();
-                                d.ws_message = evt.value();
+                                d.ws_message = text;
                                 on_change.call(d);
                             }
                         }
@@ -296,7 +354,10 @@ fn ProtocolFields(
                             onclick: move |_| on_protocol_action.call("ws_disconnect".into()),
                             "Disconnect"
                         }
-                        span { class: "hint", if ws_connected { "connected" } else { "disconnected" } }
+                        span {
+                            class: if ws_connected { "ws-state connected" } else { "ws-state disconnected" },
+                            if ws_connected { "Connected" } else { "Disconnected" }
+                        }
                     }
                 },
                 RequestProtocol::Grpc => rsx! {
@@ -314,15 +375,15 @@ fn ProtocolFields(
                         }
                     }
                     label { class: "hint", "JSON body → google.protobuf.Struct" }
-                    textarea {
-                        class: "body-editor",
-                        value: "{draft.body}",
-                        rows: "6",
-                        oninput: {
+                    CommentableTextarea {
+                        class: "body-editor".to_string(),
+                        value: draft.body.clone(),
+                        rows: Some("6"),
+                        on_change: {
                             let draft = draft.clone();
-                            move |evt: Event<FormData>| {
+                            move |text: String| {
                                 let mut d = draft.clone();
-                                d.body = evt.value();
+                                d.body = text;
                                 on_change.call(d);
                             }
                         }
@@ -356,15 +417,15 @@ fn ProtocolFields(
                         }
                     }
                     label { class: "hint", "Payload" }
-                    textarea {
-                        class: "body-editor",
-                        value: "{draft.body}",
-                        rows: "3",
-                        oninput: {
+                    CommentableTextarea {
+                        class: "body-editor".to_string(),
+                        value: draft.body.clone(),
+                        rows: Some("3"),
+                        on_change: {
                             let draft = draft.clone();
-                            move |evt: Event<FormData>| {
+                            move |text: String| {
                                 let mut d = draft.clone();
-                                d.body = evt.value();
+                                d.body = text;
                                 on_change.call(d);
                             }
                         }
@@ -427,15 +488,15 @@ fn ProtocolFields(
                         }
                     }
                     label { class: "hint", "Tool args JSON" }
-                    textarea {
-                        class: "body-editor",
-                        value: "{draft.mcp_tool_args_json}",
-                        rows: "4",
-                        oninput: {
+                    CommentableTextarea {
+                        class: "body-editor".to_string(),
+                        value: draft.mcp_tool_args_json.clone(),
+                        rows: Some("4"),
+                        on_change: {
                             let draft = draft.clone();
-                            move |evt: Event<FormData>| {
+                            move |text: String| {
                                 let mut d = draft.clone();
-                                d.mcp_tool_args_json = evt.value();
+                                d.mcp_tool_args_json = text;
                                 on_change.call(d);
                             }
                         }
@@ -452,6 +513,93 @@ fn ProtocolFields(
                             disabled: sending,
                             onclick: move |_| on_protocol_action.call("mcp_call".into()),
                             "Call tool"
+                        }
+                    }
+                },
+                RequestProtocol::SocketIo => rsx! {
+                    label { class: "hint", "Event name (emit / listen)" }
+                    input {
+                        class: "url-input",
+                        value: "{draft.socketio_event}",
+                        oninput: {
+                            let draft = draft.clone();
+                            move |evt: Event<FormData>| {
+                                let mut d = draft.clone();
+                                d.socketio_event = evt.value();
+                                on_change.call(d);
+                            }
+                        }
+                    }
+                    label { class: "hint", "Emit payload JSON" }
+                    CommentableTextarea {
+                        class: "body-editor".to_string(),
+                        value: draft.body.clone(),
+                        rows: Some("4"),
+                        on_change: {
+                            let draft = draft.clone();
+                            move |text: String| {
+                                let mut d = draft.clone();
+                                d.body = text;
+                                on_change.call(d);
+                            }
+                        }
+                    }
+                    div { class: "kv-actions",
+                        button {
+                            class: "btn btn-send",
+                            disabled: sending,
+                            onclick: move |_| on_protocol_action.call("socketio_session".into()),
+                            "Connect / emit / listen"
+                        }
+                    }
+                },
+                RequestProtocol::Sse => rsx! {
+                    p { class: "hint", "SSE GET stream — URL bar is EventSource endpoint." }
+                    div { class: "kv-actions",
+                        button {
+                            class: "btn btn-send",
+                            disabled: sending,
+                            onclick: move |_| on_protocol_action.call("sse_listen".into()),
+                            "Listen (max 20 events)"
+                        }
+                    }
+                },
+                RequestProtocol::GraphqlWs => rsx! {
+                    label { class: "hint", "Subscription query" }
+                    CommentableTextarea {
+                        class: "body-editor".to_string(),
+                        value: draft.graphql_ws_query.clone(),
+                        rows: Some("6"),
+                        placeholder: "subscription {{ … }}".to_string(),
+                        on_change: {
+                            let draft = draft.clone();
+                            move |text: String| {
+                                let mut d = draft.clone();
+                                d.graphql_ws_query = text;
+                                on_change.call(d);
+                            }
+                        }
+                    }
+                    label { class: "hint", "Variables JSON" }
+                    CommentableTextarea {
+                        class: "body-editor".to_string(),
+                        value: draft.graphql_variables.clone(),
+                        rows: Some("3"),
+                        on_change: {
+                            let draft = draft.clone();
+                            move |text: String| {
+                                let mut d = draft.clone();
+                                d.graphql_variables = text;
+                                on_change.call(d);
+                            }
+                        }
+                    }
+                    div { class: "kv-actions",
+                        button {
+                            class: "btn btn-send",
+                            disabled: sending,
+                            onclick: move |_| on_protocol_action.call("graphql_ws_subscribe".into()),
+                            "Subscribe"
                         }
                     }
                 },
@@ -537,12 +685,14 @@ fn ensure_trailing_empty(rows: &mut Vec<KeyValue>) {
 fn BodyEditor(
     mode: BodyMode,
     body: String,
+    binary_path: String,
     urlencoded: Vec<KeyValue>,
     formdata: Vec<FormDataField>,
     graphql_query: String,
     graphql_variables: String,
     on_change: EventHandler<(
         BodyMode,
+        String,
         String,
         Vec<KeyValue>,
         Vec<FormDataField>,
@@ -556,12 +706,14 @@ fn BodyEditor(
         BodyMode::Urlencoded => "urlencoded",
         BodyMode::FormData => "formdata",
         BodyMode::Graphql => "graphql",
+        BodyMode::Binary => "binary",
     };
     rsx! {
         select {
             value: "{mode_str}",
             onchange: {
                 let body = body.clone();
+                let binary_path = binary_path.clone();
                 let urlencoded = urlencoded.clone();
                 let formdata = formdata.clone();
                 let graphql_query = graphql_query.clone();
@@ -572,11 +724,13 @@ fn BodyEditor(
                         "urlencoded" => BodyMode::Urlencoded,
                         "formdata" => BodyMode::FormData,
                         "graphql" => BodyMode::Graphql,
+                        "binary" => BodyMode::Binary,
                         _ => BodyMode::None,
                     };
                     on_change.call((
                         mode,
                         body.clone(),
+                        binary_path.clone(),
                         urlencoded.clone(),
                         formdata.clone(),
                         graphql_query.clone(),
@@ -589,20 +743,23 @@ fn BodyEditor(
             option { value: "urlencoded", "x-www-form-urlencoded" }
             option { value: "formdata", "form-data" }
             option { value: "graphql", "GraphQL" }
+            option { value: "binary", "binary (file)" }
         }
         if mode == BodyMode::Raw {
-            textarea {
-                class: "body-editor",
-                value: "{body}",
-                placeholder: "{{\"hello\": \"world\"}}",
-                oninput: {
+            CommentableTextarea {
+                class: "body-editor".to_string(),
+                value: body.clone(),
+                placeholder: "{\"hello\": \"world\"}".to_string(),
+                on_change: {
+                    let binary_path = binary_path.clone();
                     let urlencoded = urlencoded.clone();
                     let formdata = formdata.clone();
                     let graphql_query = graphql_query.clone();
                     let graphql_variables = graphql_variables.clone();
-                    move |evt| on_change.call((
+                    move |text: String| on_change.call((
                         mode,
-                        evt.value(),
+                        text,
+                        binary_path.clone(),
                         urlencoded.clone(),
                         formdata.clone(),
                         graphql_query.clone(),
@@ -610,17 +767,67 @@ fn BodyEditor(
                     ))
                 },
             }
+        } else if mode == BodyMode::Binary {
+            label { class: "hint", "Local file path (raw bytes on send)" }
+            input {
+                class: "url-input",
+                value: "{binary_path}",
+                placeholder: "/path/to/file.bin",
+                oninput: {
+                    let body = body.clone();
+                    let urlencoded = urlencoded.clone();
+                    let formdata = formdata.clone();
+                    let graphql_query = graphql_query.clone();
+                    let graphql_variables = graphql_variables.clone();
+                    move |evt| on_change.call((
+                        BodyMode::Binary,
+                        body.clone(),
+                        evt.value(),
+                        urlencoded.clone(),
+                        formdata.clone(),
+                        graphql_query.clone(),
+                        graphql_variables.clone(),
+                    ))
+                }
+            }
+            button {
+                class: "btn btn-ghost",
+                onclick: {
+                    let body = body.clone();
+                    let urlencoded = urlencoded.clone();
+                    let formdata = formdata.clone();
+                    let graphql_query = graphql_query.clone();
+                    let graphql_variables = graphql_variables.clone();
+                    let on_change = on_change.clone();
+                    move |_| {
+                        if let Some(p) = rfd::FileDialog::new().pick_file() {
+                            on_change.call((
+                                BodyMode::Binary,
+                                body.clone(),
+                                p.display().to_string(),
+                                urlencoded.clone(),
+                                formdata.clone(),
+                                graphql_query.clone(),
+                                graphql_variables.clone(),
+                            ));
+                        }
+                    }
+                },
+                "Browse…"
+            }
         } else if mode == BodyMode::Urlencoded {
             KvEditor {
                 rows: urlencoded.clone(),
                 on_change: {
                     let body = body.clone();
+                    let binary_path = binary_path.clone();
                     let formdata = formdata.clone();
                     let graphql_query = graphql_query.clone();
                     let graphql_variables = graphql_variables.clone();
                     move |rows| on_change.call((
                         BodyMode::Urlencoded,
                         body.clone(),
+                        binary_path.clone(),
                         rows,
                         formdata.clone(),
                         graphql_query.clone(),
@@ -634,12 +841,14 @@ fn BodyEditor(
                 rows: formdata.clone(),
                 on_change: {
                     let body = body.clone();
+                    let binary_path = binary_path.clone();
                     let urlencoded = urlencoded.clone();
                     let graphql_query = graphql_query.clone();
                     let graphql_variables = graphql_variables.clone();
                     move |rows| on_change.call((
                         BodyMode::FormData,
                         body.clone(),
+                        binary_path.clone(),
                         urlencoded.clone(),
                         rows,
                         graphql_query.clone(),
@@ -649,42 +858,46 @@ fn BodyEditor(
             }
         } else if mode == BodyMode::Graphql {
             label { class: "hint", "Query" }
-            textarea {
-                class: "body-editor",
-                value: "{graphql_query}",
-                placeholder: "query {{ viewer {{ login }} }}",
-                oninput: {
+            CommentableTextarea {
+                class: "body-editor".to_string(),
+                value: graphql_query.clone(),
+                placeholder: "query {{ viewer {{ login }} }}".to_string(),
+                on_change: {
                     let body = body.clone();
+                    let binary_path = binary_path.clone();
                     let urlencoded = urlencoded.clone();
                     let formdata = formdata.clone();
                     let graphql_variables = graphql_variables.clone();
-                    move |evt| on_change.call((
+                    move |text: String| on_change.call((
                         BodyMode::Graphql,
                         body.clone(),
+                        binary_path.clone(),
                         urlencoded.clone(),
                         formdata.clone(),
-                        evt.value(),
+                        text,
                         graphql_variables.clone(),
                     ))
                 },
             }
             label { class: "hint", "Variables (JSON)" }
-            textarea {
-                class: "body-editor",
-                value: "{graphql_variables}",
-                placeholder: "{{}}",
-                oninput: {
+            CommentableTextarea {
+                class: "body-editor".to_string(),
+                value: graphql_variables.clone(),
+                placeholder: "{}".to_string(),
+                on_change: {
                     let body = body.clone();
+                    let binary_path = binary_path.clone();
                     let urlencoded = urlencoded.clone();
                     let formdata = formdata.clone();
                     let graphql_query = graphql_query.clone();
-                    move |evt| on_change.call((
+                    move |text: String| on_change.call((
                         BodyMode::Graphql,
                         body.clone(),
+                        binary_path.clone(),
                         urlencoded.clone(),
                         formdata.clone(),
                         graphql_query.clone(),
-                        evt.value(),
+                        text,
                     ))
                 },
             }
@@ -799,6 +1012,11 @@ fn AuthEditor(auth: AuthConfig, on_change: EventHandler<AuthConfig>) -> Element 
             option { value: "api_key", "API Key" }
             option { value: "digest", "Digest" }
             option { value: "oauth2", "OAuth 2.0" }
+            option { value: "oauth1", "OAuth 1.0" }
+            option { value: "hawk", "Hawk" }
+            option { value: "ntlm", "NTLM" }
+            option { value: "aws_sigv4", "AWS Signature" }
+            option { value: "edgegrid", "Akamai EdgeGrid" }
         }
         if matches!(auth_type, AuthType::Bearer | AuthType::ApiKey) {
             input {
@@ -970,6 +1188,136 @@ fn AuthEditor(auth: AuthConfig, on_change: EventHandler<AuthConfig>) -> Element 
         if auth_type == AuthType::Digest {
             p { class: "hint", "Digest: MD5 / qop=auth challenge after 401." }
         }
+        if matches!(
+            auth_type,
+            AuthType::Oauth1 | AuthType::Hawk | AuthType::AwsSigV4 | AuthType::EdgeGrid | AuthType::Ntlm
+        ) {
+            if auth_type == AuthType::Ntlm {
+                input {
+                    r#type: "text",
+                    placeholder: "Username (DOMAIN\\user)",
+                    value: "{auth.username}",
+                    oninput: {
+                        let mut a = auth.clone();
+                        move |evt: Event<FormData>| {
+                            a.username = evt.value();
+                            on_change.call(a.clone());
+                        }
+                    }
+                }
+                input {
+                    r#type: "password",
+                    placeholder: "Password",
+                    value: "{auth.password}",
+                    oninput: {
+                        let mut a = auth.clone();
+                        move |evt: Event<FormData>| {
+                            a.password = evt.value();
+                            on_change.call(a.clone());
+                        }
+                    }
+                }
+                p { class: "hint", "NTLM: Type1 negotiate only (partial — no full 401 handshake)." }
+            } else {
+                input {
+                    r#type: "text",
+                    placeholder: match auth_type {
+                        AuthType::Oauth1 => "Consumer Key",
+                        AuthType::Hawk => "Hawk ID",
+                        AuthType::AwsSigV4 => "Access Key ID",
+                        AuthType::EdgeGrid => "Client Token",
+                        _ => "Key",
+                    },
+                    value: "{auth.extra.key}",
+                    oninput: {
+                        let mut a = auth.clone();
+                        move |evt: Event<FormData>| {
+                            a.extra.key = evt.value();
+                            on_change.call(a.clone());
+                        }
+                    }
+                }
+                input {
+                    r#type: "password",
+                    placeholder: match auth_type {
+                        AuthType::Oauth1 => "Consumer Secret",
+                        AuthType::Hawk => "Hawk Key",
+                        AuthType::AwsSigV4 => "Secret Access Key",
+                        AuthType::EdgeGrid => "Client Secret",
+                        _ => "Secret",
+                    },
+                    value: "{auth.extra.secret}",
+                    oninput: {
+                        let mut a = auth.clone();
+                        move |evt: Event<FormData>| {
+                            a.extra.secret = evt.value();
+                            on_change.call(a.clone());
+                        }
+                    }
+                }
+                input {
+                    r#type: "text",
+                    placeholder: match auth_type {
+                        AuthType::Oauth1 => "Token",
+                        AuthType::AwsSigV4 => "Session token (optional)",
+                        AuthType::EdgeGrid => "Access Token",
+                        _ => "Token (optional)",
+                    },
+                    value: "{auth.extra.token}",
+                    oninput: {
+                        let mut a = auth.clone();
+                        move |evt: Event<FormData>| {
+                            a.extra.token = evt.value();
+                            on_change.call(a.clone());
+                        }
+                    }
+                }
+                if matches!(auth_type, AuthType::Oauth1 | AuthType::EdgeGrid) {
+                    input {
+                        r#type: "text",
+                        placeholder: if auth_type == AuthType::Oauth1 {
+                            "Token Secret"
+                        } else {
+                            "Host (optional)"
+                        },
+                        value: "{auth.extra.token_secret}",
+                        oninput: {
+                            let mut a = auth.clone();
+                            move |evt: Event<FormData>| {
+                                a.extra.token_secret = evt.value();
+                                on_change.call(a.clone());
+                            }
+                        }
+                    }
+                }
+                if auth_type == AuthType::AwsSigV4 {
+                    input {
+                        r#type: "text",
+                        placeholder: "Region (us-east-1)",
+                        value: "{auth.extra.region}",
+                        oninput: {
+                            let mut a = auth.clone();
+                            move |evt: Event<FormData>| {
+                                a.extra.region = evt.value();
+                                on_change.call(a.clone());
+                            }
+                        }
+                    }
+                    input {
+                        r#type: "text",
+                        placeholder: "Service (execute-api)",
+                        value: "{auth.extra.service}",
+                        oninput: {
+                            let mut a = auth.clone();
+                            move |evt: Event<FormData>| {
+                                a.extra.service = evt.value();
+                                on_change.call(a.clone());
+                            }
+                        }
+                    }
+                }
+            }
+        }
         p { class: "hint", "secret://… → keychain · {{{{vault:key}}}} → vault.json / keychain vault." }
     }
 }
@@ -983,6 +1331,11 @@ fn auth_type_str(t: AuthType) -> &'static str {
         AuthType::ApiKey => "api_key",
         AuthType::Digest => "digest",
         AuthType::Oauth2 => "oauth2",
+        AuthType::Oauth1 => "oauth1",
+        AuthType::Hawk => "hawk",
+        AuthType::Ntlm => "ntlm",
+        AuthType::AwsSigV4 => "aws_sigv4",
+        AuthType::EdgeGrid => "edgegrid",
     }
 }
 
@@ -993,6 +1346,11 @@ fn parse_auth(s: &str) -> AuthType {
         "api_key" => AuthType::ApiKey,
         "digest" => AuthType::Digest,
         "oauth2" => AuthType::Oauth2,
+        "oauth1" => AuthType::Oauth1,
+        "hawk" => AuthType::Hawk,
+        "ntlm" => AuthType::Ntlm,
+        "aws_sigv4" => AuthType::AwsSigV4,
+        "edgegrid" => AuthType::EdgeGrid,
         "inherit" => AuthType::Inherit,
         _ => AuthType::NoAuth,
     }
@@ -1009,23 +1367,23 @@ fn ScriptsEditor(
             "JS sandbox: pm.variables|environment|collectionVariables|globals|vault|cookies|request|execution|iterationData|sendRequest, pm.response, pm.test/expect. Unsupported: async/require."
         }
         label { "Pre-request" }
-        textarea {
-            class: "body-editor",
-            value: "{pre}",
-            placeholder: "pm.environment.set(\"baseUrl\", \"https://httpbin.org\");\nconsole.log(\"pre\");",
-            oninput: {
+        CommentableTextarea {
+            class: "body-editor".to_string(),
+            value: pre.clone(),
+            placeholder: "pm.environment.set(\"baseUrl\", \"https://httpbin.org\");\nconsole.log(\"pre\");".to_string(),
+            on_change: {
                 let test = test.clone();
-                move |evt| on_change.call((evt.value(), test.clone()))
+                move |text: String| on_change.call((text, test.clone()))
             }
         }
         label { "Tests (post-response)" }
-        textarea {
-            class: "body-editor",
-            value: "{test}",
-            placeholder: "pm.test(\"status ok\", function () {{\n  pm.expect(pm.response.code).to.equal(200);\n}});",
-            oninput: {
+        CommentableTextarea {
+            class: "body-editor".to_string(),
+            value: test.clone(),
+            placeholder: "pm.test(\"status ok\", function () {{\n  pm.expect(pm.response.code).to.equal(200);\n}});".to_string(),
+            on_change: {
                 let pre = pre.clone();
-                move |evt| on_change.call((pre.clone(), evt.value()))
+                move |text: String| on_change.call((pre.clone(), text))
             }
         }
     }

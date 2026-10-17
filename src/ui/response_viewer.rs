@@ -10,6 +10,8 @@ enum RespTab {
     Headers,
     Cookies,
     Tests,
+    Visualize,
+    Timeline,
 }
 
 #[component]
@@ -27,14 +29,30 @@ pub fn ResponseViewer(
             } else if let Some(resp) = response.as_ref() {
                 div { class: "response-meta",
                     if let Some(err) = &resp.error {
-                        span { class: "status-err", "Error: {err}" }
-                    } else {
-                        span {
-                            class: if resp.status >= 200 && resp.status < 400 { "status-ok" } else { "status-err" },
-                            "{resp.status} {resp.status_text}"
+                        span { class: "status-chip status-err",
+                            span { class: "status-tag", "Error" }
+                            "{err}"
                         }
-                        span { "{resp.elapsed_ms} ms" }
-                        span { "{resp.size_bytes()} B" }
+                    } else {
+                        {
+                            let ok = resp.status >= 200 && resp.status < 400;
+                            let tag = if ok { "OK" } else { "Fail" };
+                            let cls = if ok { "status-chip status-ok" } else { "status-chip status-err" };
+                            rsx! {
+                                span { class: "{cls}",
+                                    span { class: "status-tag", "{tag}" }
+                                    "{resp.status} {resp.status_text}"
+                                }
+                            }
+                        }
+                        span { class: "meta-pair",
+                            span { class: "meta-label", "Time" }
+                            span { class: "meta-value", "{resp.elapsed_ms} ms" }
+                        }
+                        span { class: "meta-pair",
+                            span { class: "meta-label", "Size" }
+                            span { class: "meta-value", "{resp.size_bytes()} B" }
+                        }
                         button {
                             class: "btn btn-ghost",
                             title: "Save as example",
@@ -52,6 +70,8 @@ pub fn ResponseViewer(
                         ("Headers", RespTab::Headers),
                         ("Cookies", RespTab::Cookies),
                         ("Test Results", RespTab::Tests),
+                        ("Visualize", RespTab::Visualize),
+                        ("Timeline", RespTab::Timeline),
                     ] {
                         button {
                             class: if tab() == t { "builder-tab active" } else { "builder-tab" },
@@ -78,7 +98,6 @@ pub fn ResponseViewer(
                     },
                     RespTab::Preview => rsx! {
                         if looks_like_html(&resp.body) {
-                            // iframe srcdoc not always available in dioxus — show escaped HTML note + raw
                             div {
                                 p { class: "hint", "HTML preview (source):" }
                                 pre { class: "response-body", "{resp.body}" }
@@ -115,7 +134,7 @@ pub fn ResponseViewer(
                                     .map(|(_, v)| v.clone())
                                     .collect();
                                 if cookies.is_empty() {
-                                    rsx! { "(no Set-Cookie headers — see Cookies jar in footer state)" }
+                                    rsx! { "(no Set-Cookie — use Cookies manager in toolbar)" }
                                 } else {
                                     let text = cookies.join("\n");
                                     rsx! { "{text}" }
@@ -142,10 +161,58 @@ pub fn ResponseViewer(
                             }
                         }
                     },
+                    RespTab::Visualize => rsx! {
+                        div { class: "visualizer-pane",
+                            if resp.visualizer_html.is_empty() {
+                                p { class: "hint",
+                                    "No visualizer output. In Tests: pm.visualizer.set(\"<h1>{{{{title}}}}</h1>\", {{title:\"hi\"}}) — or return HTML body."
+                                }
+                            } else {
+                                p { class: "hint", "Visualizer HTML (source — desktop has no iframe sandbox):" }
+                                pre { class: "response-body", "{resp.visualizer_html}" }
+                            }
+                        }
+                    },
+                    RespTab::Timeline => rsx! {
+                        div { class: "timeline-pane",
+                            p { class: "hint", "Timing phases approximated from total / TTFB (reqwest blocking)." }
+                            {
+                                let t = &resp.timing;
+                                let total = t.total_ms.max(1);
+                                rsx! {
+                                    div { class: "timeline-bars",
+                                        TimelineBar { label: "DNS", ms: t.dns_ms, total: total }
+                                        TimelineBar { label: "Connect", ms: t.connect_ms, total: total }
+                                        TimelineBar { label: "TLS", ms: t.tls_ms, total: total }
+                                        TimelineBar { label: "TTFB", ms: t.ttfb_ms, total: total }
+                                        TimelineBar { label: "Download", ms: t.download_ms, total: total }
+                                        TimelineBar { label: "Total", ms: t.total_ms, total: total }
+                                    }
+                                }
+                            }
+                        }
+                    },
                 }
             } else {
                 p { class: "hint", "Response appears here after Send." }
             }
+        }
+    }
+}
+
+#[component]
+fn TimelineBar(label: &'static str, ms: u128, total: u128) -> Element {
+    let pct = ((ms as f64 / total as f64) * 100.0).clamp(2.0, 100.0);
+    rsx! {
+        div { class: "timeline-row",
+            span { class: "timeline-label", "{label}" }
+            div { class: "timeline-track",
+                div {
+                    class: "timeline-fill",
+                    style: "width: {pct}%",
+                }
+            }
+            span { class: "timeline-ms", "{ms} ms" }
         }
     }
 }

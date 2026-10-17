@@ -91,6 +91,79 @@ pub fn find_environment_by_name<'a>(
     environments.iter().find(|e| e.name == name)
 }
 
+/// Import Postman environment export JSON (`{ "name", "values": [{key,value,enabled,type}] }`).
+pub fn import_environment_json(text: &str) -> Result<Environment, String> {
+    let root: serde_json::Value =
+        serde_json::from_str(text).map_err(|e| format!("json: {e}"))?;
+    // Detect collection mistakenly passed
+    if root.pointer("/info/schema").is_some() {
+        return Err("looks like a collection, not an environment".into());
+    }
+    let name = root
+        .get("name")
+        .and_then(|v| v.as_str())
+        .unwrap_or("Imported Environment")
+        .to_string();
+    let mut env = Environment::new(name);
+    if let Some(id) = root.get("id").and_then(|v| v.as_str()) {
+        if let Ok(u) = uuid::Uuid::parse_str(id) {
+            env.id = u;
+        }
+    }
+    let values = root
+        .get("values")
+        .and_then(|v| v.as_array())
+        .cloned()
+        .unwrap_or_default();
+    for v in values {
+        let key = v
+            .get("key")
+            .and_then(|k| k.as_str())
+            .unwrap_or("")
+            .to_string();
+        if key.is_empty() {
+            continue;
+        }
+        let value = v
+            .get("value")
+            .and_then(|x| x.as_str())
+            .unwrap_or("")
+            .to_string();
+        let enabled = v.get("enabled").and_then(|e| e.as_bool()).unwrap_or(true);
+        let mut ev = EnvVar::new(key, value);
+        // Postman sometimes has separate initial
+        if let Some(init) = v.get("initial").and_then(|x| x.as_str()) {
+            ev.initial_value = init.to_string();
+        }
+        ev.enabled = enabled;
+        env.values.push(ev);
+    }
+    Ok(env)
+}
+
+/// Export environment as Postman-compatible JSON.
+pub fn export_environment_json(env: &Environment) -> Result<String, String> {
+    let values: Vec<serde_json::Value> = env
+        .values
+        .iter()
+        .map(|v| {
+            serde_json::json!({
+                "key": v.key,
+                "value": v.current_value,
+                "enabled": v.enabled,
+                "type": "default",
+            })
+        })
+        .collect();
+    let doc = serde_json::json!({
+        "id": env.id.to_string(),
+        "name": env.name,
+        "values": values,
+        "_postman_variable_scope": "environment",
+    });
+    serde_json::to_string_pretty(&doc).map_err(|e| e.to_string())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -112,5 +185,23 @@ mod tests {
         let map = env.to_map();
         assert_eq!(map.get("a").map(String::as_str), Some("1"));
         assert!(!map.contains_key("b"));
+    }
+
+    #[test]
+    fn import_export_postman_env() {
+        let sample = r#"{
+            "id": "11111111-1111-1111-1111-111111111111",
+            "name": "Initiate Envs",
+            "values": [
+                {"key": "baseUrl", "value": "https://api.example.com", "enabled": true},
+                {"key": "token_hakki", "value": "", "enabled": true}
+            ]
+        }"#;
+        let env = import_environment_json(sample).unwrap();
+        assert_eq!(env.name, "Initiate Envs");
+        assert_eq!(env.values.len(), 2);
+        let json = export_environment_json(&env).unwrap();
+        let again = import_environment_json(&json).unwrap();
+        assert_eq!(again.values.len(), 2);
     }
 }

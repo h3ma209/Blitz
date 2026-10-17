@@ -13,6 +13,9 @@ pub enum RequestProtocol {
     Grpc,
     Mqtt,
     Mcp,
+    SocketIo,
+    Sse,
+    GraphqlWs,
 }
 
 impl RequestProtocol {
@@ -23,6 +26,9 @@ impl RequestProtocol {
             Self::Grpc => "gRPC",
             Self::Mqtt => "MQTT",
             Self::Mcp => "MCP",
+            Self::SocketIo => "Socket.IO",
+            Self::Sse => "SSE",
+            Self::GraphqlWs => "GraphQL-WS",
         }
     }
 
@@ -33,6 +39,9 @@ impl RequestProtocol {
             Self::Grpc,
             Self::Mqtt,
             Self::Mcp,
+            Self::SocketIo,
+            Self::Sse,
+            Self::GraphqlWs,
         ]
     }
 }
@@ -116,6 +125,8 @@ pub enum BodyMode {
     FormData,
     /// GraphQL over HTTP (query + variables JSON).
     Graphql,
+    /// Raw file bytes from `binary_path`.
+    Binary,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
@@ -131,6 +142,11 @@ pub enum AuthType {
     Digest,
     /// OAuth 2.0 (client_credentials or authorization_code).
     Oauth2,
+    Oauth1,
+    Hawk,
+    Ntlm,
+    AwsSigV4,
+    EdgeGrid,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
@@ -208,6 +224,29 @@ impl Default for FormDataField {
     }
 }
 
+/// Extra fields for OAuth1 / Hawk / AWS / EdgeGrid / NTLM.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub struct AuthExtra {
+    /// OAuth1 consumer key / Hawk id / EdgeGrid client token / AWS access key.
+    pub key: String,
+    /// OAuth1 consumer secret / Hawk key / EdgeGrid client secret / AWS secret key.
+    pub secret: String,
+    /// OAuth1 token / EdgeGrid access token / AWS session token.
+    pub token: String,
+    /// OAuth1 token secret / EdgeGrid host (base URL host).
+    pub token_secret: String,
+    /// OAuth1 signature method (HMAC-SHA1 / HMAC-SHA256 / PLAINTEXT).
+    pub signature_method: String,
+    /// AWS region (default us-east-1).
+    pub region: String,
+    /// AWS service name (default execute-api).
+    pub service: String,
+    /// Hawk algorithm (sha256 / sha1).
+    pub algorithm: String,
+    /// Hawk ext / optional.
+    pub ext: String,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub struct AuthConfig {
     pub auth_type: AuthType,
@@ -218,12 +257,27 @@ pub struct AuthConfig {
     pub api_key_header: String,
     #[serde(default)]
     pub oauth2: OAuth2Config,
+    #[serde(default)]
+    pub extra: AuthExtra,
+}
+
+/// Approximate timing phases (ms). DNS/connect/TTFB approximated when not available from reqwest.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub struct TimingBreakdown {
+    pub dns_ms: u128,
+    pub connect_ms: u128,
+    pub tls_ms: u128,
+    pub ttfb_ms: u128,
+    pub download_ms: u128,
+    pub total_ms: u128,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RequestDraft {
     pub id: Uuid,
     pub name: String,
+    #[serde(default)]
+    pub description: String,
     #[serde(default)]
     pub protocol: RequestProtocol,
     pub method: HttpMethod,
@@ -232,6 +286,12 @@ pub struct RequestDraft {
     pub headers: Vec<KeyValue>,
     pub body_mode: BodyMode,
     pub body: String,
+    /// Local file path when `body_mode == Binary`.
+    #[serde(default)]
+    pub binary_path: String,
+    /// Manual sibling order (lower first). Used by DnD reorder.
+    #[serde(default)]
+    pub sort_key: i64,
     /// Used when `body_mode == Urlencoded`.
     #[serde(default)]
     pub body_urlencoded: Vec<KeyValue>,
@@ -275,6 +335,18 @@ pub struct RequestDraft {
     pub mcp_tool_name: String,
     #[serde(default)]
     pub mcp_tool_args_json: String,
+    /// Socket.IO event name to emit / listen.
+    #[serde(default)]
+    pub socketio_event: String,
+    /// GraphQL-WS subscription query (when protocol == GraphqlWs).
+    #[serde(default)]
+    pub graphql_ws_query: String,
+    /// Mock scenario: match example by this request header name (optional).
+    #[serde(default)]
+    pub mock_match_header: String,
+    /// Mock scenario: match example by name substring (optional).
+    #[serde(default)]
+    pub mock_match_name: String,
 }
 
 impl Default for RequestDraft {
@@ -282,6 +354,7 @@ impl Default for RequestDraft {
         Self {
             id: Uuid::new_v4(),
             name: "Untitled Request".into(),
+            description: String::new(),
             protocol: RequestProtocol::Http,
             method: HttpMethod::Get,
             url: "https://httpbin.org/get".into(),
@@ -292,6 +365,8 @@ impl Default for RequestDraft {
             ],
             body_mode: BodyMode::None,
             body: String::new(),
+            binary_path: String::new(),
+            sort_key: 0,
             body_urlencoded: vec![KeyValue::new("", "")],
             body_formdata: vec![FormDataField::default()],
             graphql_query: String::new(),
@@ -309,6 +384,10 @@ impl Default for RequestDraft {
             mcp_args: String::new(),
             mcp_tool_name: String::new(),
             mcp_tool_args_json: "{}".into(),
+            socketio_event: "message".into(),
+            graphql_ws_query: String::new(),
+            mock_match_header: String::new(),
+            mock_match_name: String::new(),
         }
     }
 }
@@ -340,6 +419,12 @@ pub struct ResponseView {
     /// Resolved URL actually requested.
     #[serde(default)]
     pub resolved_url: String,
+    /// Timing waterfall (approximated when fine-grained phases unavailable).
+    #[serde(default)]
+    pub timing: TimingBreakdown,
+    /// Visualizer HTML from `pm.visualizer.set` or HTML response body.
+    #[serde(default)]
+    pub visualizer_html: String,
 }
 
 impl ResponseView {
@@ -359,6 +444,8 @@ impl ResponseView {
             console_messages: log,
             test_results: vec![],
             resolved_url: String::new(),
+            timing: TimingBreakdown::default(),
+            visualizer_html: String::new(),
         }
     }
 }

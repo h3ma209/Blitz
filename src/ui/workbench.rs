@@ -3,16 +3,18 @@ use uuid::Uuid;
 
 use crate::core::{
     add_folder_under, add_request_under, bundled_postman_collections, duplicate_across,
-    export_collection_v21, find_environment, find_request_across, generate_snippet, grpc_unary,
-    import_collection_v21, import_curl, import_openapi3, limitations_blurb, mcp_call_tool,
-    mcp_list_tools, mqtt_publish, mqtt_subscribe_once, move_item_to, purge_from_trash, push_console,
-    push_history, remove_across, rename_across, restore_from_trash, routes_from_collections,
+    export_collection_v21, export_environment_json, find_environment, find_request_across,
+    generate_snippet, graphql_ws_subscribe, grpc_reflection_list, grpc_unary,
+    import_collection_v21, import_curl, import_environment_json, import_har, import_openapi3,
+    interceptor_limits_blurb, limitations_blurb, mcp_call_tool, mcp_list_tools, mqtt_publish,
+    mqtt_subscribe_once, move_item_to, purge_from_trash, push_console, push_history, remove_across,
+    rename_across, reorder_before, restore_from_trash, routes_from_collections,
     run_performance, save_example_to_request, save_request_to_collections, snippet_languages,
-    sort_collections, split_mcp_args, start_capture_proxy, start_mock, trash_collection,
-    ws_connect_session, AppSettings, CaptureProxyHandle, Collection, ConsoleLine, CookieJar,
-    EnvVar, Environment, Folder, HistoryEntry, MockHandle, PerfReport, RequestDraft,
-    RequestProtocol, ResponseView, SavedExample, VariableContext, VaultStore, WsSession,
-    HISTORY_MAX,
+    socketio_session, sort_collections, split_mcp_args, sse_listen, start_capture_proxy, start_mock,
+    trash_collection, ws_connect_session, AppSettings, CaptureProxyHandle, Collection, ConsoleLine,
+    Cookie, CookieJar, EnvVar, Environment, Folder, HistoryEntry, KeyValue, MockHandle, PerfReport,
+    RequestDraft, RequestProtocol, ResponseView, SavedExample, UiSettings, VariableContext,
+    VaultStore, WsSession, HISTORY_MAX,
 };
 use crate::runtime::{
     run_collection_with_config, send_request_with_options, RunnerConfig, RunnerReport, SendOptions,
@@ -32,6 +34,7 @@ use crate::ui::response_viewer::ResponseViewer;
 use crate::ui::runner_panel::{RunnerEvent, RunnerPanel};
 use crate::ui::settings_panel::{SettingsEvent, SettingsPanel};
 use crate::ui::sidebar::{Sidebar, SidebarAction, SidebarEvent};
+use crate::ui::CommentableTextarea;
 
 #[component]
 pub fn Workbench() -> Element {
@@ -77,6 +80,10 @@ pub fn Workbench() -> Element {
     let mut perf_vus = use_signal(|| 5u32);
     let mut perf_secs = use_signal(|| 5u64);
     let mut file_menu_open = use_signal(|| false);
+    let mut show_cookies = use_signal(|| false);
+    let mut show_col_vars = use_signal(|| false);
+    // Sidebar resize drag: (start client X, start width px).
+    let mut sidebar_drag = use_signal(|| None::<(f64, u32)>);
 
     use_effect(move || {
         if loaded() {
@@ -209,6 +216,12 @@ pub fn Workbench() -> Element {
                             console_messages: log,
                             test_results: vec![],
                             resolved_url: resolved,
+                            timing: crate::core::TimingBreakdown {
+                                total_ms: r.elapsed_ms,
+                                ttfb_ms: r.elapsed_ms,
+                                ..Default::default()
+                            },
+                            visualizer_html: String::new(),
                         }
                     }
                     Err(e) => ResponseView::error(format!("join: {e}"), vec![]),
@@ -376,6 +389,14 @@ pub fn Workbench() -> Element {
                 let col_id = evt.collection_id.or(evt.id);
                 active_collection_id.set(col_id);
                 active_request_id.set(None);
+                if let Some(id) = col_id {
+                    let cols = collections();
+                    if let Some(col) = cols.iter().find(|c| c.id == id) {
+                        let mut v = vars();
+                        v.collection = col.variables_map();
+                        vars.set(v);
+                    }
+                }
                 persist();
             }
             SidebarAction::ToggleExpand => {
@@ -507,9 +528,11 @@ pub fn Workbench() -> Element {
             SidebarAction::MoveItem => {
                 if let (Some(item_id), Some(target_id)) = (evt.id, evt.target_id) {
                     let mut cols = collections();
-                    if move_item_to(&mut cols, item_id, target_id) {
+                    let ok = move_item_to(&mut cols, item_id, target_id)
+                        || reorder_before(&mut cols, item_id, Some(target_id));
+                    if ok {
                         collections.set(cols);
-                        status_msg.set("moved item".into());
+                        status_msg.set("moved / reordered".into());
                         persist();
                     } else {
                         status_msg.set("cannot move there".into());
@@ -640,10 +663,48 @@ pub fn Workbench() -> Element {
         }
     };
 
+    let ui = app_settings().ui.clone().clamped();
+    let shell_style = format!(
+        "--fs-base: {}px; --fs-body: {}px; --fs-editor: {}px; --sidebar-w: {}px;",
+        ui.ui_font_size_px, ui.ui_font_size_px, ui.editor_font_size_px, ui.sidebar_width_px
+    );
+    let shell_class = if sidebar_drag().is_some() {
+        "app-shell sidebar-resizing"
+    } else {
+        "app-shell"
+    };
+
     rsx! {
         div {
-            class: "app-shell",
+            class: "{shell_class}",
+            style: "{shell_style}",
             tabindex: "0",
+            onmousemove: move |evt| {
+                let Some((start_x, start_w)) = sidebar_drag() else {
+                    return;
+                };
+                let delta = (evt.client_coordinates().x - start_x).round() as i32;
+                let new_w = UiSettings::clamp_sidebar_width(
+                    (start_w as i32 + delta).max(0) as u32,
+                );
+                let mut s = app_settings();
+                if s.ui.sidebar_width_px != new_w {
+                    s.ui.sidebar_width_px = new_w;
+                    app_settings.set(s);
+                }
+            },
+            onmouseup: move |_| {
+                if sidebar_drag().is_some() {
+                    sidebar_drag.set(None);
+                    persist();
+                }
+            },
+            onmouseleave: move |_| {
+                if sidebar_drag().is_some() {
+                    sidebar_drag.set(None);
+                    persist();
+                }
+            },
             onkeydown: move |evt| {
                 let meta = evt.modifiers().meta() || evt.modifiers().ctrl();
                 let shift = evt.modifiers().shift();
@@ -813,6 +874,123 @@ pub fn Workbench() -> Element {
                                 },
                                 "Export active collection…"
                             }
+                            button {
+                                class: "menu-item",
+                                onclick: move |_| {
+                                    file_menu_open.set(false);
+                                    let picked = rfd::FileDialog::new()
+                                        .set_title("Import Postman environment")
+                                        .add_filter("Environment JSON", &["json"])
+                                        .pick_file();
+                                    let Some(path) = picked else {
+                                        status_msg.set("env import cancelled".into());
+                                        return;
+                                    };
+                                    match std::fs::read_to_string(&path)
+                                        .map_err(|e| e.to_string())
+                                        .and_then(|t| import_environment_json(&t))
+                                    {
+                                        Ok(env) => {
+                                            let name = env.name.clone();
+                                            let id = env.id;
+                                            let mut envs = environments();
+                                            envs.push(env);
+                                            environments.set(envs);
+                                            active_env_id.set(Some(id));
+                                            persist();
+                                            status_msg.set(format!("imported environment “{name}”"));
+                                        }
+                                        Err(e) => status_msg.set(format!("env import: {e}")),
+                                    }
+                                },
+                                "Import environment…"
+                            }
+                            button {
+                                class: "menu-item",
+                                onclick: move |_| {
+                                    file_menu_open.set(false);
+                                    let envs = environments();
+                                    let env = active_env_id()
+                                        .and_then(|id| envs.iter().find(|e| e.id == id))
+                                        .or_else(|| envs.first());
+                                    match env {
+                                        Some(e) => match export_environment_json(e) {
+                                            Ok(text) => {
+                                                if let Some(path) = rfd::FileDialog::new()
+                                                    .set_title("Export environment")
+                                                    .set_file_name(format!("{}.postman_environment.json", e.name))
+                                                    .save_file()
+                                                {
+                                                    match std::fs::write(&path, text) {
+                                                        Ok(()) => status_msg.set(format!(
+                                                            "exported env to {}",
+                                                            path.display()
+                                                        )),
+                                                        Err(err) => {
+                                                            status_msg.set(format!("write: {err}"))
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                            Err(e) => status_msg.set(format!("env export: {e}")),
+                                        },
+                                        None => status_msg.set("no environment to export".into()),
+                                    }
+                                },
+                                "Export active environment…"
+                            }
+                            button {
+                                class: "menu-item",
+                                onclick: move |_| {
+                                    file_menu_open.set(false);
+                                    let picked = rfd::FileDialog::new()
+                                        .set_title("Import HAR / OpenAPI")
+                                        .add_filter("HAR / OpenAPI", &["json", "yaml", "yml", "har"])
+                                        .pick_file();
+                                    let Some(path) = picked else { return };
+                                    match std::fs::read_to_string(&path) {
+                                        Ok(text) => {
+                                            let col = if path
+                                                .extension()
+                                                .and_then(|e| e.to_str())
+                                                .map(|e| {
+                                                    e.eq_ignore_ascii_case("yaml")
+                                                        || e.eq_ignore_ascii_case("yml")
+                                                })
+                                                .unwrap_or(false)
+                                            {
+                                                import_openapi3(&text)
+                                            } else if text.contains("\"log\"")
+                                                && text.contains("\"entries\"")
+                                            {
+                                                import_har(&text).map_err(|e| e)
+                                            } else if text.contains("openapi")
+                                                || text.contains("\"paths\"")
+                                            {
+                                                import_openapi3(&text)
+                                            } else {
+                                                import_collection_v21(&text)
+                                            };
+                                            match col {
+                                                Ok(c) => {
+                                                    let id = c.id;
+                                                    let mut cols = collections();
+                                                    cols.push(c);
+                                                    collections.set(cols);
+                                                    active_collection_id.set(Some(id));
+                                                    persist();
+                                                    status_msg.set("imported HAR/OpenAPI/collection".into());
+                                                }
+                                                Err(e) => {
+                                                    status_msg.set(format!("import: {e}"))
+                                                }
+                                            }
+                                        }
+                                        Err(e) => status_msg.set(format!("read: {e}")),
+                                    }
+                                },
+                                "Import HAR / OpenAPI…"
+                            }
                         }
                     }
                 }
@@ -912,7 +1090,8 @@ pub fn Workbench() -> Element {
                                     }
                                     proxy_port.set(Some(p));
                                     status_msg.set(format!(
-                                        "capture proxy http://127.0.0.1:{p} (HTTP absolute-form; no CONNECT MITM)"
+                                        "capture proxy http://127.0.0.1:{p} — {}",
+                                        interceptor_limits_blurb()
                                     ));
                                 }
                                 Err(e) => status_msg.set(format!("proxy error: {e}")),
@@ -920,6 +1099,18 @@ pub fn Workbench() -> Element {
                         }
                     },
                     if proxy_port().is_some() { "Stop proxy" } else { "Proxy" }
+                }
+                button {
+                    class: "btn btn-ghost",
+                    title: "Cookie jar manager",
+                    onclick: move |_| show_cookies.set(true),
+                    "Cookies"
+                }
+                button {
+                    class: "btn btn-ghost",
+                    title: "Edit collection variables",
+                    onclick: move |_| show_col_vars.set(true),
+                    "Col vars"
                 }
                 button {
                     class: "btn btn-ghost",
@@ -1234,12 +1425,30 @@ pub fn Workbench() -> Element {
                     }
                 }
             } else {
-                Sidebar {
-                    collections: collections(),
-                    active_collection_id: active_collection_id(),
-                    active_request_id: active_request_id(),
-                    history: history(),
-                    on_event: on_sidebar,
+                div { class: "sidebar-slot",
+                    Sidebar {
+                        collections: collections(),
+                        active_collection_id: active_collection_id(),
+                        active_request_id: active_request_id(),
+                        history: history(),
+                        on_event: on_sidebar,
+                    }
+                    div {
+                        class: if sidebar_drag().is_some() {
+                            "sidebar-resize active"
+                        } else {
+                            "sidebar-resize"
+                        },
+                        title: "Drag to resize sidebar",
+                        onmousedown: move |evt| {
+                            evt.prevent_default();
+                            evt.stop_propagation();
+                            sidebar_drag.set(Some((
+                                evt.client_coordinates().x,
+                                app_settings().ui.sidebar_width_px,
+                            )));
+                        },
+                    }
                 }
             }
 
@@ -1471,6 +1680,72 @@ pub fn Workbench() -> Element {
                                     sending.set(false);
                                 });
                             }
+                            "socketio_session" => {
+                                sending.set(true);
+                                let url = req.url.clone();
+                                let ev = req.socketio_event.clone();
+                                let body = req.body.clone();
+                                spawn(async move {
+                                    let result = tokio::task::spawn_blocking(move || {
+                                        socketio_session(&url, &ev, &body, &ev, 3_000)
+                                    })
+                                    .await;
+                                    match result {
+                                        Ok(Ok(lines)) => protocol_log.set(lines),
+                                        Ok(Err(e)) => protocol_log.set(vec![e]),
+                                        Err(e) => protocol_log.set(vec![format!("join: {e}")]),
+                                    }
+                                    sending.set(false);
+                                });
+                            }
+                            "sse_listen" => {
+                                sending.set(true);
+                                let url = req.url.clone();
+                                let headers: Vec<(String, String)> = req
+                                    .headers
+                                    .iter()
+                                    .filter(|h| h.enabled && !h.key.is_empty())
+                                    .map(|h| (h.key.clone(), h.value.clone()))
+                                    .collect();
+                                spawn(async move {
+                                    let result = tokio::task::spawn_blocking(move || {
+                                        sse_listen(&url, &headers, 20, 15_000)
+                                    })
+                                    .await;
+                                    match result {
+                                        Ok(Ok((lines, _))) => protocol_log.set(lines),
+                                        Ok(Err(e)) => protocol_log.set(vec![e]),
+                                        Err(e) => protocol_log.set(vec![format!("join: {e}")]),
+                                    }
+                                    sending.set(false);
+                                });
+                            }
+                            "graphql_ws_subscribe" => {
+                                sending.set(true);
+                                let url = req.url.clone();
+                                let q = if req.graphql_ws_query.is_empty() {
+                                    req.graphql_query.clone()
+                                } else {
+                                    req.graphql_ws_query.clone()
+                                };
+                                let vars = req.graphql_variables.clone();
+                                spawn(async move {
+                                    let result = tokio::task::spawn_blocking(move || {
+                                        graphql_ws_subscribe(&url, &q, &vars, 10, 15_000)
+                                    })
+                                    .await;
+                                    match result {
+                                        Ok(Ok(lines)) => protocol_log.set(lines),
+                                        Ok(Err(e)) => protocol_log.set(vec![e]),
+                                        Err(e) => protocol_log.set(vec![format!("join: {e}")]),
+                                    }
+                                    sending.set(false);
+                                });
+                            }
+                            "grpc_reflect" => {
+                                let url = req.url.clone();
+                                protocol_log.set(grpc_reflection_list(&url));
+                            }
                             _ => {}
                         }
                     },
@@ -1515,14 +1790,252 @@ pub fn Workbench() -> Element {
                 }
             }
 
+            if show_cookies() {
+                div { class: "modal-backdrop",
+                    div { class: "modal",
+                        h3 { "Cookie manager" }
+                        p { class: "hint", "Jar used on send (domain / path match)." }
+                        table { class: "kv-table",
+                            thead {
+                                tr {
+                                    th { "Domain" }
+                                    th { "Name" }
+                                    th { "Value" }
+                                    th { "Path" }
+                                    th { "" }
+                                }
+                            }
+                            tbody {
+                                for (i, c) in cookies().cookies.iter().enumerate() {
+                                    tr {
+                                        td {
+                                            input {
+                                                value: "{c.domain}",
+                                                oninput: move |evt: Event<FormData>| {
+                                                    let mut jar = cookies();
+                                                    if let Some(slot) = jar.cookies.get_mut(i) {
+                                                        slot.domain = evt.value();
+                                                    }
+                                                    cookies.set(jar);
+                                                }
+                                            }
+                                        }
+                                        td {
+                                            input {
+                                                value: "{c.name}",
+                                                oninput: move |evt: Event<FormData>| {
+                                                    let mut jar = cookies();
+                                                    if let Some(slot) = jar.cookies.get_mut(i) {
+                                                        slot.name = evt.value();
+                                                    }
+                                                    cookies.set(jar);
+                                                }
+                                            }
+                                        }
+                                        td {
+                                            input {
+                                                value: "{c.value}",
+                                                oninput: move |evt: Event<FormData>| {
+                                                    let mut jar = cookies();
+                                                    if let Some(slot) = jar.cookies.get_mut(i) {
+                                                        slot.value = evt.value();
+                                                    }
+                                                    cookies.set(jar);
+                                                }
+                                            }
+                                        }
+                                        td {
+                                            input {
+                                                value: "{c.path}",
+                                                oninput: move |evt: Event<FormData>| {
+                                                    let mut jar = cookies();
+                                                    if let Some(slot) = jar.cookies.get_mut(i) {
+                                                        slot.path = evt.value();
+                                                    }
+                                                    cookies.set(jar);
+                                                }
+                                            }
+                                        }
+                                        td {
+                                            button {
+                                                class: "btn btn-ghost",
+                                                onclick: move |_| {
+                                                    let mut jar = cookies();
+                                                    jar.remove_at(i);
+                                                    cookies.set(jar);
+                                                    persist();
+                                                },
+                                                "×"
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        div { class: "kv-actions",
+                            button {
+                                class: "btn btn-ghost",
+                                onclick: move |_| {
+                                    let mut jar = cookies();
+                                    jar.upsert(Cookie {
+                                        domain: "example.com".into(),
+                                        name: "session".into(),
+                                        value: String::new(),
+                                        path: "/".into(),
+                                    });
+                                    cookies.set(jar);
+                                },
+                                "Add"
+                            }
+                            button {
+                                class: "btn btn-ghost",
+                                onclick: move |_| {
+                                    let mut jar = cookies();
+                                    jar.clear();
+                                    cookies.set(jar);
+                                    persist();
+                                },
+                                "Clear all"
+                            }
+                            button {
+                                class: "btn btn-send",
+                                onclick: move |_| {
+                                    show_cookies.set(false);
+                                    persist();
+                                },
+                                "Done"
+                            }
+                        }
+                    }
+                }
+            }
+
+            if show_col_vars() {
+                div { class: "modal-backdrop",
+                    div { class: "modal",
+                        h3 { "Collection variables" }
+                        {
+                            let cols = collections();
+                            let col = active_collection_id()
+                                .and_then(|id| cols.iter().find(|c| c.id == id));
+                            match col {
+                                Some(c) => {
+                                    let cid = c.id;
+                                    let rows = c.variables.clone();
+                                    rsx! {
+                                        p { class: "hint", "Editing “{c.name}” — synced to VariableContext.collection" }
+                                        table { class: "kv-table",
+                                            thead { tr { th { "Key" } th { "Value" } th { "" } } }
+                                            tbody {
+                                                for (i, row) in rows.iter().enumerate() {
+                                                    tr {
+                                                        td {
+                                                            input {
+                                                                value: "{row.key}",
+                                                                oninput: move |evt: Event<FormData>| {
+                                                                    let mut cols = collections();
+                                                                    if let Some(col) = cols.iter_mut().find(|c| c.id == cid) {
+                                                                        if let Some(r) = col.variables.get_mut(i) {
+                                                                            r.key = evt.value();
+                                                                        }
+                                                                        let mut v = vars();
+                                                                        v.collection = col.variables_map();
+                                                                        vars.set(v);
+                                                                    }
+                                                                    collections.set(cols);
+                                                                }
+                                                            }
+                                                        }
+                                                        td {
+                                                            input {
+                                                                value: "{row.value}",
+                                                                oninput: move |evt: Event<FormData>| {
+                                                                    let mut cols = collections();
+                                                                    if let Some(col) = cols.iter_mut().find(|c| c.id == cid) {
+                                                                        if let Some(r) = col.variables.get_mut(i) {
+                                                                            r.value = evt.value();
+                                                                        }
+                                                                        let mut v = vars();
+                                                                        v.collection = col.variables_map();
+                                                                        vars.set(v);
+                                                                    }
+                                                                    collections.set(cols);
+                                                                }
+                                                            }
+                                                        }
+                                                        td {
+                                                            button {
+                                                                class: "btn btn-ghost",
+                                                                onclick: move |_| {
+                                                                    let mut cols = collections();
+                                                                    if let Some(col) = cols.iter_mut().find(|c| c.id == cid) {
+                                                                        if i < col.variables.len() {
+                                                                            col.variables.remove(i);
+                                                                        }
+                                                                        let mut v = vars();
+                                                                        v.collection = col.variables_map();
+                                                                        vars.set(v);
+                                                                    }
+                                                                    collections.set(cols);
+                                                                },
+                                                                "×"
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                        div { class: "kv-actions",
+                                            button {
+                                                class: "btn btn-ghost",
+                                                onclick: move |_| {
+                                                    let mut cols = collections();
+                                                    if let Some(col) = cols.iter_mut().find(|c| c.id == cid) {
+                                                        col.variables.push(KeyValue::new("", ""));
+                                                    }
+                                                    collections.set(cols);
+                                                },
+                                                "Add row"
+                                            }
+                                            button {
+                                                class: "btn btn-send",
+                                                onclick: move |_| {
+                                                    show_col_vars.set(false);
+                                                    persist();
+                                                },
+                                                "Done"
+                                            }
+                                        }
+                                    }
+                                }
+                                None => rsx! {
+                                    p { class: "hint", "Select a collection first." }
+                                    button {
+                                        class: "btn btn-ghost",
+                                        onclick: move |_| show_col_vars.set(false),
+                                        "Close"
+                                    }
+                                },
+                            }
+                        }
+                    }
+                }
+            }
+
             if let Some(modal) = impex_modal() {
                 ImpexDialog {
                     modal,
                     on_close: move |_| impex_modal.set(None),
                     on_import: move |text: String| {
                         let text = text.trim().to_string();
-                        let imported = if text.trim_start().starts_with('{')
-                            && text.contains("\"openapi\"")
+                        let imported = if text.contains("\"log\"") && text.contains("\"entries\"") {
+                            import_har(&text).map_err(|e| e)
+                        } else if text.trim_start().starts_with('{')
+                            && (text.contains("\"openapi\"") || text.contains("\"paths\""))
+                        {
+                            import_openapi3(&text)
+                        } else if !text.trim_start().starts_with('{')
+                            && (text.contains("openapi:") || text.contains("paths:"))
                         {
                             import_openapi3(&text)
                         } else if text.to_ascii_lowercase().contains("curl ")
@@ -1582,10 +2095,10 @@ fn ImpexDialog(
             div { class: "modal",
                 h3 { "{title}" }
                 p { class: "hint", "{limitations_blurb()}" }
-                textarea {
-                    class: "impex-editor",
-                    value: "{text}",
-                    oninput: move |evt| text.set(evt.value()),
+                CommentableTextarea {
+                    class: "impex-editor".to_string(),
+                    value: text(),
+                    on_change: move |v: String| text.set(v),
                 }
                 div { class: "modal-actions",
                     button {
@@ -1632,7 +2145,9 @@ fn apply_snapshot(
     active_env_id.set(snap.active_environment_id);
     history.set(snap.history);
     cookies.set(snap.cookies);
-    app_settings.set(snap.settings);
+    let mut settings = snap.settings;
+    settings.ui = settings.ui.clamped();
+    app_settings.set(settings);
     trash.set(snap.trash);
     active_collection_id.set(
         snap.active_collection_id
