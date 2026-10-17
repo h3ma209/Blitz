@@ -1379,6 +1379,18 @@ fn parse_auth(s: &str) -> AuthType {
     }
 }
 
+fn append_script_snippet(existing: &str, snippet: &str) -> String {
+    let mut next = existing.to_string();
+    if !next.is_empty() && !next.ends_with('\n') {
+        next.push('\n');
+    }
+    next.push_str(snippet);
+    if !next.ends_with('\n') {
+        next.push('\n');
+    }
+    next
+}
+
 #[component]
 fn ScriptsEditor(
     pre: String,
@@ -1387,7 +1399,7 @@ fn ScriptsEditor(
 ) -> Element {
     rsx! {
         p { class: "hint",
-            "JS sandbox: pm.variables|environment|collectionVariables|globals|vault|cookies|request|execution|iterationData|sendRequest, pm.response, pm.test/expect. Unsupported: async/require."
+            "Supported: pm.variables|environment|collectionVariables|globals (.get/set/unset/has/toObject/clear, replaceIn), vault, cookies (get/set/clear), request (url.getPath, method, headers.upsert, body), response (code/status/responseTime/json/text/headers, to.have.status/jsonBody), test/expect (equal/eql/include/ok/above/below/a/property/not), sendRequest, execution, info, visualizer, console.*, CryptoJS.SHA256/HmacSHA256. require: crypto-js only. No async tests / npm / uvm."
         }
         label { "Pre-request" }
         CommentableTextarea {
@@ -1400,6 +1412,62 @@ fn ScriptsEditor(
             }
         }
         label { "Tests (post-response)" }
+        div { class: "kv-actions",
+            button {
+                class: "btn btn-ghost",
+                r#type: "button",
+                onclick: {
+                    let pre = pre.clone();
+                    let test = test.clone();
+                    move |_| {
+                        on_change.call((
+                            pre.clone(),
+                            append_script_snippet(
+                                &test,
+                                "pm.test(\"Status 200\", function () {\n  pm.response.to.have.status(200);\n});\n",
+                            ),
+                        ))
+                    }
+                },
+                "Status 200"
+            }
+            button {
+                class: "btn btn-ghost",
+                r#type: "button",
+                onclick: {
+                    let pre = pre.clone();
+                    let test = test.clone();
+                    move |_| {
+                        on_change.call((
+                            pre.clone(),
+                            append_script_snippet(
+                                &test,
+                                "pm.test(\"Save token\", function () {\n  var t = pm.response.json().data.token;\n  pm.environment.set(\"token\", t);\n  pm.collectionVariables.set(\"token\", t);\n});\n",
+                            ),
+                        ))
+                    }
+                },
+                "Save token"
+            }
+            button {
+                class: "btn btn-ghost",
+                r#type: "button",
+                onclick: {
+                    let pre = pre.clone();
+                    let test = test.clone();
+                    move |_| {
+                        on_change.call((
+                            pre.clone(),
+                            append_script_snippet(
+                                &test,
+                                "pm.test(\"JSON ok\", function () {\n  pm.response.to.have.jsonBody();\n  pm.expect(pm.response.json()).to.be.ok;\n});\n",
+                            ),
+                        ))
+                    }
+                },
+                "JSON ok"
+            }
+        }
         CommentableTextarea {
             class: "body-editor".to_string(),
             value: test.clone(),
