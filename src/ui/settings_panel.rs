@@ -1,6 +1,9 @@
 use dioxus::prelude::*;
 
-use crate::core::{AppSettings, ClientCertSettings, ProxyMode, ProxySettings, UiSettings};
+use crate::core::{
+    AppSettings, ClientCertSettings, CloudSyncSettings, ProxyMode, ProxySettings, UiSettings,
+    DEFAULT_CLOUD_REMOTE,
+};
 
 #[derive(Clone, PartialEq)]
 pub enum SettingsEvent {
@@ -24,6 +27,12 @@ pub fn SettingsPanel(
     let mut sidebar_w = use_signal(|| settings.ui.sidebar_width_px);
     let mut request_h = use_signal(|| settings.ui.request_pane_height_px);
     let mut console_h = use_signal(|| settings.ui.console_height_px);
+    let mut cloud_enabled = use_signal(|| settings.cloud_sync.enabled);
+    let mut cloud_remote = use_signal(|| settings.cloud_sync.remote_url.clone());
+    let mut cloud_clone = use_signal(|| settings.cloud_sync.clone_path.clone());
+    let cloud_last_status = settings.cloud_sync.last_status.clone();
+    let cloud_last_branch = settings.cloud_sync.last_branch.clone();
+    let default_clone_hint = format!("{data_root}/cloud");
 
     let mode_str = match proxy_mode() {
         ProxyMode::Env => "env",
@@ -35,7 +44,7 @@ pub fn SettingsPanel(
         div { class: "modal-backdrop",
             div { class: "modal settings-modal",
                 h3 { "Settings" }
-                p { class: "hint", "Proxy, certificates, appearance. Data: {data_root}" }
+                p { class: "hint", "Proxy, certificates, appearance, cloud sync. Data: {data_root}" }
 
                 h4 { "Appearance" }
                 div { class: "settings-fields",
@@ -171,6 +180,42 @@ pub fn SettingsPanel(
                     "PEM cert+key wired when enabled. PKCS#12 / passphrase = TODO. Vault file: {data_root}/vault.json for {{{{vault:key}}}}."
                 }
 
+                h4 { "Git cloud sync" }
+                label { class: "checkbox-row",
+                    input {
+                        r#type: "checkbox",
+                        checked: cloud_enabled(),
+                        onchange: move |evt| cloud_enabled.set(evt.checked()),
+                    }
+                    " Enable save → commit → push"
+                }
+                p { class: "hint",
+                    "Environments = branches env/<name>. Secrets / vault / cookies / history stay local. Needs system git + GitHub auth (SSH or gh)."
+                }
+                label { class: "settings-row",
+                    span { "Remote URL" }
+                    input {
+                        r#type: "text",
+                        placeholder: "{DEFAULT_CLOUD_REMOTE}",
+                        value: "{cloud_remote}",
+                        oninput: move |evt| cloud_remote.set(evt.value()),
+                    }
+                }
+                label { class: "settings-row",
+                    span { "Clone path (empty = default)" }
+                    input {
+                        r#type: "text",
+                        placeholder: "{default_clone_hint}",
+                        value: "{cloud_clone}",
+                        oninput: move |evt| cloud_clone.set(evt.value()),
+                    }
+                }
+                if !cloud_last_branch.is_empty() || !cloud_last_status.is_empty() {
+                    p { class: "hint",
+                        "Branch: {cloud_last_branch} · {cloud_last_status}"
+                    }
+                }
+
                 div { class: "modal-actions",
                     button {
                         class: "btn btn-ghost",
@@ -180,6 +225,14 @@ pub fn SettingsPanel(
                     button {
                         class: "btn btn-send",
                         onclick: move |_| {
+                            let remote = {
+                                let r = cloud_remote().trim().to_string();
+                                if r.is_empty() {
+                                    DEFAULT_CLOUD_REMOTE.to_string()
+                                } else {
+                                    r
+                                }
+                            };
                             on_event.call(SettingsEvent::Save(AppSettings {
                                 proxy: ProxySettings {
                                     mode: proxy_mode(),
@@ -198,6 +251,13 @@ pub fn SettingsPanel(
                                     console_height_px: console_h(),
                                 }
                                 .clamped(),
+                                cloud_sync: CloudSyncSettings {
+                                    enabled: cloud_enabled(),
+                                    remote_url: remote,
+                                    clone_path: cloud_clone().trim().to_string(),
+                                    last_status: cloud_last_status.clone(),
+                                    last_branch: cloud_last_branch.clone(),
+                                },
                             }));
                         },
                         "Save"

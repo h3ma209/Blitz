@@ -3,18 +3,20 @@ use uuid::Uuid;
 
 use crate::core::{
     add_folder_under, add_request_under, apply_collection_var_edit, apply_env_var_edit,
-    bundled_postman_collections, duplicate_across, export_collection_v21, export_environment_json,
-    find_environment, find_request_across, generate_snippet, graphql_ws_subscribe,
-    grpc_reflection_list, grpc_unary, import_collection_v21, import_curl, import_environment_json,
-    import_har, import_openapi3, interceptor_limits_blurb, limitations_blurb, mcp_call_tool,
-    mcp_list_tools, mqtt_publish, mqtt_subscribe_once, move_item_to, purge_from_trash, push_console,
-    push_history, remove_across, rename_across, reorder_before, restore_from_trash,
-    routes_from_collections, run_performance, save_example_to_request, save_request_to_collections,
-    snippet_languages, socketio_session, sort_collections, split_mcp_args, sse_listen,
-    start_capture_proxy, start_mock, trash_collection, ws_connect_session, AppSettings,
-    CaptureProxyHandle, Collection, ConsoleLine, Cookie, CookieJar, EnvVar, Environment, Folder,
-    HistoryEntry, KeyValue, MockHandle, PerfReport, RequestDraft, RequestProtocol, ResponseView,
-    SavedExample, UiSettings, VarResolveScope, VariableContext, VaultStore, WsSession, HISTORY_MAX,
+    branch_name_for_env, bundled_postman_collections, duplicate_across, export_collection_v21,
+    export_environment_json, find_environment, find_request_across, generate_snippet,
+    graphql_ws_subscribe, grpc_reflection_list, grpc_unary, import_collection_v21, import_curl,
+    import_environment_json, import_har, import_openapi3, interceptor_limits_blurb,
+    limitations_blurb, mcp_call_tool, mcp_list_tools, mqtt_publish, mqtt_subscribe_once,
+    move_item_to, purge_from_trash, push_console, push_history, remove_across, rename_across,
+    reorder_before, restore_from_trash, routes_from_collections, run_performance,
+    save_example_to_request, save_request_to_collections, snippet_languages, socketio_session,
+    sort_collections, split_mcp_args, sse_listen, start_capture_proxy, start_mock,
+    ensure_default_environments, switch_env_branch, sync_environment, sync_on_save,
+    trash_collection, ws_connect_session, AppSettings, CaptureProxyHandle, Collection, ConsoleLine,
+    Cookie, CookieJar, EnvVar, Environment, Folder, HistoryEntry, KeyValue, MockHandle, PerfReport,
+    RequestDraft, RequestProtocol, ResponseView, SavedExample, UiSettings, VarResolveScope,
+    VariableContext, VaultStore, WsSession, HISTORY_MAX,
 };
 use crate::runtime::{
     run_collection_with_config, send_request_with_options, RunnerConfig, RunnerReport, SendError,
@@ -142,6 +144,20 @@ pub fn Workbench() -> Element {
             // Persist vault file separately (not inside snapshot vars).
             let v = vars();
             let _ = v.vault.save(store.root());
+            let mut settings = app_settings();
+            let cloud_msg = if settings.cloud_sync.enabled {
+                let result = sync_on_save(
+                    store.root(),
+                    &mut settings,
+                    &collections(),
+                    &environments(),
+                    &active_environment,
+                );
+                app_settings.set(settings.clone());
+                Some(result.message)
+            } else {
+                None
+            };
             let snap = AppSnapshot {
                 collections: collections(),
                 variables: v,
@@ -152,11 +168,17 @@ pub fn Workbench() -> Element {
                 cookies: cookies(),
                 active_collection_id: active_collection_id(),
                 active_request_id: active_request_id(),
-                settings: app_settings(),
+                settings,
                 trash: trash(),
             };
             match store.save(&snap) {
-                Ok(()) => status_msg.set(format!("saved · {}", store.root().display())),
+                Ok(()) => {
+                    let base = format!("saved · {}", store.root().display());
+                    status_msg.set(match cloud_msg {
+                        Some(m) => format!("{base} · {m}"),
+                        None => base,
+                    });
+                }
                 Err(e) => status_msg.set(format!("save error: {e}")),
             }
         }
@@ -167,6 +189,65 @@ pub fn Workbench() -> Element {
             v.environment = env.to_map();
         } else {
             v.environment.clear();
+        }
+    };
+
+    // When cloud sync on: commit current branch, checkout env/<name>, reload tree.
+    // Returns the env id to select (may remap after import).
+    let mut apply_env_cloud_switch = move |new_id: Option<Uuid>| -> Option<Uuid> {
+        let settings = app_settings();
+        if !settings.cloud_sync.enabled {
+            return new_id;
+        }
+        let envs = environments();
+        let from_name = find_environment(&envs, active_env_id())
+            .map(|e| e.name.clone())
+            .unwrap_or_else(|| "No Environment".into());
+        let to_name = find_environment(&envs, new_id)
+            .map(|e| e.name.clone())
+            .unwrap_or_else(|| "No Environment".into());
+        if from_name == to_name {
+            return new_id;
+        }
+        let Ok(store) = JsonStore::open_default() else {
+            return new_id;
+        };
+        let mut settings = app_settings();
+        match switch_env_branch(
+            store.root(),
+            &mut settings,
+            &collections(),
+            &envs,
+            &from_name,
+            &to_name,
+        ) {
+            Ok((cols, loaded_envs)) => {
+                app_settings.set(settings);
+                if !cols.is_empty() {
+                    collections.set(cols);
+                }
+                let pick = if loaded_envs.is_empty() {
+                    new_id
+                } else {
+                    let pick = loaded_envs
+                        .iter()
+                        .find(|e| e.name == to_name)
+                        .map(|e| e.id)
+                        .or(new_id);
+                    environments.set(loaded_envs);
+                    pick
+                };
+                status_msg.set(format!(
+                    "cloud branch {}",
+                    branch_name_for_env(&to_name)
+                ));
+                pick
+            }
+            Err(e) => {
+                app_settings.set(settings);
+                status_msg.set(format!("cloud env switch: {e}"));
+                new_id
+            }
         }
     };
 
@@ -707,6 +788,7 @@ pub fn Workbench() -> Element {
         match evt {
             EnvManagerEvent::Close => show_env_manager.set(false),
             EnvManagerEvent::Select(id) => {
+                let id = apply_env_cloud_switch(id);
                 active_env_id.set(id);
                 editing_env_id.set(id);
                 let mut v = vars();
@@ -1273,6 +1355,36 @@ pub fn Workbench() -> Element {
                 span { class: "spacer" }
 
                 div { class: "top-end",
+                    if app_settings().cloud_sync.enabled {
+                        span {
+                            class: "live-chip live-cloud",
+                            title: "{app_settings().cloud_sync.last_status}",
+                            {
+                                let cs = app_settings().cloud_sync;
+                                let branch = if cs.last_branch.is_empty() {
+                                    "cloud".to_string()
+                                } else {
+                                    cs.last_branch.clone()
+                                };
+                                let st = if cs.last_status.is_empty() {
+                                    "on".to_string()
+                                } else if cs.last_status.to_lowercase().contains("fail")
+                                    || cs.last_status.to_lowercase().contains("error")
+                                    || cs.last_status.to_lowercase().contains("conflict")
+                                    || cs.last_status.to_lowercase().contains("auth")
+                                {
+                                    "err".to_string()
+                                } else if cs.last_status.to_lowercase().contains("push")
+                                    || cs.last_status.to_lowercase().contains("synced")
+                                {
+                                    "ok".to_string()
+                                } else {
+                                    "…".to_string()
+                                };
+                                format!("{branch} · {st}")
+                            }
+                        }
+                    }
                     if mock_port().is_some() || proxy_port().is_some() {
                         span { class: "top-live",
                             if let Some(p) = mock_port() {
@@ -1298,13 +1410,68 @@ pub fn Workbench() -> Element {
                     EnvSelector {
                         environments: environments(),
                         active_id: active_env_id(),
+                        cloud_enabled: app_settings().cloud_sync.enabled,
                         on_change: move |id| {
+                            let id = apply_env_cloud_switch(id);
                             active_env_id.set(id);
                             editing_env_id.set(id);
                             let mut v = vars();
                             sync_env_vars(&environments(), id, &mut v);
                             vars.set(v);
                             persist();
+                        },
+                        on_sync: move |id| {
+                            let envs = environments();
+                            let Some(env) = envs.iter().find(|e| e.id == id) else {
+                                status_msg.set("sync: env not found".into());
+                                return;
+                            };
+                            let env_name = env.name.clone();
+                            // Activate this env first (UI + var map).
+                            active_env_id.set(Some(id));
+                            editing_env_id.set(Some(id));
+                            let mut v = vars();
+                            sync_env_vars(&envs, Some(id), &mut v);
+                            vars.set(v);
+
+                            let Ok(store) = JsonStore::open_default() else {
+                                status_msg.set("sync: cannot open store".into());
+                                return;
+                            };
+                            let mut settings = app_settings();
+                            // Ensure default trio present before sync.
+                            let mut envs_mut = envs;
+                            let _ = ensure_default_environments(&mut envs_mut);
+                            environments.set(envs_mut.clone());
+
+                            let result = sync_environment(
+                                store.root(),
+                                &mut settings,
+                                &collections(),
+                                &envs_mut,
+                                &env_name,
+                            );
+                            app_settings.set(settings.clone());
+                            status_msg.set(result.message.clone());
+
+                            // Persist local snapshot + cloud status (skip second push if just synced).
+                            let active_environment = env_name.clone();
+                            let vault = vars();
+                            let _ = vault.vault.save(store.root());
+                            let snap = AppSnapshot {
+                                collections: collections(),
+                                variables: vault,
+                                active_environment,
+                                environments: envs_mut,
+                                active_environment_id: Some(id),
+                                history: history(),
+                                cookies: cookies(),
+                                active_collection_id: active_collection_id(),
+                                active_request_id: active_request_id(),
+                                settings,
+                                trash: trash(),
+                            };
+                            let _ = store.save(&snap);
                         },
                         on_manage: move |_| {
                             show_env_manager.set(true);
@@ -1641,7 +1808,14 @@ pub fn Workbench() -> Element {
                     on_event: move |evt| match evt {
                         SettingsEvent::Close => show_settings.set(false),
                         SettingsEvent::Save(s) => {
+                            let enabling_cloud = s.cloud_sync.enabled;
                             app_settings.set(s);
+                            if enabling_cloud {
+                                let mut envs = environments();
+                                if ensure_default_environments(&mut envs) {
+                                    environments.set(envs);
+                                }
+                            }
                             show_settings.set(false);
                             persist();
                             status_msg.set("settings saved".into());

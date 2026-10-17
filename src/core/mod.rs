@@ -6,6 +6,7 @@
 pub mod auth_extra;
 pub mod capture_proxy;
 pub mod cli_runner;
+pub mod cloud_sync;
 pub mod codegen;
 pub mod collection;
 pub mod console;
@@ -41,13 +42,14 @@ pub use console::{push_console, ConsoleLevel, ConsoleLine, CONSOLE_MAX};
 pub use cookies::{Cookie, CookieJar};
 pub use digest::{build_digest_authorization, digest_uri, DigestChallenge};
 pub use environment::{
-    demo_environments, export_environment_json, find_environment, find_environment_by_name,
-    import_environment_json, EnvVar, Environment,
+    demo_environments, ensure_default_environments, export_environment_json, find_environment,
+    find_environment_by_name, import_environment_json, EnvVar, Environment, DEFAULT_ENV_NAMES,
 };
 pub use history::{push_history, HistoryEntry, HISTORY_MAX};
 pub use impex::{
-    bundled_postman_collections, export_collection_v21, import_collection_v21, import_curl,
-    import_har, import_openapi3, import_postman_export_texts, limitations_blurb, ImpexError,
+    bundled_postman_collections, export_collection_v21, export_request_item, import_collection_v21,
+    import_curl, import_har, import_openapi3, import_postman_export_texts, import_request_item,
+    limitations_blurb, ImpexError,
 };
 pub use mock_server::{
     draft_mock_path, routes_from_collections, save_example_to_request, start_mock, MockHandle,
@@ -71,8 +73,13 @@ pub use sandbox::{
     SandboxResponse,
 };
 pub use scripts::{run_script, run_script_ex, run_script_helpers, ScriptRunOutcome};
+pub use cloud_sync::{
+    apply_sync_to_snapshot, branch_name_for_env, git_available, status_summary, switch_env_branch,
+    sync_environment, sync_on_save, SyncResult,
+};
 pub use settings::{
-    AppSettings, ClientCertSettings, ProxyMode, ProxySettings, RequestSettings, UiSettings,
+    AppSettings, ClientCertSettings, CloudSyncSettings, ProxyMode, ProxySettings, RequestSettings,
+    UiSettings, DEFAULT_CLOUD_REMOTE,
 };
 pub use variables::{
     apply_collection_var_edit, apply_env_var_edit, find_var_at, VarHoverInfo, VarResolveScope,

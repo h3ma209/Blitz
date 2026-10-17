@@ -66,15 +66,53 @@ impl Environment {
     }
 }
 
+/// Canonical default environment names (also map to `env/<slug>` git branches).
+pub const DEFAULT_ENV_NAMES: &[&str] = &["Local", "Development", "Production"];
+
+fn seed_env(name: &str) -> Environment {
+    let mut env = Environment::new(name);
+    let base = match name {
+        "Local" => "http://127.0.0.1:3000",
+        "Production" => "https://api.example.com",
+        _ => "https://httpbin.org",
+    };
+    env.values.push(EnvVar::new("baseUrl", base));
+    env
+}
+
 /// Seed environments used when snapshot has none.
 pub fn demo_environments() -> Vec<Environment> {
-    let mut dev = Environment::new("Development");
-    dev.values.push(EnvVar::new("baseUrl", "https://httpbin.org"));
-    let mut staging = Environment::new("Staging");
-    staging
-        .values
-        .push(EnvVar::new("baseUrl", "https://httpbin.org"));
-    vec![dev, staging]
+    DEFAULT_ENV_NAMES.iter().map(|n| seed_env(n)).collect()
+}
+
+/// Ensure Local / Development / Production exist. Does **not** remove other envs.
+/// Returns `true` if any env was added.
+pub fn ensure_default_environments(environments: &mut Vec<Environment>) -> bool {
+    let mut changed = false;
+    for &name in DEFAULT_ENV_NAMES {
+        let exists = environments
+            .iter()
+            .any(|e| e.name.eq_ignore_ascii_case(name));
+        if !exists {
+            environments.push(seed_env(name));
+            changed = true;
+        }
+    }
+    // Prefer canonical order for the three defaults (others keep relative order after).
+    if changed || environments.len() >= 3 {
+        let mut ordered = Vec::with_capacity(environments.len());
+        for &name in DEFAULT_ENV_NAMES {
+            if let Some(pos) = environments
+                .iter()
+                .position(|e| e.name.eq_ignore_ascii_case(name))
+            {
+                ordered.push(environments.remove(pos));
+            }
+        }
+        ordered.append(environments);
+        *environments = ordered;
+    }
+    changed
 }
 
 pub fn find_environment<'a>(
@@ -185,6 +223,18 @@ mod tests {
         let map = env.to_map();
         assert_eq!(map.get("a").map(String::as_str), Some("1"));
         assert!(!map.contains_key("b"));
+    }
+
+    #[test]
+    fn ensure_defaults_adds_without_wipe() {
+        let mut envs = vec![Environment::new("Custom")];
+        assert!(ensure_default_environments(&mut envs));
+        assert_eq!(envs.len(), 4);
+        assert_eq!(envs[0].name, "Local");
+        assert_eq!(envs[1].name, "Development");
+        assert_eq!(envs[2].name, "Production");
+        assert_eq!(envs[3].name, "Custom");
+        assert!(!ensure_default_environments(&mut envs));
     }
 
     #[test]
