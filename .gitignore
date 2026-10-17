@@ -1,0 +1,36 @@
+# Rust
+/target/
+**/*.rs.bk
+
+# Dioxus / tooling
+dist/
+.dioxus/
+
+# REA / evidence (large local scratch — do not commit)
+.rea-scratch/
+.rea-postman-extract/
+*.evidence-bundle.json
+evidence-bundle.json
+
+# Local app data dumps
+data/local/
+*.db
+*.sqlite
+*.sqlite3
+
+# IDE / OS junk
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# Env / secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+credentials.json
