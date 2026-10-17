@@ -2,24 +2,26 @@ use dioxus::prelude::*;
 use uuid::Uuid;
 
 use crate::core::{
-    add_folder_under, add_request_under, bundled_postman_collections, duplicate_across,
-    export_collection_v21, export_environment_json, find_environment, find_request_across,
-    generate_snippet, graphql_ws_subscribe, grpc_reflection_list, grpc_unary,
-    import_collection_v21, import_curl, import_environment_json, import_har, import_openapi3,
-    interceptor_limits_blurb, limitations_blurb, mcp_call_tool, mcp_list_tools, mqtt_publish,
-    mqtt_subscribe_once, move_item_to, purge_from_trash, push_console, push_history, remove_across,
-    rename_across, reorder_before, restore_from_trash, routes_from_collections,
-    run_performance, save_example_to_request, save_request_to_collections, snippet_languages,
-    socketio_session, sort_collections, split_mcp_args, sse_listen, start_capture_proxy, start_mock,
-    trash_collection, ws_connect_session, AppSettings, CaptureProxyHandle, Collection, ConsoleLine,
-    Cookie, CookieJar, EnvVar, Environment, Folder, HistoryEntry, KeyValue, MockHandle, PerfReport,
-    RequestDraft, RequestProtocol, ResponseView, SavedExample, UiSettings, VariableContext,
-    VaultStore, WsSession, HISTORY_MAX,
+    add_folder_under, add_request_under, apply_collection_var_edit, apply_env_var_edit,
+    bundled_postman_collections, duplicate_across, export_collection_v21, export_environment_json,
+    find_environment, find_request_across, generate_snippet, graphql_ws_subscribe,
+    grpc_reflection_list, grpc_unary, import_collection_v21, import_curl, import_environment_json,
+    import_har, import_openapi3, interceptor_limits_blurb, limitations_blurb, mcp_call_tool,
+    mcp_list_tools, mqtt_publish, mqtt_subscribe_once, move_item_to, purge_from_trash, push_console,
+    push_history, remove_across, rename_across, reorder_before, restore_from_trash,
+    routes_from_collections, run_performance, save_example_to_request, save_request_to_collections,
+    snippet_languages, socketio_session, sort_collections, split_mcp_args, sse_listen,
+    start_capture_proxy, start_mock, trash_collection, ws_connect_session, AppSettings,
+    CaptureProxyHandle, Collection, ConsoleLine, Cookie, CookieJar, EnvVar, Environment, Folder,
+    HistoryEntry, KeyValue, MockHandle, PerfReport, RequestDraft, RequestProtocol, ResponseView,
+    SavedExample, UiSettings, VarResolveScope, VariableContext, VaultStore, WsSession, HISTORY_MAX,
 };
 use crate::runtime::{
-    run_collection_with_config, send_request_with_options, RunnerConfig, RunnerReport, SendOptions,
+    run_collection_with_config, send_request_with_options, RunnerConfig, RunnerReport, SendError,
+    SendOptions,
 };
-use std::sync::Mutex;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 static MOCK_HANDLE: Mutex<Option<MockHandle>> = Mutex::new(None);
@@ -29,18 +31,28 @@ use crate::storage::{AppSnapshot, JsonStore};
 use crate::ui::console_panel::ConsolePanel;
 use crate::ui::env_manager::{EnvManager, EnvManagerEvent};
 use crate::ui::env_selector::EnvSelector;
-use crate::ui::request_builder::RequestBuilder;
+use crate::ui::request_builder::{RequestBuilder, RequestVarEditEvent};
 use crate::ui::response_viewer::ResponseViewer;
 use crate::ui::runner_panel::{RunnerEvent, RunnerPanel};
 use crate::ui::settings_panel::{SettingsEvent, SettingsPanel};
 use crate::ui::sidebar::{Sidebar, SidebarAction, SidebarEvent};
 use crate::ui::CommentableTextarea;
 
+/// Vertical pane drag state — handled on `.workbench`, never as bare `.app-shell` grid children.
+#[derive(Clone, Copy, PartialEq)]
+enum PaneDrag {
+    Request { start_y: f64, start_h: u32 },
+    Console { start_y: f64, start_h: u32 },
+}
+
 #[component]
 pub fn Workbench() -> Element {
     let mut draft = use_signal(RequestDraft::default);
     let mut response = use_signal(|| None::<ResponseView>);
     let mut sending = use_signal(|| false);
+    // Bumped on each Send / Cancel so late worker results are ignored.
+    let mut send_gen = use_signal(|| 0u64);
+    let mut send_cancel = use_signal(|| None::<Arc<AtomicBool>>);
     let mut collections = use_signal(Vec::<Collection>::new);
     let mut environments = use_signal(Vec::<Environment>::new);
     let mut active_env_id = use_signal(|| None::<Uuid>);
@@ -64,13 +76,12 @@ pub fn Workbench() -> Element {
     let mut runner_report = use_signal(|| None::<RunnerReport>);
     let mut trash = use_signal(Vec::<Collection>::new);
     let mut open_tabs = use_signal(|| vec![RequestDraft::default()]);
-    let mut show_eye = use_signal(|| false);
+    let mut show_vars = use_signal(|| false);
     let mut show_palette = use_signal(|| false);
     let mut show_trash = use_signal(|| false);
     let mut show_snippets = use_signal(|| false);
     let mut snippet_lang = use_signal(|| "cURL".to_string());
     let mut mock_port = use_signal(|| None::<u16>);
-    let mut mock_status = use_signal(|| String::new());
     let mut ws_connected = use_signal(|| false);
     let mut protocol_log = use_signal(Vec::<String>::new);
     let mut proxy_port = use_signal(|| None::<u16>);
@@ -80,10 +91,17 @@ pub fn Workbench() -> Element {
     let mut perf_vus = use_signal(|| 5u32);
     let mut perf_secs = use_signal(|| 5u64);
     let mut file_menu_open = use_signal(|| false);
+    let mut tools_menu_open = use_signal(|| false);
     let mut show_cookies = use_signal(|| false);
     let mut show_col_vars = use_signal(|| false);
+    // false = active collection, true = browse all collections.
+    let mut col_vars_all = use_signal(|| false);
+    // Accordion expansion in “all” mode.
+    let mut col_vars_open_id = use_signal(|| None::<Uuid>);
     // Sidebar resize drag: (start client X, start width px).
     let mut sidebar_drag = use_signal(|| None::<(f64, u32)>);
+    // Workbench pane drag — handled on `.workbench`, not as bare `.app-shell` grid children.
+    let mut pane_drag = use_signal(|| None::<PaneDrag>);
 
     use_effect(move || {
         if loaded() {
@@ -182,23 +200,57 @@ pub fn Workbench() -> Element {
     });
 
     let do_send = use_callback(move |_| {
+        // While sending: Cancel aborts in-flight work and returns to idle.
         if sending() {
+            if let Some(flag) = send_cancel() {
+                flag.store(true, Ordering::SeqCst);
+            }
+            send_gen.set(send_gen() + 1);
+            send_cancel.set(None);
+            sending.set(false);
+            status_msg.set("cancelled".into());
+            response.set(Some(ResponseView {
+                status: 0,
+                status_text: "CANCELLED".into(),
+                headers: vec![],
+                body: String::new(),
+                elapsed_ms: 0,
+                error: Some("cancelled".into()),
+                pipeline_log: vec!["cancelled".into()],
+                console_messages: vec!["cancelled".into()],
+                test_results: vec![],
+                resolved_url: String::new(),
+                timing: Default::default(),
+                visualizer_html: String::new(),
+            }));
             return;
         }
+
         let req = draft();
 
         // gRPC unary via shared Send button / Invoke
         if req.protocol == RequestProtocol::Grpc {
+            let my_gen = {
+                let g = send_gen() + 1;
+                send_gen.set(g);
+                g
+            };
+            let cancel_flag = Arc::new(AtomicBool::new(false));
+            send_cancel.set(Some(cancel_flag.clone()));
             sending.set(true);
             response.set(None);
             let endpoint = req.url.clone();
             let method = req.grpc_method.clone();
             let body = req.body.clone();
             let resolved = format!("{endpoint}/{method}");
+            let cancel_grpc = cancel_flag.clone();
             spawn(async move {
                 let ep = endpoint.clone();
                 let meth = method.clone();
                 let result = tokio::task::spawn_blocking(move || grpc_unary(&ep, &meth, &body)).await;
+                if send_gen() != my_gen || cancel_grpc.load(Ordering::SeqCst) {
+                    return;
+                }
                 let view = match result {
                     Ok(r) => {
                         let mut log = r.log;
@@ -226,6 +278,9 @@ pub fn Workbench() -> Element {
                     }
                     Err(e) => ResponseView::error(format!("join: {e}"), vec![]),
                 };
+                if send_gen() != my_gen {
+                    return;
+                }
                 let mut lines = console_lines();
                 for msg in &view.console_messages {
                     push_console(&mut lines, ConsoleLine::info(msg.clone()));
@@ -234,6 +289,7 @@ pub fn Workbench() -> Element {
                 protocol_log.set(view.pipeline_log.clone());
                 response.set(Some(view));
                 sending.set(false);
+                send_cancel.set(None);
             });
             return;
         }
@@ -243,8 +299,16 @@ pub fn Workbench() -> Element {
             return;
         }
 
+        let my_gen = {
+            let g = send_gen() + 1;
+            send_gen.set(g);
+            g
+        };
+        let cancel_flag = Arc::new(AtomicBool::new(false));
+        send_cancel.set(Some(cancel_flag.clone()));
         sending.set(true);
         response.set(None);
+        status_msg.set(String::new());
 
         let mut ctx = vars();
         if let Some(env) = find_environment(&environments(), active_env_id()) {
@@ -271,6 +335,7 @@ pub fn Workbench() -> Element {
                         collection_auth: col_auth.as_ref(),
                         cookie_jar: Some(&mut jar),
                         app_settings: Some(&settings),
+                        cancel: Some(cancel_flag),
                         ..Default::default()
                     },
                 )
@@ -278,8 +343,33 @@ pub fn Workbench() -> Element {
             })
             .await;
 
+            // Cancel raced: ignore late result (UI already idle).
+            if send_gen() != my_gen {
+                return;
+            }
+
             let (view, new_jar, new_ctx) = match result {
                 Ok(Ok((view, jar, ctx))) => (view, jar, Some(ctx)),
+                Ok(Err(SendError::Cancelled)) => {
+                    sending.set(false);
+                    send_cancel.set(None);
+                    status_msg.set("cancelled".into());
+                    response.set(Some(ResponseView {
+                        status: 0,
+                        status_text: "CANCELLED".into(),
+                        headers: vec![],
+                        body: String::new(),
+                        elapsed_ms: 0,
+                        error: Some("cancelled".into()),
+                        pipeline_log: vec!["cancelled".into()],
+                        console_messages: vec!["cancelled".into()],
+                        test_results: vec![],
+                        resolved_url: String::new(),
+                        timing: Default::default(),
+                        visualizer_html: String::new(),
+                    }));
+                    return;
+                }
                 Ok(Err(e)) => (
                     ResponseView::error(e.to_string(), vec!["pipeline failed".into()]),
                     cookies(),
@@ -291,6 +381,10 @@ pub fn Workbench() -> Element {
                     None,
                 ),
             };
+
+            if send_gen() != my_gen {
+                return;
+            }
 
             cookies.set(new_jar);
 
@@ -355,6 +449,7 @@ pub fn Workbench() -> Element {
 
             response.set(Some(view));
             sending.set(false);
+            send_cancel.set(None);
             persist();
         });
     });
@@ -380,6 +475,11 @@ pub fn Workbench() -> Element {
                         draft.set(req.clone());
                         active_request_id.set(Some(id));
                         active_collection_id.set(Some(col_id));
+                        if let Some(col) = collections().iter().find(|c| c.id == col_id) {
+                            let mut v = vars();
+                            v.collection = col.variables_map();
+                            vars.set(v);
+                        }
                         response.set(None);
                         persist();
                     }
@@ -396,6 +496,10 @@ pub fn Workbench() -> Element {
                         v.collection = col.variables_map();
                         vars.set(v);
                     }
+                } else {
+                    let mut v = vars();
+                    v.collection.clear();
+                    vars.set(v);
                 }
                 persist();
             }
@@ -668,10 +772,18 @@ pub fn Workbench() -> Element {
         "--fs-base: {}px; --fs-body: {}px; --fs-editor: {}px; --sidebar-w: {}px;",
         ui.ui_font_size_px, ui.ui_font_size_px, ui.editor_font_size_px, ui.sidebar_width_px
     );
+    let workbench_style = format!(
+        "--request-h: {}px; --console-h: {}px;",
+        ui.request_pane_height_px, ui.console_height_px
+    );
     let shell_class = if sidebar_drag().is_some() {
         "app-shell sidebar-resizing"
     } else {
         "app-shell"
+    };
+    let workbench_class = match pane_drag() {
+        Some(PaneDrag::Request { .. } | PaneDrag::Console { .. }) => "workbench pane-resizing-v",
+        None => "workbench",
     };
 
     rsx! {
@@ -742,25 +854,29 @@ pub fn Workbench() -> Element {
             },
 
             header { class: "top-bar",
-                span { class: "brand",
-                    span { class: "brand-mark" }
-                    span { class: "brand-not", "not" }
+                span {
+                    class: "brand",
+                    title: "EvilPostman · ⌘↵ Send/Cancel · ⌘S Save · ⌘T New · ⌘⇧P Palette",
+                    img {
+                        class: "brand-logo",
+                        src: asset!("/assets/logo.png"),
+                        alt: "EvilPostman",
+                    }
+                    span { class: "brand-evil", "Evil" }
                     span { class: "brand-name", "Postman" }
                 }
-                span { class: "shortcut-strip",
-                    kbd { "⌘↵" } " Send · "
-                    kbd { "⌘S" } " Save · "
-                    kbd { "⌘T" } " New · "
-                    kbd { "⌘⇧P" } " Palette"
-                }
-                span { class: "spacer" }
-                div { class: "top-actions",
+
+                nav { class: "top-nav",
                 div { class: "menu-file",
                     button {
-                        class: "btn btn-ghost",
+                        class: "top-link",
                         title: "File",
-                        onclick: move |_| file_menu_open.set(!file_menu_open()),
-                        "File ▾"
+                        onclick: move |_| {
+                            tools_menu_open.set(false);
+                            file_menu_open.set(!file_menu_open());
+                        },
+                        "File"
+                        span { class: "top-caret", "▾" }
                     }
                     if file_menu_open() {
                         div { class: "menu-dropdown",
@@ -994,163 +1110,448 @@ pub fn Workbench() -> Element {
                         }
                     }
                 }
+
                 button {
-                    class: "btn btn-ghost",
-                    title: "Variables quick-look",
-                    onclick: move |_| show_eye.set(!show_eye()),
-                    "Vars"
-                }
-                button {
-                    class: "btn btn-ghost",
-                    onclick: move |_| show_snippets.set(!show_snippets()),
-                    "Code"
-                }
-                button {
-                    class: "btn btn-ghost",
+                    class: "top-link",
                     onclick: move |_| {
-                        if mock_port().is_some() {
-                            if let Ok(mut g) = MOCK_HANDLE.lock() {
-                                if let Some(h) = g.take() {
-                                    h.stop();
-                                }
-                            }
-                            mock_port.set(None);
-                            mock_status.set("mock stopped".into());
-                        } else {
-                            let routes = routes_from_collections(&collections());
-                            match start_mock(routes, 0) {
-                                Ok(h) => {
-                                    let p = h.port;
-                                    if let Ok(mut g) = MOCK_HANDLE.lock() {
-                                        *g = Some(h);
-                                    }
-                                    mock_port.set(Some(p));
-                                    mock_status.set(format!("mock http://127.0.0.1:{p}"));
-                                }
-                                Err(e) => mock_status.set(format!("mock error: {e}")),
-                            }
-                        }
+                        file_menu_open.set(false);
+                        tools_menu_open.set(false);
+                        show_runner.set(true);
                     },
-                    if mock_port().is_some() { "Stop mock" } else { "Mock" }
-                }
-                button {
-                    class: "btn btn-ghost",
-                    onclick: move |_| show_trash.set(!show_trash()),
-                    "Trash"
-                }
-                button {
-                    class: "btn btn-ghost",
-                    onclick: move |_| show_runner.set(true),
                     "Runner"
                 }
-                button {
-                    class: "btn btn-ghost",
-                    onclick: move |_| show_perf.set(true),
-                    "Perf"
-                }
-                button {
-                    class: "btn btn-ghost",
-                    onclick: move |_| {
-                        if proxy_port().is_some() {
-                            if let Ok(mut g) = PROXY_HANDLE.lock() {
-                                if let Some(h) = g.take() {
-                                    // Flush captures into history
-                                    for cap in h.snapshot() {
-                                        let mut hist = history();
-                                        let mut d = RequestDraft::default();
-                                        d.method = match cap.method.as_str() {
-                                            "POST" => crate::core::HttpMethod::Post,
-                                            "PUT" => crate::core::HttpMethod::Put,
-                                            "PATCH" => crate::core::HttpMethod::Patch,
-                                            "DELETE" => crate::core::HttpMethod::Delete,
-                                            _ => crate::core::HttpMethod::Get,
-                                        };
-                                        d.url = cap.url.clone();
-                                        let entry = HistoryEntry::from_send(
-                                            &d,
-                                            &cap.url,
-                                            cap.status,
-                                            cap.elapsed_ms,
-                                        );
-                                        push_history(&mut hist, entry, HISTORY_MAX);
-                                        history.set(hist);
+
+                div { class: "menu-file",
+                    button {
+                        class: if tools_menu_open() || mock_port().is_some() || proxy_port().is_some() {
+                            "top-link top-link-active"
+                        } else {
+                            "top-link"
+                        },
+                        title: "Tools",
+                        onclick: move |_| {
+                            file_menu_open.set(false);
+                            tools_menu_open.set(!tools_menu_open());
+                        },
+                        "Tools"
+                        span { class: "top-caret", "▾" }
+                    }
+                    if tools_menu_open() {
+                        div { class: "menu-dropdown menu-dropdown-wide",
+                            button {
+                                class: "menu-item",
+                                onclick: move |_| {
+                                    tools_menu_open.set(false);
+                                    show_perf.set(true);
+                                },
+                                "Performance…"
+                            }
+                            button {
+                                class: "menu-item",
+                                title: if let Some(p) = mock_port() {
+                                    format!("Local mock on http://127.0.0.1:{p}")
+                                } else {
+                                    "Start local mock from saved examples".into()
+                                },
+                                onclick: move |_| {
+                                    tools_menu_open.set(false);
+                                    if mock_port().is_some() {
+                                        if let Ok(mut g) = MOCK_HANDLE.lock() {
+                                            if let Some(h) = g.take() {
+                                                h.stop();
+                                            }
+                                        }
+                                        mock_port.set(None);
+                                        status_msg.set("mock stopped".into());
+                                    } else {
+                                        let routes = routes_from_collections(&collections());
+                                        let n_routes = routes.len();
+                                        match start_mock(routes, 0) {
+                                            Ok(h) => {
+                                                let p = h.port;
+                                                if let Ok(mut g) = MOCK_HANDLE.lock() {
+                                                    *g = Some(h);
+                                                }
+                                                mock_port.set(Some(p));
+                                                status_msg.set(format!(
+                                                    "mock http://127.0.0.1:{p} · {n_routes} route(s)"
+                                                ));
+                                            }
+                                            Err(e) => status_msg.set(format!("mock error: {e}")),
+                                        }
                                     }
-                                    h.stop();
+                                },
+                                if let Some(p) = mock_port() {
+                                    {format!("Stop mock :{p}")}
+                                } else {
+                                    "Start mock"
                                 }
                             }
-                            proxy_port.set(None);
-                            status_msg.set("capture proxy stopped".into());
-                            persist();
-                        } else {
-                            match start_capture_proxy(0) {
-                                Ok(h) => {
-                                    let p = h.port;
-                                    if let Ok(mut g) = PROXY_HANDLE.lock() {
-                                        *g = Some(h);
+                            button {
+                                class: "menu-item",
+                                onclick: move |_| {
+                                    tools_menu_open.set(false);
+                                    if proxy_port().is_some() {
+                                        if let Ok(mut g) = PROXY_HANDLE.lock() {
+                                            if let Some(h) = g.take() {
+                                                for cap in h.snapshot() {
+                                                    let mut hist = history();
+                                                    let mut d = RequestDraft::default();
+                                                    d.method = match cap.method.as_str() {
+                                                        "POST" => crate::core::HttpMethod::Post,
+                                                        "PUT" => crate::core::HttpMethod::Put,
+                                                        "PATCH" => crate::core::HttpMethod::Patch,
+                                                        "DELETE" => crate::core::HttpMethod::Delete,
+                                                        _ => crate::core::HttpMethod::Get,
+                                                    };
+                                                    d.url = cap.url.clone();
+                                                    let entry = HistoryEntry::from_send(
+                                                        &d,
+                                                        &cap.url,
+                                                        cap.status,
+                                                        cap.elapsed_ms,
+                                                    );
+                                                    push_history(&mut hist, entry, HISTORY_MAX);
+                                                    history.set(hist);
+                                                }
+                                                h.stop();
+                                            }
+                                        }
+                                        proxy_port.set(None);
+                                        status_msg.set("capture proxy stopped".into());
+                                        persist();
+                                    } else {
+                                        match start_capture_proxy(0) {
+                                            Ok(h) => {
+                                                let p = h.port;
+                                                if let Ok(mut g) = PROXY_HANDLE.lock() {
+                                                    *g = Some(h);
+                                                }
+                                                proxy_port.set(Some(p));
+                                                status_msg.set(format!(
+                                                    "capture proxy http://127.0.0.1:{p} — {}",
+                                                    interceptor_limits_blurb()
+                                                ));
+                                            }
+                                            Err(e) => status_msg.set(format!("proxy error: {e}")),
+                                        }
                                     }
-                                    proxy_port.set(Some(p));
-                                    status_msg.set(format!(
-                                        "capture proxy http://127.0.0.1:{p} — {}",
-                                        interceptor_limits_blurb()
-                                    ));
-                                }
-                                Err(e) => status_msg.set(format!("proxy error: {e}")),
+                                },
+                                if proxy_port().is_some() { "Stop capture proxy" } else { "Start capture proxy" }
+                            }
+                            button {
+                                class: "menu-item",
+                                onclick: move |_| {
+                                    tools_menu_open.set(false);
+                                    show_cookies.set(true);
+                                },
+                                "Cookies…"
+                            }
+                            button {
+                                class: "menu-item",
+                                onclick: move |_| {
+                                    tools_menu_open.set(false);
+                                    col_vars_all.set(false);
+                                    col_vars_open_id.set(active_collection_id());
+                                    show_col_vars.set(true);
+                                },
+                                "Collection variables…"
+                            }
+                            button {
+                                class: "menu-item",
+                                onclick: move |_| {
+                                    tools_menu_open.set(false);
+                                    show_trash.set(true);
+                                },
+                                "Trash…"
                             }
                         }
-                    },
-                    if proxy_port().is_some() { "Stop proxy" } else { "Proxy" }
+                    }
                 }
-                button {
-                    class: "btn btn-ghost",
-                    title: "Cookie jar manager",
-                    onclick: move |_| show_cookies.set(true),
-                    "Cookies"
-                }
-                button {
-                    class: "btn btn-ghost",
-                    title: "Edit collection variables",
-                    onclick: move |_| show_col_vars.set(true),
-                    "Col vars"
-                }
-                button {
-                    class: "btn btn-ghost",
-                    onclick: move |_| show_settings.set(true),
-                    "Settings"
-                }
-                EnvSelector {
-                    environments: environments(),
-                    active_id: active_env_id(),
-                    on_change: move |id| {
-                        active_env_id.set(id);
-                        editing_env_id.set(id);
-                        let mut v = vars();
-                        sync_env_vars(&environments(), id, &mut v);
-                        vars.set(v);
-                        persist();
-                    },
-                    on_manage: move |_| {
-                        show_env_manager.set(true);
-                        editing_env_id.set(active_env_id());
-                    },
-                }
+                } // top-nav
+
+                span { class: "spacer" }
+
+                div { class: "top-end",
+                    if mock_port().is_some() || proxy_port().is_some() {
+                        span { class: "top-live",
+                            if let Some(p) = mock_port() {
+                                span { class: "live-chip live-mock", title: "Mock running", "Mock :{p}" }
+                            }
+                            if let Some(p) = proxy_port() {
+                                span { class: "live-chip live-proxy", title: "Capture proxy running", "Proxy :{p}" }
+                            }
+                        }
+                    }
+                    button {
+                        class: if show_vars() { "top-icon top-icon-on" } else { "top-icon" },
+                        title: "Variables (environment, collection, global, vault)",
+                        onclick: move |_| show_vars.set(!show_vars()),
+                        "Vars"
+                    }
+                    button {
+                        class: if show_snippets() { "top-icon top-icon-on" } else { "top-icon" },
+                        title: "Code snippets",
+                        onclick: move |_| show_snippets.set(!show_snippets()),
+                        "</>"
+                    }
+                    EnvSelector {
+                        environments: environments(),
+                        active_id: active_env_id(),
+                        on_change: move |id| {
+                            active_env_id.set(id);
+                            editing_env_id.set(id);
+                            let mut v = vars();
+                            sync_env_vars(&environments(), id, &mut v);
+                            vars.set(v);
+                            persist();
+                        },
+                        on_manage: move |_| {
+                            show_env_manager.set(true);
+                            editing_env_id.set(active_env_id());
+                        },
+                    }
+                    button {
+                        class: "top-icon",
+                        title: "Settings",
+                        onclick: move |_| show_settings.set(true),
+                        "⚙"
+                    }
                 }
             }
 
-            if show_eye() {
-                div { class: "eye-pane",
-                    h4 { "Variables in scope" }
-                    for (scope, map) in [
-                        ("local", vars().local.clone()),
-                        ("environment", vars().environment.clone()),
-                        ("collection", vars().collection.clone()),
-                        ("global", vars().global.clone()),
-                    ] {
-                        p { class: "hint", "{scope}" }
-                        for (k, v) in map.iter() {
-                            div { class: "eye-row", code { "{k}" } " = " code { "{v}" } }
+            if show_vars() {
+                div { class: "modal-backdrop",
+                    div { class: "modal vars-modal",
+                        h3 { "Variables" }
+                        p { class: "hint",
+                            "Resolve order: local → environment → collection → global. Vault via {{{{vault:key}}}}."
+                        }
+
+                        // —— Environment ——
+                        div { class: "vars-section",
+                            div { class: "vars-section-head",
+                                h4 { "Environment" }
+                                button {
+                                    class: "btn btn-ghost",
+                                    onclick: move |_| {
+                                        show_vars.set(false);
+                                        show_env_manager.set(true);
+                                        editing_env_id.set(active_env_id());
+                                    },
+                                    "Manage…"
+                                }
+                            }
+                            {
+                                let envs = environments();
+                                let eid = active_env_id();
+                                match eid.and_then(|id| envs.iter().find(|e| e.id == id).cloned()) {
+                                    Some(env) => {
+                                        let env_id = env.id;
+                                        let env_name = env.name.clone();
+                                        let mut values = env.values.clone();
+                                        ensure_env_trailing(&mut values);
+                                        rsx! {
+                                            p { class: "hint", "Active: {env_name}" }
+                                            table { class: "kv-table",
+                                                thead {
+                                                    tr {
+                                                        th { "Variable" }
+                                                        th { "Initial" }
+                                                        th { "Current" }
+                                                    }
+                                                }
+                                                tbody {
+                                                    for (i, row) in values.iter().enumerate() {
+                                                        tr {
+                                                            td {
+                                                                input {
+                                                                    value: "{row.key}",
+                                                                    oninput: {
+                                                                        let values = values.clone();
+                                                                        move |evt: Event<FormData>| {
+                                                                            let mut next = values.clone();
+                                                                            if let Some(r) = next.get_mut(i) {
+                                                                                r.key = evt.value();
+                                                                            }
+                                                                            ensure_env_trailing(&mut next);
+                                                                            let mut envs = environments();
+                                                                            if let Some(e) = envs.iter_mut().find(|e| e.id == env_id) {
+                                                                                e.values = next;
+                                                                            }
+                                                                            environments.set(envs.clone());
+                                                                            if active_env_id() == Some(env_id) {
+                                                                                let mut v = vars();
+                                                                                sync_env_vars(&envs, Some(env_id), &mut v);
+                                                                                vars.set(v);
+                                                                            }
+                                                                        }
+                                                                    }
+                                                                }
+                                                            }
+                                                            td {
+                                                                input {
+                                                                    value: "{row.initial_value}",
+                                                                    oninput: {
+                                                                        let values = values.clone();
+                                                                        move |evt: Event<FormData>| {
+                                                                            let mut next = values.clone();
+                                                                            if let Some(r) = next.get_mut(i) {
+                                                                                r.initial_value = evt.value();
+                                                                            }
+                                                                            ensure_env_trailing(&mut next);
+                                                                            let mut envs = environments();
+                                                                            if let Some(e) = envs.iter_mut().find(|e| e.id == env_id) {
+                                                                                e.values = next;
+                                                                            }
+                                                                            environments.set(envs.clone());
+                                                                            if active_env_id() == Some(env_id) {
+                                                                                let mut v = vars();
+                                                                                sync_env_vars(&envs, Some(env_id), &mut v);
+                                                                                vars.set(v);
+                                                                            }
+                                                                        }
+                                                                    }
+                                                                }
+                                                            }
+                                                            td {
+                                                                input {
+                                                                    value: "{row.current_value}",
+                                                                    oninput: {
+                                                                        let values = values.clone();
+                                                                        move |evt: Event<FormData>| {
+                                                                            let mut next = values.clone();
+                                                                            if let Some(r) = next.get_mut(i) {
+                                                                                r.current_value = evt.value();
+                                                                            }
+                                                                            ensure_env_trailing(&mut next);
+                                                                            let mut envs = environments();
+                                                                            if let Some(e) = envs.iter_mut().find(|e| e.id == env_id) {
+                                                                                e.values = next;
+                                                                            }
+                                                                            environments.set(envs.clone());
+                                                                            if active_env_id() == Some(env_id) {
+                                                                                let mut v = vars();
+                                                                                sync_env_vars(&envs, Some(env_id), &mut v);
+                                                                                vars.set(v);
+                                                                            }
+                                                                        }
+                                                                    }
+                                                                }
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                    None => rsx! {
+                                        p { class: "hint",
+                                            "No environment selected — pick one in the top bar or Manage…"
+                                        }
+                                    },
+                                }
+                            }
+                        }
+
+                        // —— Collection ——
+                        div { class: "vars-section",
+                            div { class: "vars-section-head",
+                                h4 { "Collection" }
+                                button {
+                                    class: "btn btn-ghost",
+                                    onclick: move |_| {
+                                        show_vars.set(false);
+                                        col_vars_all.set(true);
+                                        col_vars_open_id.set(active_collection_id());
+                                        show_col_vars.set(true);
+                                    },
+                                    "All collections…"
+                                }
+                            }
+                            {
+                                let cols = collections();
+                                let active_id = active_collection_id();
+                                let col = active_id.and_then(|id| cols.iter().find(|c| c.id == id));
+                                match col {
+                                    Some(c) => {
+                                        let cid = c.id;
+                                        let rows = c.variables.clone();
+                                        let name = c.name.clone();
+                                        rsx! {
+                                            p { class: "hint", "Active: {name}" }
+                                            ColVarEditor {
+                                                collection_id: cid,
+                                                rows,
+                                                sync_active: true,
+                                                collections,
+                                                vars,
+                                            }
+                                        }
+                                    }
+                                    None => rsx! {
+                                        p { class: "hint", "Select a collection in the sidebar first." }
+                                    },
+                                }
+                            }
+                        }
+
+                        // —— Global ——
+                        div { class: "vars-section",
+                            h4 { "Global" }
+                            MapVarEditor {
+                                rows: sorted_map_rows(&vars().global),
+                                on_change: move |rows: Vec<(String, String)>| {
+                                    let mut v = vars();
+                                    v.global = rows_to_map(rows);
+                                    vars.set(v);
+                                },
+                            }
+                        }
+
+                        // —— Vault ——
+                        div { class: "vars-section",
+                            h4 { "Vault" }
+                            p { class: "hint", "Stored in vault.json — use {{{{vault:key}}}}." }
+                            MapVarEditor {
+                                rows: sorted_map_rows(&vars().vault.entries),
+                                on_change: move |rows: Vec<(String, String)>| {
+                                    let mut v = vars();
+                                    v.vault.entries = rows_to_map(rows);
+                                    vars.set(v);
+                                },
+                            }
+                        }
+
+                        // —— Local (read-only) ——
+                        div { class: "vars-section",
+                            h4 { "Local" }
+                            p { class: "hint", "Script / request-local — read-only here." }
+                            {
+                                let local = sorted_map_rows(&vars().local);
+                                if local.is_empty() {
+                                    rsx! { p { class: "hint", "(empty)" } }
+                                } else {
+                                    rsx! {
+                                        for (k, val) in local.iter() {
+                                            div { class: "eye-row", code { "{k}" } " = " code { "{val}" } }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        div { class: "kv-actions",
+                            button {
+                                class: "btn btn-send",
+                                onclick: move |_| {
+                                    show_vars.set(false);
+                                    persist();
+                                },
+                                "Done"
+                            }
                         }
                     }
-                    p { class: "hint", "vault keys: {vars().vault.entries.len()}" }
                 }
             }
 
@@ -1158,7 +1559,11 @@ pub fn Workbench() -> Element {
                 div { class: "modal-backdrop",
                     div { class: "modal palette-modal",
                         h3 { "Command palette" }
-                        button { class: "btn btn-ghost", onclick: move |_| { do_send(()); show_palette.set(false); }, "Send request" }
+                        button {
+                            class: if sending() { "btn btn-ghost btn-cancel" } else { "btn btn-ghost" },
+                            onclick: move |_| { do_send(()); show_palette.set(false); },
+                            if sending() { "Cancel request" } else { "Send request" }
+                        }
                         button { class: "btn btn-ghost", onclick: move |_| { do_save(()); show_palette.set(false); }, "Save" }
                         button { class: "btn btn-ghost", onclick: move |_| { do_new_tab(()); show_palette.set(false); }, "New request" }
                         button { class: "btn btn-ghost", onclick: move |_| { show_runner.set(true); show_palette.set(false); }, "Runner" }
@@ -1227,10 +1632,6 @@ pub fn Workbench() -> Element {
                         button { class: "btn btn-ghost", onclick: move |_| show_snippets.set(false), "Close" }
                     }
                 }
-            }
-
-            if !mock_status().is_empty() {
-                p { class: "hint", style: "padding: 4px 12px;", "{mock_status}" }
             }
 
             if show_settings() {
@@ -1452,7 +1853,51 @@ pub fn Workbench() -> Element {
                 }
             }
 
-            main { class: "workbench",
+            main {
+                class: "{workbench_class}",
+                style: "{workbench_style}",
+                onmousemove: move |evt| {
+                    let Some(drag) = pane_drag() else {
+                        return;
+                    };
+                    let y = evt.client_coordinates().y;
+                    let mut s = app_settings();
+                    match drag {
+                        PaneDrag::Request { start_y, start_h } => {
+                            let delta = (y - start_y).round() as i32;
+                            let new_h = UiSettings::clamp_request_pane_height(
+                                (start_h as i32 + delta).max(0) as u32,
+                            );
+                            if s.ui.request_pane_height_px != new_h {
+                                s.ui.request_pane_height_px = new_h;
+                                app_settings.set(s);
+                            }
+                        }
+                        PaneDrag::Console { start_y, start_h } => {
+                            // Dragging the top edge up grows the console.
+                            let delta = (start_y - y).round() as i32;
+                            let new_h = UiSettings::clamp_console_height(
+                                (start_h as i32 + delta).max(0) as u32,
+                            );
+                            if s.ui.console_height_px != new_h {
+                                s.ui.console_height_px = new_h;
+                                app_settings.set(s);
+                            }
+                        }
+                    }
+                },
+                onmouseup: move |_| {
+                    if pane_drag().is_some() {
+                        pane_drag.set(None);
+                        persist();
+                    }
+                },
+                onmouseleave: move |_| {
+                    if pane_drag().is_some() {
+                        pane_drag.set(None);
+                        persist();
+                    }
+                },
                 div { class: "tab-strip",
                     input {
                         class: "tab-name",
@@ -1503,10 +1948,82 @@ pub fn Workbench() -> Element {
                     }
                 }
 
+                div { class: "workbench-split",
                 RequestBuilder {
                     draft: draft(),
+                    vars: vars(),
                     on_change: move |d| draft.set(d),
                     on_send: move |_| do_send(()),
+                    on_var_edit: move |evt: RequestVarEditEvent| {
+                        match evt {
+                            RequestVarEditEvent::Save {
+                                name,
+                                scope,
+                                value,
+                                ..
+                            } => {
+                                match scope {
+                                    VarResolveScope::Environment => {
+                                        let mut envs = environments();
+                                        if let Some(id) = active_env_id() {
+                                            if let Some(env) =
+                                                envs.iter_mut().find(|e| e.id == id)
+                                            {
+                                                apply_env_var_edit(env, &name, &value);
+                                            }
+                                        }
+                                        environments.set(envs.clone());
+                                        let mut v = vars();
+                                        sync_env_vars(&envs, active_env_id(), &mut v);
+                                        vars.set(v);
+                                    }
+                                    VarResolveScope::Collection => {
+                                        let mut cols = collections();
+                                        if let Some(id) = active_collection_id() {
+                                            if let Some(col) =
+                                                cols.iter_mut().find(|c| c.id == id)
+                                            {
+                                                apply_collection_var_edit(col, &name, &value);
+                                                let mut v = vars();
+                                                v.collection = col.variables_map();
+                                                vars.set(v);
+                                            }
+                                        }
+                                        collections.set(cols);
+                                    }
+                                    VarResolveScope::Global
+                                    | VarResolveScope::Local
+                                    | VarResolveScope::Vault => {
+                                        let mut v = vars();
+                                        v.apply_edit(scope, &name, &value);
+                                        vars.set(v);
+                                    }
+                                    VarResolveScope::Unresolved => {}
+                                }
+                                persist();
+                                status_msg.set(format!("updated {name}"));
+                            }
+                            RequestVarEditEvent::AddToEnvironment { name, value } => {
+                                let mut envs = environments();
+                                let Some(id) = active_env_id() else {
+                                    status_msg.set("no active environment".into());
+                                    return;
+                                };
+                                if let Some(env) = envs.iter_mut().find(|e| e.id == id) {
+                                    apply_env_var_edit(env, &name, &value);
+                                } else {
+                                    status_msg.set("no active environment".into());
+                                    return;
+                                }
+                                environments.set(envs.clone());
+                                let mut v = vars();
+                                sync_env_vars(&envs, Some(id), &mut v);
+                                vars.set(v);
+                                persist();
+                                status_msg.set(format!("added {name} to environment"));
+                            }
+                        }
+                    },
                     on_protocol_action: move |action: String| {
                         let req = draft();
                         match action.as_str() {
@@ -1754,6 +2271,23 @@ pub fn Workbench() -> Element {
                     protocol_log: protocol_log(),
                 }
 
+                div {
+                    class: if matches!(pane_drag(), Some(PaneDrag::Request { .. })) {
+                        "pane-resize-h active"
+                    } else {
+                        "pane-resize-h"
+                    },
+                    title: "Drag to resize request / response",
+                    onmousedown: move |evt| {
+                        evt.prevent_default();
+                        evt.stop_propagation();
+                        pane_drag.set(Some(PaneDrag::Request {
+                            start_y: evt.client_coordinates().y,
+                            start_h: app_settings().ui.request_pane_height_px,
+                        }));
+                    },
+                }
+
                 ResponseViewer {
                     response: response(),
                     sending: sending(),
@@ -1777,16 +2311,37 @@ pub fn Workbench() -> Element {
                         }
                     },
                 }
+                }
 
                 ConsolePanel {
                     open: console_open(),
                     lines: console_lines(),
+                    resizing: matches!(pane_drag(), Some(PaneDrag::Console { .. })),
                     on_toggle: move |_| console_open.set(!console_open()),
                     on_clear: move |_| console_lines.set(vec![]),
+                    on_resize_start: move |start_y: f64| {
+                        if !console_open() {
+                            console_open.set(true);
+                        }
+                        pane_drag.set(Some(PaneDrag::Console {
+                            start_y,
+                            start_h: app_settings().ui.console_height_px,
+                        }));
+                    },
                 }
 
-                if !status_msg().is_empty() {
-                    p { class: "status-line", "{status_msg}" }
+                if mock_port().is_some() || !status_msg().is_empty() {
+                    p { class: "status-line",
+                        if let Some(p) = mock_port() {
+                            span { class: "mock-status-pill", "mock :{p}" }
+                        }
+                        if mock_port().is_some() && !status_msg().is_empty() {
+                            span { " · " }
+                        }
+                        if !status_msg().is_empty() {
+                            "{status_msg}"
+                        }
+                    }
                 }
             }
 
@@ -1912,110 +2467,109 @@ pub fn Workbench() -> Element {
 
             if show_col_vars() {
                 div { class: "modal-backdrop",
-                    div { class: "modal",
+                    div { class: "modal col-vars-modal",
                         h3 { "Collection variables" }
+                        div { class: "modal-tabs",
+                            button {
+                                class: if !col_vars_all() { "builder-tab active" } else { "builder-tab" },
+                                onclick: move |_| col_vars_all.set(false),
+                                "Active"
+                            }
+                            button {
+                                class: if col_vars_all() { "builder-tab active" } else { "builder-tab" },
+                                onclick: move |_| {
+                                    col_vars_all.set(true);
+                                    if col_vars_open_id().is_none() {
+                                        col_vars_open_id.set(active_collection_id());
+                                    }
+                                },
+                                "All collections"
+                            }
+                        }
                         {
                             let cols = collections();
-                            let col = active_collection_id()
-                                .and_then(|id| cols.iter().find(|c| c.id == id));
-                            match col {
-                                Some(c) => {
-                                    let cid = c.id;
-                                    let rows = c.variables.clone();
-                                    rsx! {
-                                        p { class: "hint", "Editing “{c.name}” — synced to VariableContext.collection" }
-                                        table { class: "kv-table",
-                                            thead { tr { th { "Key" } th { "Value" } th { "" } } }
-                                            tbody {
-                                                for (i, row) in rows.iter().enumerate() {
-                                                    tr {
-                                                        td {
-                                                            input {
-                                                                value: "{row.key}",
-                                                                oninput: move |evt: Event<FormData>| {
-                                                                    let mut cols = collections();
-                                                                    if let Some(col) = cols.iter_mut().find(|c| c.id == cid) {
-                                                                        if let Some(r) = col.variables.get_mut(i) {
-                                                                            r.key = evt.value();
-                                                                        }
-                                                                        let mut v = vars();
-                                                                        v.collection = col.variables_map();
-                                                                        vars.set(v);
-                                                                    }
-                                                                    collections.set(cols);
+                            let active_id = active_collection_id();
+                            if !col_vars_all() {
+                                let col = active_id.and_then(|id| cols.iter().find(|c| c.id == id));
+                                match col {
+                                    Some(c) => {
+                                        let cid = c.id;
+                                        let rows = c.variables.clone();
+                                        let name = c.name.clone();
+                                        rsx! {
+                                            p { class: "hint",
+                                                "Editing “{name}” — synced to VariableContext.collection"
+                                            }
+                                            ColVarEditor {
+                                                collection_id: cid,
+                                                rows,
+                                                sync_active: true,
+                                                collections,
+                                                vars,
+                                            }
+                                        }
+                                    }
+                                    None => rsx! {
+                                        p { class: "hint", "Select a collection in the sidebar first." }
+                                    },
+                                }
+                            } else {
+                                rsx! {
+                                    p { class: "hint",
+                                        "Browse and edit variables for every collection. Active collection still drives VariableContext.collection."
+                                    }
+                                    div { class: "col-vars-accordion",
+                                        for c in cols.iter() {
+                                            {
+                                                let cid = c.id;
+                                                let name = c.name.clone();
+                                                let rows = c.variables.clone();
+                                                let n = rows.len();
+                                                let open = col_vars_open_id() == Some(cid);
+                                                let is_active = active_id == Some(cid);
+                                                rsx! {
+                                                    div { class: "col-vars-section",
+                                                        button {
+                                                            class: "col-vars-section-head",
+                                                            onclick: move |_| {
+                                                                if col_vars_open_id() == Some(cid) {
+                                                                    col_vars_open_id.set(None);
+                                                                } else {
+                                                                    col_vars_open_id.set(Some(cid));
                                                                 }
+                                                            },
+                                                            span {
+                                                                if open { "▾ " } else { "▸ " }
+                                                                "{name}"
+                                                                if is_active { " · active" }
                                                             }
+                                                            span { class: "hint", "{n} vars" }
                                                         }
-                                                        td {
-                                                            input {
-                                                                value: "{row.value}",
-                                                                oninput: move |evt: Event<FormData>| {
-                                                                    let mut cols = collections();
-                                                                    if let Some(col) = cols.iter_mut().find(|c| c.id == cid) {
-                                                                        if let Some(r) = col.variables.get_mut(i) {
-                                                                            r.value = evt.value();
-                                                                        }
-                                                                        let mut v = vars();
-                                                                        v.collection = col.variables_map();
-                                                                        vars.set(v);
-                                                                    }
-                                                                    collections.set(cols);
-                                                                }
-                                                            }
-                                                        }
-                                                        td {
-                                                            button {
-                                                                class: "btn btn-ghost",
-                                                                onclick: move |_| {
-                                                                    let mut cols = collections();
-                                                                    if let Some(col) = cols.iter_mut().find(|c| c.id == cid) {
-                                                                        if i < col.variables.len() {
-                                                                            col.variables.remove(i);
-                                                                        }
-                                                                        let mut v = vars();
-                                                                        v.collection = col.variables_map();
-                                                                        vars.set(v);
-                                                                    }
-                                                                    collections.set(cols);
-                                                                },
-                                                                "×"
+                                                        if open {
+                                                            ColVarEditor {
+                                                                collection_id: cid,
+                                                                rows,
+                                                                sync_active: is_active,
+                                                                collections,
+                                                                vars,
                                                             }
                                                         }
                                                     }
                                                 }
                                             }
                                         }
-                                        div { class: "kv-actions",
-                                            button {
-                                                class: "btn btn-ghost",
-                                                onclick: move |_| {
-                                                    let mut cols = collections();
-                                                    if let Some(col) = cols.iter_mut().find(|c| c.id == cid) {
-                                                        col.variables.push(KeyValue::new("", ""));
-                                                    }
-                                                    collections.set(cols);
-                                                },
-                                                "Add row"
-                                            }
-                                            button {
-                                                class: "btn btn-send",
-                                                onclick: move |_| {
-                                                    show_col_vars.set(false);
-                                                    persist();
-                                                },
-                                                "Done"
-                                            }
-                                        }
                                     }
                                 }
-                                None => rsx! {
-                                    p { class: "hint", "Select a collection first." }
-                                    button {
-                                        class: "btn btn-ghost",
-                                        onclick: move |_| show_col_vars.set(false),
-                                        "Close"
-                                    }
+                            }
+                        }
+                        div { class: "kv-actions",
+                            button {
+                                class: "btn btn-send",
+                                onclick: move |_| {
+                                    show_col_vars.set(false);
+                                    persist();
                                 },
+                                "Done"
                             }
                         }
                     }
@@ -2073,6 +2627,203 @@ pub fn Workbench() -> Element {
 enum ImpexModal {
     Import { text: String },
     Export { name: String, text: String },
+}
+
+fn sorted_map_rows(map: &std::collections::HashMap<String, String>) -> Vec<(String, String)> {
+    let mut rows: Vec<_> = map.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
+    rows.sort_by(|a, b| a.0.cmp(&b.0));
+    rows
+}
+
+fn rows_to_map(rows: Vec<(String, String)>) -> std::collections::HashMap<String, String> {
+    rows.into_iter()
+        .filter(|(k, _)| !k.is_empty())
+        .collect()
+}
+
+fn ensure_env_trailing(rows: &mut Vec<EnvVar>) {
+    let needs = rows
+        .last()
+        .map(|r| !r.key.is_empty() || !r.initial_value.is_empty() || !r.current_value.is_empty())
+        .unwrap_or(true);
+    if needs {
+        rows.push(EnvVar {
+            key: String::new(),
+            initial_value: String::new(),
+            current_value: String::new(),
+            enabled: true,
+        });
+    }
+}
+
+/// Editable flat key/value map (global / vault).
+#[component]
+fn MapVarEditor(rows: Vec<(String, String)>, on_change: EventHandler<Vec<(String, String)>>) -> Element {
+    rsx! {
+        table { class: "kv-table",
+            thead { tr { th { "Key" } th { "Value" } th { "" } } }
+            tbody {
+                for (i, (key, val)) in rows.iter().enumerate() {
+                    tr {
+                        td {
+                            input {
+                                value: "{key}",
+                                oninput: {
+                                    let rows = rows.clone();
+                                    move |evt: Event<FormData>| {
+                                        let mut next = rows.clone();
+                                        if let Some(r) = next.get_mut(i) {
+                                            r.0 = evt.value();
+                                        }
+                                        on_change.call(next);
+                                    }
+                                }
+                            }
+                        }
+                        td {
+                            input {
+                                value: "{val}",
+                                oninput: {
+                                    let rows = rows.clone();
+                                    move |evt: Event<FormData>| {
+                                        let mut next = rows.clone();
+                                        if let Some(r) = next.get_mut(i) {
+                                            r.1 = evt.value();
+                                        }
+                                        on_change.call(next);
+                                    }
+                                }
+                            }
+                        }
+                        td {
+                            button {
+                                class: "btn btn-ghost",
+                                onclick: {
+                                    let rows = rows.clone();
+                                    move |_| {
+                                        let mut next = rows.clone();
+                                        if i < next.len() {
+                                            next.remove(i);
+                                        }
+                                        on_change.call(next);
+                                    }
+                                },
+                                "×"
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        div { class: "kv-actions",
+            button {
+                class: "btn btn-ghost",
+                onclick: {
+                    let rows = rows.clone();
+                    move |_| {
+                        let mut next = rows.clone();
+                        next.push((String::new(), String::new()));
+                        on_change.call(next);
+                    }
+                },
+                "Add row"
+            }
+        }
+    }
+}
+
+/// Editable key/value rows for one collection's variables.
+#[component]
+fn ColVarEditor(
+    collection_id: Uuid,
+    rows: Vec<KeyValue>,
+    sync_active: bool,
+    mut collections: Signal<Vec<Collection>>,
+    mut vars: Signal<VariableContext>,
+) -> Element {
+    let cid = collection_id;
+    rsx! {
+        table { class: "kv-table",
+            thead { tr { th { "Key" } th { "Value" } th { "" } } }
+            tbody {
+                for (i, row) in rows.iter().enumerate() {
+                    tr {
+                        td {
+                            input {
+                                value: "{row.key}",
+                                oninput: move |evt: Event<FormData>| {
+                                    let mut cols = collections();
+                                    if let Some(col) = cols.iter_mut().find(|c| c.id == cid) {
+                                        if let Some(r) = col.variables.get_mut(i) {
+                                            r.key = evt.value();
+                                        }
+                                        if sync_active {
+                                            let mut v = vars();
+                                            v.collection = col.variables_map();
+                                            vars.set(v);
+                                        }
+                                    }
+                                    collections.set(cols);
+                                }
+                            }
+                        }
+                        td {
+                            input {
+                                value: "{row.value}",
+                                oninput: move |evt: Event<FormData>| {
+                                    let mut cols = collections();
+                                    if let Some(col) = cols.iter_mut().find(|c| c.id == cid) {
+                                        if let Some(r) = col.variables.get_mut(i) {
+                                            r.value = evt.value();
+                                        }
+                                        if sync_active {
+                                            let mut v = vars();
+                                            v.collection = col.variables_map();
+                                            vars.set(v);
+                                        }
+                                    }
+                                    collections.set(cols);
+                                }
+                            }
+                        }
+                        td {
+                            button {
+                                class: "btn btn-ghost",
+                                onclick: move |_| {
+                                    let mut cols = collections();
+                                    if let Some(col) = cols.iter_mut().find(|c| c.id == cid) {
+                                        if i < col.variables.len() {
+                                            col.variables.remove(i);
+                                        }
+                                        if sync_active {
+                                            let mut v = vars();
+                                            v.collection = col.variables_map();
+                                            vars.set(v);
+                                        }
+                                    }
+                                    collections.set(cols);
+                                },
+                                "×"
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        div { class: "kv-actions",
+            button {
+                class: "btn btn-ghost",
+                onclick: move |_| {
+                    let mut cols = collections();
+                    if let Some(col) = cols.iter_mut().find(|c| c.id == cid) {
+                        col.variables.push(KeyValue::new("", ""));
+                    }
+                    collections.set(cols);
+                },
+                "Add row"
+            }
+        }
+    }
 }
 
 #[component]

@@ -9,6 +9,7 @@ mod response_viewer;
 mod runner_panel;
 mod settings_panel;
 mod sidebar;
+mod var_hover;
 mod workbench;
 
 pub(crate) use line_comments::CommentableTextarea;

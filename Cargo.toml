@@ -1,5 +1,5 @@
 [package]
-name = "not_postman"
+name = "evil_postman"
 version = "0.1.0"
 edition = "2021"
 description = "Local-first API client (Rust + Dioxus) — Postman-inspired architecture"

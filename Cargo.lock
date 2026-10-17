@@ -1798,6 +1798,46 @@ dependencies = [
 ]
 
 [[package]]
+name = "evil_postman"
+version = "0.1.0"
+dependencies = [
+ "base64 0.22.1",
+ "boa_engine",
+ "bytes",
+ "chrono",
+ "dioxus",
+ "dirs",
+ "futures-util",
+ "hex",
+ "hmac",
+ "http",
+ "http-body-util",
+ "hyper",
+ "hyper-util",
+ "keyring",
+ "md-5",
+ "prost",
+ "prost-types",
+ "regex",
+ "reqwest",
+ "rfd 0.15.4",
+ "rumqttc",
+ "rust_socketio",
+ "serde",
+ "serde_json",
+ "serde_yaml",
+ "sha1",
+ "sha2",
+ "thiserror 2.0.21",
+ "tokio",
+ "tokio-tungstenite 0.26.2",
+ "tower",
+ "url",
+ "urlencoding",
+ "uuid",
+]
+
+[[package]]
 name = "exr"
 version = "1.74.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3665,46 +3705,6 @@ name = "noop_proc_macro"
 version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0676bb32a98c1a483ce53e500a81ad9c3d5b3f7c920c28c24e9cb0980d0b5bc8"
-
-[[package]]
-name = "not_postman"
-version = "0.1.0"
-dependencies = [
- "base64 0.22.1",
- "boa_engine",
- "bytes",
- "chrono",
- "dioxus",
- "dirs",
- "futures-util",
- "hex",
- "hmac",
- "http",
- "http-body-util",
- "hyper",
- "hyper-util",
- "keyring",
- "md-5",
- "prost",
- "prost-types",
- "regex",
- "reqwest",
- "rfd 0.15.4",
- "rumqttc",
- "rust_socketio",
- "serde",
- "serde_json",
- "serde_yaml",
- "sha1",
- "sha2",
- "thiserror 2.0.21",
- "tokio",
- "tokio-tungstenite 0.26.2",
- "tower",
- "url",
- "urlencoding",
- "uuid",
-]
 
 [[package]]
 name = "num-bigint"

@@ -22,6 +22,8 @@ pub fn SettingsPanel(
     let mut ui_font = use_signal(|| settings.ui.ui_font_size_px);
     let mut editor_font = use_signal(|| settings.ui.editor_font_size_px);
     let mut sidebar_w = use_signal(|| settings.ui.sidebar_width_px);
+    let mut request_h = use_signal(|| settings.ui.request_pane_height_px);
+    let mut console_h = use_signal(|| settings.ui.console_height_px);
 
     let mode_str = match proxy_mode() {
         ProxyMode::Env => "env",
@@ -79,6 +81,34 @@ pub fn SettingsPanel(
                             },
                         }
                     }
+                    label { class: "settings-row",
+                        span { "Request pane ({request_h()}px)" }
+                        input {
+                            r#type: "range",
+                            min: "{UiSettings::REQUEST_PANE_MIN_PX}",
+                            max: "{UiSettings::REQUEST_PANE_MAX_PX}",
+                            value: "{request_h()}",
+                            oninput: move |evt| {
+                                if let Ok(v) = evt.value().parse::<u32>() {
+                                    request_h.set(UiSettings::clamp_request_pane_height(v));
+                                }
+                            },
+                        }
+                    }
+                    label { class: "settings-row",
+                        span { "Console height ({console_h()}px)" }
+                        input {
+                            r#type: "range",
+                            min: "{UiSettings::CONSOLE_MIN_PX}",
+                            max: "{UiSettings::CONSOLE_MAX_PX}",
+                            value: "{console_h()}",
+                            oninput: move |evt| {
+                                if let Ok(v) = evt.value().parse::<u32>() {
+                                    console_h.set(UiSettings::clamp_console_height(v));
+                                }
+                            },
+                        }
+                    }
                     button {
                         class: "btn btn-ghost",
                         onclick: move |_| {
@@ -86,6 +116,8 @@ pub fn SettingsPanel(
                             ui_font.set(d.ui_font_size_px);
                             editor_font.set(d.editor_font_size_px);
                             sidebar_w.set(d.sidebar_width_px);
+                            request_h.set(d.request_pane_height_px);
+                            console_h.set(d.console_height_px);
                         },
                         "Reset appearance"
                     }
@@ -162,6 +194,8 @@ pub fn SettingsPanel(
                                     ui_font_size_px: ui_font(),
                                     editor_font_size_px: editor_font(),
                                     sidebar_width_px: sidebar_w(),
+                                    request_pane_height_px: request_h(),
+                                    console_height_px: console_h(),
                                 }
                                 .clamped(),
                             }));

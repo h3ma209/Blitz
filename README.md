@@ -1,4 +1,4 @@
-# notPostman
+# EvilPostman
 
 Local-first API client (Rust + Dioxus desktop). Architecture guided by reverse-engineering notes in [`reports/`](reports/) — requester workbench, scripts, runner, local mocks.
 
@@ -14,7 +14,7 @@ Optional: [dioxus-cli](https://dioxuslabs.com/) (`cargo install dioxus-cli`). Ho
 ## Build / run
 
 ```bash
-cd /Users/hema/Desktop/Experiments/notPostman
+cd /Users/hema/Desktop/Experiments/EvilPostman
 cargo check
 cargo run
 cargo test

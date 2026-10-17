@@ -2,9 +2,12 @@ use dioxus::prelude::*;
 
 use crate::core::{
     fetch_oauth2_token, AuthConfig, AuthType, BodyMode, FormDataField, HttpMethod, KeyValue,
-    OAuth2Grant, RequestDraft, RequestProtocol, RequestSettings,
+    OAuth2Grant, RequestDraft, RequestProtocol, RequestSettings, VariableContext,
 };
+use super::var_hover::{VarEditEvent, VarHoverInput};
 use super::CommentableTextarea;
+
+pub use super::var_hover::VarEditEvent as RequestVarEditEvent;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum BuilderTab {
@@ -27,6 +30,8 @@ pub fn RequestBuilder(
     sending: bool,
     ws_connected: bool,
     protocol_log: Vec<String>,
+    vars: VariableContext,
+    on_var_edit: EventHandler<VarEditEvent>,
 ) -> Element {
     let mut tab = use_signal(|| BuilderTab::Params);
 
@@ -36,16 +41,6 @@ pub fn RequestBuilder(
         move |evt: Event<FormData>| {
             let mut d = draft.clone();
             d.method = parse_method(&evt.value());
-            on_change.call(d);
-        }
-    };
-
-    let set_url = {
-        let draft = draft.clone();
-        let on_change = on_change.clone();
-        move |evt: Event<FormData>| {
-            let mut d = draft.clone();
-            d.url = evt.value();
             on_change.call(d);
         }
     };
@@ -85,28 +80,37 @@ pub fn RequestBuilder(
                     }
                 }
             }
-            input {
-                class: "url-input",
-                r#type: "text",
-                value: "{draft.url}",
+            VarHoverInput {
+                class: "url-input".to_string(),
+                value: draft.url.clone(),
                 placeholder: match draft.protocol {
-                    RequestProtocol::Http => "https://api.example.com/{{path}}",
-                    RequestProtocol::WebSocket => "wss://echo.websocket.events",
-                    RequestProtocol::Grpc => "http://127.0.0.1:50051",
-                    RequestProtocol::Mqtt => "mqtt://127.0.0.1:1883",
-                    RequestProtocol::Mcp => "(STDIO — use MCP fields below)",
-                    RequestProtocol::SocketIo => "http://127.0.0.1:3000",
-                    RequestProtocol::Sse => "https://example.com/events",
-                    RequestProtocol::GraphqlWs => "ws://127.0.0.1:4000/graphql",
+                    RequestProtocol::Http => "https://api.example.com/{{path}}".to_string(),
+                    RequestProtocol::WebSocket => "wss://echo.websocket.events".to_string(),
+                    RequestProtocol::Grpc => "http://127.0.0.1:50051".to_string(),
+                    RequestProtocol::Mqtt => "mqtt://127.0.0.1:1883".to_string(),
+                    RequestProtocol::Mcp => "(STDIO — use MCP fields below)".to_string(),
+                    RequestProtocol::SocketIo => "http://127.0.0.1:3000".to_string(),
+                    RequestProtocol::Sse => "https://example.com/events".to_string(),
+                    RequestProtocol::GraphqlWs => "ws://127.0.0.1:4000/graphql".to_string(),
                 },
-                oninput: set_url,
+                input_id: "np-url-input".to_string(),
+                vars: vars.clone(),
+                on_input: {
+                    let draft = draft.clone();
+                    move |url: String| {
+                        let mut d = draft.clone();
+                        d.url = url;
+                        on_change.call(d);
+                    }
+                },
+                on_var_edit: on_var_edit.clone(),
             }
             if draft.protocol == RequestProtocol::Http || draft.protocol == RequestProtocol::Grpc {
                 button {
-                    class: "btn btn-send",
-                    disabled: sending,
+                    class: if sending { "btn btn-ghost btn-cancel" } else { "btn btn-send" },
+                    title: if sending { "Cancel in-flight request" } else { "Send request (⌘↵)" },
                     onclick: move |_| on_send.call(()),
-                    if sending { "Sending…" } else if draft.protocol == RequestProtocol::Grpc { "Invoke" } else { "Send" }
+                    if sending { "Cancel" } else if draft.protocol == RequestProtocol::Grpc { "Invoke" } else { "Send" }
                 }
             }
         }
@@ -146,6 +150,8 @@ pub fn RequestBuilder(
                 BuilderTab::Params => rsx! {
                     KvEditor {
                         rows: draft.params.clone(),
+                        vars: vars.clone(),
+                        on_var_edit: on_var_edit.clone(),
                         on_change: {
                             let draft = draft.clone();
                             move |rows| {
@@ -159,6 +165,8 @@ pub fn RequestBuilder(
                 BuilderTab::Headers => rsx! {
                     KvEditor {
                         rows: draft.headers.clone(),
+                        vars: vars.clone(),
+                        on_var_edit: on_var_edit.clone(),
                         on_change: {
                             let draft = draft.clone();
                             move |rows| {
@@ -178,6 +186,8 @@ pub fn RequestBuilder(
                         formdata: draft.body_formdata.clone(),
                         graphql_query: draft.graphql_query.clone(),
                         graphql_variables: draft.graphql_variables.clone(),
+                        vars: vars.clone(),
+                        on_var_edit: on_var_edit.clone(),
                         on_change: {
                             let draft = draft.clone();
                             move |(mode, body, binary_path, urlencoded, formdata, gql_q, gql_v)| {
@@ -618,7 +628,12 @@ fn ProtocolFields(
 }
 
 #[component]
-fn KvEditor(rows: Vec<KeyValue>, on_change: EventHandler<Vec<KeyValue>>) -> Element {
+fn KvEditor(
+    rows: Vec<KeyValue>,
+    vars: VariableContext,
+    on_var_edit: EventHandler<VarEditEvent>,
+    on_change: EventHandler<Vec<KeyValue>>,
+) -> Element {
     rsx! {
         table { class: "kv-table",
             thead {
@@ -648,20 +663,24 @@ fn KvEditor(rows: Vec<KeyValue>, on_change: EventHandler<Vec<KeyValue>>) -> Elem
                             }
                         }
                         td {
-                            input {
-                                r#type: "text",
-                                value: "{row.value}",
-                                oninput: {
+                            VarHoverInput {
+                                class: "kv-var-input".to_string(),
+                                value: row.value.clone(),
+                                placeholder: String::new(),
+                                input_id: format!("np-kv-val-{i}"),
+                                vars: vars.clone(),
+                                on_input: {
                                     let rows = rows.clone();
-                                    move |evt: Event<FormData>| {
+                                    move |val: String| {
                                         let mut next = rows.clone();
                                         if let Some(r) = next.get_mut(i) {
-                                            r.value = evt.value();
+                                            r.value = val;
                                         }
                                         ensure_trailing_empty(&mut next);
                                         on_change.call(next);
                                     }
-                                }
+                                },
+                                on_var_edit: on_var_edit.clone(),
                             }
                         }
                     }
@@ -690,6 +709,8 @@ fn BodyEditor(
     formdata: Vec<FormDataField>,
     graphql_query: String,
     graphql_variables: String,
+    vars: VariableContext,
+    on_var_edit: EventHandler<VarEditEvent>,
     on_change: EventHandler<(
         BodyMode,
         String,
@@ -818,6 +839,8 @@ fn BodyEditor(
         } else if mode == BodyMode::Urlencoded {
             KvEditor {
                 rows: urlencoded.clone(),
+                vars: vars.clone(),
+                on_var_edit: on_var_edit.clone(),
                 on_change: {
                     let body = body.clone();
                     let binary_path = binary_path.clone();

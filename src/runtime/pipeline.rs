@@ -1,9 +1,13 @@
 //! Primary request send path (reports/07 pseudocode, simplified).
 
 use std::fs;
-use std::time::Instant;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::mpsc;
+use std::sync::Arc;
+use std::thread;
+use std::time::{Duration, Instant};
 
-use reqwest::blocking::{multipart, Client};
+use reqwest::blocking::{multipart, Client, Response as BlockingResponse};
 use reqwest::header::{HeaderMap, HeaderName, HeaderValue};
 use reqwest::redirect::Policy;
 use thiserror::Error;
@@ -33,6 +37,8 @@ pub enum SendError {
     Digest(String),
     #[error("client: {0}")]
     Client(String),
+    #[error("cancelled")]
+    Cancelled,
 }
 
 pub type SendResult = Result<ResponseView, SendError>;
@@ -52,6 +58,67 @@ pub struct SendOptions<'a> {
     pub iteration_data_json: Option<&'a str>,
     /// Mutable execution hints from sandbox (`setNextRequest` / `skipRequest`).
     pub execution: Option<&'a mut ExecutionHints>,
+    /// Cooperative cancel: set to true to abort (best-effort during blocking HTTP).
+    pub cancel: Option<Arc<AtomicBool>>,
+}
+
+fn is_cancelled(cancel: &Option<Arc<AtomicBool>>) -> bool {
+    cancel
+        .as_ref()
+        .is_some_and(|c| c.load(Ordering::SeqCst))
+}
+
+fn check_cancelled(cancel: &Option<Arc<AtomicBool>>) -> Result<(), SendError> {
+    if is_cancelled(cancel) {
+        Err(SendError::Cancelled)
+    } else {
+        Ok(())
+    }
+}
+
+/// Run a blocking HTTP call on a worker thread; poll `cancel` every 50ms.
+/// On cancel, return [`SendError::Cancelled`] immediately and abandon the worker
+/// (reqwest blocking has no mid-flight abort; the OS call may finish in the background).
+fn blocking_http_cancelable<T, F>(
+    cancel: &Option<Arc<AtomicBool>>,
+    work: F,
+) -> Result<T, SendError>
+where
+    T: Send + 'static,
+    F: FnOnce() -> Result<T, reqwest::Error> + Send + 'static,
+{
+    check_cancelled(cancel)?;
+    let Some(flag) = cancel.clone() else {
+        return work().map_err(SendError::from);
+    };
+    let (tx, rx) = mpsc::channel();
+    thread::Builder::new()
+        .name("evilpostman-http".into())
+        .spawn(move || {
+            let _ = tx.send(work());
+        })
+        .map_err(|e| SendError::Client(format!("spawn http worker: {e}")))?;
+    loop {
+        match rx.recv_timeout(Duration::from_millis(50)) {
+            Ok(Ok(v)) => return Ok(v),
+            Ok(Err(e)) => return Err(SendError::from(e)),
+            Err(mpsc::RecvTimeoutError::Timeout) => {
+                if flag.load(Ordering::SeqCst) {
+                    return Err(SendError::Cancelled);
+                }
+            }
+            Err(mpsc::RecvTimeoutError::Disconnected) => {
+                return Err(SendError::Client("http worker died".into()));
+            }
+        }
+    }
+}
+
+fn send_builder_cancelable(
+    builder: reqwest::blocking::RequestBuilder,
+    cancel: &Option<Arc<AtomicBool>>,
+) -> Result<BlockingResponse, SendError> {
+    blocking_http_cancelable(cancel, move || builder.send())
 }
 
 /// Filled by `pm.execution.*` in the sandbox.
@@ -721,6 +788,7 @@ pub fn send_request_with_options(
     }
 
     // 5. HTTP client
+    check_cancelled(&opts.cancel)?;
     let client = build_client(&resolved.settings, opts.app_settings, &mut log)?;
     let method = method_from(resolved.method);
     let headers = build_headers(&resolved)?;
@@ -751,9 +819,12 @@ pub fn send_request_with_options(
     let ttfb_mark = Instant::now();
     let mut response = {
         let builder = client.request(method.clone(), &url).headers(headers.clone());
-        attach_body(builder, &resolved.body_formdata, &body_bytes, &mut log)?.send()?
+        let builder =
+            attach_body(builder, &resolved.body_formdata, &body_bytes, &mut log)?;
+        send_builder_cancelable(builder, &opts.cancel)?
     };
     let ttfb_ms = ttfb_mark.elapsed().as_millis();
+    check_cancelled(&opts.cancel)?;
 
     // Digest challenge/response
     if resolved.auth.auth_type == AuthType::Digest && response.status().as_u16() == 401 {
@@ -790,8 +861,10 @@ pub fn send_request_with_options(
             );
 
             let builder = client.request(method, &url).headers(headers2);
-            response =
-                attach_body(builder, &resolved.body_formdata, &body_bytes, &mut log)?.send()?;
+            let builder =
+                attach_body(builder, &resolved.body_formdata, &body_bytes, &mut log)?;
+            response = send_builder_cancelable(builder, &opts.cancel)?;
+            check_cancelled(&opts.cancel)?;
         } else {
             log.push("auth: digest 401 but no Digest WWW-Authenticate".into());
         }
@@ -824,7 +897,10 @@ pub fn send_request_with_options(
         }
     }
 
-    let body = response.text().unwrap_or_default();
+    let body = blocking_http_cancelable(&opts.cancel, move || {
+        Ok(response.text().unwrap_or_default())
+    })?;
+    check_cancelled(&opts.cancel)?;
     let download_ms = started.elapsed().as_millis().saturating_sub(ttfb_ms);
     log.push(format!("http: {status} in {elapsed_ms}ms"));
     console.push(format!(
@@ -847,6 +923,7 @@ pub fn send_request_with_options(
     };
 
     // 6. Post-response / tests: request → folder → collection
+    check_cancelled(&opts.cancel)?;
     let sandbox_resp = SandboxResponse {
         status,
         status_text: status_text.clone(),
@@ -964,5 +1041,40 @@ mod tests {
         let form = build_formdata(&fields, &mut log).unwrap();
         assert!(form.is_some());
         assert!(log.iter().any(|l| l.contains("form-data")));
+    }
+
+    #[test]
+    fn cancel_flag_aborts_before_http() {
+        let flag = Arc::new(AtomicBool::new(true));
+        let draft = RequestDraft {
+            url: "https://example.invalid/slow".into(),
+            ..Default::default()
+        };
+        let err = send_request_with_options(
+            &draft,
+            &VariableContext::default(),
+            SendOptions {
+                cancel: Some(flag),
+                ..Default::default()
+            },
+        )
+        .unwrap_err();
+        assert!(matches!(err, SendError::Cancelled));
+    }
+
+    #[test]
+    fn blocking_http_cancelable_returns_cancelled() {
+        let flag = Arc::new(AtomicBool::new(false));
+        let flag2 = flag.clone();
+        let handle = thread::spawn(move || {
+            blocking_http_cancelable(&Some(flag2), || {
+                thread::sleep(Duration::from_secs(30));
+                Ok("done".to_string())
+            })
+        });
+        thread::sleep(Duration::from_millis(80));
+        flag.store(true, Ordering::SeqCst);
+        let err = handle.join().unwrap().unwrap_err();
+        assert!(matches!(err, SendError::Cancelled));
     }
 }

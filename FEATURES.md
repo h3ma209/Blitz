@@ -1,8 +1,8 @@
-# notPostman — Feature Catalog
+# EvilPostman — Feature Catalog
 
 **Product:** local-first API client (Rust + Dioxus desktop)  
 **Not affiliated with Postman.** Guided by reverse-engineering notes under [`reports/`](reports/).  
-**As of:** 17 October 2026 · crate `not_postman` 0.1  
+**As of:** 17 October 2026 · crate `evil_postman` 0.1  
 **Verify:** `cargo test` (unit + UI-flow smokes; keychain + network cases ignored)
 
 This document lists what the **app actually does today**: shipped behavior, partial limits, and explicit non-goals.
@@ -11,7 +11,7 @@ This document lists what the **app actually does today**: shipped behavior, part
 
 ## 1. Summary
 
-notPostman is a single-window desktop workbench for building, sending, scripting, organizing, and locally mocking API traffic. Data lives on disk under the platform data directory (`…/notpostman/`). Secrets can use the macOS Keychain. There is **no** Postman Cloud account, sync, Agent Mode, Spec Hub, Flows, or billing.
+EvilPostman is a single-window desktop workbench for building, sending, scripting, organizing, and locally mocking API traffic. Data lives on disk under the platform data directory (`…/evilpostman/`). Secrets can use the macOS Keychain. There is **no** Postman Cloud account, sync, Agent Mode, Spec Hub, Flows, or billing.
 
 | Area | Maturity |
 |------|----------|
@@ -19,7 +19,7 @@ notPostman is a single-window desktop workbench for building, sending, scripting
 | Multi-protocol | HTTP, WS, gRPC unary, MQTT, MCP, **Socket.IO**, **SSE**, **GraphQL-WS** |
 | Variables, environments, vault | Complete (local scopes) + collection vars editor + env JSON impex |
 | Auth | Bearer/Basic/API Key/Digest/OAuth2 + **OAuth1 / Hawk / AWS SigV4 / EdgeGrid**; NTLM Type1 partial |
-| Scripts + Collection Runner + Perf VUs + CLI | `pm` sandbox + `pm.visualizer`; `not_postman run` CLI |
+| Scripts + Collection Runner + Perf VUs + CLI | `pm` sandbox + `pm.visualizer`; `evil_postman run` CLI |
 | Capture proxy | HTTP forward + CONNECT tunnel (no MITM decrypt) |
 | Collections / history / trash | Tree search, sibling reorder, CRUD/DnD |
 | Import / export / snippets / mock | v2.1 + HAR + OpenAPI YAML; Java/Go/C# snippets; mock scenarios |
@@ -33,14 +33,14 @@ notPostman is a single-window desktop workbench for building, sending, scripting
 
 - **Top bar:** brand, shortcut hint, **File** menu (collections / env / HAR / OpenAPI), Runner, Perf, Proxy, Cookies, Col vars, Settings, environment selector, variables eye (👁), code snippets (`</>`), Mock start/stop, Trash.
 - **Left sidebar:** collections tree (search box) + history; **drag right edge** to resize (180–480px, persisted).
-- **Center:** multi-tab request strip, request builder, response pane, console.
-- **Modals:** settings, runner, env manager, import/export, command palette, trash, snippets.
+- **Center:** multi-tab request strip, request builder, response pane, console — **drag handles** resize request/response split and console height (persisted).
+- **Modals:** settings, runner, env manager, import/export, command palette, trash, snippets, collection variables.
 
 ### 2.2 Tabs & shortcuts
 
 | Shortcut | Action |
 |----------|--------|
-| ⌘/Ctrl + Enter | Send |
+| ⌘/Ctrl + Enter | Send (or **Cancel** while a request is in flight) |
 | ⌘/Ctrl + S | Save request into collection |
 | ⌘/Ctrl + T | New request tab |
 | ⌘/Ctrl + W | Close / reset current tab |
@@ -50,7 +50,7 @@ notPostman is a single-window desktop workbench for building, sending, scripting
 | ⌘/Ctrl + Shift + / | Toggle `/* … */` block comment around selection |
 
 - **Multi-tab:** open several drafts; switch by tab; `+` opens a new untitled request.
-- **Palette:** Send, Save, New, Runner, Console, Settings.
+- **Palette:** Send (Cancel while in flight), Save, New, Runner, Console, Settings.
 
 ### 2.3 Variables quick-look
 
@@ -137,7 +137,8 @@ Secret references in auth fields:
 3. Collection  
 4. Global  
 
-Substitution: `{{name}}` in URL, params, headers, body, auth fields.
+Substitution: `{{name}}` in URL, params, headers, body, auth fields.  
+Hover / caret on `{{var}}` in URL (and header/param values) → popover with resolved value + in-place edit (updates owning scope). Dismisses ~200ms after pointer leaves token/input/popover (grace so user can enter popover); stays open while hovering popover or focusing the value input; Escape / Save / blur-after-leave still close.
 
 ### 5.2 Environments UI
 
@@ -149,21 +150,22 @@ Substitution: `{{name}}` in URL, params, headers, body, auth fields.
 
 ### 5.2b Collection variables
 
-- **Col vars** toolbar → edit active collection `variables`  
-- Synced into `VariableContext.collection` on select / edit  
+- **Col vars** toolbar modal: **Active** tab (editable key/value rows for current collection) + **All collections** accordion (browse/edit every collection)  
+- Synced into `VariableContext.collection` when active collection changes or its rows are edited  
 - Imported/exported with collection v2.1 `variable[]`  
+- Persisted via snapshot on Done / normal save paths  
 
 ### 5.3 Vault
 
-- File: `{data_dir}/notpostman/vault.json`  
-- Also mirrored via secrets service `notPostman (vault)` when using Keychain path  
+- File: `{data_dir}/evilpostman/vault.json`  
+- Also mirrored via secrets service `EvilPostman (vault)` when using Keychain path  
 - Syntax: `{{vault:key}}`  
 - Scripts: `pm.vault.get/set/unset`  
 
 ### 5.4 OS secrets
 
-- macOS: Keychain via `keyring` (service pattern `notPostman ({id})`, account `userKey` for crypto-style keys)  
-- CI / fallback: `NOTPOSTMAN_SECRETS=memory`  
+- macOS: Keychain via `keyring` (service pattern `EvilPostman ({id})`, account `userKey` for crypto-style keys)  
+- CI / fallback: `EVILPOSTMAN_SECRETS=memory`  
 
 ---
 
@@ -219,6 +221,8 @@ On Send (simplified):
 6. Apply proxy + TLS + timeout + optional PEM client cert  
 7. HTTP via **reqwest** (rustls)  
 8. Store Set-Cookie; run post scripts; update Test Results / Console / History  
+
+While sending, the primary button becomes **Cancel**. Cancel sets a cooperative abort flag (HTTP runs on a worker thread polled every 50ms); UI returns to idle immediately and ignores late results. Status shows `CANCELLED`.
 
 ---
 
@@ -316,8 +320,8 @@ Dismiss: click outside or Escape. Hover row icons still available as shortcuts.
 ### 12d. CLI (Newman-like)
 
 ```
-not_postman run collection.json [--env environment.json]
-not_postman help
+evil_postman run collection.json [--env environment.json]
+evil_postman help
 ```
 
 (No args → GUI.)
@@ -382,7 +386,8 @@ Generated from the current draft (URL, method, headers, auth, body).
 
 - **Proxy:** env (`HTTP(S)_PROXY`), none, or custom `host:port`  
 - **Client certificate:** PEM, or **PKCS#12** via `openssl pkcs12` conversion when openssl is on PATH  
-- **Appearance:** UI font size, editor (mono/body) font size, sidebar width — CSS vars on `.app-shell` (`--fs-base`, `--fs-editor`, `--sidebar-w`); Reset in Settings  
+- **Appearance:** UI font size, editor (mono/body) font size, sidebar width, request pane height, console height — CSS vars on `.app-shell` / `.workbench` (`--fs-base`, `--fs-editor`, `--sidebar-w`, `--request-h`, `--console-h`); Reset in Settings  
+- Workbench drag handles update `request_pane_height_px` / `console_height_px` (clamped); never mount drag UI as bare `.app-shell` grid children  
 - Persisted in snapshot  
 
 ---
@@ -391,8 +396,8 @@ Generated from the current draft (URL, method, headers, auth, body).
 
 | Artifact | Location (typical) |
 |----------|--------------------|
-| Snapshot (collections, envs, history, cookies, settings, trash, selection) | `{data_dir}/notpostman/snapshot.json` |
-| Vault | `{data_dir}/notpostman/vault.json` |
+| Snapshot (collections, envs, history, cookies, settings, trash, selection) | `{data_dir}/evilpostman/snapshot.json` |
+| Vault | `{data_dir}/evilpostman/vault.json` |
 | Keychain secrets | macOS Keychain (when enabled) |
 
 Demo collection/env seeded when snapshot empty.
