@@ -34,3 +34,6 @@ Thumbs.db
 *.pem
 *.key
 credentials.json
+
+# Local clone of evilpostman-cloud (app uses data_dir/cloud; never nest secrets here)
+/cloud/

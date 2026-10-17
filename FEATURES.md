@@ -33,7 +33,8 @@ EvilPostman is a single-window desktop workbench for building, sending, scriptin
 ### 2.1 Shell layout
 
 - **Top bar:** brand, shortcut hint, **File** menu (collections / env / HAR / OpenAPI), Runner, Perf, Proxy, Cookies, Col vars, Settings, environment selector, variables eye (👁), code snippets (`</>`), Mock start/stop, Trash.
-- **Left sidebar:** collections tree (search box) + history; **drag right edge** to resize (180–480px, persisted).
+- **Left sidebar:** collections tree (search box) + history; **drag right edge** to resize (180–480px, persisted). Tree starts **fully collapsed** (collections + folders); expand deliberately. Refolds after snapshot load, import, and cloud sync reload (session expand state not persisted).
+- **Startup splash:** full-screen EvilPostman brand overlay until initial snapshot load finishes, then ~300ms fade (fixed overlay inside `.app-shell`, not a grid child).
 - **Center:** multi-tab request strip, request builder, response pane, console — **drag handles** resize request/response split and console height (persisted).
 - **Modals:** settings, runner, env manager, import/export, command palette, trash, snippets, collection variables.
 
@@ -145,7 +146,7 @@ Hover / caret on `{{var}}` in URL (and header/param values) → popover with res
 
 - Defaults: **Local**, **Development**, **Production** (seeded; extras kept)  
 - Vars with **initial** + **current** values  
-- Top-right custom menu: click name to select; **Sync** per env when git cloud on  
+- Top-right: env dropdown + **Sync** chip (hidden when **No Environment**; first Sync enables cloud + canonical remote). `VariableContext.local` never synced.  
 - File → Import / Export Postman environment JSON  
 - Persisted in snapshot  
 
@@ -246,7 +247,8 @@ While sending, the primary button becomes **Cancel**. Cancel sets a cooperative 
 
 ## 9. Collections & organization
 
-- Tree: collections → folders → requests (expand/collapse via ▸/▾)  
+- Tree: collections → folders → requests (expand/collapse via ▸/▾); **default all closed**  
+
 - Create collection / folder / request (folder or collection as parent)  
 - Rename, delete, **Duplicate** (collection / folder / request)  
 - **Favorite** (★), **Sort** (favorites first, folders before requests)  
@@ -407,17 +409,22 @@ Demo collection/env seeded when snapshot empty.
 
 ## 18b. Git cloud sync (optional)
 
-Settings → **Git cloud sync**: enable save → export split tree → `git commit` → `git push`.
+Top-nav **Cloud** menu + Settings → **Git cloud sync**. Parallel to local `snapshot.json` (local-first offline still works).
 
 | Item | Behavior |
 |------|----------|
 | Canonical remote | `https://github.com/h3ma209/evilpostman-cloud.git` (overridable) |
-| Clone path | `{data_dir}/evilpostman/cloud/` (or custom) |
+| Clone path | `{data_dir}/evilpostman/cloud/` (or custom / Link folder) |
 | On-disk layout | `.evilpostman/project.json`, `collections/<slug>/` (one `*.request.json` per request), `environments/*.environment.json` |
-| Environments | Defaults Local/Development/Production → branches `env/local` etc.; menu **Sync** = checkout + commit + push |
-| Secrets | Redacted in git; vault / cookies / history / tabs stay in local `snapshot.json` |
+| UI | **Cloud** → Clone / Link folder / Status / Pull / Push / Open folder; **Sync** beside env (hidden if no env) |
+| Save | Local `snapshot.json`; if cloud on + linked clone + active env → export → **commit only** (never push) |
+| Sync | Checkout `env/<slug>` → commit pending → `pull --rebase` → import → **push** (never force). Primary team share. |
+| Pull / Push | Advanced Cloud-menu actions; no auto-pull interval |
+| Environments | Defaults Local/Development/Production → branches `env/local` etc. |
+| Commit message | Auto `{UTC} A file.json M other.json` (or `update N files`); Settings override if non-empty |
+| Secrets / local vars | Redacted secrets in git; vault / cookies / history / tabs / **`VariableContext.local`** stay in local `snapshot.json` only |
 | Auth | System `git` + SSH agent or `gh auth login` / credential helper — no force-push |
-| Conflicts | Status message only this pass; resolve in clone then save again |
+| Conflicts | Status message; resolve in clone then Sync / Pull again |
 
 Design: [`reports/14-cloud-sync-re/git-team-sync-design.md`](reports/14-cloud-sync-re/git-team-sync-design.md).
 

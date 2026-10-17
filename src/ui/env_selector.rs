@@ -7,8 +7,6 @@ use crate::core::Environment;
 pub fn EnvSelector(
     environments: Vec<Environment>,
     active_id: Option<Uuid>,
-    /// When true, show Sync per env (cloud sync enabled).
-    cloud_enabled: bool,
     on_change: EventHandler<Option<Uuid>>,
     on_sync: EventHandler<Uuid>,
     on_manage: EventHandler<()>,
@@ -25,10 +23,24 @@ pub fn EnvSelector(
         div { class: "env-selector-wrap",
             button {
                 class: "env-select-trigger",
-                title: "Environment",
+                title: "Select environment",
                 onclick: move |_| menu_open.set(!menu_open()),
                 span { class: "env-select-label", "{active_name}" }
                 span { class: "env-select-caret", "▾" }
+            }
+            // Sync only when an environment is active (not "No Environment" / local).
+            if active_id.is_some() {
+                button {
+                    class: "env-sync-btn",
+                    title: "Sync with team: pull → commit local → push. Local/script vars stay on this machine.",
+                    onclick: move |_| {
+                        menu_open.set(false);
+                        if let Some(id) = active_id {
+                            on_sync.call(id);
+                        }
+                    },
+                    "Sync"
+                }
             }
             button {
                 class: "btn-icon",
@@ -59,57 +71,28 @@ pub fn EnvSelector(
                         span { class: "env-menu-name", "No Environment" }
                     }
                     for env in environments.iter() {
-                        EnvMenuRow {
-                            id: env.id,
-                            name: env.name.clone(),
-                            active: active_id == Some(env.id),
-                            cloud_enabled,
-                            on_change,
-                            on_sync,
-                            on_close: move |_| menu_open.set(false),
+                        {
+                            let id = env.id;
+                            let name = env.name.clone();
+                            let active = active_id == Some(id);
+                            let row_class = if active {
+                                "env-menu-row env-menu-row-active"
+                            } else {
+                                "env-menu-row"
+                            };
+                            rsx! {
+                                button {
+                                    class: "{row_class}",
+                                    title: "Select {name}",
+                                    onclick: move |_| {
+                                        menu_open.set(false);
+                                        on_change.call(Some(id));
+                                    },
+                                    span { class: "env-menu-name", "{name}" }
+                                }
+                            }
                         }
                     }
-                }
-            }
-        }
-    }
-}
-
-#[component]
-fn EnvMenuRow(
-    id: Uuid,
-    name: String,
-    active: bool,
-    cloud_enabled: bool,
-    on_change: EventHandler<Option<Uuid>>,
-    on_sync: EventHandler<Uuid>,
-    on_close: EventHandler<()>,
-) -> Element {
-    let row_class = if active {
-        "env-menu-row env-menu-row-active"
-    } else {
-        "env-menu-row"
-    };
-    rsx! {
-        div { class: "{row_class}",
-            button {
-                class: "env-menu-name-btn",
-                title: "Select {name}",
-                onclick: move |_| {
-                    on_close.call(());
-                    on_change.call(Some(id));
-                },
-                "{name}"
-            }
-            if cloud_enabled {
-                button {
-                    class: "env-sync-btn",
-                    title: "Sync {name} → git branch + push",
-                    onclick: move |_| {
-                        on_close.call(());
-                        on_sync.call(id);
-                    },
-                    "Sync"
                 }
             }
         }

@@ -452,6 +452,36 @@ pub fn filter_tree_rows(rows: Vec<TreeRow>, query: &str) -> Vec<TreeRow> {
     rows.into_iter().filter(|r| keep.contains(&r.id)).collect()
 }
 
+/// Ids of collection/folder nodes that can expand/collapse in the sidebar tree.
+pub fn collapsible_tree_ids(collections: &[Collection]) -> std::collections::HashSet<Uuid> {
+    let mut out = std::collections::HashSet::new();
+    for col in collections {
+        out.insert(col.id);
+        collect_folder_ids(&col.items, &mut out);
+    }
+    out
+}
+
+fn collect_folder_ids(items: &[CollectionItem], out: &mut std::collections::HashSet<Uuid>) {
+    for item in items {
+        if let CollectionItem::Folder(folder) = item {
+            out.insert(folder.id);
+            collect_folder_ids(&folder.items, out);
+        }
+    }
+}
+
+/// Collapse every collapsible id except those in `expanded` (empty `expanded` ⇒ all folded).
+pub fn collapsed_except_expanded(
+    collections: &[Collection],
+    expanded: &std::collections::HashSet<Uuid>,
+) -> std::collections::HashSet<Uuid> {
+    collapsible_tree_ids(collections)
+        .into_iter()
+        .filter(|id| !expanded.contains(id))
+        .collect()
+}
+
 /// Walk all collections into indented rows for the sidebar tree.
 pub fn flatten_collections(collections: &[Collection]) -> Vec<TreeRow> {
     flatten_collections_filtered(collections, &std::collections::HashSet::new())
@@ -1240,6 +1270,19 @@ mod tests {
         assert!(!filtered
             .iter()
             .any(|r| r.parent_id == Some(folder_id)));
+    }
+
+    #[test]
+    fn default_tree_all_collapsed_via_empty_expanded() {
+        let cols = demo_collections();
+        let ids = collapsible_tree_ids(&cols);
+        assert!(!ids.is_empty());
+        let collapsed = collapsed_except_expanded(&cols, &std::collections::HashSet::new());
+        assert_eq!(collapsed, ids);
+        let folded = flatten_collections_filtered(&cols, &collapsed);
+        // Only collection roots — no nested folders/requests.
+        assert!(folded.iter().all(|r| matches!(r.kind, TreeRowKind::Collection)));
+        assert_eq!(folded.len(), cols.len());
     }
 
     #[test]

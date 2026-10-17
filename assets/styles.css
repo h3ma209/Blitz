@@ -289,6 +289,7 @@ body {
   border-bottom: var(--glass-border);
   box-shadow: var(--glass-shine);
   z-index: 20;
+  overflow: visible;
 }
 
 .brand {
@@ -407,6 +408,9 @@ body {
   align-items: center;
   gap: 6px;
   flex-shrink: 0;
+  overflow: visible;
+  position: relative;
+  z-index: 30;
 }
 
 .top-icon {
@@ -572,14 +576,14 @@ body {
 .env-menu-backdrop {
   position: fixed;
   inset: 0;
-  z-index: 80;
+  z-index: 900;
 }
 
 .env-menu {
   position: absolute;
   top: calc(100% + 8px);
   right: 0;
-  z-index: 90;
+  z-index: 910;
   min-width: 220px;
   max-height: 320px;
   overflow-y: auto;
@@ -650,9 +654,15 @@ button.env-menu-row:hover,
   cursor: pointer;
 }
 
-.env-sync-btn:hover {
+.env-sync-btn:hover:not(:disabled) {
   background: rgba(29, 185, 84, 0.22);
   border-color: rgba(29, 185, 84, 0.55);
+}
+
+.env-sync-btn-disabled,
+.env-sync-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
 }
 
 .env-selector-wrap .btn-icon {
@@ -2193,4 +2203,90 @@ textarea:focus {
   gap: var(--space-2);
   justify-content: flex-end;
   flex-wrap: wrap;
+}
+
+/* Startup splash — fixed overlay inside `.app-shell`, not a grid child. */
+.startup-splash {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background:
+    radial-gradient(ellipse 80% 60% at 50% 40%, rgba(29, 185, 84, 0.12), transparent 70%),
+    var(--spot-void);
+  opacity: 1;
+  transition: opacity 320ms ease;
+  pointer-events: all;
+}
+
+.startup-splash.leaving {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.startup-splash-inner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  animation: brand-in 420ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+.startup-splash-logo {
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  object-fit: cover;
+  box-shadow: 0 0 0 3px rgba(29, 185, 84, 0.28), 0 0 28px rgba(29, 185, 84, 0.35);
+  animation: mark-pulse 2.4s ease-in-out infinite;
+  background: transparent;
+}
+
+.startup-splash-wordmark {
+  display: inline-flex;
+  align-items: baseline;
+  font-family: var(--font);
+  font-size: 28px;
+  font-weight: 800;
+  letter-spacing: var(--track-display);
+  line-height: 1;
+  user-select: none;
+}
+
+.startup-splash-dots {
+  display: flex;
+  gap: 7px;
+  margin-top: 6px;
+}
+
+.startup-splash-dots span {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--spot-green);
+  opacity: 0.35;
+  animation: splash-dot 1.05s ease-in-out infinite;
+}
+
+.startup-splash-dots span:nth-child(2) {
+  animation-delay: 0.15s;
+}
+
+.startup-splash-dots span:nth-child(3) {
+  animation-delay: 0.3s;
+}
+
+@keyframes splash-dot {
+  0%,
+  80%,
+  100% {
+    opacity: 0.28;
+    transform: translateY(0);
+  }
+  40% {
+    opacity: 1;
+    transform: translateY(-4px);
+  }
 }

@@ -148,7 +148,7 @@ pub const DEFAULT_CLOUD_REMOTE: &str = "https://github.com/h3ma209/evilpostman-c
 /// Git-backed cloud sync prefs (collections/envs → remote; secrets stay local).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CloudSyncSettings {
-    /// When true, each local save also exports tree → commit → push.
+    /// When true, Save also exports tree → local git commit (never push). Sync pulls+pushes.
     #[serde(default)]
     pub enabled: bool,
     /// Remote URL (HTTPS or SSH).
@@ -157,6 +157,9 @@ pub struct CloudSyncSettings {
     /// Override clone dir; empty = `{data_root}/cloud`.
     #[serde(default)]
     pub clone_path: String,
+    /// Optional commit message override; empty = auto from git name-status + UTC timestamp.
+    #[serde(default)]
+    pub commit_message: String,
     /// Last sync / git status message for UI.
     #[serde(default)]
     pub last_status: String,
@@ -172,9 +175,11 @@ fn default_cloud_remote() -> String {
 impl Default for CloudSyncSettings {
     fn default() -> Self {
         Self {
-            enabled: false,
+            // On by default so Sync is usable without hunting Settings first.
+            enabled: true,
             remote_url: default_cloud_remote(),
             clone_path: String::new(),
+            commit_message: String::new(),
             last_status: String::new(),
             last_branch: String::new(),
         }
@@ -253,7 +258,8 @@ mod tests {
     fn app_settings_ui_serde_default() {
         let s: AppSettings = serde_json::from_str(r#"{"proxy":{"mode":"env","host_port":""},"client_cert":{"cert_path":"","passphrase":"","enabled":false}}"#).unwrap();
         assert_eq!(s.ui, UiSettings::default());
-        assert!(!s.cloud_sync.enabled);
+        // Missing cloud_sync in JSON → Default (enabled true + canonical remote).
+        assert!(s.cloud_sync.enabled);
         assert_eq!(s.cloud_sync.remote_url, DEFAULT_CLOUD_REMOTE);
     }
 }

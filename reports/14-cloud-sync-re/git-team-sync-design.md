@@ -1,20 +1,34 @@
 # 14b — EvilPostman git-based team sync (design)
 
-**Date:** 2026-10-17 · **Updated:** 2026-10-17 (impl pass)  
+**Date:** 2026-10-17 · **Updated:** 2026-10-17 (final sync model)  
 **Companion RE:** [postman-cloud-sync.md](./postman-cloud-sync.md)  
-**Canonical remote:** `https://github.com/h3ma209/evilpostman-cloud.git`  
+**Canonical remote:** `https://github.com/h3ma209/evilpostman-cloud.git` (**evilpostman-cloud** = team/git cloud for this app)  
 **Framing:** local-first alternative to Postman Cloud Bifrost — **not** trademark/cloud feature parity.
 
-### Implementation status (P0 + save-pipeline)
+**Remote seed:** repo ships `.evilpostman/`, empty `collections/` + `environments/`, secrets-safe `.gitignore`, README. App clones into `{data_dir}/evilpostman/cloud/` (not nested inside the app git tree).
+
+### Implementation status (final sync model)
 
 | Decision | Choice |
 |----------|--------|
 | App / meta dir | EvilPostman / `.evilpostman/` (not `.notpostman`) |
 | Env ↔ branch | **`env/<sanitized-name>`** (e.g. Development → `env/development`) |
 | Default branch | `main` or `master` (detected); env branches created from it |
-| On save | Local `snapshot.json` + export tree → `git add -A` → commit (skip empty) → `git push` (never force) |
+| On **Save** | Local `snapshot.json`; if cloud on + linked clone + active env → export → `git add` → **commit only** (never push). Skip when **No Environment** / no clone. |
+| On **Sync** | Checkout env branch → commit pending → `pull --rebase` → import tree → **push** (never force). Hidden when no env. |
+| Auto-pull | **None** — Sync / Cloud → Pull only |
+| Commit message | `{UTC RFC3339} A file.json M other.json` (or `update N files`); Settings field optional override |
 | Secrets | Redacted in env JSON (`type: secret`, empty value); vault/cookies/history local-only |
 | Split layout | One `*.request.json` per request under `collections/<slug>/` |
+
+### Final UX (Save vs Sync)
+
+| Action | Behavior |
+|--------|----------|
+| **Save** | Always write local snapshot. Optionally local git **commit** (no network push). |
+| **Sync** (beside env) | Primary team share: **pull then push** after committing local tree; reload UI from import. |
+| **Cloud → Pull / Push** | Advanced; same git ops without the full Sync orchestration. |
+| **No Environment** | Sync button **not rendered**; Save stays local-only. |
 
 ---
 
@@ -231,4 +245,4 @@ Postman ships `main-git-ipc-handlers` + `GitResolver` (**observed** in [postman-
 - [x] Import tree into running app
 - [x] Root `.gitignore` template written on first export
 - [x] Docs link from FEATURES.md
-- [x] Save → commit → push + env-as-branch (P1/P2 partial; no full conflict UI)
+- [x] Save → commit only; Sync → pull + push; env-as-branch (no full conflict UI; no auto-pull)

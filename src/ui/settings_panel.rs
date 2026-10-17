@@ -30,6 +30,7 @@ pub fn SettingsPanel(
     let mut cloud_enabled = use_signal(|| settings.cloud_sync.enabled);
     let mut cloud_remote = use_signal(|| settings.cloud_sync.remote_url.clone());
     let mut cloud_clone = use_signal(|| settings.cloud_sync.clone_path.clone());
+    let mut cloud_commit_msg = use_signal(|| settings.cloud_sync.commit_message.clone());
     let cloud_last_status = settings.cloud_sync.last_status.clone();
     let cloud_last_branch = settings.cloud_sync.last_branch.clone();
     let default_clone_hint = format!("{data_root}/cloud");
@@ -187,10 +188,10 @@ pub fn SettingsPanel(
                         checked: cloud_enabled(),
                         onchange: move |evt| cloud_enabled.set(evt.checked()),
                     }
-                    " Enable save → commit → push"
+                    " Enable git cloud (Save → commit; Sync → pull+push)"
                 }
                 p { class: "hint",
-                    "Environments = branches env/<name>. Secrets / vault / cookies / history stay local. Needs system git + GitHub auth (SSH or gh)."
+                    "Environments = branches env/<name>. Save commits locally; Sync beside env shares with team. No auto-pull. Secrets / vault / cookies / history stay local."
                 }
                 label { class: "settings-row",
                     span { "Remote URL" }
@@ -209,6 +210,18 @@ pub fn SettingsPanel(
                         value: "{cloud_clone}",
                         oninput: move |evt| cloud_clone.set(evt.value()),
                     }
+                }
+                label { class: "settings-row",
+                    span { "Commit message override (empty = auto)" }
+                    input {
+                        r#type: "text",
+                        placeholder: "2026-10-17T16:03:00Z A login.request.json …",
+                        value: "{cloud_commit_msg}",
+                        oninput: move |evt| cloud_commit_msg.set(evt.value()),
+                    }
+                }
+                p { class: "hint",
+                    "Also: Sync beside env (primary), or Cloud → Clone / Pull / Push / Status. Auth: `gh auth login` or SSH agent."
                 }
                 if !cloud_last_branch.is_empty() || !cloud_last_status.is_empty() {
                     p { class: "hint",
@@ -255,6 +268,7 @@ pub fn SettingsPanel(
                                     enabled: cloud_enabled(),
                                     remote_url: remote,
                                     clone_path: cloud_clone().trim().to_string(),
+                                    commit_message: cloud_commit_msg().trim().to_string(),
                                     last_status: cloud_last_status.clone(),
                                     last_branch: cloud_last_branch.clone(),
                                 },

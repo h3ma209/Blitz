@@ -8,17 +8,29 @@ Local-first API client (Rust + Dioxus desktop). Architecture guided by reverse-e
 
 - Rust 1.83+ (tested with 1.95)
 - macOS / Linux / Windows with WebView support (Dioxus desktop uses the system WebView)
+- Optional team sync: system `git` + GitHub auth (`gh auth login` or SSH agent)
 
 Optional: [dioxus-cli](https://dioxuslabs.com/) (`cargo install dioxus-cli`). Homebrew `dx` may be **Deno’s** `dx` — prefer `cargo run`.
 
 ## Build / run
 
 ```bash
-cd /Users/hema/Desktop/Experiments/EvilPostman
+cd /Users/hema/Desktop/Experiments/notPostman
 cargo check
 cargo run
 cargo test
 ```
+
+## Git cloud sync (team)
+
+Canonical remote: [`h3ma209/evilpostman-cloud`](https://github.com/h3ma209/evilpostman-cloud.git).
+
+1. Auth once: `gh auth login` (HTTPS) or SSH key + `ssh -T git@github.com`
+2. Run app → top-nav **Cloud → Clone / link remote…** (defaults to that URL; clone under `{data_dir}/evilpostman/cloud/`)
+3. Pick an environment (Sync hidden for **No Environment**). Edit → **Save** commits locally when cloud+clone linked. **Sync** = pull → commit → push to share with team.
+4. Advanced: **Cloud → Pull / Push**. No auto-pull. Local/script vars never leave this machine.
+
+Never commit `vault.json`, cookies, or history — redacted in env JSON. Design: [`reports/14-cloud-sync-re/git-team-sync-design.md`](reports/14-cloud-sync-re/git-team-sync-design.md).
 
 ## Layout
 
@@ -51,7 +63,8 @@ reports/      # RE notes (Ghidra-only for native)
 | Local mock server from examples | **Real** |
 | Proxy + PEM client cert | **Real**; PKCS#12 → convert to PEM |
 | Multi-tab, ⌘⇧P palette, eye variables pane | **Real** |
-| Cloud / Agent / Spec Hub / Flows / gRPC / WS / MQTT / MCP / Native Git / SSO | **Out of scope** |
+| Git team sync (evilpostman-cloud) | **Real** (Cloud menu + save→push; secrets stay local) |
+| Postman Cloud / Agent / Spec Hub / Flows / SSO | **Out of scope** |
 
 ## Try
 

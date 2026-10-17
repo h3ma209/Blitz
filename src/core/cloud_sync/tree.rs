@@ -15,6 +15,7 @@ use crate::core::impex::{
     export_request_item, import_collection_v21, import_request_item, ImpexError,
 };
 use crate::core::request::{AuthConfig, AuthType, KeyValue};
+use crate::core::variables::VariableContext;
 
 #[derive(Debug, Error)]
 pub enum CloudTreeError {
@@ -65,8 +66,9 @@ Collections and environments synced from [EvilPostman](https://github.com/h3ma20
 - **Environments = git branches** named `env/<sanitized-env-name>`
 - Secret values are redacted in `environments/*.environment.json` (local vault / snapshot only)
 - One request per `*.request.json` for merge-friendly diffs
+- **VariableContext.local** (script / request-local vars) is never synced — machine/session only
 
-Do not commit `vault.json`, cookies, or history.
+Do not commit `vault.json`, cookies, history, or `.evilpostman/local.json`.
 "#;
 
 /// Sanitize for filesystem / branch segment: lowercase, non-alnum → `-`.
@@ -206,6 +208,11 @@ fn export_env_redacted_json(env: &Environment) -> Result<String, CloudTreeError>
 }
 
 /// Write full workspace tree under `root` (git working tree).
+///
+/// Syncs collections, collection variables, and environments (secrets redacted).
+/// **Never** writes [`VariableContext::local`] — that map is machine/session only.
+/// Optional globals may be written to `.evilpostman/globals.json` when non-empty.
+/// Any stale `.evilpostman/local.json` is removed so it cannot be committed.
 pub fn export_workspace_tree(
     root: &Path,
     project_name: &str,
@@ -213,11 +220,19 @@ pub fn export_workspace_tree(
     default_env: &str,
     collections: &[Collection],
     environments: &[Environment],
+    variables: &VariableContext,
 ) -> Result<(), CloudTreeError> {
     let evil = root.join(".evilpostman");
     fs::create_dir_all(&evil)?;
     fs::create_dir_all(root.join("collections"))?;
     fs::create_dir_all(root.join("environments"))?;
+
+    // Local scope must never land in the cloud tree (even as a gitignored overlay).
+    let _ = &variables.local;
+    let local_overlay = evil.join("local.json");
+    if local_overlay.exists() {
+        fs::remove_file(&local_overlay)?;
+    }
 
     let meta = ProjectMeta {
         schema_version: 1,
@@ -229,6 +244,19 @@ pub fn export_workspace_tree(
         evil.join("project.json"),
         serde_json::to_string_pretty(&meta)?,
     )?;
+
+    // Globals may sync; local never does.
+    let globals_path = evil.join("globals.json");
+    if variables.global.is_empty() {
+        if globals_path.exists() {
+            fs::remove_file(&globals_path)?;
+        }
+    } else {
+        fs::write(
+            &globals_path,
+            serde_json::to_string_pretty(&variables.global)?,
+        )?;
+    }
 
     let gi = root.join(".gitignore");
     if !gi.exists() {
@@ -730,6 +758,7 @@ mod tests {
             "Development",
             &[col],
             &[env.clone()],
+            &VariableContext::default(),
         )
         .unwrap();
 
@@ -755,6 +784,82 @@ mod tests {
             .find(|v| v.key == "access_token")
             .unwrap();
         assert_eq!(tok.current_value, "do-not-leak");
+
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    fn concat_tree_text(root: &Path) -> String {
+        let mut out = String::new();
+        fn walk(dir: &Path, out: &mut String) {
+            let Ok(entries) = fs::read_dir(dir) else {
+                return;
+            };
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.is_dir() {
+                    walk(&path, out);
+                } else if let Ok(text) = fs::read_to_string(&path) {
+                    out.push_str(&text);
+                    out.push('\n');
+                }
+            }
+        }
+        walk(root, &mut out);
+        out
+    }
+
+    #[test]
+    fn export_workspace_omits_local_variable_map_keys() {
+        let root = temp_dir();
+        fs::create_dir_all(&root).unwrap();
+
+        // Stale overlay from a buggy older build — export must scrub it.
+        let evil = root.join(".evilpostman");
+        fs::create_dir_all(&evil).unwrap();
+        fs::write(
+            evil.join("local.json"),
+            r#"{"should_not_survive":"x"}"#,
+        )
+        .unwrap();
+
+        let mut col = Collection::new("Demo");
+        col.variables.push(KeyValue::new("colKey", "colVal"));
+        let mut env = Environment::new("Development");
+        env.values.push(EnvVar::new("baseUrl", "https://httpbin.org"));
+
+        let mut vars = VariableContext::default();
+        vars.local.insert(
+            "zz_local_only_sync_probe".into(),
+            "NEVER_SYNC_THIS_LOCAL_VALUE_9f3a".into(),
+        );
+        vars.global
+            .insert("userAgent".into(), "EvilPostman/test".into());
+
+        export_workspace_tree(
+            &root,
+            "Demo",
+            "https://github.com/h3ma209/evilpostman-cloud.git",
+            "Development",
+            &[col],
+            &[env],
+            &vars,
+        )
+        .unwrap();
+
+        assert!(!root.join(".evilpostman/local.json").exists());
+        let blob = concat_tree_text(&root);
+        assert!(
+            !blob.contains("zz_local_only_sync_probe"),
+            "local map keys must not appear in cloud tree"
+        );
+        assert!(
+            !blob.contains("NEVER_SYNC_THIS_LOCAL_VALUE_9f3a"),
+            "local map values must not appear in cloud tree"
+        );
+        // Globals may sync.
+        let globals = fs::read_to_string(root.join(".evilpostman/globals.json")).unwrap();
+        assert!(globals.contains("userAgent"));
+        assert!(globals.contains("EvilPostman/test"));
 
         let _ = fs::remove_dir_all(&root);
     }
