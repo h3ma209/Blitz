@@ -101,7 +101,7 @@ Local client language:
 
 ### 3.3 Conflict resolution (**observed**)
 
-- Event bus: `pm.eventBus.channel("conflict-resolution")`
+- Event bus: `epm.eventBus.channel("conflict-resolution")`
 - UI namespace `"conflicts"` with `show` / `submit`; payload `{conflicts, timeline}`
 - Paths: `conflictsResolved(resolution)`, edit-conflict messaging, `forceSyncAllData` after resolve
 - Sync failure analytics category `"sync_failure"`

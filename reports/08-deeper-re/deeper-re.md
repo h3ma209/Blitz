@@ -49,7 +49,7 @@ From webpack chunk `runtime_agents_IPCAgent_js-be7c27a27ea9d8c6.min.js`:
 ## 3. Script sandbox (**observed**)
 
 - `html/tester_sandbox.html` present in ASAR; loads `js/tester/Evaluator.js` (window.open shim + `sandboxEchoText` postMessage only).
-- Real host: **`postman-sandbox`** inside `postman-runtime` (uvm/uniscope). Isolation + expanded `pm.*` / vault / cookies: [10 re-complete](../10-re-complete/re-complete.md) (supersedes partial [09 re-followups](../09-docs-gap-matrix/re-followups.md)).
+- Real host: **`postman-sandbox`** inside `postman-runtime` (uvm/uniscope). Isolation + expanded `epm.*` / vault / cookies: [10 re-complete](../10-re-complete/re-complete.md) (supersedes partial [09 re-followups](../09-docs-gap-matrix/re-followups.md)).
 - Execution workers / `execution-system-manager` / `process-manager.js` remain offline anchors for script/OAuth executor events (see report 03).
 - **Also CDN-missing (**observed** 10):** `js/runner.js` + `js/vendor-ui.js` referenced by `html/runner.html` but absent from ASAR (same pattern as `requester.js`).
 
@@ -151,7 +151,7 @@ This closes prior gap “service/account keys unknown” for the CryptoService p
 ## Gaps remaining
 
 1. End-to-end Send click → HTTP (remote UI + no reliable CDP).
-2. Exhaustive `pm.*` table (partial strings recovered 2026-10-17; Evaluator.js is not the API host).
+2. Exhaustive `epm.*` table (partial strings recovered 2026-10-17; Evaluator.js is not the API host).
 3. Whether CryptoService `id` equals user/team GUID (call-site args not fully mapped).
 4. REA MCP Ghidra session stability for interactive `procedure_pseudo_code` (headless dump is authoritative for keytar).
 5. ASAR digest on disk may differ across installs — this pass measured `30abb7db…1564f4` (see [09](../09-docs-gap-matrix/re-followups.md)); older reports cite `f07f297…`.

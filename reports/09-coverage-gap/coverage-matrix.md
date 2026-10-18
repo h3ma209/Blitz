@@ -101,7 +101,7 @@ Rows are checklist items (not unique product modules). Many N/A rows are intenti
 |--------------|----|-----|-----|-------|
 | Pre-request scripts | partial | stub | P1 | Sandbox HTML + runtime inferred (`03`, `08`). App: script fields, not executed (`pipeline.rs`). |
 | Test scripts / assertions | partial | stub | P1 | Same. |
-| Sandbox `pm.*` API surface | missing | missing | P1 | Explicit gap (`03`, `04`, `08`). **Top RE target.** |
+| Sandbox `epm.*` API surface | missing | missing | P1 | Explicit gap (`03`, `04`, `08`). **Top RE target.** |
 | Collection Runner | partial | missing | P1 | `html/runner.html` (`01`, `04`); boundary vs perf unclear. |
 | Datasets / data files | partial | missing | P2 | Dataset daemon IPC + DuckDB + `postman-dataset-engine-*.tar.br` (`01`, `04`). |
 | Performance / load tests | partial | missing | P2 | `perftest*`, `ThreadGroupExecutable`, `process-manager`, perf IPC (`01`, `03`). |
@@ -202,7 +202,7 @@ Rows are checklist items (not unique product modules). Many N/A rows are intenti
 
 Worth extracting from `/Applications/Postman.app` with **REA + Ghidra (native only)**:
 
-1. **`pm.*` sandbox API** — strings / Evaluator in `postman-runtime` + `tester_sandbox.html` + execution-worker.
+1. **`epm.*` sandbox API** — strings / Evaluator in `postman-runtime` + `tester_sandbox.html` + execution-worker.
 2. **Protocol clients** — GraphQL / gRPC / WS / MQTT / MCP wiring from deps → entrypoints (not just package.json).
 3. **Collection Runner vs performance runner** — separate `runner.html` path from `perftest*` / `process-manager`.
 4. **Vault script syntax `{{vault:…}}`** vs CryptoService / VaultScriptService — compare to app `secret://`.
@@ -228,7 +228,7 @@ Priority order for local-first Rust+Dioxus (not implementing here):
 3. **P1** — Body modes: `urlencoded`, `form-data`; Content-Type helpers.
 4. **P1** — Collection import/export (Postman Collection v2.1 JSON first).
 5. **P1** — History of sent requests (local JSON).
-6. **P1** — Real script sandbox (even minimal `pm.environment` / `pm.response`) — after RE of `pm.*`.
+6. **P1** — Real script sandbox (even minimal `epm.environment` / `epm.response`) — after RE of `epm.*`.
 7. **P1** — Collection Runner (sequential folder/collection execute).
 8. **P1** — Proxy + custom CA / client cert settings wired into `reqwest` client.
 9. **P1** — OAuth2 authorization-code + token refresh (browser/loopback).

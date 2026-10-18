@@ -127,7 +127,7 @@ REA entry analysis (`ev_5d12...`): `context_bridge_apis: 3`, `exposed_api_member
 | File | Notes |
 |------|-------|
 | `preload_desktop.js` | Renderer-side IPC wrapper (`ipcRenderer`) — **observed** webpack modules in ASAR text |
-| `preload.js` (root) | Webpack bundle installing `pm.sdk` with **`ipcMain`** handlers — **observed** ASAR text; acts as main-side SDK, despite filename |
+| `preload.js` (root) | Webpack bundle installing `epm.sdk` with **`ipcMain`** handlers — **observed** ASAR text; acts as main-side SDK, despite filename |
 | `js/preload.js` | Tiny renderer stub referenced by requester HTML |
 | `paymentPreload.js`, `browser_tab_recorder_preload.js`, `visualizer_view_preload.js` | Feature-specific preloads (**observed** paths) |
 | `js/*/preload.js` | Migration/scratchpad firmware preloads |

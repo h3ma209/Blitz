@@ -19,7 +19,7 @@ use crate::core::{
     ws_connect_session, AppSettings,
     CaptureProxyHandle, Collection, CollectionItem, ConsoleLine,
     Cookie, CookieJar, EnvVar, Environment, Folder, HistoryEntry, KeyValue, MockHandle, PerfReport,
-    RequestDraft, RequestProtocol, ResponseView, SavedExample, UiSettings, VarResolveScope,
+    RequestDraft, RequestProtocol, ResponseView, SavedExample, UiSettings, UiTheme, VarResolveScope,
     VariableContext, VaultStore, WsSession, DEFAULT_CLOUD_REMOTE, HISTORY_MAX,
 };
 use crate::runtime::{
@@ -41,6 +41,7 @@ use crate::ui::request_builder::{RequestBuilder, RequestVarEditEvent};
 use crate::ui::response_viewer::ResponseViewer;
 use crate::ui::runner_panel::{RunnerEvent, RunnerPanel};
 use crate::ui::settings_panel::{SettingsEvent, SettingsPanel};
+use crate::ui::theme_selector::ThemeSelector;
 use crate::ui::sidebar::{Sidebar, SidebarAction, SidebarEvent};
 use crate::ui::CommentableTextarea;
 use crate::ui::{DismissBackdrop, ModalShell};
@@ -562,7 +563,7 @@ pub fn Workbench() -> Element {
 
         let mut ctx = vars();
         // Always sync collection vars from active collection (needed for
-        // pm.collectionVariables.get in Initiate Envs / SNB scripts).
+        // epm.collectionVariables.get in Initiate Envs / SNB scripts).
         if let Some(col_id) = active_collection_id() {
             if let Some(col) = collections().iter().find(|c| c.id == col_id) {
                 ctx.collection = col.variables_map();
@@ -709,12 +710,12 @@ pub fn Workbench() -> Element {
                 push_console(
                     &mut lines,
                     ConsoleLine::error(
-                        "no active environment — pm.environment.set ignored (select Local/Development/Production first)",
+                        "no active environment — epm.environment.set ignored (select Local/Development/Production first)",
                     ),
                 );
                 console_lines.set(lines);
                 status_msg.set(
-                    "no active environment — pm.environment.set ignored".into(),
+                    "no active environment — epm.environment.set ignored".into(),
                 );
                 v.environment.clear();
             }
@@ -1136,10 +1137,17 @@ pub fn Workbench() -> Element {
         ui.request_pane_height_px, ui.console_height_px
     );
     let appearance_tokens = ui.shell_class_tokens();
-    let shell_class = if sidebar_drag().is_some() {
-        format!("app-shell sidebar-resizing {appearance_tokens}")
-    } else {
-        format!("app-shell {appearance_tokens}")
+    let shell_class = {
+        let base = if sidebar_drag().is_some() {
+            format!("app-shell sidebar-resizing {appearance_tokens}")
+        } else {
+            format!("app-shell {appearance_tokens}")
+        };
+        if show_settings() {
+            format!("{base} settings-open")
+        } else {
+            base
+        }
     };
     let workbench_class = match pane_drag() {
         Some(PaneDrag::Request { .. } | PaneDrag::Console { .. }) => "workbench pane-resizing-v",
@@ -1152,17 +1160,22 @@ pub fn Workbench() -> Element {
     } else {
         "top-bar"
     };
-    let toolbar_send_label = if sending() {
-        "Cancel"
-    } else if draft().protocol == RequestProtocol::Grpc {
-        "Invoke"
-    } else {
-        "Send"
-    };
-    let toolbar_send_class = if sending() {
-        "top-action top-action-cancel"
-    } else {
-        "top-action top-action-primary"
+
+    let on_settings_event = move |evt: SettingsEvent| match evt {
+        SettingsEvent::Close => show_settings.set(false),
+        SettingsEvent::Save(s) => {
+            let enabling_cloud = s.cloud_sync.enabled;
+            app_settings.set(s);
+            if enabling_cloud {
+                let mut envs = environments();
+                if ensure_default_environments(&mut envs) {
+                    environments.set(envs);
+                }
+            }
+            show_settings.set(false);
+            persist();
+            status_msg.set("settings saved".into());
+        }
     };
 
     rsx! {
@@ -1858,6 +1871,7 @@ pub fn Workbench() -> Element {
                                 class: "menu-item",
                                 onclick: move |_| {
                                     cloud_menu_open.set(false);
+                                    show_env_manager.set(false);
                                     show_settings.set(true);
                                 },
                                 "Cloud settings…"
@@ -1866,105 +1880,6 @@ pub fn Workbench() -> Element {
                     }
                 }
                 } // top-nav
-
-                div { class: "top-actions",
-                    button {
-                        class: "{toolbar_send_class}",
-                        title: if sending() {
-                            "Cancel in-flight request (⌘↵)"
-                        } else {
-                            "Send request (⌘↵)"
-                        },
-                        onclick: move |_| {
-                            file_menu_open.set(false);
-                            tools_menu_open.set(false);
-                            cloud_menu_open.set(false);
-                            do_send(());
-                        },
-                        "{toolbar_send_label}"
-                    }
-                    button {
-                        class: "top-action",
-                        title: "Save request to collection (⌘S)",
-                        onclick: move |_| {
-                            file_menu_open.set(false);
-                            tools_menu_open.set(false);
-                            cloud_menu_open.set(false);
-                            do_save(());
-                        },
-                        "Save"
-                    }
-                    button {
-                        class: "top-action",
-                        title: "New request tab (⌘T)",
-                        onclick: move |_| {
-                            file_menu_open.set(false);
-                            tools_menu_open.set(false);
-                            cloud_menu_open.set(false);
-                            do_new_tab(());
-                        },
-                        "New"
-                    }
-                    span { class: "top-action-sep" }
-                    button {
-                        class: if console_open() { "top-action top-action-on" } else { "top-action" },
-                        title: "Postman console (⌘⌥C)",
-                        onclick: move |_| {
-                            file_menu_open.set(false);
-                            tools_menu_open.set(false);
-                            cloud_menu_open.set(false);
-                            console_open.set(!console_open());
-                        },
-                        "Console"
-                    }
-                    button {
-                        class: if show_palette() { "top-action top-action-on" } else { "top-action" },
-                        title: "Command palette (⌘⇧P)",
-                        onclick: move |_| {
-                            file_menu_open.set(false);
-                            tools_menu_open.set(false);
-                            cloud_menu_open.set(false);
-                            show_palette.set(!show_palette());
-                        },
-                        "Palette"
-                    }
-                    button {
-                        class: if show_cookies() { "top-action top-action-on" } else { "top-action" },
-                        title: "Cookie jar manager",
-                        onclick: move |_| {
-                            file_menu_open.set(false);
-                            tools_menu_open.set(false);
-                            cloud_menu_open.set(false);
-                            show_cookies.set(true);
-                        },
-                        "Cookies"
-                    }
-                    button {
-                        class: if show_col_vars() { "top-action top-action-on" } else { "top-action" },
-                        title: "Collection variables for active or all collections",
-                        onclick: move |_| {
-                            file_menu_open.set(false);
-                            tools_menu_open.set(false);
-                            cloud_menu_open.set(false);
-                            col_vars_all.set(false);
-                            col_vars_open_id.set(active_collection_id());
-                            show_col_vars.set(true);
-                        },
-                        "Col vars"
-                    }
-                    button {
-                        class: if show_env_manager() { "top-action top-action-on" } else { "top-action" },
-                        title: "Manage environments",
-                        onclick: move |_| {
-                            file_menu_open.set(false);
-                            tools_menu_open.set(false);
-                            cloud_menu_open.set(false);
-                            show_env_manager.set(true);
-                            editing_env_id.set(active_env_id());
-                        },
-                        "Environments"
-                    }
-                }
 
                 span { class: "spacer" }
 
@@ -2134,12 +2049,29 @@ pub fn Workbench() -> Element {
                             editing_env_id.set(active_env_id());
                         },
                     }
+                    ThemeSelector {
+                        theme: app_settings().ui.theme,
+                        on_change: move |t: UiTheme| {
+                            let mut s = app_settings();
+                            s.ui.theme = t;
+                            s.ui = s.ui.clamped();
+                            app_settings.set(s);
+                            persist();
+                        },
+                    }
                     button {
-                        class: "top-icon top-icon-gear",
-                        title: "Settings",
+                        class: if show_settings() {
+                            "top-icon top-icon-on"
+                        } else {
+                            "top-icon"
+                        },
+                        title: "Settings & preferences",
                         aria_label: "Settings",
-                        onclick: move |_| show_settings.set(true),
-                        span { class: "action-icon action-icon-settings", aria_hidden: "true" }
+                        onclick: move |_| {
+                            show_env_manager.set(false);
+                            show_settings.set(!show_settings());
+                        },
+                        span { class: "action-icon action-icon-sliders", aria_hidden: "true" }
                     }
                 }
             }
@@ -2399,7 +2331,15 @@ pub fn Workbench() -> Element {
                         button { class: "btn btn-ghost", onclick: move |_| { do_new_tab(()); show_palette.set(false); }, "New request" }
                         button { class: "btn btn-ghost", onclick: move |_| { show_runner.set(true); show_palette.set(false); }, "Runner" }
                         button { class: "btn btn-ghost", onclick: move |_| { console_open.set(true); show_palette.set(false); }, "Console" }
-                        button { class: "btn btn-ghost", onclick: move |_| { show_settings.set(true); show_palette.set(false); }, "Settings" }
+                        button {
+                            class: "btn btn-ghost",
+                            onclick: move |_| {
+                                show_env_manager.set(false);
+                                show_settings.set(true);
+                                show_palette.set(false);
+                            },
+                            "Settings"
+                        }
                     }
                 }
             }
@@ -2521,29 +2461,6 @@ pub fn Workbench() -> Element {
                 }
             }
 
-            if show_settings() {
-                SettingsPanel {
-                    settings: app_settings(),
-                    data_root: data_root(),
-                    on_event: move |evt| match evt {
-                        SettingsEvent::Close => show_settings.set(false),
-                        SettingsEvent::Save(s) => {
-                            let enabling_cloud = s.cloud_sync.enabled;
-                            app_settings.set(s);
-                            if enabling_cloud {
-                                let mut envs = environments();
-                                if ensure_default_environments(&mut envs) {
-                                    environments.set(envs);
-                                }
-                            }
-                            show_settings.set(false);
-                            persist();
-                            status_msg.set("settings saved".into());
-                        }
-                    },
-                }
-            }
-
             if show_runner() {
                 RunnerPanel {
                     collections: collections(),
@@ -2611,7 +2528,7 @@ pub fn Workbench() -> Element {
                                             environments.set(envs);
                                         } else if !ctx.environment.is_empty() {
                                             status_msg.set(
-                                                "no active environment — pm.environment.set ignored"
+                                                "no active environment — epm.environment.set ignored"
                                                     .into(),
                                             );
                                             ctx.environment.clear();
@@ -2740,6 +2657,7 @@ pub fn Workbench() -> Element {
                 }
             }
 
+            if !show_settings() {
             if show_env_manager() {
                 div { class: "env-manager-overlay",
                     EnvManager {
@@ -2778,11 +2696,19 @@ pub fn Workbench() -> Element {
                     }
                 }
             }
+            }
 
             main {
-                class: "{workbench_class}",
+                class: if show_settings() {
+                    "workbench workbench-settings"
+                } else {
+                    workbench_class
+                },
                 style: "{workbench_style}",
                 onmousemove: move |evt| {
+                    if show_settings() {
+                        return;
+                    }
                     let Some(drag) = pane_drag() else {
                         return;
                     };
@@ -2813,17 +2739,30 @@ pub fn Workbench() -> Element {
                     }
                 },
                 onmouseup: move |_| {
+                    if show_settings() {
+                        return;
+                    }
                     if pane_drag().is_some() {
                         pane_drag.set(None);
                         persist();
                     }
                 },
                 onmouseleave: move |_| {
+                    if show_settings() {
+                        return;
+                    }
                     if pane_drag().is_some() {
                         pane_drag.set(None);
                         persist();
                     }
                 },
+                if show_settings() {
+                    SettingsPanel {
+                        settings: app_settings(),
+                        data_root: data_root(),
+                        on_event: on_settings_event,
+                    }
+                } else {
                 div { class: "tab-strip",
                     input {
                         class: "tab-name",
@@ -3283,6 +3222,7 @@ pub fn Workbench() -> Element {
                             "{status_msg}"
                         }
                     }
+                }
                 }
             }
 

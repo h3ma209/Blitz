@@ -66,7 +66,7 @@ From `vendors-node_modules_postman-runtime_index_js-*.min.js` string counts:
 | `folder` | 6 |
 
 **Inferred run order (product-docs + runtime events):** collection pre → folder pre → request pre → send → request test → folder test → collection test.  
-**Inferred execution:** `pm.execution.setNextRequest(name|null)`, `pm.execution.skipRequest()`, data file → `pm.iterationData`.
+**Inferred execution:** `epm.execution.setNextRequest(name|null)`, `epm.execution.skipRequest()`, data file → `epm.iterationData`.
 
 ---
 

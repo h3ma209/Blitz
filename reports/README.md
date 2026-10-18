@@ -18,7 +18,7 @@ Architecture reverse-engineering of `/Applications/Postman.app` (v **12.32.4**) 
 | 07 | [07-pseudocode/send-request.pseudocode.md](07-pseudocode/send-request.pseudocode.md) | Send-path pseudocode |
 | 08 | [08-deeper-re/deeper-re.md](08-deeper-re/deeper-re.md) | Deeper offline RE + **Ghidra** keytar |
 | 09 | [09-docs-gap-matrix/gap-matrix.md](09-docs-gap-matrix/gap-matrix.md) | **Primary** docs × RE × app gap matrix (P0–P3) |
-| 09r | [09-docs-gap-matrix/re-followups.md](09-docs-gap-matrix/re-followups.md) | P0/P1 RE follow-ups (vault, pm.*, runner, protocols, proxy, cookies, schema) |
+| 09r | [09-docs-gap-matrix/re-followups.md](09-docs-gap-matrix/re-followups.md) | P0/P1 RE follow-ups (vault, epm.*, runner, protocols, proxy, cookies, schema) |
 | 09a | [09-coverage-gap/coverage-matrix.md](09-coverage-gap/coverage-matrix.md) | Earlier coverage checklist (superseded by 09 for priority language) |
 | 09b | [09-coverage-gap/next-actions.md](09-coverage-gap/next-actions.md) | Top 10 RE + top 10 app build actions |
 | 10 | [10-re-complete/re-complete.md](10-re-complete/re-complete.md) | **Final local-client RE** — sandbox/uvm, vault files, proxy/certs, runner vs perf, protocols, cookies |
@@ -60,7 +60,7 @@ Architecture reverse-engineering of `/Applications/Postman.app` (v **12.32.4**) 
 2. Request execution centered on **`postman-runtime` / `postman-request`** plus dedicated workers (`ExecutionProcess`, `execution-worker`, `AgentWorker`, `ProxyNodeProcess`). Runtime IPC channel **`@postman/runtime`** (**observed**).
 3. Secrets: **`keytar.node`** (Ghidra: SecKeychain/SecItem) + CryptoService keys `account=userKey`, `service=${app.getName()} (${id})`; Vault VariableScope `prefix:"vault:"` + `{{vault:}}`; Azure Vault, **1Password SDK**, AES — multi-backend.
 4. Requester UI: `js/requester.js` **absent** from ASAR; `__WP_DESKTOP_UI_UPDATE_URL__` → `https://desktop.postman.com` (**observed**).
-5. Scripts: **`postman-sandbox`** + uniscope/uvm isolation + expanded `pm.*` (**observed** [10](10-re-complete/re-complete.md)); cookies `@postman/tough-cookie` + partition jars; protocols `@postman/runtime_*-client`.
+5. Scripts: **`postman-sandbox`** + uniscope/uvm isolation + expanded `epm.*` (**observed** [10](10-re-complete/re-complete.md)); cookies `@postman/tough-cookie` + partition jars; protocols `@postman/runtime_*-client`.
 6. Most IPC channel names **dynamic**; REA pairing = 0. Named main IPC handler chunks for FS/git/dataset/perf/ripgrep/webhooks.
 7. Full ASAR semantic analysis **memory/budget limited** — large workers and `main.js` incomplete.
 8. Runner/requester UI JS **absent** locally (`js/runner.js`, `js/requester.js`) — CDN pattern (**observed**).
@@ -68,7 +68,7 @@ Architecture reverse-engineering of `/Applications/Postman.app` (v **12.32.4**) 
 ## Gaps / next REA steps
 
 - Reliable CDP → `list_electron_targets` / `capture_electron_scenario` for live Send (Postman not running in 10 pass).
-- Exhaustive `pm.*` from unminified sandbox; vault at-rest crypto if files appear; CLI YAML; CryptoService `id` mapping.
+- Exhaustive `epm.*` from unminified sandbox; vault at-rest crypto if files appear; CLI YAML; CryptoService `id` mapping.
 - Backlog: [10-re-complete/re-complete.md](10-re-complete/re-complete.md) (primary); [09 gap-matrix](09-docs-gap-matrix/gap-matrix.md).
 
 ### 2026-10-17 REA evidence (gap pass)

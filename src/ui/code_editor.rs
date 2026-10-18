@@ -1,4 +1,4 @@
-//! Multiline code fields: syntax mirror, `{{` variable menu, Postman `pm.*` completions.
+//! Multiline code fields: syntax mirror, `{{` variable menu, Postman `epm.*` completions.
 
 use dioxus::prelude::*;
 
@@ -25,26 +25,26 @@ pub enum EditorSyntax {
 
 /// Postman sandbox API snippets for script editor autocomplete.
 const PM_COMPLETIONS: &[(&str, &str)] = &[
-    ("pm.test", "pm.test(\"name\", function () {\n  \n});"),
-    ("pm.expect", "pm.expect("),
-    ("pm.environment.set", "pm.environment.set(\"key\", \"value\");"),
-    ("pm.environment.get", "pm.environment.get(\"key\");"),
-    ("pm.environment.unset", "pm.environment.unset(\"key\");"),
-    ("pm.collectionVariables.set", "pm.collectionVariables.set(\"key\", \"value\");"),
-    ("pm.collectionVariables.get", "pm.collectionVariables.get(\"key\");"),
-    ("pm.globals.set", "pm.globals.set(\"key\", \"value\");"),
-    ("pm.globals.get", "pm.globals.get(\"key\");"),
-    ("pm.variables.get", "pm.variables.get(\"key\");"),
-    ("pm.variables.set", "pm.variables.set(\"key\", \"value\");"),
-    ("pm.variables.replaceIn", "pm.variables.replaceIn(\"{{var}}\");"),
-    ("pm.vault.get", "pm.vault.get(\"key\");"),
-    ("pm.response.to.have.status", "pm.response.to.have.status(200);"),
-    ("pm.response.to.have.jsonBody", "pm.response.to.have.jsonBody();"),
-    ("pm.response.json", "pm.response.json()"),
-    ("pm.response.code", "pm.response.code"),
-    ("pm.request.headers.upsert", "pm.request.headers.upsert({ key: \"X\", value: \"v\" });"),
-    ("pm.sendRequest", "pm.sendRequest(url, function (err, res) {\n  \n});"),
-    ("pm.execution.setNextRequest", "pm.execution.setNextRequest(\"Request name\");"),
+    ("epm.test", "epm.test(\"name\", function () {\n  \n});"),
+    ("epm.expect", "epm.expect("),
+    ("epm.environment.set", "epm.environment.set(\"key\", \"value\");"),
+    ("epm.environment.get", "epm.environment.get(\"key\");"),
+    ("epm.environment.unset", "epm.environment.unset(\"key\");"),
+    ("epm.collectionVariables.set", "epm.collectionVariables.set(\"key\", \"value\");"),
+    ("epm.collectionVariables.get", "epm.collectionVariables.get(\"key\");"),
+    ("epm.globals.set", "epm.globals.set(\"key\", \"value\");"),
+    ("epm.globals.get", "epm.globals.get(\"key\");"),
+    ("epm.variables.get", "epm.variables.get(\"key\");"),
+    ("epm.variables.set", "epm.variables.set(\"key\", \"value\");"),
+    ("epm.variables.replaceIn", "epm.variables.replaceIn(\"{{var}}\");"),
+    ("epm.vault.get", "epm.vault.get(\"key\");"),
+    ("epm.response.to.have.status", "epm.response.to.have.status(200);"),
+    ("epm.response.to.have.jsonBody", "epm.response.to.have.jsonBody();"),
+    ("epm.response.json", "epm.response.json()"),
+    ("epm.response.code", "epm.response.code"),
+    ("epm.request.headers.upsert", "epm.request.headers.upsert({ key: \"X\", value: \"v\" });"),
+    ("epm.sendRequest", "epm.sendRequest(url, function (err, res) {\n  \n});"),
+    ("epm.execution.setNextRequest", "epm.execution.setNextRequest(\"Request name\");"),
     ("console.log", "console.log("),
     ("CryptoJS.SHA256", "CryptoJS.SHA256(\"text\").toString();"),
 ];
@@ -100,7 +100,7 @@ fn apply_js_insert(text: &str, caret: usize, start: usize, snippet: &str) -> (St
     (out, new_caret)
 }
 
-/// Multiline editor with optional JS highlighting, `{{` variables, and `pm.*` completions.
+/// Multiline editor with optional JS highlighting, `{{` variables, and `epm.*` completions.
 #[component]
 pub fn MultilineCodeField(
     class: String,

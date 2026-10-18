@@ -20,7 +20,7 @@ flowchart TB
     MAIN["main.js"]
     START["startup.js"]
     IPCFS["main-*-ipc-handlers*.min.js"]
-    PMSDK["preload.js as pm.sdk\nipcMain handlers"]
+    PMSDK["preload.js as epm.sdk\nipcMain handlers"]
     OAUTH["OAuth2WindowManager"]
     PROXYCERT["proxyCertificateService"]
     KEYTAR["keytar.node native"]

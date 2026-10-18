@@ -57,7 +57,7 @@ Literal channel strings recovered from that file / evidence scan (**observed** A
 
 ### Root `preload.js` (main-side SDK)
 
-Despite name, bundle uses **`ipcMain`** and sets `pm.sdk` (**observed** ASAR text). Handlers:
+Despite name, bundle uses **`ipcMain`** and sets `epm.sdk` (**observed** ASAR text). Handlers:
 
 | Channel / API | Role |
 |---------------|------|
@@ -67,7 +67,7 @@ Despite name, bundle uses **`ipcMain`** and sets `pm.sdk` (**observed** ASAR tex
 | `screen-event` | `webContents.send` from powerMonitor lock/unlock |
 | `app-badge:foregrounded-with-badge-visible` | notify renderer |
 
-Also references `pm.eventBus.channel("model-events")` for badge suppress on logout/switch (**observed** string).
+Also references `epm.eventBus.channel("model-events")` for badge suppress on logout/switch (**observed** string).
 
 ### Feature preloads (auth analysis set)
 

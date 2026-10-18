@@ -1,21 +1,21 @@
 //! Postman-style JS sandbox via `boa_engine`.
 //!
-//! Supported `pm.*` (subset of postman-sandbox / uvm — not full isolation):
-//! - Scopes: `pm.variables` / `environment` / `collectionVariables` / `globals`
+//! Supported `epm.*` (subset of postman-sandbox / uvm — not full isolation):
+//! - Scopes: `epm.variables` / `environment` / `collectionVariables` / `globals`
 //!   — `.get` / `.set` / `.unset` / `.has` / `.toObject` / `.clear`
-//! - `pm.variables.replaceIn(str)` — `{{var}}` substitution
-//! - `pm.vault` — `.get` / `.set` / `.unset`
-//! - `pm.cookies` — `.get` / `.set` / `.clear`
-//! - `pm.request` — `.url` (string + `.getPath()`), `.method`, `.headers.get/upsert/add`,
+//! - `epm.variables.replaceIn(str)` — `{{var}}` substitution
+//! - `epm.vault` — `.get` / `.set` / `.unset`
+//! - `epm.cookies` — `.get` / `.set` / `.clear`
+//! - `epm.request` — `.url` (string + `.getPath()`), `.method`, `.headers.get/upsert/add`,
 //!   `.body.mode` / `.body.raw`
-//! - `pm.response` — `.code` / `.status` / `.responseTime` / `.text()` / `.json()` /
+//! - `epm.response` — `.code` / `.status` / `.responseTime` / `.text()` / `.json()` /
 //!   `.headers.get` / `.to.have.status` / `.to.have.jsonBody`
-//! - `pm.test` / `pm.expect` — equal/eql/include/be.ok/above/below/a(type)/
+//! - `epm.test` / `epm.expect` — equal/eql/include/be.ok/above/below/a(type)/
 //!   have.status/have.property (+ optional value) / not.*
-//! - `pm.sendRequest` — sync nested HTTP + callback
-//! - `pm.execution.setNextRequest` / `skipRequest`
-//! - `pm.info` — eventName / requestName / iteration stubs
-//! - `pm.visualizer.set` — simple `{{key}}` / `{{data}}`
+//! - `epm.sendRequest` — sync nested HTTP + callback
+//! - `epm.execution.setNextRequest` / `skipRequest`
+//! - `epm.info` — eventName / requestName / iteration stubs
+//! - `epm.visualizer.set` — simple `{{key}}` / `{{data}}`
 //! - `console.log/warn/error/info` → console panel
 //! - `CryptoJS.SHA256` / `HmacSHA256` (+ Hex / Base64) — host-backed subset
 //! - `require` — stub; `crypto-js` → CryptoJS; else empty object + warn
@@ -37,22 +37,22 @@ pub struct SandboxOutcome {
     pub tests: Vec<TestResult>,
     pub error: Option<String>,
     pub execution: SandboxExecution,
-    /// HTML from `pm.visualizer.set(template, data)`.
+    /// HTML from `epm.visualizer.set(template, data)`.
     pub visualizer_html: String,
-    /// Headers upserted via `pm.request.headers.upsert` / `.add` (pre-request).
+    /// Headers upserted via `epm.request.headers.upsert` / `.add` (pre-request).
     pub request_header_upserts: Vec<(String, String)>,
-    /// Cookie map after script when `pm.cookies.set/clear` ran.
+    /// Cookie map after script when `epm.cookies.set/clear` ran.
     pub cookies: Option<std::collections::HashMap<String, String>>,
 }
 
-/// Response snapshot injected into `pm.response`.
+/// Response snapshot injected into `epm.response`.
 #[derive(Debug, Clone, Default)]
 pub struct SandboxResponse {
     pub status: u16,
     pub status_text: String,
     pub body: String,
     pub headers: Vec<(String, String)>,
-    /// Milliseconds (Postman `pm.response.responseTime`).
+    /// Milliseconds (Postman `epm.response.responseTime`).
     pub response_time: u64,
 }
 
@@ -74,7 +74,7 @@ pub struct SandboxExtras {
     pub iteration: u32,
 }
 
-/// Execution control written by `pm.execution`.
+/// Execution control written by `epm.execution`.
 #[derive(Debug, Clone, Default)]
 pub struct SandboxExecution {
     pub next_request: Option<String>,
@@ -511,9 +511,9 @@ var pm = {{
     }}
   }}
 }};
-pm.expect = __expect;
-// Coerce pm.request.url in string contexts (boa may not use Object string wrapper)
-pm.request.toString = function() {{ return String(__np.requestUrl || ""); }};
+epm.expect = __expect;
+// Coerce epm.request.url in string contexts (boa may not use Object string wrapper)
+epm.request.toString = function() {{ return String(__np.requestUrl || ""); }};
 "#
     );
 
@@ -585,7 +585,7 @@ fn np_hmac_sha256_b64_native(
     Ok(JsValue::from(js_string!(b64.as_str())))
 }
 
-/// Blocking nested HTTP for `pm.sendRequest` (JSON in / JSON out).
+/// Blocking nested HTTP for `epm.sendRequest` (JSON in / JSON out).
 fn host_send_request(spec_json: &str) -> String {
     #[derive(serde::Deserialize)]
     struct Spec {
@@ -907,7 +907,7 @@ mod tests {
         let mut ctx = VariableContext::default();
         let out = run_js_sandbox(
             r#"
-            pm.environment.set("baseUrl", "http://localhost");
+            epm.environment.set("baseUrl", "http://localhost");
             console.log("hi");
             console.warn("w");
             "#,
@@ -930,7 +930,7 @@ mod tests {
         let out = run_js_sandbox(
             r#"
             var saw = false;
-            pm.sendRequest("http://127.0.0.1:1/nope", function(err, res) {
+            epm.sendRequest("http://127.0.0.1:1/nope", function(err, res) {
               saw = err !== null;
             });
             if (!saw) throw new Error("expected error callback");
@@ -954,11 +954,11 @@ mod tests {
         };
         let out = run_js_sandbox(
             r#"
-            pm.test("status 200", function () {
-              pm.expect(pm.response.code).to.equal(200);
+            epm.test("status 200", function () {
+              epm.expect(epm.response.code).to.equal(200);
             });
-            pm.test("fail demo", function () {
-              pm.expect(1).to.equal(2);
+            epm.test("fail demo", function () {
+              epm.expect(1).to.equal(2);
             });
             "#,
             "tests",
@@ -982,11 +982,11 @@ mod tests {
         };
         let out = run_js_sandbox(
             r#"
-            pm.test("Barez", function () {
-                var jsonData = pm.response.json();
+            epm.test("Barez", function () {
+                var jsonData = epm.response.json();
                 var token = jsonData["data"]["token"];
-                pm.collectionVariables.set("token_hakki", token);
-                pm.environment.set("token_hakki", token);
+                epm.collectionVariables.set("token_hakki", token);
+                epm.environment.set("token_hakki", token);
             });
             "#,
             "tests",
@@ -1018,20 +1018,20 @@ mod tests {
         };
         let out = run_js_sandbox(
             r#"
-            pm.test("vendor", function () {
-              pm.response.to.have.status(201);
-              pm.response.to.have.jsonBody();
-              var res = pm.response.json();
-              pm.expect(res.data).to.have.property("api_secret");
-              pm.expect(res.data).to.have.property("key_prefix", "k");
-              pm.expect(res.data.n).to.be.above(3);
-              pm.expect(res.data.n).to.be.below(10);
-              pm.expect(res.data.api_secret).to.be.a("string");
-              pm.expect(res.arr).to.include(2);
-              pm.expect(pm.response.responseTime).to.be.above(0);
-              pm.expect(pm.response.headers.get("content-type")).to.include("json");
-              pm.expect(1).to.eql(1);
-              pm.expect("x").to.not.equal("y");
+            epm.test("vendor", function () {
+              epm.response.to.have.status(201);
+              epm.response.to.have.jsonBody();
+              var res = epm.response.json();
+              epm.expect(res.data).to.have.property("api_secret");
+              epm.expect(res.data).to.have.property("key_prefix", "k");
+              epm.expect(res.data.n).to.be.above(3);
+              epm.expect(res.data.n).to.be.below(10);
+              epm.expect(res.data.api_secret).to.be.a("string");
+              epm.expect(res.arr).to.include(2);
+              epm.expect(epm.response.responseTime).to.be.above(0);
+              epm.expect(epm.response.headers.get("content-type")).to.include("json");
+              epm.expect(1).to.eql(1);
+              epm.expect("x").to.not.equal("y");
             });
             "#,
             "tests",
@@ -1049,14 +1049,14 @@ mod tests {
         ctx.environment.insert("host".into(), "example.com".into());
         let out = run_js_sandbox(
             r#"
-            pm.variables.set("x", "1");
-            if (!pm.variables.has("x")) throw new Error("has");
-            if (!pm.environment.has("host")) throw new Error("env has");
-            var o = pm.environment.toObject();
+            epm.variables.set("x", "1");
+            if (!epm.variables.has("x")) throw new Error("has");
+            if (!epm.environment.has("host")) throw new Error("env has");
+            var o = epm.environment.toObject();
             if (o.host !== "example.com") throw new Error("toObject");
-            var s = pm.variables.replaceIn("https://{{host}}/{{x}}");
+            var s = epm.variables.replaceIn("https://{{host}}/{{x}}");
             if (s !== "https://example.com/1") throw new Error("replaceIn " + s);
-            pm.globals.clear();
+            epm.globals.clear();
             "#,
             "pre-request",
             &mut ctx,
@@ -1085,22 +1085,22 @@ mod tests {
         ctx.environment.insert("phone".into(), "100".into());
         let out = run_js_sandbox_ex(
             r#"
-            const secret = pm.environment.get("api_secret");
-            const keyPrefix = pm.environment.get("key_prefix");
-            const method = pm.request.method.toUpperCase();
-            let path = pm.request.url.getPath();
+            const secret = epm.environment.get("api_secret");
+            const keyPrefix = epm.environment.get("key_prefix");
+            const method = epm.request.method.toUpperCase();
+            let path = epm.request.url.getPath();
             const timestamp = "2026-01-01T00:00:00.000Z";
             let body = "";
-            if (pm.request.body && pm.request.body.mode === "raw" && pm.request.body.raw) {
-                body = pm.variables.replaceIn(pm.request.body.raw);
+            if (epm.request.body && epm.request.body.mode === "raw" && epm.request.body.raw) {
+                body = epm.variables.replaceIn(epm.request.body.raw);
             }
             const bodyHash = CryptoJS.SHA256(body).toString(CryptoJS.enc.Hex);
             const baseString = method + "\n" + path + "\n" + timestamp + "\n" + bodyHash;
             const signature = CryptoJS.HmacSHA256(baseString, secret).toString(CryptoJS.enc.Base64);
-            pm.request.headers.upsert({ key: "X-Api-Key", value: keyPrefix });
-            pm.request.headers.upsert({ key: "X-Api-Timestamp", value: timestamp });
-            pm.request.headers.upsert({ key: "X-Api-Signature", value: signature });
-            if (pm.info.eventName !== "prerequest") throw new Error("info");
+            epm.request.headers.upsert({ key: "X-Api-Key", value: keyPrefix });
+            epm.request.headers.upsert({ key: "X-Api-Timestamp", value: timestamp });
+            epm.request.headers.upsert({ key: "X-Api-Signature", value: signature });
+            if (epm.info.eventName !== "prerequest") throw new Error("info");
             if (path !== "/api/hakkiotp/v1/otp") throw new Error("path " + path);
             if (body !== '{"phone":"100"}') throw new Error("body " + body);
             if (!signature || signature.length < 10) throw new Error("sig");
@@ -1140,10 +1140,10 @@ mod tests {
         };
         let out = run_js_sandbox_ex(
             r#"
-            if (pm.cookies.get("a") !== "1") throw new Error("get");
-            pm.cookies.set("b", "2");
-            pm.cookies.clear();
-            pm.cookies.set("c", "3");
+            if (epm.cookies.get("a") !== "1") throw new Error("get");
+            epm.cookies.set("b", "2");
+            epm.cookies.clear();
+            epm.cookies.set("c", "3");
             "#,
             "pre-request",
             &mut ctx,

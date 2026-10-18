@@ -22,10 +22,10 @@
 |-----|--------|-------|
 | **Collection / env variable UI** | **SHIPPED** | Col vars modal + env manager; sync → `VariableContext.collection` |
 | **Environment import** (Postman env JSON) | **SHIPPED** | File → Import / Export environment |
-| **Script fidelity** | **PARTIAL** | Login tests + `pm.collectionVariables` OK; Chai-heavy / async / `require` still fail |
+| **Script fidelity** | **PARTIAL** | Login tests + `epm.collectionVariables` OK; Chai-heavy / async / `require` still fail |
 | **Authorization header already on many requests** | OK | Unchanged |
 | **Binary / file body mode** | **SHIPPED** | Body → binary + path / Browse |
-| **Response Visualize / Timeline** | **SHIPPED** | Visualize tab (`pm.visualizer.set` / HTML); Timeline approximated |
+| **Response Visualize / Timeline** | **SHIPPED** | Visualize tab (`epm.visualizer.set` / HTML); Timeline approximated |
 | **Request description / docs pane** | **SHIPPED** | Docs tab on request builder |
 | **Cookie manager UI** | **SHIPPED** | Cookies toolbar modal — view/edit/delete |
 | **Collection search** | **SHIPPED** | Sidebar search filter |
@@ -97,10 +97,10 @@
 ### Sandbox
 | Item | Status |
 |------|--------|
-| `pm.visualizer` | **SHIPPED** (basic `set(template, data)`) |
-| `pm.execution.location` / full API | **PARTIAL** |
+| `epm.visualizer` | **SHIPPED** (basic `set(template, data)`) |
+| `epm.execution.location` / full API | **PARTIAL** |
 | `require('…')` / packages | **DEFERRED** |
-| Async `pm.sendRequest` / promises | **PARTIAL** — sync callback only |
+| Async `epm.sendRequest` / promises | **PARTIAL** — sync callback only |
 | Exact Postman sandbox globals | **PARTIAL** — boa subset |
 
 ---

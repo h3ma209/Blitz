@@ -82,7 +82,7 @@ Runtime event context includes `vault:f` alongside `datasets`, `globals`, `envir
 
 ---
 
-## 2. Script sandbox / `pm.*` surface
+## 2. Script sandbox / `epm.*` surface
 
 ### Host documents (**observed**)
 
@@ -93,19 +93,19 @@ Runtime event context includes `vault:f` alongside `datasets`, `globals`, `envir
 
 Real script host is **`postman-sandbox`** required from `postman-runtime` (`./node_modules/postman-sandbox/index.js`) + **uvm** / **uniscope** (**observed** dependency allowlist strings). Non-legacy sandbox markers: `isNonLegacySandbox`, `getNonLegacyCodeMarker`.
 
-### `pm.*` surface recovered from runtime strings (**observed**, not exhaustive decompile)
+### `epm.*` surface recovered from runtime strings (**observed**, not exhaustive decompile)
 
 | Area | Methods / properties seen |
 |------|---------------------------|
-| Environment | `pm.environment.get/set/unset/clear` |
-| Globals | `pm.globals.get/set/unset/clear` |
-| Collection vars | `pm.collectionVariables.get` (snippet catalog) |
-| Cookies | `pm.cookies.get` |
-| Request / response | `pm.request`, `pm.response.code/headers/headers.get/text/responseTime` |
-| Test | `pm.test` |
-| Execution | `pm.execution.setNextRequest`, `skipRequest`, `runRequest` |
-| Info / data | `pm.info.iteration`, `pm.iterationData` |
-| Send | `pm.sendRequest.` (prefix hit) |
+| Environment | `epm.environment.get/set/unset/clear` |
+| Globals | `epm.globals.get/set/unset/clear` |
+| Collection vars | `epm.collectionVariables.get` (snippet catalog) |
+| Cookies | `epm.cookies.get` |
+| Request / response | `epm.request`, `epm.response.code/headers/headers.get/text/responseTime` |
+| Test | `epm.test` |
+| Execution | `epm.execution.setNextRequest`, `skipRequest`, `runRequest` |
+| Info / data | `epm.info.iteration`, `epm.iterationData` |
+| Send | `epm.sendRequest.` (prefix hit) |
 | Vault | `getVaultInterface` → get/set/unset (exposed as vault API in sandbox module) |
 
 Sandbox context array includes `cookies` and syncs mutated scopes after script (**observed** `environment`/`globals`/`collectionVariables` VariableScope clone pattern).
@@ -213,7 +213,7 @@ MQTT extract sample (~328 KB) contains many `connect`/`subscribe`/`publish` stri
 **Superseded for closed items by [10 re-complete](../10-re-complete/re-complete.md)** (sandbox isolation, vault files init, proxy constants/settings, runner.js absent, protocol verbs, cookie send/partitions).
 
 1. Live CDP Send / Runner click — Postman not running in 10 pass (`list_electron_targets` not usable).
-2. Exhaustive `pm.*` from unminified `postman-sandbox` (string table improved in 10, still incomplete).
+2. Exhaustive `epm.*` from unminified `postman-sandbox` (string table improved in 10, still incomplete).
 3. Full VariableScope precedence algorithm decompile.
 4. postman-cli collection YAML — not extracted.
 5. Vault at-rest file crypto under `~/Postman/files` (dir empty; no new Ghidra target).

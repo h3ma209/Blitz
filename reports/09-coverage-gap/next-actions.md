@@ -2,7 +2,7 @@
 
 Derived from [coverage-matrix.md](./coverage-matrix.md). No app implementation in this pass.
 
-**RE update (2026-10-17):** Top RE #1–#5 and cookie/partition pieces largely closed in [10-re-complete/re-complete.md](../10-re-complete/re-complete.md). Remaining RE: live CDP Send, exhaustive `pm.*`, vault at-rest crypto, CLI YAML, CryptoService `id`.
+**RE update (2026-10-17):** Top RE #1–#5 and cookie/partition pieces largely closed in [10-re-complete/re-complete.md](../10-re-complete/re-complete.md). Remaining RE: live CDP Send, exhaustive `epm.*`, vault at-rest crypto, CLI YAML, CryptoService `id`.
 
 ---
 
@@ -10,7 +10,7 @@ Derived from [coverage-matrix.md](./coverage-matrix.md). No app implementation i
 
 | # | Action | Why | Tooling | Primary ASAR / bundle anchors |
 |---|--------|-----|---------|-------------------------------|
-| 1 | Recover **`pm.*` sandbox API table** (string mining + Evaluator host) | Scripts are P1 parity; reports only note sandbox HTML | REA: `analyze_javascript_application` / `search_strings` / `trace_application_feature` on runtime + execution-worker; offline ASAR text | `postman-runtime-*.min.js`, `execution-worker.js`, `html/tester_sandbox.html`, `execution-system-manager-*.min.js` |
+| 1 | Recover **`epm.*` sandbox API table** (string mining + Evaluator host) | Scripts are P1 parity; reports only note sandbox HTML | REA: `analyze_javascript_application` / `search_strings` / `trace_application_feature` on runtime + execution-worker; offline ASAR text | `postman-runtime-*.min.js`, `execution-worker.js`, `html/tester_sandbox.html`, `execution-system-manager-*.min.js` |
 | 2 | Map **protocol clients** (GraphQL, gRPC, WS, MQTT, MCP) entrypoints | Docs protocols; only deps listed today | REA JS analysis on protocol packages + webpack chunks; inventory `node_modules` usage sites | `@postman/grpc-js`, `mqtt`, `ws`/`postman-ws`, `@modelcontextprotocol/sdk`, `mcp-server-*.min.js`, `toolset-mcp-server/` |
 | 3 | Separate **Collection Runner** vs **performance runner** | Docs Test APIs; boundary unclear in `04` | REA on runner HTML/JS + `process-manager` / `perftest*` event graphs | `html/runner.html`, `perftest.js`, `perftestExecute.js`, `ThreadGroupExecutable.js`, `process-manager.js`, `main-performance-test-ipc-handlers-*.min.js` |
 | 4 | Extract **Vault / `{{vault:}}`** resolution vs CryptoService | App uses `secret://`; need syntax + backend selection | REA strings in Vault* services + runtime variable resolve | `VaultIntegrationService`, `VaultScriptService` (IPCAgent chunk), Azure vault keys in `config.json` (`reports/05`, `08`) |
@@ -66,7 +66,7 @@ Agent Mode, Context Graph, cloud workspaces/sync, monitors, Spec Hub, API Networ
 ## Suggested sequencing
 
 ```
-RE #1 pm.*  ──┬──► App #7 sandbox
+RE #1 epm.*  ──┬──► App #7 sandbox
 RE #4 vault ──┘
 RE #5 proxy ──────► App #9 proxy/certs
 RE #6/#8 formats ─► App #5 import/export

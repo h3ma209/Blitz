@@ -400,7 +400,7 @@ pub fn apply_env_var_edit(env: &mut Environment, key: &str, value: &str) {
 /// Write a full environment scope map (from scripts) onto [`Environment::values`].
 ///
 /// - Keys present → upsert current (and create if missing)
-/// - Enabled keys missing from map → removed (`pm.environment.unset` / `.clear`)
+/// - Enabled keys missing from map → removed (`epm.environment.unset` / `.clear`)
 /// - Disabled rows are preserved even if absent from the map
 pub fn apply_environment_map(env: &mut Environment, map: &HashMap<String, String>) {
     for (k, v) in map {

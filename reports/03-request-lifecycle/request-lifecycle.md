@@ -84,8 +84,8 @@
 
 ## Pre-request / test scripts
 
-- **Observed:** `html/tester_sandbox.html` + `js/tester/Evaluator.js`; `postman-sandbox` + uvm/uniscope; partial `pm.*` string table; `process-manager` `SCRIPT_ERROR_DATA`.
-- **Observed (2026-10-17 complete):** uniscope `create({eval:true, ignore:["require"], block:["bridge"]})` + allowed-globals scrub; uvm bridge symbols; fuller `pm.*` table in [10](../10-re-complete/re-complete.md).
+- **Observed:** `html/tester_sandbox.html` + `js/tester/Evaluator.js`; `postman-sandbox` + uvm/uniscope; partial `epm.*` string table; `process-manager` `SCRIPT_ERROR_DATA`.
+- **Observed (2026-10-17 complete):** uniscope `create({eval:true, ignore:["require"], block:["bridge"]})` + allowed-globals scrub; uvm bridge symbols; fuller `epm.*` table in [10](../10-re-complete/re-complete.md).
 - **Inferred order (runtime structure; not live-proven):** resolve vars (incl. vaultSecrets) → pre-request scripts → auth → send (cookie jar) → tests → visualizer.
 
 ## Auth injection

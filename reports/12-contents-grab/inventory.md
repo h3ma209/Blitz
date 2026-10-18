@@ -100,7 +100,7 @@ Scratchpad WS workbench: `js/scratchpad/ECWebsocketWorkbench.js` (**observed** p
 | Published cloud mocks / monitors | Require Postman Cloud |
 | Full Socket.IO / GraphQL subscriptions UI parity | Libraries present; Phase B scoped to WS/MQTT/gRPC/MCP |
 | Browser Interceptor MITM | Needs extension + privileged install bridge |
-| Exact Postman sandbox (`postman-sandbox` / uvm) | Different JS engine; we ship boa subset + `pm.sendRequest` |
+| Exact Postman sandbox (`postman-sandbox` / uvm) | Different JS engine; we ship boa subset + `epm.sendRequest` |
 
 Honest framing: notPostman = **local desktop API workbench**, Postman-inspired architecture from RE — **not** a trademark clone or Cloud substitute.
 

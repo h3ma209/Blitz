@@ -31,14 +31,14 @@
 | Environment storage on disk | **unknown** — candidates: `electron-json-storage`, NeDB (`nedb` → `@seald-io/nedb`) from package.json (**observed** deps; usage sites not traced) |
 | Vault VariableScope `prefix:"vault:"`, files root `join(homeDir(),"Postman","files")` via `initializeDefaultWorkingDirectory`, `_domains`/`domainPatterns`, gated `_allowScriptAccess` | **observed** — [10](../10-re-complete/re-complete.md); userData `createdDefaultWorkingDir:true` |
 
-## Scripting sandbox (`pm.*`)
+## Scripting sandbox (`epm.*`)
 
 | Finding | Label |
 |---------|-------|
 | `html/tester_sandbox.html` + `js/tester/Evaluator.js` | **observed** (Evaluator = window.open block + postMessage echo only) |
 | `postman-sandbox` required from `postman-runtime` (+ `uvm` / `uniscope`) | **observed** |
 | uniscope `create({eval:true, ignore:["require"], block:["bridge"]})` + allowed-globals scrub; uvm `__uvm_*` bridge | **observed** (2026-10-17 complete — [10](../10-re-complete/re-complete.md)) |
-| Expanded `pm.*` string table (env/globals/variables/cookies/response/test/execution/expect/sendRequest/vault interface/…) | **observed** — still not full SDK decompile; see [10](../10-re-complete/re-complete.md) |
+| Expanded `epm.*` string table (env/globals/variables/cookies/response/test/execution/expect/sendRequest/vault interface/…) | **observed** — still not full SDK decompile; see [10](../10-re-complete/re-complete.md) |
 
 ## Collection Runner
 

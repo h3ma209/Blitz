@@ -392,7 +392,7 @@ impl Default for RequestDraft {
     }
 }
 
-/// Test assertion result from `pm.test`.
+/// Test assertion result from `epm.test`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TestResult {
     pub name: String,
@@ -422,7 +422,7 @@ pub struct ResponseView {
     /// Timing waterfall (approximated when fine-grained phases unavailable).
     #[serde(default)]
     pub timing: TimingBreakdown,
-    /// Visualizer HTML from `pm.visualizer.set` or HTML response body.
+    /// Visualizer HTML from `epm.visualizer.set` or HTML response body.
     #[serde(default)]
     pub visualizer_html: String,
 }

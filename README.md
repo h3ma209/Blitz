@@ -86,7 +86,7 @@ reports/      # RE notes (Ghidra-only for native)
 | `{{var}}` + `{{vault:key}}` + `secret://` | **Real** |
 | Environments, history, console | **Real** |
 | Auth: Bearer/Basic/API Key/Digest/Inherit/**OAuth2** (client_creds + auth_code) | **Real** |
-| boa JS sandbox (`pm.*` expanded) | **Real** (no `pm.sendRequest`) |
+| boa JS sandbox (`epm.*` expanded) | **Real** (no `epm.sendRequest`) |
 | Collection tree, favorite/dup/sort, Trash | **Real** |
 | Import v2.1 / cURL / OpenAPI 3; export v2.1 | **Real** |
 | Code snippets (cURL / fetch / Python) | **Real** |
@@ -101,7 +101,7 @@ reports/      # RE notes (Ghidra-only for native)
 
 1. `cargo run`
 2. Send `{{baseUrl}}/get` (⌘↵)
-3. Scripts → Tests with `pm.test` / `pm.expect`
+3. Scripts → Tests with `epm.test` / `epm.expect`
 4. Save example → **Mock** (binds `127.0.0.1`)
 5. **Runner** with iterations / CSV data file
 6. Auth → OAuth 2.0 → Get New Access Token

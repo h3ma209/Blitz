@@ -26,7 +26,7 @@ Closes P0/P1 RE holes from [09 re-followups](../09-docs-gap-matrix/re-followups.
 
 ---
 
-## 1. `postman-sandbox` / `pm.*` + isolation (uvm / uniscope)
+## 1. `postman-sandbox` / `epm.*` + isolation (uvm / uniscope)
 
 ### Host stack (**observed**)
 
@@ -56,28 +56,28 @@ getVaultInterface: e => ({ get, set, unset })  // host bridge
 
 Synced VariableScope names after script (**observed**): `_variables`, `environment`, `collectionVariables`, `globals`.
 
-### `pm.*` method table recovered from ASAR strings (**observed**, not full decompile)
+### `epm.*` method table recovered from ASAR strings (**observed**, not full decompile)
 
-Host-process APIs (`pm.logger`, `pm.sdk.IPC`, `pm.eventBus`) ≠ sandbox `pm` — listed separately.
+Host-process APIs (`epm.logger`, `epm.sdk.IPC`, `epm.eventBus`) ≠ sandbox `pm` — listed separately.
 
 | Area | Methods / properties (**observed** string hits) |
 |------|--------------------------------------------------|
-| Environment | `pm.environment.get` / `set` / `unset` / `clear` |
-| Globals | `pm.globals.get` / `set` / `unset` / `clear` |
-| Local vars | `pm.variables.get` / `set` / `unset` |
-| Collection vars | context includes `collectionVariables` VariableScope; `pm.collectionVariables.*` not densely string-hit this pass (API still **inferred** as VariableScope twin of env/globals) |
-| Cookies | `pm.cookies` / `pm.cookies.get` (+ CookieStore bridge ops below) |
-| Request | `pm.request` |
-| Response | `pm.response.code` / `headers` / `headers.get` / `text` / `responseTime` / `to` |
-| Test / expect | `pm.test`, `pm.expect` |
-| Execution | `pm.execution.setNextRequest` / `skipRequest` / `runRequest` |
-| Info / data | `pm.info.iteration`, `pm.iterationData`, `pm.datasets` |
-| Send | `pm.sendRequest` (prefix) |
+| Environment | `epm.environment.get` / `set` / `unset` / `clear` |
+| Globals | `epm.globals.get` / `set` / `unset` / `clear` |
+| Local vars | `epm.variables.get` / `set` / `unset` |
+| Collection vars | context includes `collectionVariables` VariableScope; `epm.collectionVariables.*` not densely string-hit this pass (API still **inferred** as VariableScope twin of env/globals) |
+| Cookies | `epm.cookies` / `epm.cookies.get` (+ CookieStore bridge ops below) |
+| Request | `epm.request` |
+| Response | `epm.response.code` / `headers` / `headers.get` / `text` / `responseTime` / `to` |
+| Test / expect | `epm.test`, `epm.expect` |
+| Execution | `epm.execution.setNextRequest` / `skipRequest` / `runRequest` |
+| Info / data | `epm.info.iteration`, `epm.iterationData`, `epm.datasets` |
+| Send | `epm.sendRequest` (prefix) |
 | Vault | `getVaultInterface` → get/set/unset (exposed as vault API in sandbox module) |
 
 **CookieStore bridge ops (**observed**):** `findCookie`, `findCookies`, `putCookie`, `updateCookie`, `removeCookie`, `removeCookies` + `allowProgrammaticAccess` gate.
 
-**Still incomplete:** full `pm.response.json` / `pm.collectionVariables.set` surface needs unminified `postman-sandbox` sources or denser AST of `./pmapi` factory — string mining is upper bound for literals only.
+**Still incomplete:** full `epm.response.json` / `epm.collectionVariables.set` surface needs unminified `postman-sandbox` sources or denser AST of `./pmapi` factory — string mining is upper bound for literals only.
 
 ---
 
@@ -150,7 +150,7 @@ On this machine `~/Postman/files` exists but is **empty** — no vault ciphertex
 
 1. **Capture / MITM proxy process:** `ProxyNodeProcess` → `http-proxy` `createProxyServer({ secure:false, ssl:{ key, cert } })` using root CA from `generateRootCAForProxy`; header constant `x-postman-captr`.
 2. **Requester settings → run options (scratchpad):**  
-   `pm.settings`: `useSystemProxy`, `useProxyEnvironmentVariables`, `SSLCertVerify`, `isCACertEnabled`, `CACertPath`, …  
+   `epm.settings`: `useSystemProxy`, `useProxyEnvironmentVariables`, `SSLCertVerify`, `isCACertEnabled`, `CACertPath`, …  
    → `proxyOptions: { useSystemProxy, ignoreProxyEnvironmentVariables, proxyConfigList }`  
    → runtime `useSystemProxy` wires `systemProxy = (url, cb) => proxy.resolve(url)`.
 3. **HTTP options:** `strictSSL`, `followRedirects`, `disableCookies` on requester/runtime (**observed**).
@@ -222,7 +222,7 @@ Electron fuse `EnableCookieEncryption` = disabled (**observed** prior) — separ
 
 | Topic | Status after this pass |
 |-------|------------------------|
-| Sandbox / `pm.*` | **observed** isolation + solid method list; not exhaustive SDK |
+| Sandbox / `epm.*` | **observed** isolation + solid method list; not exhaustive SDK |
 | Vault `{{vault:}}` + files root | **observed**; at-rest vault file crypto **unknown** |
 | Proxy / CA paths + settings keys | **observed** |
 | Runner vs perf | **observed** separation; Runner UI JS missing locally |
@@ -239,7 +239,7 @@ Electron fuse `EnableCookieEncryption` = disabled (**observed** prior) — separ
 
 1. Live CDP Send / Runner click (`list_electron_targets` / `capture_electron_scenario`) — Postman not running this pass.
 2. Where CDN hosts `js/runner.js` / `vendor-ui.js` (same class as requester).
-3. Exhaustive `pm.*` / `pm.collectionVariables.*` / `pm.response.json` from unminified sandbox.
+3. Exhaustive `epm.*` / `epm.collectionVariables.*` / `epm.response.json` from unminified sandbox.
 4. Vault secret blob at-rest format (empty `~/Postman/files`; no native vault `.node` opened).
 5. Full `replaceSubstitutions` precedence decompile.
 6. postman-cli collection YAML (not extracted this pass).

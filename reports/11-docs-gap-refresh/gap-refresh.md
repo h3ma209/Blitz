@@ -13,7 +13,7 @@
 | Variables / environments / vault | observed | **done** | — | eye quick-look |
 | Auth Bearer/Basic/API Key/Digest/Inherit | partial | **done** | — | — |
 | OAuth 2.0 | OAuth2WindowManager + grants **observed** | missing | P1 | **client_credentials + auth_code** |
-| Scripts / pm.* | sandbox table in 10 | minimal boa | P1 | **expand pm.*** |
+| Scripts / epm.* | sandbox table in 10 | minimal boa | P1 | **expand epm.*** |
 | Collection/folder scripts | runtime events **observed** | request-only | P1 | **inherit order** |
 | Collections tree CRUD | schema v2.1 | **done**; rename/dup thin | P1 | duplicate/favorite/sort |
 | Import/export v2.1 | observed | **done** | — | — |

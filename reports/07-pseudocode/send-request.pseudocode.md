@@ -36,7 +36,7 @@ function handleSendClick(uiRequestDraft):                     // inferred UI ent
 
     on worker:
         // Pre-request scripts (sandbox: html/tester_sandbox.html observed)
-        runScripts(prerequest, pmApi, context)               // inferred; pm.* shape unrecovered
+        runScripts(prerequest, pmApi, context)               // inferred; epm.* shape unrecovered
 
         // Auth
         // observed modules: OAuth2WindowManager, AppRefreshTokenManager,

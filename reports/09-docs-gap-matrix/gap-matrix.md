@@ -38,7 +38,7 @@ Related earlier checklist: [09-coverage-gap/coverage-matrix.md](../09-coverage-g
 | Vault refs `{{vault:}}` / secret storage | observed | partial | P1 | RE: VariableScope `prefix:"vault:"`; `~/Postman/files` via `initializeDefaultWorkingDirectory`; domainPatterns; CryptoService keytar; at-rest file crypto **unknown** (**observed**/gap [10](../10-re-complete/re-complete.md)). App: `secret://` only. |
 | Auth types Bearer/Basic/API Key | partial | yes | P0 | App injects headers. RE enum incomplete (`05`). |
 | Auth OAuth1/2, Digest, Hawk, AWS, NTLM, … | partial | no | P1–P2 | OAuth2WindowManager, process-manager refresh events (**observed** paths). Digest stub in app. |
-| Scripts / `pm.*` sandbox | observed | partial | P1 | RE: `postman-sandbox` + uniscope/uvm isolation + expanded `pm.*` table (**observed**, [10](../10-re-complete/re-complete.md)). App: script text stored, not executed. |
+| Scripts / `epm.*` sandbox | observed | partial | P1 | RE: `postman-sandbox` + uniscope/uvm isolation + expanded `epm.*` table (**observed**, [10](../10-re-complete/re-complete.md)). App: script text stored, not executed. |
 | Collections / folders / requests | partial | yes | P0 | `postman-collection` + schema URL v2.1.0 (**observed**). App CRUD tree. |
 | Collection import/export v2.1 JSON | partial | no | P1 | Schema URL + `importCollection` string hits (**observed**). No app importer. |
 | Collection format v3 YAML | missing | no | P1 | Docs imply. ASAR: **no** `collection/v3` schema URL. `*-pme_v3.worker*` = Monaco editor workers (**observed**), not collection format. |
@@ -76,7 +76,7 @@ Related earlier checklist: [09-coverage-gap/coverage-matrix.md](../09-coverage-g
 
 ## P1 (RE-backed, local-client)
 
-1. Script sandbox MVP — mirror `pm.environment|globals|collectionVariables|cookies|request|response|test|execution|vault` surface (**observed** strings).
+1. Script sandbox MVP — mirror `epm.environment|globals|collectionVariables|cookies|request|response|test|execution|vault` surface (**observed** strings).
 2. Cookie jar (`tough-cookie` semantics).
 3. Collection Runner sequential execute.
 4. Collection v2.1 import/export.

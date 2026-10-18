@@ -11,7 +11,7 @@
 | gRPC unary (Struct JSON) | ✅ | Protocol → gRPC → endpoint + method → JSON body → Invoke |
 | MQTT publish / subscribe-once | ✅ | Protocol → MQTT → `mqtt://127.0.0.1:1883` + topic → Publish / Subscribe once |
 | MCP STDIO list/call tools | ✅ | Protocol → MCP → command `npx` + args → List tools / Call tool |
-| `pm.sendRequest` in boa sandbox | ✅ | HTTP Scripts tab: `pm.sendRequest(url, function(err,res){…})` |
+| `epm.sendRequest` in boa sandbox | ✅ | HTTP Scripts tab: `epm.sendRequest(url, function(err,res){…})` |
 | Capture proxy → history | ✅ | Top bar **Proxy** → point client at `http://127.0.0.1:{port}` (absolute-form HTTP) → **Stop proxy** flushes history |
 | Perf VU runner | ✅ | Top bar **Perf** → set VUs + seconds → Start (active collection) |
 | Local mock (existing) | ✅ | Save example → **Mock** → hit `http://127.0.0.1:{port}` |
