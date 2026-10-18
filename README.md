@@ -48,7 +48,8 @@ make clean
 - **macOS system-wide:** `sudo make install-system` → `/Applications/EvilPostman.app` (then `sudo rm -rf /Applications/EvilPostman.app` if uninstall lacks write access).
 - **Overrides:** `PREFIX` / `DESTDIR` (Linux), `MACOS_APPDIR=...` (macOS), or `scripts/install.ps1 -Prefix ...` (Windows).
 - **Windows:** prefer Git Bash/MSYS `make install`, or from PowerShell: `cargo build --release` then `powershell -File scripts/install.ps1`.
-- Styles/assets are embedded via Dioxus `asset!` at compile time; install still copies `assets/` next to the binary for completeness.
+- Styles + logo are **embedded in the binary** (`include_str!` / `include_bytes!`) so Finder-launched apps stay styled without `dx` or CWD-relative files. Install still copies `assets/` into the bundle (desktop icon / fallbacks).
+- After pulling this fix: run **`make install`** again (or `sudo make install-system` if you used `/Applications`).
 
 ## Git cloud sync (team)
 
