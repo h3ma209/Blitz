@@ -43,7 +43,8 @@ mod ui_flow_smoke {
         "#
         .into();
 
-        let view = send_request_with_options(&draft, &demo_ctx(), SendOptions::default())
+        let mut ctx = demo_ctx();
+        let view = send_request_with_options(&draft, &mut ctx, SendOptions::default())
             .expect("send");
         assert!(view.error.is_none(), "{:?}", view.error);
         assert_eq!(view.status, 200);
@@ -67,9 +68,9 @@ mod ui_flow_smoke {
             .headers
             .push(KeyValue::new("Content-Type", "application/json"));
 
+        let mut ctx = VariableContext::default();
         let view =
-            send_request_with_options(&draft, &VariableContext::default(), SendOptions::default())
-                .expect("send");
+            send_request_with_options(&draft, &mut ctx, SendOptions::default()).expect("send");
         assert_eq!(view.status, 200);
         assert!(view.body.contains("ada"));
     }
@@ -82,9 +83,9 @@ mod ui_flow_smoke {
         draft.auth.auth_type = AuthType::Bearer;
         draft.auth.token = "smoke-token".into();
 
+        let mut ctx = VariableContext::default();
         let view =
-            send_request_with_options(&draft, &VariableContext::default(), SendOptions::default())
-                .expect("send");
+            send_request_with_options(&draft, &mut ctx, SendOptions::default()).expect("send");
         assert_eq!(view.status, 200);
         assert!(
             view.body.to_lowercase().contains("smoke-token")
@@ -247,9 +248,10 @@ mod ui_flow_smoke {
         col.add_request(b);
 
         let mut jar = CookieJar::default();
+        let mut ctx = VariableContext::default();
         let report = run_collection_with_config(
             &col,
-            &VariableContext::default(),
+            &mut ctx,
             &mut jar,
             None,
             None,

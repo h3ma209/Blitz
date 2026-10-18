@@ -84,7 +84,8 @@ pub use settings::{
     UiSettings, DEFAULT_CLOUD_REMOTE,
 };
 pub use variables::{
-    apply_collection_var_edit, apply_env_var_edit, find_var_at, VarHoverInfo, VarResolveScope,
-    VarSpan, VariableContext, VariableScope,
+    apply_collection_map, apply_collection_var_edit, apply_env_var_edit, apply_environment_map,
+    find_var_at, iter_var_spans, render_var_highlight_html, VarHoverInfo, VarResolveScope, VarSpan,
+    VariableContext, VariableScope,
 };
 pub use vault::{resolve_vault_key, VaultStore, VAULT_ACCOUNT_ID};

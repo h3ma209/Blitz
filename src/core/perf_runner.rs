@@ -69,9 +69,10 @@ pub fn run_performance(
                 let draft = &reqs[i % reqs.len()];
                 i += 1;
                 let started = Instant::now();
+                let mut local_ctx = (*ctx).clone();
                 let view = send_request_with_options(
                     draft,
-                    ctx.as_ref(),
+                    &mut local_ctx,
                     SendOptions {
                         cookie_jar: Some(&mut jar),
                         ..Default::default()

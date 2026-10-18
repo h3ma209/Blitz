@@ -1023,30 +1023,31 @@ button.env-menu-row:hover,
   border-color: color-mix(in srgb, var(--method-head) 25%, transparent);
 }
 
-.kind-badge {
-  font-family: var(--mono);
-  font-size: 9px;
-  font-weight: 700;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  padding: 2px 6px;
+/* Tree kind icons (folder / collection) — SVG silhouette via CSS mask */
+.tree-icon {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
   flex-shrink: 0;
-  border-radius: var(--radius-pill);
-  border: 1px solid var(--hairline);
-  color: var(--spot-muted);
-  background: rgba(255, 255, 255, 0.04);
+  background-color: currentColor;
+  -webkit-mask-size: contain;
+  mask-size: contain;
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+  -webkit-mask-position: center;
+  mask-position: center;
 }
 
-.kind-badge.kind-collection {
-  color: var(--spot-green-bright);
-  border-color: rgba(29, 185, 84, 0.35);
-  background: var(--accent-soft);
-}
-
-.kind-badge.kind-folder {
+.tree-icon-folder {
   color: var(--warn);
-  background: var(--warn-soft);
-  border-color: color-mix(in srgb, var(--warn) 30%, transparent);
+  -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath fill='%23000' d='M1.5 3.25A.75.75 0 0 1 2.25 2.5h3.172a.75.75 0 0 1 .53.22l1.06 1.06a.75.75 0 0 0 .53.22H13.75a.75.75 0 0 1 .75.75v7.5a.75.75 0 0 1-.75.75H2.25a.75.75 0 0 1-.75-.75v-8.5z'/%3E%3C/svg%3E");
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath fill='%23000' d='M1.5 3.25A.75.75 0 0 1 2.25 2.5h3.172a.75.75 0 0 1 .53.22l1.06 1.06a.75.75 0 0 0 .53.22H13.75a.75.75 0 0 1 .75.75v7.5a.75.75 0 0 1-.75.75H2.25a.75.75 0 0 1-.75-.75v-8.5z'/%3E%3C/svg%3E");
+}
+
+.tree-icon-collection {
+  color: var(--spot-green-bright);
+  -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath fill='%23000' d='M2.25 2.5h11.5a.75.75 0 0 1 .75.75v1.5a.75.75 0 0 1-.75.75H2.25A.75.75 0 0 1 1.5 4.75v-1.5A.75.75 0 0 1 2.25 2.5zm0 4.5h11.5a.75.75 0 0 1 .75.75v4.5a.75.75 0 0 1-.75.75H2.25a.75.75 0 0 1-.75-.75v-4.5A.75.75 0 0 1 2.25 7z'/%3E%3C/svg%3E");
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath fill='%23000' d='M2.25 2.5h11.5a.75.75 0 0 1 .75.75v1.5a.75.75 0 0 1-.75.75H2.25A.75.75 0 0 1 1.5 4.75v-1.5A.75.75 0 0 1 2.25 2.5zm0 4.5h11.5a.75.75 0 0 1 .75.75v4.5a.75.75 0 0 1-.75.75H2.25a.75.75 0 0 1-.75-.75v-4.5A.75.75 0 0 1 2.25 7z'/%3E%3C/svg%3E");
 }
 
 .protocol-badge,
@@ -1147,10 +1148,12 @@ button.env-menu-row:hover,
   opacity: 0.85;
 }
 
-.tree-row.active .kind-badge.kind-collection {
+.tree-row.active .tree-icon-collection {
   color: var(--spot-green-bright);
-  border-color: rgba(29, 185, 84, 0.45);
-  background: rgba(0, 0, 0, 0.25);
+}
+
+.tree-row.active .tree-icon-folder {
+  color: var(--warn);
 }
 
 .tab-name {
@@ -1218,6 +1221,9 @@ button.env-menu-row:hover,
 }
 
 .tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   padding: var(--space-2) var(--space-3);
   border: 1px solid transparent;
   border-bottom: 2px solid transparent;
@@ -1243,6 +1249,41 @@ button.env-menu-row:hover,
   border-bottom-color: var(--spot-green);
   font-weight: 700;
   margin-bottom: -1px;
+}
+
+.tab-label {
+  min-width: 0;
+  max-width: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tab-close {
+  flex: 0 0 auto;
+  opacity: 0;
+  width: 1.1em;
+  height: 1.1em;
+  padding: 0;
+  margin: 0;
+  border: none;
+  border-radius: 2px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 0.95em;
+  line-height: 1;
+  cursor: pointer;
+  transition: opacity var(--ease), background var(--ease);
+}
+
+.tab:hover .tab-close {
+  opacity: 1;
+}
+
+.tab-close:hover {
+  background: rgba(255, 255, 255, 0.12);
+  color: var(--white);
 }
 
 .request-row {
@@ -2140,6 +2181,81 @@ textarea:focus {
   letter-spacing: var(--track-mono);
 }
 
+/* {{var}} highlight mirror under transparent input/textarea text */
+.var-highlight-host {
+  position: relative;
+  background: var(--bg-input);
+  border: var(--glass-border);
+  border-radius: var(--radius-sm);
+}
+
+.var-highlight-host:focus-within {
+  box-shadow: 0 0 0 2px rgba(29, 185, 84, 0.25), 0 0 0 4px var(--spot-green);
+}
+
+.var-highlight-mirror {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  z-index: 0;
+  white-space: pre;
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: var(--fs-body);
+  letter-spacing: var(--track-mono);
+  line-height: normal;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid transparent;
+  box-sizing: border-box;
+}
+
+.var-highlight-host-multiline {
+  display: block;
+  width: 100%;
+}
+
+.var-highlight-mirror-multiline {
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+  word-break: break-word;
+  font-size: var(--fs-editor);
+  line-height: var(--lh-loose);
+}
+
+.var-highlight-input {
+  position: relative;
+  z-index: 1;
+  color: transparent !important;
+  -webkit-text-fill-color: transparent;
+  caret-color: var(--text);
+  background: transparent !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
+}
+
+.var-highlight-input::placeholder {
+  color: var(--text-faint);
+  -webkit-text-fill-color: var(--text-faint);
+  opacity: 1;
+}
+
+.var-highlight-input::selection {
+  background: rgba(29, 185, 84, 0.35);
+  color: transparent;
+  -webkit-text-fill-color: transparent;
+}
+
+.var-token {
+  color: var(--proto-grpc);
+  font-weight: 600;
+}
+
+.var-token.unresolved {
+  color: var(--err);
+  font-weight: 600;
+}
+
 .var-popover {
   position: absolute;
   z-index: 50;
@@ -2289,4 +2405,85 @@ textarea:focus {
     opacity: 1;
     transform: translateY(-4px);
   }
+}
+
+/* Compact env-switch loader — fixed overlay inside `.app-shell`, not a grid child. */
+.env-switch-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 900;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  animation: fade-in 120ms ease both;
+  pointer-events: all;
+}
+
+.env-switch-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  min-width: 200px;
+  max-width: min(280px, 86vw);
+  padding: 22px 26px 18px;
+  background: var(--paper-solid);
+  border: var(--glass-border);
+  border-radius: 14px;
+  box-shadow: var(--shadow-modal);
+  animation: brand-in 280ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+.env-switch-logo {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  object-fit: cover;
+  box-shadow: 0 0 0 2px rgba(29, 185, 84, 0.28), 0 0 16px rgba(29, 185, 84, 0.3);
+  animation: mark-pulse 2.4s ease-in-out infinite;
+  background: transparent;
+}
+
+.env-switch-title {
+  font-family: var(--font);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  letter-spacing: 0.01em;
+}
+
+.env-switch-name {
+  font-size: 12px;
+  color: var(--spot-green-bright);
+  font-weight: 600;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.env-switch-dots {
+  display: flex;
+  gap: 5px;
+  margin-top: 4px;
+}
+
+.env-switch-dots span {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--spot-green);
+  opacity: 0.35;
+  animation: splash-dot 1.05s ease-in-out infinite;
+}
+
+.env-switch-dots span:nth-child(2) {
+  animation-delay: 0.15s;
+}
+
+.env-switch-dots span:nth-child(3) {
+  animation-delay: 0.3s;
 }

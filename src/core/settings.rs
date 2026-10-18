@@ -262,4 +262,28 @@ mod tests {
         assert!(s.cloud_sync.enabled);
         assert_eq!(s.cloud_sync.remote_url, DEFAULT_CLOUD_REMOTE);
     }
+
+    #[test]
+    fn custom_proxy_url_empty_is_none() {
+        let s = AppSettings {
+            proxy: ProxySettings {
+                mode: ProxyMode::Custom,
+                host_port: "  ".into(),
+            },
+            ..Default::default()
+        };
+        assert_eq!(s.custom_proxy_url(), None);
+    }
+
+    #[test]
+    fn custom_proxy_url_adds_http_scheme() {
+        let s = AppSettings {
+            proxy: ProxySettings {
+                mode: ProxyMode::Custom,
+                host_port: "127.0.0.1:8080".into(),
+            },
+            ..Default::default()
+        };
+        assert_eq!(s.custom_proxy_url().as_deref(), Some("http://127.0.0.1:8080"));
+    }
 }

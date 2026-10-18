@@ -35,7 +35,8 @@ EvilPostman is a single-window desktop workbench for building, sending, scriptin
 - **Top bar:** brand, shortcut hint, **File** menu (collections / env / HAR / OpenAPI), Runner, Perf, Proxy, Cookies, Col vars, Settings, environment selector, variables eye (👁), code snippets (`</>`), Mock start/stop, Trash.
 - **Left sidebar:** collections tree (search box) + history; **drag right edge** to resize (180–480px, persisted). Tree starts **fully collapsed** (collections + folders); expand deliberately. Refolds after snapshot load, import, and cloud sync reload (session expand state not persisted).
 - **Startup splash:** full-screen EvilPostman brand overlay until initial snapshot load finishes, then ~300ms fade (fixed overlay inside `.app-shell`, not a grid child).
-- **Center:** multi-tab request strip, request builder, response pane, console — **drag handles** resize request/response split and console height (persisted).
+- **Env switch overlay:** compact centered card (logo + “Switching environment…” + name) while git checkout / tree reload runs; hides on success or error (status message kept).
+- **Center:** multi-tab request strip (hover ✕ closes tab; last tab resets to untitled), request builder, response pane, console — **drag handles** resize request/response split and console height (persisted).
 - **Modals:** settings, runner, env manager, import/export, command palette, trash, snippets, collection variables.
 
 ### 2.2 Tabs & shortcuts
@@ -45,7 +46,7 @@ EvilPostman is a single-window desktop workbench for building, sending, scriptin
 | ⌘/Ctrl + Enter | Send (or **Cancel** while a request is in flight) |
 | ⌘/Ctrl + S | Save request into collection |
 | ⌘/Ctrl + T | New request tab |
-| ⌘/Ctrl + W | Close / reset current tab |
+| ⌘/Ctrl + W | Close current tab (neighbor or untitled if last) |
 | ⌘/Ctrl + Shift + P | Command palette |
 | ⌘/Ctrl + Alt + C | Toggle console |
 | ⌘/Ctrl + / | Toggle `//` line comments in body / Scripts / Docs editors |
@@ -140,15 +141,17 @@ Secret references in auth fields:
 4. Global  
 
 Substitution: `{{name}}` in URL, params, headers, body, auth fields.  
+`{{var}}` / `{{vault:key}}` spans get orange accent highlight (unresolved → red) in URL, header/param values, raw body, and GraphQL editors.  
 Hover / caret on `{{var}}` in URL (and header/param values) → popover with resolved value + in-place edit (updates owning scope). Dismisses ~200ms after pointer leaves token/input/popover (grace so user can enter popover); stays open while hovering popover or focusing the value input; Escape / Save / blur-after-leave still close.
 
 ### 5.2 Environments UI
 
 - Defaults: **Local**, **Development**, **Production** (seeded; extras kept)  
 - Vars with **initial** + **current** values  
-- Top-right: env dropdown + **Sync** chip (hidden when **No Environment**; first Sync enables cloud + canonical remote). `VariableContext.local` never synced.  
+- Top-right: env dropdown + **Sync** chip (hidden when **No Environment** or **Local**; first Sync enables cloud + canonical remote). `VariableContext.local` never synced.  
 - File → Import / Export Postman environment JSON  
 - Persisted in snapshot  
+- **Script persistence:** `pm.environment.set` / `.unset` from pre-request or tests write through to the **active** environment’s `values` (current) and `persist()` after Send / Collection Runner. No active environment → sets ignored with console/status: `no active environment — pm.environment.set ignored` (not silently globalized).  
 
 ### 5.2b Collection variables
 
@@ -156,6 +159,9 @@ Hover / caret on `{{var}}` in URL (and header/param values) → popover with res
 - Synced into `VariableContext.collection` when active collection changes or its rows are edited  
 - Imported/exported with collection v2.1 `variable[]`  
 - Persisted via snapshot on Done / normal save paths  
+- `pm.collectionVariables.set` / `.unset` from scripts also write back to the active collection’s `variables` and persist  
+
+**Initiate Envs / SNB:** open `1.Initiate Envs` → request **Local** or **SNB** → select an environment (e.g. Local) → **Send**. Prerequest/test scripts seed `endpoint_*` into that env; collection `variable[]` (`basic_auth_*`) must be imported (bundled export includes them). There is no separate “run scripts only” path — Send (or Collection Runner) runs them.
 
 ### 5.3 Vault
 
@@ -221,7 +227,7 @@ Response pane: PASS/FAIL, Visualize HTML source, Timeline bars (DNS/connect/TLS/
 
 On Send (simplified):
 
-1. Inherited + request pre-request scripts  
+1. Inherited + request pre-request scripts (mutates shared `VariableContext`)  
 2. Resolve `{{…}}` / vault / `secret://`  
 3. Inherit auth → inject auth (or Digest challenge later)  
 4. Attach cookies from jar  
@@ -229,6 +235,7 @@ On Send (simplified):
 6. Apply proxy + TLS + timeout + optional PEM client cert  
 7. HTTP via **reqwest** (rustls)  
 8. Store Set-Cookie; run post scripts; update Test Results / Console / History  
+9. Apply script env/collection maps back to active `Environment` / `Collection` + `persist()`
 
 While sending, the primary button becomes **Cancel**. Cancel sets a cooperative abort flag (HTTP runs on a worker thread polled every 50ms); UI returns to idle immediately and ignores late results. Status shows `CANCELLED`.
 
@@ -254,6 +261,8 @@ While sending, the primary button becomes **Cancel**. Cancel sets a cooperative 
 ## 9. Collections & organization
 
 - Tree: collections → folders → requests (expand/collapse via ▸/▾); **default all closed**  
+- Kind icons: folder silhouette (amber), collection box (green); requests keep method badges (GET/POST…)  
+
 
 - Create collection / folder / request (folder or collection as parent)  
 - Rename, delete, **Duplicate** (collection / folder / request)  
@@ -422,7 +431,7 @@ Top-nav **Cloud** menu + Settings → **Git cloud sync**. Parallel to local `sna
 | Canonical remote | `https://github.com/h3ma209/evilpostman-cloud.git` (overridable) |
 | Clone path | `{data_dir}/evilpostman/cloud/` (or custom / Link folder) |
 | On-disk layout | `.evilpostman/project.json`, `collections/<slug>/` (one `*.request.json` per request), `environments/*.environment.json` |
-| UI | **Cloud** → Clone / Link folder / Status / Pull / Push / Open folder; **Sync** beside env (hidden if no env) |
+| UI | **Cloud** → Clone / Link folder / Status / Pull / Push / Open folder; **Sync** beside env (hidden if no env or **Local**) |
 | Save | Local `snapshot.json`; if cloud on + linked clone + active env → export → **commit only** (never push) |
 | Sync | Checkout `env/<slug>` → commit pending → `pull --rebase` → import → **push** (never force). Primary team share. |
 | Pull / Push | Advanced Cloud-menu actions; no auto-pull interval |

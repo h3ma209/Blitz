@@ -2,6 +2,8 @@
 
 use dioxus::prelude::*;
 
+use crate::core::{render_var_highlight_html, VariableContext};
+
 /// Toggle `// ` line comments for the line range covering `[start, end)`.
 ///
 /// - Selection (or caret line if `start == end`) expands to whole lines.
@@ -187,6 +189,7 @@ pub fn is_toggle_block_comment_shortcut(evt: &Event<KeyboardData>) -> bool {
 }
 
 /// Shared multiline editor with ⌘/ line + ⌘⇧/ block comment toggles.
+/// When `vars` is set, `{{…}}` tokens get a highlight mirror under transparent text.
 #[component]
 pub fn CommentableTextarea(
     class: String,
@@ -194,16 +197,39 @@ pub fn CommentableTextarea(
     on_change: EventHandler<String>,
     #[props(default)] placeholder: String,
     #[props(default)] rows: Option<&'static str>,
+    #[props(default)] vars: Option<VariableContext>,
 ) -> Element {
     let value_for_fallback = value.clone();
     let rows_attr = rows.unwrap_or("");
-    rsx! {
+    let ta_id = use_signal(|| format!("np-ta-{}", uuid::Uuid::new_v4()));
+    let highlight = vars.is_some();
+    let mirror_html = vars
+        .as_ref()
+        .map(|v| render_var_highlight_html(&value, Some(v)))
+        .unwrap_or_default();
+    let ta_class = if highlight {
+        format!("{class} var-highlight-input")
+    } else {
+        class.clone()
+    };
+
+    let textarea = rsx! {
         textarea {
-            class: "{class}",
+            id: "{ta_id()}",
+            class: "{ta_class}",
             value: "{value}",
             placeholder: "{placeholder}",
             rows: "{rows_attr}",
             oninput: move |evt: Event<FormData>| on_change.call(evt.value()),
+            onscroll: move |_| {
+                if !highlight {
+                    return;
+                }
+                let id = ta_id();
+                spawn(async move {
+                    sync_textarea_mirror_scroll(&id).await;
+                });
+            },
             onkeydown: move |evt: Event<KeyboardData>| {
                 let line = is_toggle_line_comment_shortcut(&evt);
                 let block = is_toggle_block_comment_shortcut(&evt);
@@ -233,7 +259,41 @@ pub fn CommentableTextarea(
                 });
             },
         }
+    };
+
+    if highlight {
+        rsx! {
+            div {
+                class: "var-highlight-host var-highlight-host-multiline",
+                div {
+                    class: "var-highlight-mirror var-highlight-mirror-multiline",
+                    "aria-hidden": "true",
+                    dangerous_inner_html: "{mirror_html}",
+                }
+                {textarea}
+            }
+        }
+    } else {
+        textarea
     }
+}
+
+async fn sync_textarea_mirror_scroll(textarea_id: &str) {
+    let script = format!(
+        r#"
+        const el = document.getElementById({id});
+        if (!el) return false;
+        const host = el.closest('.var-highlight-host');
+        const mirror = host && host.querySelector('.var-highlight-mirror');
+        if (mirror) {{
+            mirror.scrollLeft = el.scrollLeft || 0;
+            mirror.scrollTop = el.scrollTop || 0;
+        }}
+        return true;
+        "#,
+        id = serde_json::to_string(textarea_id).unwrap_or_else(|_| "\"\"".into())
+    );
+    let _ = document::eval(&script).await;
 }
 
 async fn read_active_textarea_state() -> Option<(String, usize, usize)> {

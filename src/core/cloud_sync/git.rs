@@ -592,14 +592,26 @@ mod tests {
             .duration_since(UNIX_EPOCH)
             .unwrap()
             .as_nanos();
-        // Prefer workspace-local tmp so sandboxed `cargo test` can write `.git`.
-        let root = Path::new(env!("CARGO_MANIFEST_DIR"))
+        // Workspace-local tmp. Sandbox blocks writes under `.git/`, so put the
+        // real git dir in a sibling `git-meta/` (outside the worktree) via
+        // --separate-git-dir. Worktree only gets a `.git` *file* pointer.
+        let base = Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("target")
             .join("test-tmp")
             .join(format!("evilpostman-git-{nanos}"));
+        let root = base.join("wt");
+        let git_meta = base.join("git-meta");
         fs::create_dir_all(&root).unwrap();
         // Empty template avoids installing hooks (sandbox often blocks hook dirs).
-        run_git(&root, &["init", "--template="]).unwrap();
+        run_git(
+            &root,
+            &[
+                "init",
+                "--template=",
+                &format!("--separate-git-dir={}", git_meta.display()),
+            ],
+        )
+        .unwrap();
         run_git(&root, &["config", "user.email", "test@example.com"]).unwrap();
         run_git(&root, &["config", "user.name", "Test"]).unwrap();
         let _ = run_git(&root, &["checkout", "-b", "main"]);
@@ -656,6 +668,9 @@ mod tests {
         let log = run_git(&root, &["log", "-1", "--pretty=%s"]).unwrap();
         assert!(!log.is_empty());
 
-        let _ = fs::remove_dir_all(&root);
+        // root is …/evilpostman-git-N/wt — remove the whole base (wt + git-meta).
+        if let Some(base) = root.parent() {
+            let _ = fs::remove_dir_all(base);
+        }
     }
 }

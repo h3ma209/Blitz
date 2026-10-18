@@ -938,5 +938,40 @@ mod tests {
         for c in &cols {
             assert!(!c.items.is_empty(), "{} should have items", c.name);
         }
+        let initiate = cols
+            .iter()
+            .find(|c| c.name.contains("Initiate"))
+            .expect("Initiate Envs collection");
+        assert!(
+            !initiate.variables.is_empty(),
+            "Initiate Envs must import collection variable[] (basic_auth_*)"
+        );
+        let map = initiate.variables_map();
+        assert!(
+            map.keys().any(|k| k.starts_with("basic_auth_")),
+            "expected basic_auth_* collection vars, got keys: {:?}",
+            map.keys().collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn import_collection_variable_array() {
+        let sample = r#"{
+            "info": { "name": "Vars", "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json" },
+            "item": [{
+                "name": "Ping",
+                "request": { "method": "GET", "header": [], "url": "https://example.com" }
+            }],
+            "variable": [
+                { "key": "basic_auth_020j", "value": "Basic abc" },
+                { "key": "basic_auth_14fb", "value": "Basic def", "disabled": false },
+                { "key": "skip_me", "value": "x", "disabled": true }
+            ]
+        }"#;
+        let col = import_collection_v21(sample).unwrap();
+        let map = col.variables_map();
+        assert_eq!(map.get("basic_auth_020j").map(String::as_str), Some("Basic abc"));
+        assert_eq!(map.get("basic_auth_14fb").map(String::as_str), Some("Basic def"));
+        assert!(!map.contains_key("skip_me"));
     }
 }

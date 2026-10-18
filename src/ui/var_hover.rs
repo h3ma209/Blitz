@@ -4,7 +4,9 @@ use std::time::Duration;
 
 use dioxus::prelude::*;
 
-use crate::core::{find_var_at, VarHoverInfo, VarResolveScope, VariableContext};
+use crate::core::{
+    find_var_at, render_var_highlight_html, VarHoverInfo, VarResolveScope, VariableContext,
+};
 
 /// Grace window so pointer can travel from token → popover without flicker.
 const DISMISS_GRACE_MS: u64 = 200;
@@ -75,6 +77,7 @@ fn cancel_dismiss(mut dismiss_gen: Signal<u64>) {
 }
 
 /// Text input that opens a floating editor when caret/hover hits `{{…}}`.
+/// Mirror layer under transparent text colors `{{…}}` tokens (Postman-style).
 #[component]
 pub fn VarHoverInput(
     class: String,
@@ -90,22 +93,38 @@ pub fn VarHoverInput(
     let mut editing = use_signal(|| false);
     let mut over_popover = use_signal(|| false);
     let mut dismiss_gen = use_signal(|| 0u64);
+    let mirror_html = render_var_highlight_html(&value, Some(&vars));
+    let input_class = format!("{class} var-highlight-input");
 
     rsx! {
         div {
-            class: "var-hover-host",
+            class: "var-hover-host var-highlight-host",
             onmouseleave: move |_| {
                 schedule_dismiss(popover, dismiss_gen, editing, over_popover);
             },
+            div {
+                class: "var-highlight-mirror",
+                "aria-hidden": "true",
+                dangerous_inner_html: "{mirror_html}",
+            }
             input {
                 id: "{input_id}",
-                class: "{class}",
+                class: "{input_class}",
                 r#type: "text",
                 value: "{value}",
                 placeholder: "{placeholder}",
                 oninput: move |evt| {
                     popover.set(None);
                     on_input.call(evt.value());
+                },
+                onscroll: {
+                    let input_id = input_id.clone();
+                    move |_| {
+                        let input_id = input_id.clone();
+                        spawn(async move {
+                            sync_mirror_scroll(&input_id).await;
+                        });
+                    }
                 },
                 onclick: {
                     let input_id = input_id.clone();
@@ -312,6 +331,24 @@ pub fn VarHoverInput(
             }
         }
     }
+}
+
+async fn sync_mirror_scroll(input_id: &str) {
+    let script = format!(
+        r#"
+        const el = document.getElementById({id});
+        if (!el) return false;
+        const host = el.closest('.var-highlight-host');
+        const mirror = host && host.querySelector('.var-highlight-mirror');
+        if (mirror) {{
+            mirror.scrollLeft = el.scrollLeft || 0;
+            mirror.scrollTop = el.scrollTop || 0;
+        }}
+        return true;
+        "#,
+        id = serde_json::to_string(input_id).unwrap_or_else(|_| "\"\"".into())
+    );
+    let _ = document::eval(&script).await;
 }
 
 async fn read_caret_and_anchor(input_id: &str) -> Option<(usize, f64, f64)> {
