@@ -55,7 +55,7 @@ pub struct AppSnapshot {
 /// Alias so serde still deserializes `collections` as our Collection type.
 pub type CollectionCompat = crate::core::Collection;
 
-/// File-backed store under `~/.local/share/evilpostman` (or platform equivalent).
+/// File-backed store under `~/.local/share/blitz` (or platform equivalent).
 pub struct JsonStore {
     root: PathBuf,
 }
@@ -64,7 +64,7 @@ impl JsonStore {
     pub fn open_default() -> Result<Self, StorageError> {
         let root = dirs::data_dir()
             .unwrap_or_else(|| PathBuf::from("."))
-            .join("evilpostman");
+            .join("blitz");
         Self::open(root)
     }
 
@@ -193,7 +193,7 @@ mod tests {
             .duration_since(UNIX_EPOCH)
             .unwrap()
             .as_nanos();
-        std::env::temp_dir().join(format!("evilpostman-test-{nanos}"))
+        std::env::temp_dir().join(format!("blitz-test-{nanos}"))
     }
 
     #[test]

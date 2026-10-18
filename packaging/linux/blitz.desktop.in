@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Version=1.0
+Name=⚡ Blitz
+Comment=Local-first API client
+Exec=@EXEC@
+Icon=@ICON@
+Terminal=false
+Categories=Development;Network;Utility;
+StartupWMClass=Blitz

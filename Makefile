@@ -1,12 +1,12 @@
-# EvilPostman — build, run, and install into OS app locations
+# ⚡ Blitz — build, run, and install into OS app locations
 # Prefer cargo over Homebrew `dx` (often Deno's dx, not dioxus-cli).
 
 CARGO  ?= cargo
 RUSTUP ?= rustup
 
-APP_NAME    := EvilPostman
-BIN_NAME    := evil_postman
-BUNDLE_ID   := com.evilpostman.app
+APP_NAME    := Blitz
+BIN_NAME    := blitz
+BUNDLE_ID   := com.blitz.app
 VERSION     := $(shell sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)
 ASSETS_DIR  := assets
 
@@ -37,12 +37,12 @@ MACOS_APPDIR         ?= $(MACOS_USER_APPDIR)
 MACOS_BUNDLE         := $(DESTDIR)$(MACOS_APPDIR)/$(APP_NAME).app
 
 # Linux under PREFIX (default ~/.local)
-LINUX_SHARE   := $(DESTDIR)$(PREFIX)/share/evilpostman
+LINUX_SHARE   := $(DESTDIR)$(PREFIX)/share/blitz
 LINUX_BIN     := $(DESTDIR)$(PREFIX)/bin
 LINUX_DESKTOP := $(DESTDIR)$(PREFIX)/share/applications
 LINUX_ICON    := $(DESTDIR)$(PREFIX)/share/icons/hicolor/256x256/apps
 
-# Windows (Git Bash / MSYS): %LOCALAPPDATA%\EvilPostman
+# Windows (Git Bash / MSYS): %LOCALAPPDATA%\Blitz
 ifeq ($(UNAME_S),Windows_NT)
   WIN_LOCALAPPDATA := $(shell powershell.exe -NoProfile -Command '$$env:LOCALAPPDATA' 2>/dev/null | tr -d '\r')
   ifeq ($(WIN_LOCALAPPDATA),)
@@ -75,11 +75,11 @@ help: ## List available targets
 		'  test / check / clean / fmt / clippy' \
 		'' \
 		'Install paths (no sudo by default):' \
-		'  macOS:   ~/Applications/EvilPostman.app' \
+		'  macOS:   ~/Applications/Blitz.app' \
 		'           (system: sudo make install-system → /Applications)' \
-		'  Linux:   ~/.local/share/evilpostman/ + ~/.local/bin/evilpostman' \
-		'           + ~/.local/share/applications/evilpostman.desktop' \
-		'  Windows: %LOCALAPPDATA%\\EvilPostman\\ (+ Start Menu via install.ps1)' \
+		'  Linux:   ~/.local/share/blitz/ + ~/.local/bin/blitz' \
+		'           + ~/.local/share/applications/blitz.desktop' \
+		'  Windows: %LOCALAPPDATA%\\Blitz\\ (+ Start Menu via install.ps1)' \
 		'' \
 		'Overrides: PREFIX=$(PREFIX)  DESTDIR=  MACOS_APPDIR=$(MACOS_APPDIR)' \
 		'' \
@@ -142,7 +142,7 @@ endif
 
 # --- macOS .app bundle ---
 
-install-macos: ## Package EvilPostman.app into MACOS_APPDIR
+install-macos: ## Package Blitz.app into MACOS_APPDIR
 	@test -f "$(RELEASE_BIN)" || { echo 'error: missing $(RELEASE_BIN)' >&2; exit 1; }
 	@mkdir -p "$(MACOS_APPDIR)"
 	@echo "Installing $(MACOS_BUNDLE) ..."
@@ -188,39 +188,39 @@ install-linux: ## Install binary, assets, desktop entry under PREFIX
 	@cp "$(RELEASE_BIN)" "$(LINUX_SHARE)/$(BIN_NAME)"
 	@chmod +x "$(LINUX_SHARE)/$(BIN_NAME)"
 	@cp -R "$(ASSETS_DIR)/." "$(LINUX_SHARE)/assets/"
-	@ln -sfn "../share/evilpostman/$(BIN_NAME)" "$(LINUX_BIN)/$(BIN_NAME)"
-	@# also short name without underscore for PATH convenience
-	@ln -sfn "../share/evilpostman/$(BIN_NAME)" "$(LINUX_BIN)/evilpostman"
+	@ln -sfn "../share/blitz/$(BIN_NAME)" "$(LINUX_BIN)/$(BIN_NAME)"
+	@# also short name for PATH convenience
+	@ln -sfn "../share/blitz/$(BIN_NAME)" "$(LINUX_BIN)/blitz"
 	@if [ -f "$(ASSETS_DIR)/logo.png" ]; then \
-		cp "$(ASSETS_DIR)/logo.png" "$(LINUX_ICON)/evilpostman.png"; \
+		cp "$(ASSETS_DIR)/logo.png" "$(LINUX_ICON)/blitz.png"; \
 	fi
-	@EXEC="$(PREFIX)/bin/evilpostman"; \
-	ICON="$(PREFIX)/share/icons/hicolor/256x256/apps/evilpostman.png"; \
+	@EXEC="$(PREFIX)/bin/blitz"; \
+	ICON="$(PREFIX)/share/icons/hicolor/256x256/apps/blitz.png"; \
 	sed -e "s|@EXEC@|$$EXEC|g" -e "s|@ICON@|$$ICON|g" \
-		packaging/linux/evilpostman.desktop.in > "$(LINUX_DESKTOP)/evilpostman.desktop"
-	@chmod 644 "$(LINUX_DESKTOP)/evilpostman.desktop"
+		packaging/linux/blitz.desktop.in > "$(LINUX_DESKTOP)/blitz.desktop"
+	@chmod 644 "$(LINUX_DESKTOP)/blitz.desktop"
 	@command -v update-desktop-database >/dev/null 2>&1 && \
 		update-desktop-database "$(LINUX_DESKTOP)" 2>/dev/null || true
 	@echo ''
 	@echo "Installed:"
 	@echo "  App dir:  $(LINUX_SHARE)"
-	@echo "  Binary:   $(LINUX_BIN)/evilpostman"
-	@echo "  Desktop:  $(LINUX_DESKTOP)/evilpostman.desktop"
+	@echo "  Binary:   $(LINUX_BIN)/blitz"
+	@echo "  Desktop:  $(LINUX_DESKTOP)/blitz.desktop"
 	@echo "  Remove:   make uninstall"
 	@echo "  Ensure $(PREFIX)/bin is on PATH"
 
 uninstall-linux:
-	@rm -f "$(LINUX_BIN)/$(BIN_NAME)" "$(LINUX_BIN)/evilpostman"
-	@rm -f "$(LINUX_DESKTOP)/evilpostman.desktop"
-	@rm -f "$(LINUX_ICON)/evilpostman.png"
+	@rm -f "$(LINUX_BIN)/$(BIN_NAME)" "$(LINUX_BIN)/blitz"
+	@rm -f "$(LINUX_DESKTOP)/blitz.desktop"
+	@rm -f "$(LINUX_ICON)/blitz.png"
 	@rm -rf "$(LINUX_SHARE)"
 	@command -v update-desktop-database >/dev/null 2>&1 && \
 		update-desktop-database "$(LINUX_DESKTOP)" 2>/dev/null || true
-	@echo "Removed EvilPostman from $(DESTDIR)$(PREFIX)"
+	@echo "Removed Blitz from $(DESTDIR)$(PREFIX)"
 
 # --- Windows (Git Bash / MSYS → PowerShell script) ---
 
-install-windows: ## Copy to %LOCALAPPDATA%\EvilPostman + Start Menu
+install-windows: ## Copy to %LOCALAPPDATA%\Blitz + Start Menu
 	@echo "Installing via scripts/install.ps1 ..."
 	@REPO_WIN=$$(cd "$(CURDIR)" && (pwd -W 2>/dev/null || cygpath -w "$(CURDIR)" 2>/dev/null || echo "$(CURDIR)")); \
 	if [ -n "$(WIN_PREFIX)" ]; then \

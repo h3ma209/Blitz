@@ -151,7 +151,7 @@ fn wait_for_loopback_code(redirect_uri: &str, timeout: Duration) -> Result<Strin
                         (k == "code").then(|| v.to_string())
                     });
                 let html = if code.is_some() {
-                    "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nConnection: close\r\n\r\n<html><body>EvilPostman: auth OK — close this tab.</body></html>"
+                    "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nConnection: close\r\n\r\n<html><body>⚡ Blitz: auth OK — close this tab.</body></html>"
                 } else {
                     "HTTP/1.1 400 Bad Request\r\nContent-Type: text/plain\r\nConnection: close\r\n\r\nmissing code"
                 };

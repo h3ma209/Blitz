@@ -100,7 +100,7 @@ fn import_request(item: &Value) -> Result<RequestDraft, ImpexError> {
     draft.id = item
         .get("id")
         .or_else(|| item.get("_postman_id"))
-        .or_else(|| item.get("_evilpostman_id"))
+        .or_else(|| item.get("_blitz_id"))
         .and_then(|v| v.as_str())
         .and_then(|s| Uuid::parse_str(s).ok())
         .unwrap_or_else(Uuid::new_v4);

@@ -46,7 +46,7 @@ impl McpSession {
             json!({
                 "protocolVersion": "2024-11-05",
                 "capabilities": {},
-                "clientInfo": { "name": "EvilPostman", "version": "0.1.0" }
+                "clientInfo": { "name": "Blitz", "version": "0.1.0" }
             }),
         )?;
         if init.get("error").is_some() {

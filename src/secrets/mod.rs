@@ -4,13 +4,13 @@
 //!
 //! | Field   | Value                                      |
 //! |---------|--------------------------------------------|
-//! | service | `EvilPostman ({account_id})`                |
+//! | service | `Blitz ({account_id})`                |
 //! | account | `userKey` by default ([`DEFAULT_ACCOUNT`]) |
 //!
 //! Auth / header fields may use vault-like refs: `secret://{account_id}` or
 //! `secret://{account_id}/{account}` — resolved in the send pipeline when present.
 //!
-//! Force in-memory (tests/CI): `EVILPOSTMAN_SECRETS=memory`.
+//! Force in-memory (tests/CI): `BLITZ_SECRETS=memory`.
 
 #![allow(unused_imports)]
 

@@ -107,12 +107,14 @@ pub fn Workbench() -> Element {
     let mut show_col_vars = use_signal(|| false);
     // false = active collection, true = browse all collections.
     let mut col_vars_all = use_signal(|| false);
-    // Accordion expansion in “all” mode.
+    // Accordion expansion in "all" mode.
     let mut col_vars_open_id = use_signal(|| None::<Uuid>);
     // Sidebar resize drag: (start client X, start width px).
     let mut sidebar_drag = use_signal(|| None::<(f64, u32)>);
     // Workbench pane drag — handled on `.workbench`, not as bare `.app-shell` grid children.
     let mut pane_drag = use_signal(|| None::<PaneDrag>);
+    // Loading state for async operations (import, etc.)
+    let mut is_loading = use_signal(|| false);
 
     use_effect(move || {
         if loaded() {
@@ -154,6 +156,7 @@ pub fn Workbench() -> Element {
         });
     });
 
+    // Global click-outside handler to close dropdown menus
     // Write snapshot (+ vault) without git push — for Cloud menu / after explicit sync.
     let persist_local = move || {
         if let Ok(store) = JsonStore::open_default() {
@@ -1034,6 +1037,11 @@ pub fn Workbench() -> Element {
             class: "{shell_class}",
             style: "{shell_style}",
             tabindex: "0",
+            onmousedown: move |_| {
+                file_menu_open.set(false);
+                tools_menu_open.set(false);
+                cloud_menu_open.set(false);
+            },
             onmousemove: move |evt| {
                 let Some((start_x, start_w)) = sidebar_drag() else {
                     return;
@@ -1096,21 +1104,33 @@ pub fn Workbench() -> Element {
             header { class: "top-bar",
                 span {
                     class: "brand",
-                    title: "EvilPostman · ⌘↵ Send/Cancel · ⌘S Save · ⌘T New · ⌘⇧P Palette",
+                    title: "⚡ Blitz · ⌘↵ Send/Cancel · ⌘S Save · ⌘T New · ⌘⇧P Palette",
                     img {
                         class: "brand-logo",
                         src: crate::brand::LOGO_SRC.as_str(),
-                        alt: "EvilPostman",
+                        alt: "Blitz",
                     }
-                    span { class: "brand-evil", "Evil" }
-                    span { class: "brand-name", "Postman" }
+                    span { class: "brand-lightning", "⚡" }
+                    span { class: "brand-name", "Blitz" }
                 }
+
+                {if is_loading() {
+                    rsx! {
+                        div { class: "loading-indicator",
+                            span { class: "loading-spinner" }
+                            span { "Loading..." }
+                        }
+                    }
+                } else {
+                    rsx! {}
+                }}
 
                 nav { class: "top-nav",
                 div { class: "menu-file",
                     button {
                         class: "top-link",
                         title: "File",
+                        onmousedown: move |evt| evt.stop_propagation(),
                         onclick: move |_| {
                             tools_menu_open.set(false);
                             cloud_menu_open.set(false);
@@ -1121,66 +1141,71 @@ pub fn Workbench() -> Element {
                     }
                     if file_menu_open() {
                         div { class: "menu-dropdown",
+                            onmousedown: move |evt| evt.stop_propagation(),
                             button {
                                 class: "menu-item",
                                 onclick: move |_| {
                                     file_menu_open.set(false);
-                                    let picked = rfd::FileDialog::new()
-                                        .set_title("Import from Postman export")
-                                        .add_filter("Postman Collection", &["json"])
-                                        .pick_files();
-                                    let Some(paths) = picked else {
-                                        status_msg.set("import cancelled".into());
-                                        return;
-                                    };
-                                    let mut cols = collections();
-                                    let mut imported_n = 0usize;
-                                    let mut last_id = None;
-                                    let mut errs = Vec::new();
-                                    for path in paths {
-                                        match std::fs::read_to_string(&path) {
-                                            Ok(text) => match import_collection_v21(&text) {
-                                                Ok(col) => {
-                                                    last_id = Some(col.id);
-                                                    cols.push(col);
-                                                    imported_n += 1;
-                                                }
+                                    is_loading.set(true);
+                                    spawn(async move {
+                                        let picked = rfd::FileDialog::new()
+                                            .set_title("Import from Postman export")
+                                            .add_filter("Postman Collection", &["json"])
+                                            .pick_files();
+                                        let Some(paths) = picked else {
+                                            is_loading.set(false);
+                                            return;
+                                        };
+                                        let mut cols = collections();
+                                        let mut imported_n = 0usize;
+                                        let mut last_id = None;
+                                        let mut errs = Vec::new();
+                                        for path in paths {
+                                            match std::fs::read_to_string(&path) {
+                                                Ok(text) => match import_collection_v21(&text) {
+                                                    Ok(col) => {
+                                                        last_id = Some(col.id);
+                                                        cols.push(col);
+                                                        imported_n += 1;
+                                                    }
+                                                    Err(e) => errs.push(format!(
+                                                        "{}: {e}",
+                                                        path.file_name()
+                                                            .and_then(|s| s.to_str())
+                                                            .unwrap_or("file")
+                                                    )),
+                                                },
                                                 Err(e) => errs.push(format!(
                                                     "{}: {e}",
-                                                    path.file_name()
-                                                        .and_then(|s| s.to_str())
-                                                        .unwrap_or("file")
+                                                    path.display()
                                                 )),
-                                            },
-                                            Err(e) => errs.push(format!(
-                                                "{}: {e}",
-                                                path.display()
-                                            )),
-                                        }
-                                    }
-                                    if imported_n > 0 {
-                                        collections.set(cols.clone());
-                                        if let Some(id) = last_id {
-                                            active_collection_id.set(Some(id));
-                                            if let Some(col) = cols.iter().find(|c| c.id == id) {
-                                                let mut v = vars();
-                                                v.collection = col.variables_map();
-                                                vars.set(v);
                                             }
                                         }
-                                        fold_epoch.set(fold_epoch() + 1);
-                                        persist();
-                                    }
-                                    if errs.is_empty() {
-                                        status_msg.set(format!(
-                                            "imported {imported_n} Postman collection(s)"
-                                        ));
-                                    } else {
-                                        status_msg.set(format!(
-                                            "imported {imported_n}; errors: {}",
-                                            errs.join("; ")
-                                        ));
-                                    }
+                                        if imported_n > 0 {
+                                            collections.set(cols.clone());
+                                            if let Some(id) = last_id {
+                                                active_collection_id.set(Some(id));
+                                                if let Some(col) = cols.iter().find(|c| c.id == id) {
+                                                    let mut v = vars();
+                                                    v.collection = col.variables_map();
+                                                    vars.set(v);
+                                                }
+                                            }
+                                            fold_epoch.set(fold_epoch() + 1);
+                                            persist();
+                                        }
+                                        is_loading.set(false);
+                                        if errs.is_empty() {
+                                            status_msg.set(format!(
+                                                "imported {imported_n} Postman collection(s)"
+                                            ));
+                                        } else {
+                                            status_msg.set(format!(
+                                                "imported {imported_n}; errors: {}",
+                                                errs.join("; ")
+                                            ));
+                                        }
+                                    });
                                 },
                                 "Import from Postman export…"
                             }
@@ -1247,30 +1272,34 @@ pub fn Workbench() -> Element {
                                 class: "menu-item",
                                 onclick: move |_| {
                                     file_menu_open.set(false);
-                                    let picked = rfd::FileDialog::new()
-                                        .set_title("Import Postman environment")
-                                        .add_filter("Environment JSON", &["json"])
-                                        .pick_file();
-                                    let Some(path) = picked else {
-                                        status_msg.set("env import cancelled".into());
-                                        return;
-                                    };
-                                    match std::fs::read_to_string(&path)
-                                        .map_err(|e| e.to_string())
-                                        .and_then(|t| import_environment_json(&t))
-                                    {
-                                        Ok(env) => {
-                                            let name = env.name.clone();
-                                            let id = env.id;
-                                            let mut envs = environments();
-                                            envs.push(env);
-                                            environments.set(envs);
-                                            active_env_id.set(Some(id));
-                                            persist();
-                                            status_msg.set(format!("imported environment “{name}”"));
+                                    is_loading.set(true);
+                                    spawn(async move {
+                                        let picked = rfd::FileDialog::new()
+                                            .set_title("Import Postman environment")
+                                            .add_filter("Environment JSON", &["json"])
+                                            .pick_file();
+                                        let Some(path) = picked else {
+                                            is_loading.set(false);
+                                            return;
+                                        };
+                                        match std::fs::read_to_string(&path)
+                                            .map_err(|e| e.to_string())
+                                            .and_then(|t| import_environment_json(&t))
+                                        {
+                                            Ok(env) => {
+                                                let name = env.name.clone();
+                                                let id = env.id;
+                                                let mut envs = environments();
+                                                envs.push(env);
+                                                environments.set(envs);
+                                                active_env_id.set(Some(id));
+                                                persist();
+                                                status_msg.set(format!("imported environment “{name}”"));
+                                            }
+                                            Err(e) => status_msg.set(format!("env import: {e}")),
                                         }
-                                        Err(e) => status_msg.set(format!("env import: {e}")),
-                                    }
+                                        is_loading.set(false);
+                                    });
                                 },
                                 "Import environment…"
                             }
@@ -1278,33 +1307,37 @@ pub fn Workbench() -> Element {
                                 class: "menu-item",
                                 onclick: move |_| {
                                     file_menu_open.set(false);
-                                    let envs = environments();
-                                    let env = active_env_id()
-                                        .and_then(|id| envs.iter().find(|e| e.id == id))
-                                        .or_else(|| envs.first());
-                                    match env {
-                                        Some(e) => match export_environment_json(e) {
-                                            Ok(text) => {
-                                                if let Some(path) = rfd::FileDialog::new()
-                                                    .set_title("Export environment")
-                                                    .set_file_name(format!("{}.postman_environment.json", e.name))
-                                                    .save_file()
-                                                {
-                                                    match std::fs::write(&path, text) {
-                                                        Ok(()) => status_msg.set(format!(
-                                                            "exported env to {}",
-                                                            path.display()
-                                                        )),
-                                                        Err(err) => {
-                                                            status_msg.set(format!("write: {err}"))
+                                    is_loading.set(true);
+                                    spawn(async move {
+                                        let envs = environments();
+                                        let env = active_env_id()
+                                            .and_then(|id| envs.iter().find(|e| e.id == id))
+                                            .or_else(|| envs.first());
+                                        match env {
+                                            Some(e) => match export_environment_json(e) {
+                                                Ok(text) => {
+                                                    if let Some(path) = rfd::FileDialog::new()
+                                                        .set_title("Export environment")
+                                                        .set_file_name(format!("{}.postman_environment.json", e.name))
+                                                        .save_file()
+                                                    {
+                                                        match std::fs::write(&path, text) {
+                                                            Ok(()) => status_msg.set(format!(
+                                                                "exported env to {}",
+                                                                path.display()
+                                                            )),
+                                                            Err(err) => {
+                                                                status_msg.set(format!("write: {err}"))
+                                                            }
                                                         }
                                                     }
                                                 }
-                                            }
-                                            Err(e) => status_msg.set(format!("env export: {e}")),
-                                        },
-                                        None => status_msg.set("no environment to export".into()),
-                                    }
+                                                Err(e) => status_msg.set(format!("env export: {e}")),
+                                            },
+                                            None => status_msg.set("no environment to export".into()),
+                                        }
+                                        is_loading.set(false);
+                                    });
                                 },
                                 "Export active environment…"
                             }
@@ -1312,55 +1345,62 @@ pub fn Workbench() -> Element {
                                 class: "menu-item",
                                 onclick: move |_| {
                                     file_menu_open.set(false);
-                                    let picked = rfd::FileDialog::new()
-                                        .set_title("Import HAR / OpenAPI")
-                                        .add_filter("HAR / OpenAPI", &["json", "yaml", "yml", "har"])
-                                        .pick_file();
-                                    let Some(path) = picked else { return };
-                                    match std::fs::read_to_string(&path) {
-                                        Ok(text) => {
-                                            let col = if path
-                                                .extension()
-                                                .and_then(|e| e.to_str())
-                                                .map(|e| {
-                                                    e.eq_ignore_ascii_case("yaml")
-                                                        || e.eq_ignore_ascii_case("yml")
-                                                })
-                                                .unwrap_or(false)
-                                            {
-                                                import_openapi3(&text)
-                                            } else if text.contains("\"log\"")
-                                                && text.contains("\"entries\"")
-                                            {
-                                                import_har(&text).map_err(|e| e)
-                                            } else if text.contains("openapi")
-                                                || text.contains("\"paths\"")
-                                            {
-                                                import_openapi3(&text)
-                                            } else {
-                                                import_collection_v21(&text)
-                                            };
-                                            match col {
-                                                Ok(c) => {
-                                                    let id = c.id;
-                                                    let mut v = vars();
-                                                    v.collection = c.variables_map();
-                                                    vars.set(v);
-                                                    let mut cols = collections();
-                                                    cols.push(c);
-                                                    collections.set(cols);
-                                                    active_collection_id.set(Some(id));
-                                                    fold_epoch.set(fold_epoch() + 1);
-                                                    persist();
-                                                    status_msg.set("imported HAR/OpenAPI/collection".into());
-                                                }
-                                                Err(e) => {
-                                                    status_msg.set(format!("import: {e}"))
+                                    is_loading.set(true);
+                                    spawn(async move {
+                                        let picked = rfd::FileDialog::new()
+                                            .set_title("Import HAR / OpenAPI")
+                                            .add_filter("HAR / OpenAPI", &["json", "yaml", "yml", "har"])
+                                            .pick_file();
+                                        let Some(path) = picked else {
+                                            is_loading.set(false);
+                                            return;
+                                        };
+                                        match std::fs::read_to_string(&path) {
+                                            Ok(text) => {
+                                                let col = if path
+                                                    .extension()
+                                                    .and_then(|e| e.to_str())
+                                                    .map(|e| {
+                                                        e.eq_ignore_ascii_case("yaml")
+                                                            || e.eq_ignore_ascii_case("yml")
+                                                    })
+                                                    .unwrap_or(false)
+                                                {
+                                                    import_openapi3(&text)
+                                                } else if text.contains("\"log\"")
+                                                    && text.contains("\"entries\"")
+                                                {
+                                                    import_har(&text).map_err(|e| e)
+                                                } else if text.contains("openapi")
+                                                    || text.contains("\"paths\"")
+                                                {
+                                                    import_openapi3(&text)
+                                                } else {
+                                                    import_collection_v21(&text)
+                                                };
+                                                match col {
+                                                    Ok(c) => {
+                                                        let id = c.id;
+                                                        let mut v = vars();
+                                                        v.collection = c.variables_map();
+                                                        vars.set(v);
+                                                        let mut cols = collections();
+                                                        cols.push(c);
+                                                        collections.set(cols);
+                                                        active_collection_id.set(Some(id));
+                                                        fold_epoch.set(fold_epoch() + 1);
+                                                        persist();
+                                                        status_msg.set("imported HAR/OpenAPI/collection".into());
+                                                    }
+                                                    Err(e) => {
+                                                        status_msg.set(format!("import: {e}"))
+                                                    }
                                                 }
                                             }
+                                            Err(e) => status_msg.set(format!("read: {e}")),
                                         }
-                                        Err(e) => status_msg.set(format!("read: {e}")),
-                                    }
+                                        is_loading.set(false);
+                                    });
                                 },
                                 "Import HAR / OpenAPI…"
                             }
@@ -1387,6 +1427,7 @@ pub fn Workbench() -> Element {
                             "top-link"
                         },
                         title: "Tools",
+                        onmousedown: move |evt| evt.stop_propagation(),
                         onclick: move |_| {
                             file_menu_open.set(false);
                             cloud_menu_open.set(false);
@@ -1397,6 +1438,7 @@ pub fn Workbench() -> Element {
                     }
                     if tools_menu_open() {
                         div { class: "menu-dropdown menu-dropdown-wide",
+                            onmousedown: move |evt| evt.stop_propagation(),
                             button {
                                 class: "menu-item",
                                 onclick: move |_| {
@@ -1535,7 +1577,8 @@ pub fn Workbench() -> Element {
                         } else {
                             "top-link"
                         },
-                        title: "Git cloud — Pull / Push / status (evilpostman-cloud)",
+                        title: "Git cloud — Pull / Push / status (blitz-cloud)",
+                        onmousedown: move |evt| evt.stop_propagation(),
                         onclick: move |_| {
                             file_menu_open.set(false);
                             tools_menu_open.set(false);
@@ -1546,6 +1589,7 @@ pub fn Workbench() -> Element {
                     }
                     if cloud_menu_open() {
                         div { class: "menu-dropdown menu-dropdown-wide",
+                            onmousedown: move |evt| evt.stop_propagation(),
                             button {
                                 class: "menu-item",
                                 onclick: move |_| {
@@ -1574,33 +1618,39 @@ pub fn Workbench() -> Element {
                                 class: "menu-item",
                                 onclick: move |_| {
                                     cloud_menu_open.set(false);
-                                    let picked = rfd::FileDialog::new()
-                                        .set_title("Link existing git workspace folder")
-                                        .pick_folder();
-                                    let Some(folder) = picked else {
-                                        status_msg.set("link cancelled".into());
-                                        return;
-                                    };
-                                    let Ok(store) = JsonStore::open_default() else {
-                                        status_msg.set("cloud: cannot open store".into());
-                                        return;
-                                    };
-                                    let mut settings = app_settings();
-                                    match link_folder(store.root(), &mut settings, &folder) {
-                                        Ok((cols, envs, r)) => {
-                                            app_settings.set(settings);
-                                            if !cols.is_empty() {
-                                                collections.set(cols);
-                                                fold_epoch.set(fold_epoch() + 1);
+                                    is_loading.set(true);
+                                    spawn(async move {
+                                        let picked = rfd::FileDialog::new()
+                                            .set_title("Link existing git workspace folder")
+                                            .pick_folder();
+                                        let Some(folder) = picked else {
+                                            is_loading.set(false);
+                                            status_msg.set("link cancelled".into());
+                                            return;
+                                        };
+                                        let Ok(store) = JsonStore::open_default() else {
+                                            is_loading.set(false);
+                                            status_msg.set("cloud: cannot open store".into());
+                                            return;
+                                        };
+                                        let mut settings = app_settings();
+                                        match link_folder(store.root(), &mut settings, &folder) {
+                                            Ok((cols, envs, r)) => {
+                                                app_settings.set(settings);
+                                                if !cols.is_empty() {
+                                                    collections.set(cols);
+                                                    fold_epoch.set(fold_epoch() + 1);
+                                                }
+                                                if !envs.is_empty() {
+                                                    environments.set(envs);
+                                                }
+                                                status_msg.set(r.message);
+                                                persist_local();
                                             }
-                                            if !envs.is_empty() {
-                                                environments.set(envs);
-                                            }
-                                            status_msg.set(r.message);
-                                            persist_local();
+                                            Err(e) => status_msg.set(format!("link: {e}")),
                                         }
-                                        Err(e) => status_msg.set(format!("link: {e}")),
-                                    }
+                                        is_loading.set(false);
+                                    });
                                 },
                                 "Link folder…"
                             }
@@ -3288,11 +3338,11 @@ pub fn Workbench() -> Element {
                         img {
                             class: "startup-splash-logo",
                             src: crate::brand::LOGO_SRC.as_str(),
-                            alt: "EvilPostman",
+                            alt: "Blitz",
                         }
                         div { class: "startup-splash-wordmark",
-                            span { class: "brand-evil", "Evil" }
-                            span { class: "brand-name", "Postman" }
+                            span { class: "brand-lightning", "⚡" }
+                            span { class: "brand-name", "Blitz" }
                         }
                         div { class: "startup-splash-dots", aria_hidden: "true",
                             span {}

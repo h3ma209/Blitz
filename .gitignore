@@ -35,5 +35,6 @@ Thumbs.db
 *.key
 credentials.json
 
-# Local clone of evilpostman-cloud (app uses data_dir/cloud; never nest secrets here)
+# Local clone of blitz-cloud (app uses data_dir/cloud; never nest secrets here)
 /cloud/
+.aider*

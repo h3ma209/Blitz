@@ -173,7 +173,7 @@ impl VariableContext {
         ctx.environment
             .insert("baseUrl".into(), "https://httpbin.org".into());
         ctx.global
-            .insert("userAgent".into(), "EvilPostman/0.1".into());
+            .insert("userAgent".into(), "Blitz/0.1".into());
         ctx
     }
 

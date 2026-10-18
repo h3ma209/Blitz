@@ -270,8 +270,8 @@ impl UiSettings {
     }
 }
 
-/// Default GitHub remote for EvilPostman team sync.
-pub const DEFAULT_CLOUD_REMOTE: &str = "https://github.com/h3ma209/evilpostman-cloud.git";
+/// Default GitHub remote for Blitz team sync.
+pub const DEFAULT_CLOUD_REMOTE: &str = "https://github.com/h3ma209/blitz-cloud.git";
 
 /// Git-backed cloud sync prefs (collections/envs → remote; secrets stay local).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

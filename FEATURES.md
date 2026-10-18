@@ -1,8 +1,8 @@
-# EvilPostman — Feature Catalog
+# Blitz — Feature Catalog
 
 **Product:** local-first API client (Rust + Dioxus desktop)  
-**Not affiliated with Postman.** Guided by reverse-engineering notes under [`reports/`](reports/).  
-**As of:** 17 October 2026 · crate `evil_postman` 0.1  
+**Not affiliated with Postman.** Guided by reverse-engineering notes under [`docs/`](docs/).  
+**As of:** 18 October 2026 · crate `blitz` 0.1  
 **Verify:** `cargo test` (unit + UI-flow smokes; keychain + network cases ignored)
 
 This document lists what the **app actually does today**: shipped behavior, partial limits, and explicit non-goals.
@@ -11,7 +11,7 @@ This document lists what the **app actually does today**: shipped behavior, part
 
 ## 1. Summary
 
-EvilPostman is a single-window desktop workbench for building, sending, scripting, organizing, and locally mocking API traffic. Data lives on disk under the platform data directory (`…/evilpostman/`). Secrets can use the macOS Keychain. Optional **git cloud sync** pushes collections/envs to a GitHub remote (not Postman Cloud). No Agent Mode, Spec Hub, Flows, or billing.
+Blitz is a single-window desktop workbench for building, sending, scripting, organizing, and locally mocking API traffic. Data lives on disk under the platform data directory (`…/blitz/`). Secrets can use the macOS Keychain. Optional **git cloud sync** pushes collections/envs to a GitHub remote (not Postman Cloud). No Agent Mode, Spec Hub, Flows, or billing.
 
 | Area | Maturity |
 |------|----------|
@@ -19,7 +19,7 @@ EvilPostman is a single-window desktop workbench for building, sending, scriptin
 | Multi-protocol | HTTP, WS, gRPC unary, MQTT, MCP, **Socket.IO**, **SSE**, **GraphQL-WS** |
 | Variables, environments, vault | Complete (local scopes) + collection vars editor + env JSON impex |
 | Auth | Bearer/Basic/API Key/Digest/OAuth2 + **OAuth1 / Hawk / AWS SigV4 / EdgeGrid**; NTLM Type1 partial |
-| Scripts + Collection Runner + Perf VUs + CLI | Expanded `pm.*` / CryptoJS subset + `pm.visualizer`; `evil_postman run` CLI |
+| Scripts + Collection Runner + Perf VUs + CLI | Expanded `pm.*` / CryptoJS subset + `pm.visualizer`; `blitz run` CLI |
 | Capture proxy | HTTP forward + CONNECT tunnel (no MITM decrypt) |
 | Collections / history / trash | Tree search, sibling reorder, CRUD/DnD |
 | Import / export / snippets / mock | v2.1 + HAR + OpenAPI YAML; Java/Go/C# snippets; mock scenarios |
@@ -34,7 +34,7 @@ EvilPostman is a single-window desktop workbench for building, sending, scriptin
 
 - **Top bar:** brand, shortcut hint, **File** menu (collections / env / HAR / OpenAPI), Runner, Perf, Proxy, Cookies, Col vars, Settings, environment selector, variables eye (👁), code snippets (`</>`), Mock start/stop, Trash.
 - **Left sidebar:** collections tree (search box) + **collapsible History** (▸/▾; default collapsed, `history_collapsed` in UiSettings); **drag right edge** to resize (180–480px, persisted). Tree starts **fully collapsed** (collections + folders); expand deliberately. Refolds after snapshot load, import, and cloud sync reload (session expand state not persisted).
-- **Startup splash:** full-screen EvilPostman brand overlay until initial snapshot load finishes, then configurable min hold (`splash_min_ms`, default 80) + ~320ms fade (fixed overlay inside `.app-shell`, not a grid child).
+- **Startup splash:** full-screen Blitz brand overlay until initial snapshot load finishes, then configurable min hold (`splash_min_ms`, default 80) + ~320ms fade (fixed overlay inside `.app-shell`, not a grid child).
 - **Env switch overlay:** compact centered card (logo + “Switching environment…” + name) while git checkout / tree reload runs; hides on success or error (status message kept).
 - **Center:** multi-tab request strip (hover ✕ closes tab; last tab resets to untitled), request builder, response pane, console — **drag handles** resize request/response split and console height (persisted).
 - **Modals:** shared `ModalShell` (title + ✕, scrollable `.modal-body` ≤85vh) — settings, runner, vars, cookies, col vars, import/export, command palette, trash, snippets, perf; env manager overlay also has ✕.
@@ -165,14 +165,14 @@ Hover / caret on `{{var}}` in URL (and header/param values) → popover with res
 
 ### 5.3 Vault
 
-- File: `{data_dir}/evilpostman/vault.json`  
-- Also mirrored via secrets service `EvilPostman (vault)` when using Keychain path  
+- File: `{data_dir}/blitz/vault.json`  
+- Also mirrored via secrets service `Blitz (vault)` when using Keychain path  
 - Syntax: `{{vault:key}}`  
 - Scripts: `pm.vault.get/set/unset`  
 
 ### 5.4 OS secrets
 
-- macOS: Keychain via `keyring` (service pattern `EvilPostman ({id})`, account `userKey` for crypto-style keys)  
+- macOS: Keychain via `keyring` (service pattern `Blitz ({id})`, account `userKey` for crypto-style keys)  
 - CI / fallback: `EVILPOSTMAN_SECRETS=memory`  
 
 ---
@@ -338,8 +338,8 @@ Dismiss: click outside or Escape. Hover row icons still available as shortcuts.
 ### 12d. CLI (Newman-like)
 
 ```
-evil_postman run collection.json [--env environment.json]
-evil_postman help
+blitz run collection.json [--env environment.json]
+blitz help
 ```
 
 (No args → GUI.)
@@ -423,8 +423,8 @@ Generated from the current draft (URL, method, headers, auth, body).
 
 | Artifact | Location (typical) |
 |----------|--------------------|
-| Snapshot (collections, envs, history, cookies, settings, trash, selection) | `{data_dir}/evilpostman/snapshot.json` |
-| Vault | `{data_dir}/evilpostman/vault.json` |
+| Snapshot (collections, envs, history, cookies, settings, trash, selection) | `{data_dir}/blitz/snapshot.json` |
+| Vault | `{data_dir}/blitz/vault.json` |
 | Keychain secrets | macOS Keychain (when enabled) |
 
 Demo collection/env seeded when snapshot empty.
@@ -437,9 +437,9 @@ Top-nav **Cloud** menu + Settings → **Git cloud sync**. Parallel to local `sna
 
 | Item | Behavior |
 |------|----------|
-| Canonical remote | `https://github.com/h3ma209/evilpostman-cloud.git` (overridable) |
-| Clone path | `{data_dir}/evilpostman/cloud/` (or custom / Link folder) |
-| On-disk layout | `.evilpostman/project.json`, `collections/<slug>/` (one `*.request.json` per request), `environments/*.environment.json` |
+| Canonical remote | `https://github.com/h3ma209/blitz-cloud.git` (overridable) |
+| Clone path | `{data_dir}/blitz/cloud/` (or custom / Link folder) |
+| On-disk layout | `.blitz/project.json`, `collections/<slug>/` (one `*.request.json` per request), `environments/*.environment.json` |
 | UI | **Cloud** → Clone / Link folder / Status / Pull / Push / Open folder; **Sync** beside env (hidden if no env or **Local**) |
 | Save | Local `snapshot.json`; if cloud on + linked clone + active env → export → **commit only** (never push) |
 | Sync | Checkout `env/<slug>` → commit pending → `pull --rebase` → import → **push** (never force). Primary team share. |
@@ -450,7 +450,7 @@ Top-nav **Cloud** menu + Settings → **Git cloud sync**. Parallel to local `sna
 | Auth | System `git` + SSH agent or `gh auth login` / credential helper — no force-push |
 | Conflicts | Status message; resolve in clone then Sync / Pull again |
 
-Design: [`reports/14-cloud-sync-re/git-team-sync-design.md`](reports/14-cloud-sync-re/git-team-sync-design.md).
+Design: [`docs/14-cloud-sync-re/git-team-sync-design.md`](docs/14-cloud-sync-re/git-team-sync-design.md).
 
 ---
 
@@ -491,18 +491,18 @@ These appear in Postman docs / RE reports but are **not** implemented:
 | `src/secrets/*` | Keychain / memory |
 | `src/storage/json_store.rs` | Snapshot I/O |
 | `src/core/cloud_sync/` | Git tree export + shell `git` push / env branches |
-| `reports/` | RE evidence (not runtime) |
+| `docs/` | RE evidence (not runtime) |
 
 ---
 
 ## 21. Related docs
 
 - [README.md](README.md) — build / quick try  
-- [reports/README.md](reports/README.md) — RE index  
-- [reports/11-docs-gap-refresh/gap-refresh.md](reports/11-docs-gap-refresh/gap-refresh.md) — docs × RE × app matrix  
-- [reports/12-contents-grab/inventory.md](reports/12-contents-grab/inventory.md) — Contents / ASAR grab inventory  
-- [reports/12-contents-grab/app-shipped.md](reports/12-contents-grab/app-shipped.md) — Phase B ship checklist  
-- [reports/13-remaining-gaps/remaining-gaps.md](reports/13-remaining-gaps/remaining-gaps.md) — shipped vs deferred  
+- [docs/README.md](docs/README.md) — RE index  
+- [docs/11-docs-gap-refresh/gap-refresh.md](docs/11-docs-gap-refresh/gap-refresh.md) — docs × RE × app matrix  
+- [docs/12-contents-grab/inventory.md](docs/12-contents-grab/inventory.md) — Contents / ASAR grab inventory  
+- [docs/12-contents-grab/app-shipped.md](docs/12-contents-grab/app-shipped.md) — Phase B ship checklist  
+- [docs/13-remaining-gaps/remaining-gaps.md](docs/13-remaining-gaps/remaining-gaps.md) — shipped vs deferred  
 
 ---
 

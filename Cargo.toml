@@ -1,8 +1,8 @@
 [package]
-name = "evil_postman"
+name = "blitz"
 version = "0.1.0"
 edition = "2021"
-description = "Local-first API client (Rust + Dioxus) — Postman-inspired architecture"
+description = "Local-first API client (Rust + Dioxus) — ⚡ Blitz"
 license = "MIT"
 readme = "README.md"
 

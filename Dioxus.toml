@@ -1,11 +1,11 @@
 [application]
-name = "EvilPostman"
+name = "Blitz"
 default_platform = "desktop"
 out_dir = "dist"
 asset_dir = "assets"
 
 [web.app]
-title = "EvilPostman"
+title = "⚡ Blitz"
 
 [desktop]
-title = "EvilPostman"
+title = "⚡ Blitz"

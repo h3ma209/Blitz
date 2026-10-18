@@ -160,7 +160,7 @@ where
     };
     let (tx, rx) = mpsc::channel();
     thread::Builder::new()
-        .name("evilpostman-http".into())
+        .name("blitz-http".into())
         .spawn(move || {
             let _ = tx.send(work());
         })
@@ -1323,7 +1323,7 @@ mod tests {
         let app = AppSettings {
             client_cert: ClientCertSettings {
                 enabled: true,
-                cert_path: "/tmp/evilpostman-missing-cert.pem".into(),
+                cert_path: "/tmp/blitz-missing-cert.pem".into(),
                 passphrase: String::new(),
             },
             ..Default::default()

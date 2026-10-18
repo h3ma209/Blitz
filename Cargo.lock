@@ -471,6 +471,48 @@ dependencies = [
 ]
 
 [[package]]
+name = "blitz"
+version = "0.1.0"
+dependencies = [
+ "base64 0.22.1",
+ "boa_engine",
+ "brotli 7.0.0",
+ "bytes",
+ "chrono",
+ "dioxus",
+ "dirs",
+ "flate2",
+ "futures-util",
+ "hex",
+ "hmac",
+ "http",
+ "http-body-util",
+ "hyper",
+ "hyper-util",
+ "keyring",
+ "md-5",
+ "prost",
+ "prost-types",
+ "regex",
+ "reqwest",
+ "rfd 0.15.4",
+ "rumqttc",
+ "rust_socketio",
+ "serde",
+ "serde_json",
+ "serde_yaml",
+ "sha1",
+ "sha2",
+ "thiserror 2.0.21",
+ "tokio",
+ "tokio-tungstenite 0.26.2",
+ "tower",
+ "url",
+ "urlencoding",
+ "uuid",
+]
+
+[[package]]
 name = "block"
 version = "0.1.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1897,48 +1939,6 @@ checksum = "8be9f3dfaaffdae2972880079a491a1a8bb7cbed0b8dd7a347f668b4150a3b93"
 dependencies = [
  "event-listener",
  "pin-project-lite",
-]
-
-[[package]]
-name = "evil_postman"
-version = "0.1.0"
-dependencies = [
- "base64 0.22.1",
- "boa_engine",
- "brotli 7.0.0",
- "bytes",
- "chrono",
- "dioxus",
- "dirs",
- "flate2",
- "futures-util",
- "hex",
- "hmac",
- "http",
- "http-body-util",
- "hyper",
- "hyper-util",
- "keyring",
- "md-5",
- "prost",
- "prost-types",
- "regex",
- "reqwest",
- "rfd 0.15.4",
- "rumqttc",
- "rust_socketio",
- "serde",
- "serde_json",
- "serde_yaml",
- "sha1",
- "sha2",
- "thiserror 2.0.21",
- "tokio",
- "tokio-tungstenite 0.26.2",
- "tower",
- "url",
- "urlencoding",
- "uuid",
 ]
 
 [[package]]

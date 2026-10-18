@@ -379,7 +379,7 @@ impl Default for RequestDraft {
             ws_message: String::new(),
             grpc_method: "helloworld.Greeter/SayHello".into(),
             mqtt_topic: "test/topic".into(),
-            mqtt_client_id: "evilpostman".into(),
+            mqtt_client_id: "blitz".into(),
             mcp_command: String::new(),
             mcp_args: String::new(),
             mcp_tool_name: String::new(),

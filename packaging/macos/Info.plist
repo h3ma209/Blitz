@@ -5,15 +5,15 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>en</string>
 	<key>CFBundleDisplayName</key>
-	<string>EvilPostman</string>
+	<string>⚡ Blitz</string>
 	<key>CFBundleExecutable</key>
-	<string>EvilPostman</string>
+	<string>Blitz</string>
 	<key>CFBundleIdentifier</key>
-	<string>com.evilpostman.app</string>
+	<string>com.blitz.app</string>
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
 	<key>CFBundleName</key>
-	<string>EvilPostman</string>
+	<string>Blitz</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>

@@ -598,7 +598,7 @@ mod tests {
         let base = Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("target")
             .join("test-tmp")
-            .join(format!("evilpostman-git-{nanos}"));
+            .join(format!("blitz-git-{nanos}"));
         let root = base.join("wt");
         let git_meta = base.join("git-meta");
         fs::create_dir_all(&root).unwrap();
@@ -668,7 +668,7 @@ mod tests {
         let log = run_git(&root, &["log", "-1", "--pretty=%s"]).unwrap();
         assert!(!log.is_empty());
 
-        // root is …/evilpostman-git-N/wt — remove the whole base (wt + git-meta).
+        // root is …/blitz-git-N/wt — remove the whole base (wt + git-meta).
         if let Some(base) = root.parent() {
             let _ = fs::remove_dir_all(base);
         }

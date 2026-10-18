@@ -40,9 +40,9 @@ pub struct ProjectMeta {
     pub remote: String,
 }
 
-pub const DEFAULT_GITIGNORE: &str = r#"# EvilPostman local / secrets — never commit
-.evilpostman/local.json
-.evilpostman/cache/
+pub const DEFAULT_GITIGNORE: &str = r#"# Blitz local / secrets — never commit
+.blitz/local.json
+.blitz/cache/
 **/*.local.json
 **/secrets/**
 .env
@@ -59,16 +59,16 @@ vault.json
 !.vscode/extensions.json
 "#;
 
-pub const DEFAULT_README: &str = r#"# EvilPostman cloud workspace
+pub const DEFAULT_README: &str = r#"# Blitz cloud workspace
 
-Collections and environments synced from [EvilPostman](https://github.com/h3ma209/evilpostman-cloud).
+Collections and environments synced from [Blitz](https://github.com/h3ma209/blitz-cloud).
 
 - **Environments = git branches** named `env/<sanitized-env-name>`
 - Secret values are redacted in `environments/*.environment.json` (local vault / snapshot only)
 - One request per `*.request.json` for merge-friendly diffs
 - **VariableContext.local** (script / request-local vars) is never synced — machine/session only
 
-Do not commit `vault.json`, cookies, history, or `.evilpostman/local.json`.
+Do not commit `vault.json`, cookies, history, or `.blitz/local.json`.
 "#;
 
 /// Sanitize for filesystem / branch segment: lowercase, non-alnum → `-`.
@@ -202,7 +202,7 @@ fn export_env_redacted_json(env: &Environment) -> Result<String, CloudTreeError>
         "name": redacted.name,
         "values": values,
         "_postman_variable_scope": "environment",
-        "_evilpostman_redacted": true,
+        "_blitz_redacted": true,
     });
     Ok(serde_json::to_string_pretty(&doc)?)
 }
@@ -211,8 +211,8 @@ fn export_env_redacted_json(env: &Environment) -> Result<String, CloudTreeError>
 ///
 /// Syncs collections, collection variables, and environments (secrets redacted).
 /// **Never** writes [`VariableContext::local`] — that map is machine/session only.
-/// Optional globals may be written to `.evilpostman/globals.json` when non-empty.
-/// Any stale `.evilpostman/local.json` is removed so it cannot be committed.
+/// Optional globals may be written to `.blitz/globals.json` when non-empty.
+/// Any stale `.blitz/local.json` is removed so it cannot be committed.
 pub fn export_workspace_tree(
     root: &Path,
     project_name: &str,
@@ -222,14 +222,14 @@ pub fn export_workspace_tree(
     environments: &[Environment],
     variables: &VariableContext,
 ) -> Result<(), CloudTreeError> {
-    let evil = root.join(".evilpostman");
-    fs::create_dir_all(&evil)?;
+    let blitz = root.join(".blitz");
+    fs::create_dir_all(&blitz)?;
     fs::create_dir_all(root.join("collections"))?;
     fs::create_dir_all(root.join("environments"))?;
 
     // Local scope must never land in the cloud tree (even as a gitignored overlay).
     let _ = &variables.local;
-    let local_overlay = evil.join("local.json");
+    let local_overlay = blitz.join("local.json");
     if local_overlay.exists() {
         fs::remove_file(&local_overlay)?;
     }
@@ -241,12 +241,12 @@ pub fn export_workspace_tree(
         remote: remote.to_string(),
     };
     fs::write(
-        evil.join("project.json"),
+        blitz.join("project.json"),
         serde_json::to_string_pretty(&meta)?,
     )?;
 
     // Globals may sync; local never does.
-    let globals_path = evil.join("globals.json");
+    let globals_path = blitz.join("globals.json");
     if variables.global.is_empty() {
         if globals_path.exists() {
             fs::remove_file(&globals_path)?;
@@ -337,7 +337,7 @@ fn write_collection_split(dir: &Path, col: &Collection) -> Result<(), CloudTreeE
         "auth": auth,
         "variable": variables,
         "item": order,
-        "_evilpostman": {
+        "_blitz": {
             "favorite": col.favorite,
             "preRequestScript": col.pre_request_script,
             "testScript": col.test_script,
@@ -545,7 +545,7 @@ fn read_collection_split(dir: &Path) -> Result<Collection, CloudTreeError> {
     // Prefer split order; fall back to full v2.1 item[] if present without refs.
     let item = root.get("item").cloned().unwrap_or(Value::Array(vec![]));
     let is_split = root
-        .pointer("/_evilpostman/split")
+        .pointer("/_blitz/split")
         .and_then(|v| v.as_bool())
         .unwrap_or(false)
         || item
@@ -577,16 +577,16 @@ fn read_collection_split(dir: &Path) -> Result<Collection, CloudTreeError> {
             col.id = id;
         }
         col.favorite = root
-            .pointer("/_evilpostman/favorite")
+            .pointer("/_blitz/favorite")
             .and_then(|v| v.as_bool())
             .unwrap_or(false);
         col.pre_request_script = root
-            .pointer("/_evilpostman/preRequestScript")
+            .pointer("/_blitz/preRequestScript")
             .and_then(|v| v.as_str())
             .unwrap_or("")
             .to_string();
         col.test_script = root
-            .pointer("/_evilpostman/testScript")
+            .pointer("/_blitz/testScript")
             .and_then(|v| v.as_str())
             .unwrap_or("")
             .to_string();
@@ -709,7 +709,7 @@ mod tests {
             .duration_since(UNIX_EPOCH)
             .unwrap()
             .as_nanos();
-        std::env::temp_dir().join(format!("evilpostman-cloud-tree-{nanos}"))
+        std::env::temp_dir().join(format!("blitz-cloud-tree-{nanos}"))
     }
 
     #[test]
@@ -754,7 +754,7 @@ mod tests {
         export_workspace_tree(
             &root,
             "Demo",
-            "https://github.com/h3ma209/evilpostman-cloud.git",
+            "https://github.com/h3ma209/blitz-cloud.git",
             "Development",
             &[col],
             &[env.clone()],
@@ -814,7 +814,7 @@ mod tests {
         fs::create_dir_all(&root).unwrap();
 
         // Stale overlay from a buggy older build — export must scrub it.
-        let evil = root.join(".evilpostman");
+        let evil = root.join(".blitz");
         fs::create_dir_all(&evil).unwrap();
         fs::write(
             evil.join("local.json"),
@@ -833,12 +833,12 @@ mod tests {
             "NEVER_SYNC_THIS_LOCAL_VALUE_9f3a".into(),
         );
         vars.global
-            .insert("userAgent".into(), "EvilPostman/test".into());
+            .insert("userAgent".into(), "Blitz/test".into());
 
         export_workspace_tree(
             &root,
             "Demo",
-            "https://github.com/h3ma209/evilpostman-cloud.git",
+            "https://github.com/h3ma209/blitz-cloud.git",
             "Development",
             &[col],
             &[env],
@@ -846,7 +846,7 @@ mod tests {
         )
         .unwrap();
 
-        assert!(!root.join(".evilpostman/local.json").exists());
+        assert!(!root.join(".blitz/local.json").exists());
         let blob = concat_tree_text(&root);
         assert!(
             !blob.contains("zz_local_only_sync_probe"),
@@ -857,9 +857,9 @@ mod tests {
             "local map values must not appear in cloud tree"
         );
         // Globals may sync.
-        let globals = fs::read_to_string(root.join(".evilpostman/globals.json")).unwrap();
+        let globals = fs::read_to_string(root.join(".blitz/globals.json")).unwrap();
         assert!(globals.contains("userAgent"));
-        assert!(globals.contains("EvilPostman/test"));
+        assert!(globals.contains("Blitz/test"));
 
         let _ = fs::remove_dir_all(&root);
     }

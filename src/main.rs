@@ -1,6 +1,6 @@
-//! EvilPostman — local-first API client (Dioxus desktop).
-//! Architecture mirrors reports/: requester workbench UI → runtime send pipeline.
-//! CLI: `evil_postman run collection.json [--env env.json]`
+//! ⚡ Blitz — local-first API client (Dioxus desktop).
+//! Architecture mirrors design docs: requester workbench UI → runtime send pipeline.
+//! CLI: `blitz run collection.json [--env env.json]`
 
 use dioxus::desktop::{Config, WindowBuilder};
 use dioxus::prelude::*;
@@ -27,7 +27,7 @@ fn main() {
     // (or CARGO_MANIFEST_DIR). Plain cargo + Finder-launched .app gets "Dioxus App"
     // and broken stylesheet URLs otherwise.
     let cfg = Config::new()
-        .with_window(WindowBuilder::new().with_title("EvilPostman"))
+        .with_window(WindowBuilder::new().with_title("⚡ Blitz"))
         .with_custom_head(format!("<style>{}</style>", brand::STYLES_CSS));
 
     dioxus::LaunchBuilder::desktop()
@@ -38,7 +38,7 @@ fn main() {
 #[component]
 fn App() -> Element {
     rsx! {
-        document::Title { "EvilPostman" }
+        document::Title { "⚡ Blitz" }
         Workbench {}
     }
 }

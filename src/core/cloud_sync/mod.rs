@@ -1,8 +1,8 @@
 //! Git-backed team sync: workspace tree on disk + shell-out to system `git`.
 //!
-//! Layout (EvilPostman / `.evilpostman`):
+//! Layout (Blitz / `.blitz`):
 //! ```text
-//! .evilpostman/project.json
+//! .blitz/project.json
 //! collections/<slug>/collection.json + folders/ + requests/
 //! environments/<env>.environment.json   # secrets redacted
 //! .gitignore / README.md
@@ -55,7 +55,7 @@ fn export_to_clone(
     let project_name = collections
         .first()
         .map(|c| c.name.clone())
-        .unwrap_or_else(|| "EvilPostman workspace".into());
+        .unwrap_or_else(|| "Blitz workspace".into());
     export_workspace_tree(
         clone,
         &project_name,
@@ -401,7 +401,7 @@ pub fn clone_or_ensure(
     })
 }
 
-/// Link an existing folder (must contain `.git` and preferably `.evilpostman/`).
+/// Link an existing folder (must contain `.git` and preferably `.blitz/`).
 pub fn link_folder(
     data_root: &Path,
     settings: &mut AppSettings,

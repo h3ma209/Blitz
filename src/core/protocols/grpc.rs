@@ -97,7 +97,7 @@ async fn unary_async(
         .uri(&url)
         .header("content-type", "application/grpc")
         .header("te", "trailers")
-        .header("user-agent", "EvilPostman/0.1 grpc-unary")
+        .header("user-agent", "Blitz/0.1 grpc-unary")
         .body(Full::new(Bytes::from(frame)))
         .map_err(|e| format!("build: {e}"))?;
 

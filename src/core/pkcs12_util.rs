@@ -32,7 +32,7 @@ pub fn load_client_identity_pem(path: &str, passphrase: &str) -> Result<Vec<u8>,
 }
 
 fn pkcs12_to_pem(der: &[u8], passphrase: &str, src: &str) -> Result<Vec<u8>, String> {
-    let tmp_dir = std::env::temp_dir().join("evilpostman-pkcs12");
+    let tmp_dir = std::env::temp_dir().join("blitz-pkcs12");
     std::fs::create_dir_all(&tmp_dir).map_err(|e| e.to_string())?;
     let p12_path = tmp_dir.join(format!("{}.p12", uuid::Uuid::new_v4()));
     let pem_path = tmp_dir.join(format!("{}.pem", uuid::Uuid::new_v4()));

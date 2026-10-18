@@ -1,6 +1,6 @@
-# EvilPostman
+# ⚡ Blitz
 
-Local-first API client (Rust + Dioxus desktop). Architecture guided by reverse-engineering notes in [`reports/`](reports/) — requester workbench, scripts, runner, local mocks.
+Local-first API client (Rust + Dioxus desktop). Architecture guided by design docs — requester workbench, scripts, runner, local mocks.
 
 **Not affiliated with Postman.** Recreation for learning / local use.
 
@@ -10,7 +10,7 @@ Local-first API client (Rust + Dioxus desktop). Architecture guided by reverse-e
 - macOS / Linux / Windows with WebView support (Dioxus desktop uses the system WebView)
 - Optional team sync: system `git` + GitHub auth (`gh auth login` or SSH agent)
 
-Optional: [dioxus-cli](https://dioxuslabs.com/) (`cargo install dioxus-cli`). Homebrew `dx` may be **Deno’s** `dx` — prefer `cargo run`.
+Optional: [dioxus-cli](https://dioxuslabs.com/) (`cargo install dioxus-cli`). Homebrew `dx` may be **Deno's** `dx` — prefer `cargo run`.
 
 ## Build / run
 
@@ -41,11 +41,11 @@ make clean
 
 | OS | Default install | Uninstall |
 |----|-----------------|-----------|
-| **macOS** | `~/Applications/EvilPostman.app` | `make uninstall` |
-| **Linux** | `~/.local/share/evilpostman/` + `~/.local/bin/evilpostman` + desktop entry | `make uninstall` |
-| **Windows** | `%LOCALAPPDATA%\EvilPostman\` (+ Start Menu shortcut) | `make uninstall` or `powershell -File scripts/install.ps1 -Uninstall` |
+| **macOS** | `~/Applications/Blitz.app` | `make uninstall` |
+| **Linux** | `~/.local/share/blitz/` + `~/.local/bin/blitz` + desktop entry | `make uninstall` |
+| **Windows** | `%LOCALAPPDATA%\Blitz\` (+ Start Menu shortcut) | `make uninstall` or `powershell -File scripts/install.ps1 -Uninstall` |
 
-- **macOS system-wide:** `sudo make install-system` → `/Applications/EvilPostman.app` (then `sudo rm -rf /Applications/EvilPostman.app` if uninstall lacks write access).
+- **macOS system-wide:** `sudo make install-system` → `/Applications/Blitz.app` (then `sudo rm -rf /Applications/Blitz.app` if uninstall lacks write access).
 - **Overrides:** `PREFIX` / `DESTDIR` (Linux), `MACOS_APPDIR=...` (macOS), or `scripts/install.ps1 -Prefix ...` (Windows).
 - **Windows:** prefer Git Bash/MSYS `make install`, or from PowerShell: `cargo build --release` then `powershell -File scripts/install.ps1`.
 - Styles + logo are **embedded in the binary** (`include_str!` / `include_bytes!`) so Finder-launched apps stay styled without `dx` or CWD-relative files. Install still copies `assets/` into the bundle (desktop icon / fallbacks).
@@ -53,14 +53,14 @@ make clean
 
 ## Git cloud sync (team)
 
-Canonical remote: [`h3ma209/evilpostman-cloud`](https://github.com/h3ma209/evilpostman-cloud.git).
+Canonical remote: [`h3ma209/blitz-cloud`](https://github.com/h3ma209/blitz-cloud.git).
 
 1. Auth once: `gh auth login` (HTTPS) or SSH key + `ssh -T git@github.com`
-2. Run app → top-nav **Cloud → Clone / link remote…** (defaults to that URL; clone under `{data_dir}/evilpostman/cloud/`)
+2. Run app → top-nav **Cloud → Clone / link remote…** (defaults to that URL; clone under `{data_dir}/blitz/cloud/`)
 3. Pick an environment (Sync hidden for **No Environment**). Edit → **Save** commits locally when cloud+clone linked. **Sync** = pull → commit → push to share with team.
 4. Advanced: **Cloud → Pull / Push**. No auto-pull. Local/script vars never leave this machine.
 
-Never commit `vault.json`, cookies, or history — redacted in env JSON. Design: [`reports/14-cloud-sync-re/git-team-sync-design.md`](reports/14-cloud-sync-re/git-team-sync-design.md).
+Never commit `vault.json`, cookies, or history — redacted in env JSON. Design: [`docs/git-team-sync-design.md`](docs/git-team-sync-design.md).
 
 ## Layout
 
@@ -72,10 +72,10 @@ src/
   storage/    # JSON snapshot + trash
   secrets/    # macOS Keychain + memory fallback
   ui/         # workbench shell
-reports/      # RE notes (Ghidra-only for native)
+docs/         # design docs
 ```
 
-## What’s real vs stub
+## What's real vs stub
 
 | Piece | Status |
 |-------|--------|
@@ -93,7 +93,7 @@ reports/      # RE notes (Ghidra-only for native)
 | Local mock server from examples | **Real** |
 | Proxy + PEM client cert | **Real**; PKCS#12 → convert to PEM |
 | Multi-tab, ⌘⇧P palette, eye variables pane | **Real** |
-| Git team sync (evilpostman-cloud) | **Real** (Cloud menu + save→push; secrets stay local) |
+| Git team sync (blitz-cloud) | **Real** (Cloud menu + save→push; secrets stay local) |
 | Postman Cloud / Agent / Spec Hub / Flows / SSO | **Out of scope** |
 
 ## Try
@@ -110,6 +110,6 @@ reports/      # RE notes (Ghidra-only for native)
 
 Full inventory of shipped behavior, limits, and non-goals: **[FEATURES.md](FEATURES.md)**.
 
-## Reports
+## Documentation
 
-See [`reports/README.md`](reports/README.md). Latest: `11-docs-gap-refresh`, `10-re-complete`. Native RE = **Ghidra only** (no Hopper).
+See [`docs/`](docs/). Latest: `git-team-sync-design.md`.

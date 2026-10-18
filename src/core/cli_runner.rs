@@ -1,4 +1,4 @@
-//! Newman-like CLI: `evil_postman run collection.json [--env env.json]`.
+//! Newman-like CLI: `blitz run collection.json [--env env.json]`.
 
 use std::path::Path;
 
@@ -26,10 +26,10 @@ pub fn try_run_cli(args: &[String]) -> Option<i32> {
 
 fn print_help() {
     eprintln!(
-        "evil_postman — local API client\n\n\
-         GUI:  evil_postman\n\
-         CLI:  evil_postman run <collection.json> [--env <environment.json>]\n\
-               evil_postman help\n"
+        "blitz — local API client\n\n\
+         GUI:  blitz\n\
+         CLI:  blitz run <collection.json> [--env <environment.json>]\n\
+               blitz help\n"
     );
 }
 

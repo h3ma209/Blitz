@@ -1,6 +1,6 @@
-# EvilPostman Windows install (run from repo root, or: make install from Git Bash/MSYS)
-# Default: %LOCALAPPDATA%\EvilPostman\
-# Optional Start Menu shortcut under Programs\EvilPostman.lnk
+# ⚡ Blitz Windows install (run from repo root, or: make install from Git Bash/MSYS)
+# Default: %LOCALAPPDATA%\Blitz\
+# Optional Start Menu shortcut under Programs\Blitz.lnk
 
 param(
     [switch]$Uninstall,
@@ -14,8 +14,8 @@ if (-not $RepoRoot) {
     $RepoRoot = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)
 }
 
-$AppName = "EvilPostman"
-$BinName = "evil_postman.exe"
+$AppName = "Blitz"
+$BinName = "blitz.exe"
 $DestRoot = if ($Prefix) { $Prefix } else { Join-Path $env:LOCALAPPDATA $AppName }
 $StartMenuDir = Join-Path $env:APPDATA "Microsoft\Windows\Start Menu\Programs"
 $ShortcutPath = Join-Path $StartMenuDir "$AppName.lnk"
@@ -68,7 +68,7 @@ try {
     $Sc = $Wsh.CreateShortcut($ShortcutPath)
     $Sc.TargetPath = Join-Path $DestRoot $BinName
     $Sc.WorkingDirectory = $DestRoot
-    $Sc.Description = "EvilPostman — local-first API client"
+    $Sc.Description = "⚡ Blitz — local-first API client"
     $IconPng = Join-Path $DestRoot "assets\logo.png"
     if (Test-Path $IconPng) {
         # .lnk prefers .ico; leave default if no ico

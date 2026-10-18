@@ -1,4 +1,4 @@
-/* EvilPostman — Modular Typography · Spotify glass
+/* ⚡ Blitz — Modular Typography · Spotify glass
    Dark stage · spot green · frosted panels · modular type scale */
 
 @import url("https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Outfit:wght@400;500;600;700;800&display=swap");
@@ -411,6 +411,38 @@ body {
   50% {
     box-shadow: 0 0 0 6px rgba(29, 185, 84, 0.15), 0 0 32px rgba(29, 185, 84, 0.45);
   }
+}
+
+.loading-indicator {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 12px;
+  background: var(--accent-soft);
+  border: var(--glass-border);
+  border-radius: var(--radius-pill);
+  color: var(--spot-green-bright);
+  font-size: var(--fs-caption);
+  font-weight: 600;
+  animation: fade-in 150ms ease-out;
+}
+
+.loading-spinner {
+  width: 14px;
+  height: 14px;
+  border: 2px solid var(--glass-border);
+  border-top-color: var(--spot-green-bright);
+  border-radius: 50%;
+  animation: spin 800ms linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes fade-in {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
 .top-bar .spacer {
