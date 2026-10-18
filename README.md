@@ -21,6 +21,35 @@ cargo run
 cargo test
 ```
 
+Or via **Make** (same `cargo` under the hood; `make help` lists all targets):
+
+```bash
+make deps          # rustup check + cargo fetch (no app install)
+make run           # cargo run (dev) — from source, no install needed
+make run-release   # or: make release
+make build / make build-release
+make install       # release build + install desktop app (user dirs, no sudo)
+make uninstall     # remove installed app
+make test
+make check
+make fmt           # needs rustfmt
+make clippy        # needs clippy
+make clean
+```
+
+### `make install` paths
+
+| OS | Default install | Uninstall |
+|----|-----------------|-----------|
+| **macOS** | `~/Applications/EvilPostman.app` | `make uninstall` |
+| **Linux** | `~/.local/share/evilpostman/` + `~/.local/bin/evilpostman` + desktop entry | `make uninstall` |
+| **Windows** | `%LOCALAPPDATA%\EvilPostman\` (+ Start Menu shortcut) | `make uninstall` or `powershell -File scripts/install.ps1 -Uninstall` |
+
+- **macOS system-wide:** `sudo make install-system` → `/Applications/EvilPostman.app` (then `sudo rm -rf /Applications/EvilPostman.app` if uninstall lacks write access).
+- **Overrides:** `PREFIX` / `DESTDIR` (Linux), `MACOS_APPDIR=...` (macOS), or `scripts/install.ps1 -Prefix ...` (Windows).
+- **Windows:** prefer Git Bash/MSYS `make install`, or from PowerShell: `cargo build --release` then `powershell -File scripts/install.ps1`.
+- Styles/assets are embedded via Dioxus `asset!` at compile time; install still copies `assets/` next to the binary for completeness.
+
 ## Git cloud sync (team)
 
 Canonical remote: [`h3ma209/evilpostman-cloud`](https://github.com/h3ma209/evilpostman-cloud.git).
