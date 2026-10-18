@@ -33,8 +33,10 @@ pub use capture_proxy::{
 pub use codegen::{generate_snippet, snippet_languages};
 pub use collection::{
     add_folder_under, add_request_under, collapsed_except_expanded, collapsible_tree_ids,
-    demo_collections, duplicate_across, filter_tree_rows, find_request_across, flatten_collections,
-    flatten_collections_filtered, folder_path_to_request, item_contains_id, move_item_to,
+    delete_needs_confirmation, demo_collections, duplicate_across, filter_tree_rows,
+    find_request_across, flatten_collections, flatten_collections_filtered, folder_child_count,
+    folder_path_to_request, insert_item_under, item_contains_id, move_item_to, paste_target_parent_id,
+    remint_pasted_item, request_tab_display_name, snapshot_tree_item,
     purge_from_trash, remove_across, rename_across, reorder_before, reorder_within_parent,
     restore_from_trash, save_request_to_collections, sort_collections, trash_collection,
     Collection, CollectionItem, Folder, TreeRow, TreeRowKind,
@@ -81,11 +83,13 @@ pub use cloud_sync::{
 };
 pub use settings::{
     AccentIntensity, AppSettings, ClientCertSettings, CloudSyncSettings, DefaultResponseTab,
-    ProxyMode, ProxySettings, RequestSettings, UiDensity, UiSettings, DEFAULT_CLOUD_REMOTE,
+    ProxyMode, ProxySettings, RequestSettings, UiDensity, UiSettings, UiTheme,
+    DEFAULT_CLOUD_REMOTE,
 };
 pub use variables::{
     apply_collection_map, apply_collection_var_edit, apply_env_var_edit, apply_environment_map,
-    find_var_at, iter_var_spans, render_var_highlight_html, VarHoverInfo, VarResolveScope, VarSpan,
-    VariableContext, VariableScope,
+    apply_var_insert, find_var_at, iter_var_spans, render_var_highlight_html, var_insert_context,
+    VarHoverInfo, VarResolveScope, VarSpan,
+    VariableContext, VariableScope, VariableSuggestion,
 };
 pub use vault::{resolve_vault_key, VaultStore, VAULT_ACCOUNT_ID};

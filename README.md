@@ -8,6 +8,7 @@ Local-first API client (Rust + Dioxus desktop). Architecture guided by reverse-e
 
 - Rust 1.83+ (tested with 1.95)
 - macOS / Linux / Windows with WebView support (Dioxus desktop uses the system WebView)
+- **Linux build deps** (Debian/Ubuntu): `libwebkit2gtk-4.1-dev`, `libgtk-3-dev`, `libxdo-dev`, `libayatana-appindicator3-dev`, `librsvg2-dev` (see `.github/workflows/build.yml`)
 - Optional team sync: system `git` + GitHub auth (`gh auth login` or SSH agent)
 
 Optional: [dioxus-cli](https://dioxuslabs.com/) (`cargo install dioxus-cli`). Homebrew `dx` may be **Deno’s** `dx` — prefer `cargo run`.
