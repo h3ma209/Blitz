@@ -160,6 +160,7 @@ install-macos: ## Package EvilPostman.app into MACOS_APPDIR
 	@echo "  Open:    open \"$(MACOS_BUNDLE)\""
 	@echo "  Remove:  make uninstall"
 	@echo "  System:  sudo make install-system  → $(MACOS_SYSTEM_APPDIR)/$(APP_NAME).app"
+	@echo "  Note:    CSS/logo are baked into the binary — always reinstall after rebuild."
 
 uninstall-macos:
 	@if [ -d "$(MACOS_USER_APPDIR)/$(APP_NAME).app" ]; then \

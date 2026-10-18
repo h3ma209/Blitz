@@ -1086,7 +1086,7 @@ pub fn Workbench() -> Element {
                     title: "EvilPostman · ⌘↵ Send/Cancel · ⌘S Save · ⌘T New · ⌘⇧P Palette",
                     img {
                         class: "brand-logo",
-                        src: asset!("/assets/logo.png"),
+                        src: crate::brand::LOGO_SRC.as_str(),
                         alt: "EvilPostman",
                     }
                     span { class: "brand-evil", "Evil" }
@@ -3247,7 +3247,7 @@ pub fn Workbench() -> Element {
                     div { class: "startup-splash-inner",
                         img {
                             class: "startup-splash-logo",
-                            src: asset!("/assets/logo.png"),
+                            src: crate::brand::LOGO_SRC.as_str(),
                             alt: "EvilPostman",
                         }
                         div { class: "startup-splash-wordmark",
@@ -3269,7 +3269,7 @@ pub fn Workbench() -> Element {
                     div { class: "env-switch-card",
                         img {
                             class: "env-switch-logo",
-                            src: asset!("/assets/logo.png"),
+                            src: crate::brand::LOGO_SRC.as_str(),
                             alt: "",
                         }
                         div { class: "env-switch-title", "Switching environment…" }

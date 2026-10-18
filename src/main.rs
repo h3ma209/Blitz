@@ -2,8 +2,10 @@
 //! Architecture mirrors reports/: requester workbench UI → runtime send pipeline.
 //! CLI: `evil_postman run collection.json [--env env.json]`
 
+use dioxus::desktop::{Config, WindowBuilder};
 use dioxus::prelude::*;
 
+mod brand;
 mod core;
 mod runtime;
 mod secrets;
@@ -20,13 +22,23 @@ fn main() {
     if let Some(code) = core::cli_runner::try_run_cli(&args) {
         std::process::exit(code);
     }
-    dioxus::launch(App);
+
+    // Title + CSS must not rely on Dioxus.toml / `asset!` alone: those need `dx`
+    // (or CARGO_MANIFEST_DIR). Plain cargo + Finder-launched .app gets "Dioxus App"
+    // and broken stylesheet URLs otherwise.
+    let cfg = Config::new()
+        .with_window(WindowBuilder::new().with_title("EvilPostman"))
+        .with_custom_head(format!("<style>{}</style>", brand::STYLES_CSS));
+
+    dioxus::LaunchBuilder::desktop()
+        .with_cfg(cfg)
+        .launch(App);
 }
 
 #[component]
 fn App() -> Element {
     rsx! {
-        document::Stylesheet { href: asset!("/assets/styles.css") }
+        document::Title { "EvilPostman" }
         Workbench {}
     }
 }
