@@ -1,11 +1,18 @@
 use std::collections::HashSet;
 
 use dioxus::prelude::*;
+
+use super::DismissBackdrop;
 use uuid::Uuid;
 
 use crate::core::{
-    collapsed_except_expanded, filter_tree_rows, flatten_collections_filtered, Collection,
-    HistoryEntry, HttpMethod, TreeRowKind,
+    collapsed_except_expanded, filter_tree_rows, flatten_collections_filtered, paste_target_parent_id,
+    Collection, HistoryEntry, HttpMethod, TreeRowKind,
+};
+
+use super::sidebar_shortcuts::{
+    label_copy, label_cut, label_delete, label_duplicate, label_open, label_paste, label_rename,
+    tree_key_action, CtxMenuItem, TreeKeyAction,
 };
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -23,6 +30,9 @@ pub enum SidebarAction {
     Sort,
     MoveItem,
     CopyId,
+    Copy,
+    Cut,
+    Paste,
     OpenHistory,
     SaveHistoryToCollection,
     ImportCollection,
@@ -64,6 +74,13 @@ impl SidebarEvent {
 }
 
 #[derive(Clone, PartialEq)]
+struct TreeSelection {
+    id: Uuid,
+    collection_id: Uuid,
+    kind: TreeRowKind,
+}
+
+#[derive(Clone, PartialEq)]
 struct ContextMenuState {
     x: f64,
     y: f64,
@@ -89,17 +106,19 @@ pub fn Sidebar(
     let mut renaming_id = use_signal(|| None::<Uuid>);
     let mut rename_draft = use_signal(String::new);
     let mut search = use_signal(String::new);
+    let mut focused_row = use_signal(|| None::<TreeSelection>);
 
     let rows = {
-        let collapsed = collapsed_except_expanded(&collections, &expanded());
+        let collapsed = if search().trim().is_empty() {
+            collapsed_except_expanded(&collections, &expanded())
+        } else {
+            // Search: show full tree so matches and navigation work while filtered.
+            HashSet::new()
+        };
         let flat = flatten_collections_filtered(&collections, &collapsed);
         filter_tree_rows(flat, &search())
     };
     let empty = collections.is_empty();
-
-    let dismiss_menu = move |_| {
-        ctx_menu.set(None);
-    };
 
     rsx! {
         aside {
@@ -141,42 +160,46 @@ pub fn Sidebar(
                     button {
                         class: "btn-icon",
                         title: "Import Postman v2.1 JSON",
+                        aria_label: "Import Postman v2.1 JSON",
                         onclick: move |_| on_event.call(SidebarEvent::new(
                             SidebarAction::ImportCollection,
                             None,
                             active_collection_id,
                         )),
-                        "↓"
+                        span { class: "action-icon action-icon-import", aria_hidden: "true" }
                     }
                     button {
                         class: "btn-icon",
                         title: "Export active collection",
+                        aria_label: "Export active collection",
                         onclick: move |_| on_event.call(SidebarEvent::new(
                             SidebarAction::ExportCollection,
                             None,
                             active_collection_id,
                         )),
-                        "↑"
+                        span { class: "action-icon action-icon-export", aria_hidden: "true" }
                     }
                     button {
                         class: "btn-icon",
                         title: "Sort favorites + folders first",
+                        aria_label: "Sort favorites and folders first",
                         onclick: move |_| on_event.call(SidebarEvent::new(
                             SidebarAction::Sort,
                             None,
                             active_collection_id,
                         )),
-                        "⇅"
+                        span { class: "action-icon action-icon-sort", aria_hidden: "true" }
                     }
                     button {
                         class: "btn-icon",
                         title: "New collection",
+                        aria_label: "New collection",
                         onclick: move |_| on_event.call(SidebarEvent::new(
                             SidebarAction::NewCollection,
                             None,
                             None,
                         )),
-                        "+"
+                        span { class: "action-icon action-icon-add", aria_hidden: "true" }
                     }
                 }
             }
@@ -215,7 +238,77 @@ pub fn Sidebar(
                     }
                 }
             } else {
-                div { class: "tree",
+                div {
+                    class: "tree",
+                    tabindex: "0",
+                    onkeydown: {
+                        let collections = collections.clone();
+                        move |evt| {
+                        let Some(sel) = focused_row() else {
+                            return;
+                        };
+                        let Some(action) = tree_key_action(&evt) else {
+                            return;
+                        };
+                        evt.prevent_default();
+                        evt.stop_propagation();
+                        match action {
+                            TreeKeyAction::Delete => {
+                                on_event.call(SidebarEvent::new(
+                                    SidebarAction::Delete,
+                                    Some(sel.id),
+                                    Some(sel.collection_id),
+                                ));
+                            }
+                            TreeKeyAction::Duplicate => {
+                                on_event.call(SidebarEvent::new(
+                                    SidebarAction::Duplicate,
+                                    Some(sel.id),
+                                    Some(sel.collection_id),
+                                ));
+                            }
+                            TreeKeyAction::Copy => {
+                                on_event.call(SidebarEvent::new(
+                                    SidebarAction::Copy,
+                                    Some(sel.id),
+                                    Some(sel.collection_id),
+                                ));
+                            }
+                            TreeKeyAction::Cut => {
+                                on_event.call(SidebarEvent::new(
+                                    SidebarAction::Cut,
+                                    Some(sel.id),
+                                    Some(sel.collection_id),
+                                ));
+                            }
+                            TreeKeyAction::Paste => {
+                                if let Some(parent) =
+                                    paste_target_parent_id(&collections, sel.id)
+                                {
+                                    on_event.call(SidebarEvent::new(
+                                        SidebarAction::Paste,
+                                        Some(parent),
+                                        Some(sel.collection_id),
+                                    ));
+                                }
+                            }
+                            TreeKeyAction::Rename => {
+                                let current = tree_row_name(&collections, sel.id);
+                                renaming_id.set(Some(sel.id));
+                                rename_draft.set(current);
+                            }
+                            TreeKeyAction::Open => {
+                                if matches!(sel.kind, TreeRowKind::Request { .. }) {
+                                    on_event.call(SidebarEvent::new(
+                                        SidebarAction::SelectRequest,
+                                        Some(sel.id),
+                                        Some(sel.collection_id),
+                                    ));
+                                }
+                            }
+                        }
+                        }
+                    },
                     for row in rows {
                         {
                             let row_id = row.id;
@@ -227,7 +320,7 @@ pub fn Sidebar(
                             let is_req = matches!(kind, TreeRowKind::Request { .. });
                             let is_col = matches!(kind, TreeRowKind::Collection);
                             let is_folder = matches!(kind, TreeRowKind::Folder);
-                            let selected = if is_req {
+                            let row_active = if is_req {
                                 active_request_id == Some(row_id)
                             } else if is_col {
                                 active_collection_id == Some(row_id) && active_request_id.is_none()
@@ -250,9 +343,11 @@ pub fn Sidebar(
                                 name.clone()
                             };
                             let start_name = name.clone();
+                            let kind_for_ctx = kind.clone();
+                            let kind_for_click = kind.clone();
 
                             let mut row_class = String::from("tree-row");
-                            if selected {
+                            if row_active {
                                 row_class.push_str(" active");
                             }
                             if is_drop && can_drop {
@@ -260,6 +355,9 @@ pub fn Sidebar(
                             }
                             if dragging() == Some(row_id) {
                                 row_class.push_str(" dragging");
+                            }
+                            if focused_row().map(|s| s.id) == Some(row_id) {
+                                row_class.push_str(" tree-selected");
                             }
 
                             rsx! {
@@ -320,7 +418,7 @@ pub fn Sidebar(
                                         ctx_menu.set(Some(ContextMenuState {
                                             x: coords.x,
                                             y: coords.y,
-                                            kind: kind.clone(),
+                                            kind: kind_for_ctx.clone(),
                                             id: row_id,
                                             collection_id: col_id,
                                         }));
@@ -334,6 +432,11 @@ pub fn Sidebar(
                                             }
                                             evt.stop_propagation();
                                             ctx_menu.set(None);
+                                            focused_row.set(Some(TreeSelection {
+                                                id: row_id,
+                                                collection_id: col_id,
+                                                kind: kind_for_click.clone(),
+                                            }));
                                             if is_req {
                                                 on_event.call(SidebarEvent::new(
                                                     SidebarAction::SelectRequest,
@@ -346,8 +449,14 @@ pub fn Sidebar(
                                                     Some(row_id),
                                                     Some(col_id),
                                                 ));
-                                            } else {
-                                                // Folder: select owning collection + toggle expand
+                                                let mut set = expanded();
+                                                if set.contains(&row_id) {
+                                                    set.remove(&row_id);
+                                                } else {
+                                                    set.insert(row_id);
+                                                }
+                                                expanded.set(set);
+                                            } else if is_folder {
                                                 on_event.call(SidebarEvent::new(
                                                     SidebarAction::SelectCollection,
                                                     Some(col_id),
@@ -441,6 +550,7 @@ pub fn Sidebar(
                                             button {
                                                 class: "btn-icon",
                                                 title: "Favorite",
+                                                aria_label: "Favorite",
                                                 onclick: move |evt| {
                                                     evt.stop_propagation();
                                                     on_event.call(SidebarEvent::new(
@@ -449,11 +559,12 @@ pub fn Sidebar(
                                                         Some(col_id),
                                                     ));
                                                 },
-                                                "★"
+                                                span { class: "action-icon action-icon-star", aria_hidden: "true" }
                                             }
                                             button {
                                                 class: "btn-icon",
                                                 title: "Duplicate",
+                                                aria_label: "Duplicate",
                                                 onclick: move |evt| {
                                                     evt.stop_propagation();
                                                     on_event.call(SidebarEvent::new(
@@ -462,11 +573,12 @@ pub fn Sidebar(
                                                         Some(col_id),
                                                     ));
                                                 },
-                                                "⧉"
+                                                span { class: "action-icon action-icon-duplicate", aria_hidden: "true" }
                                             }
                                             button {
                                                 class: "btn-icon",
                                                 title: "New request",
+                                                aria_label: "New request",
                                                 onclick: move |evt| {
                                                     evt.stop_propagation();
                                                     on_event.call(SidebarEvent::new(
@@ -475,11 +587,12 @@ pub fn Sidebar(
                                                         Some(col_id),
                                                     ));
                                                 },
-                                                "R"
+                                                span { class: "action-icon action-icon-request", aria_hidden: "true" }
                                             }
                                             button {
                                                 class: "btn-icon",
                                                 title: "New folder",
+                                                aria_label: "New folder",
                                                 onclick: move |evt| {
                                                     evt.stop_propagation();
                                                     on_event.call(SidebarEvent::new(
@@ -488,13 +601,14 @@ pub fn Sidebar(
                                                         Some(col_id),
                                                     ));
                                                 },
-                                                "F"
+                                                span { class: "action-icon action-icon-folder-new", aria_hidden: "true" }
                                             }
                                         }
                                         if is_folder {
                                             button {
                                                 class: "btn-icon",
                                                 title: "New request",
+                                                aria_label: "New request",
                                                 onclick: move |evt| {
                                                     evt.stop_propagation();
                                                     on_event.call(SidebarEvent::new(
@@ -503,11 +617,12 @@ pub fn Sidebar(
                                                         Some(col_id),
                                                     ));
                                                 },
-                                                "R"
+                                                span { class: "action-icon action-icon-request", aria_hidden: "true" }
                                             }
                                             button {
                                                 class: "btn-icon",
                                                 title: "New folder",
+                                                aria_label: "New folder",
                                                 onclick: move |evt| {
                                                     evt.stop_propagation();
                                                     on_event.call(SidebarEvent::new(
@@ -516,11 +631,12 @@ pub fn Sidebar(
                                                         Some(col_id),
                                                     ));
                                                 },
-                                                "F"
+                                                span { class: "action-icon action-icon-folder-new", aria_hidden: "true" }
                                             }
                                             button {
                                                 class: "btn-icon",
                                                 title: "Duplicate",
+                                                aria_label: "Duplicate",
                                                 onclick: move |evt| {
                                                     evt.stop_propagation();
                                                     on_event.call(SidebarEvent::new(
@@ -529,13 +645,14 @@ pub fn Sidebar(
                                                         Some(col_id),
                                                     ));
                                                 },
-                                                "⧉"
+                                                span { class: "action-icon action-icon-duplicate", aria_hidden: "true" }
                                             }
                                         }
                                         if is_req {
                                             button {
                                                 class: "btn-icon",
                                                 title: "Duplicate",
+                                                aria_label: "Duplicate",
                                                 onclick: move |evt| {
                                                     evt.stop_propagation();
                                                     on_event.call(SidebarEvent::new(
@@ -544,23 +661,25 @@ pub fn Sidebar(
                                                         Some(col_id),
                                                     ));
                                                 },
-                                                "⧉"
+                                                span { class: "action-icon action-icon-duplicate", aria_hidden: "true" }
                                             }
                                         }
                                         button {
                                             class: "btn-icon",
                                             title: "Rename",
+                                            aria_label: "Rename",
                                             onclick: move |evt| {
                                                 evt.stop_propagation();
                                                 ctx_menu.set(None);
                                                 renaming_id.set(Some(row_id));
                                                 rename_draft.set(start_name.clone());
                                             },
-                                            "✎"
+                                            span { class: "action-icon action-icon-edit", aria_hidden: "true" }
                                         }
                                         button {
                                             class: "btn-icon danger",
                                             title: "Delete",
+                                            aria_label: "Delete",
                                             onclick: move |evt| {
                                                 evt.stop_propagation();
                                                 on_event.call(SidebarEvent::new(
@@ -569,7 +688,7 @@ pub fn Sidebar(
                                                     Some(col_id),
                                                 ));
                                             },
-                                            "×"
+                                            span { class: "action-icon action-icon-delete", aria_hidden: "true" }
                                         }
                                     }
                                 }
@@ -635,12 +754,13 @@ pub fn Sidebar(
                                             button {
                                                 class: "btn-icon",
                                                 title: "Save to collection",
+                                                aria_label: "Save to collection",
                                                 onclick: move |_| on_event.call(SidebarEvent::new(
                                                     SidebarAction::SaveHistoryToCollection,
                                                     Some(id),
                                                     active_collection_id,
                                                 )),
-                                                "+"
+                                                span { class: "action-icon action-icon-save", aria_hidden: "true" }
                                             }
                                         }
                                     }
@@ -659,22 +779,19 @@ pub fn Sidebar(
                     let mcol = menu.collection_id;
                     let mkind = menu.kind.clone();
                     let is_empty_menu = mid.is_nil();
+                    let collections_menu = collections.clone();
                     rsx! {
-                        div {
-                            class: "ctx-menu-backdrop",
-                            onclick: dismiss_menu,
-                            oncontextmenu: move |evt| {
-                                evt.prevent_default();
-                                ctx_menu.set(None);
-                            },
+                        DismissBackdrop {
+                            z_index: 900,
+                            on_dismiss: move |_| ctx_menu.set(None),
                         }
                         div {
                             class: "ctx-menu",
                             style: "left: {mx}px; top: {my}px;",
                             onclick: move |evt| evt.stop_propagation(),
                             if is_empty_menu {
-                                button {
-                                    class: "ctx-item",
+                                CtxMenuItem {
+                                    label: "New Collection",
                                     onclick: move |_| {
                                         ctx_menu.set(None);
                                         on_event.call(SidebarEvent::new(
@@ -683,14 +800,13 @@ pub fn Sidebar(
                                             None,
                                         ));
                                     },
-                                    "New Collection"
                                 }
                             } else {
                                 match mkind {
                                     TreeRowKind::Collection => {
                                         rsx! {
-                                            button {
-                                                class: "ctx-item",
+                                            CtxMenuItem {
+                                                label: "New Request",
                                                 onclick: move |_| {
                                                     ctx_menu.set(None);
                                                     on_event.call(SidebarEvent::new(
@@ -699,10 +815,9 @@ pub fn Sidebar(
                                                         Some(mcol),
                                                     ));
                                                 },
-                                                "New Request"
                                             }
-                                            button {
-                                                class: "ctx-item",
+                                            CtxMenuItem {
+                                                label: "New Folder",
                                                 onclick: move |_| {
                                                     ctx_menu.set(None);
                                                     on_event.call(SidebarEvent::new(
@@ -711,20 +826,23 @@ pub fn Sidebar(
                                                         Some(mcol),
                                                     ));
                                                 },
-                                                "New Folder"
                                             }
-                                            button {
-                                                class: "ctx-item",
-                                                onclick: move |_| {
-                                                    let current = tree_row_name(&collections, mid);
-                                                    ctx_menu.set(None);
-                                                    renaming_id.set(Some(mid));
-                                                    rename_draft.set(current);
+                                            CtxMenuItem {
+                                                label: "Rename",
+                                                shortcut: Some(label_rename().to_string()),
+                                                onclick: {
+                                                    let collections_menu = collections_menu.clone();
+                                                    move |_| {
+                                                        let current = tree_row_name(&collections_menu, mid);
+                                                        ctx_menu.set(None);
+                                                        renaming_id.set(Some(mid));
+                                                        rename_draft.set(current);
+                                                    }
                                                 },
-                                                "Rename"
                                             }
-                                            button {
-                                                class: "ctx-item",
+                                            CtxMenuItem {
+                                                label: "Duplicate",
+                                                shortcut: Some(label_duplicate()),
                                                 onclick: move |_| {
                                                     ctx_menu.set(None);
                                                     on_event.call(SidebarEvent::new(
@@ -733,10 +851,9 @@ pub fn Sidebar(
                                                         Some(mcol),
                                                     ));
                                                 },
-                                                "Duplicate"
                                             }
-                                            button {
-                                                class: "ctx-item",
+                                            CtxMenuItem {
+                                                label: "Favorite",
                                                 onclick: move |_| {
                                                     ctx_menu.set(None);
                                                     on_event.call(SidebarEvent::new(
@@ -745,10 +862,9 @@ pub fn Sidebar(
                                                         Some(mcol),
                                                     ));
                                                 },
-                                                "Favorite"
                                             }
-                                            button {
-                                                class: "ctx-item",
+                                            CtxMenuItem {
+                                                label: "Export",
                                                 onclick: move |_| {
                                                     ctx_menu.set(None);
                                                     on_event.call(SidebarEvent::new(
@@ -757,10 +873,11 @@ pub fn Sidebar(
                                                         Some(mcol),
                                                     ));
                                                 },
-                                                "Export"
                                             }
-                                            button {
-                                                class: "ctx-item danger",
+                                            CtxMenuItem {
+                                                label: "Delete",
+                                                shortcut: Some(label_delete()),
+                                                danger: true,
                                                 onclick: move |_| {
                                                     ctx_menu.set(None);
                                                     on_event.call(SidebarEvent::new(
@@ -769,14 +886,15 @@ pub fn Sidebar(
                                                         Some(mcol),
                                                     ));
                                                 },
-                                                "Delete"
                                             }
                                         }
                                     }
                                     TreeRowKind::Folder => {
+                                        let cols_rename = collections_menu.clone();
+                                        let cols_paste = collections_menu.clone();
                                         rsx! {
-                                            button {
-                                                class: "ctx-item",
+                                            CtxMenuItem {
+                                                label: "New Request",
                                                 onclick: move |_| {
                                                     ctx_menu.set(None);
                                                     on_event.call(SidebarEvent::new(
@@ -785,10 +903,9 @@ pub fn Sidebar(
                                                         Some(mcol),
                                                     ));
                                                 },
-                                                "New Request"
                                             }
-                                            button {
-                                                class: "ctx-item",
+                                            CtxMenuItem {
+                                                label: "New Folder",
                                                 onclick: move |_| {
                                                     ctx_menu.set(None);
                                                     on_event.call(SidebarEvent::new(
@@ -797,20 +914,20 @@ pub fn Sidebar(
                                                         Some(mcol),
                                                     ));
                                                 },
-                                                "New Folder"
                                             }
-                                            button {
-                                                class: "ctx-item",
+                                            CtxMenuItem {
+                                                label: "Rename",
+                                                shortcut: Some(label_rename().to_string()),
                                                 onclick: move |_| {
-                                                    let current = tree_row_name(&collections, mid);
+                                                    let current = tree_row_name(&cols_rename, mid);
                                                     ctx_menu.set(None);
                                                     renaming_id.set(Some(mid));
                                                     rename_draft.set(current);
                                                 },
-                                                "Rename"
                                             }
-                                            button {
-                                                class: "ctx-item",
+                                            CtxMenuItem {
+                                                label: "Duplicate",
+                                                shortcut: Some(label_duplicate()),
                                                 onclick: move |_| {
                                                     ctx_menu.set(None);
                                                     on_event.call(SidebarEvent::new(
@@ -819,10 +936,51 @@ pub fn Sidebar(
                                                         Some(mcol),
                                                     ));
                                                 },
-                                                "Duplicate"
                                             }
-                                            button {
-                                                class: "ctx-item danger",
+                                            CtxMenuItem {
+                                                label: "Cut",
+                                                shortcut: Some(label_cut()),
+                                                onclick: move |_| {
+                                                    ctx_menu.set(None);
+                                                    on_event.call(SidebarEvent::new(
+                                                        SidebarAction::Cut,
+                                                        Some(mid),
+                                                        Some(mcol),
+                                                    ));
+                                                },
+                                            }
+                                            CtxMenuItem {
+                                                label: "Copy",
+                                                shortcut: Some(label_copy()),
+                                                onclick: move |_| {
+                                                    ctx_menu.set(None);
+                                                    on_event.call(SidebarEvent::new(
+                                                        SidebarAction::Copy,
+                                                        Some(mid),
+                                                        Some(mcol),
+                                                    ));
+                                                },
+                                            }
+                                            CtxMenuItem {
+                                                label: "Paste",
+                                                shortcut: Some(label_paste()),
+                                                onclick: move |_| {
+                                                    ctx_menu.set(None);
+                                                    if let Some(parent) =
+                                                        paste_target_parent_id(&cols_paste, mid)
+                                                    {
+                                                        on_event.call(SidebarEvent::new(
+                                                            SidebarAction::Paste,
+                                                            Some(parent),
+                                                            Some(mcol),
+                                                        ));
+                                                    }
+                                                },
+                                            }
+                                            CtxMenuItem {
+                                                label: "Delete",
+                                                shortcut: Some(label_delete()),
+                                                danger: true,
                                                 onclick: move |_| {
                                                     ctx_menu.set(None);
                                                     on_event.call(SidebarEvent::new(
@@ -831,14 +989,16 @@ pub fn Sidebar(
                                                         Some(mcol),
                                                     ));
                                                 },
-                                                "Delete"
                                             }
                                         }
                                     }
                                     TreeRowKind::Request { .. } => {
+                                        let cols_rename = collections_menu.clone();
+                                        let cols_paste = collections_menu.clone();
                                         rsx! {
-                                            button {
-                                                class: "ctx-item",
+                                            CtxMenuItem {
+                                                label: "Open",
+                                                shortcut: Some(label_open().to_string()),
                                                 onclick: move |_| {
                                                     ctx_menu.set(None);
                                                     on_event.call(SidebarEvent::new(
@@ -847,20 +1007,20 @@ pub fn Sidebar(
                                                         Some(mcol),
                                                     ));
                                                 },
-                                                "Open"
                                             }
-                                            button {
-                                                class: "ctx-item",
+                                            CtxMenuItem {
+                                                label: "Rename",
+                                                shortcut: Some(label_rename().to_string()),
                                                 onclick: move |_| {
-                                                    let current = tree_row_name(&collections, mid);
+                                                    let current = tree_row_name(&cols_rename, mid);
                                                     ctx_menu.set(None);
                                                     renaming_id.set(Some(mid));
                                                     rename_draft.set(current);
                                                 },
-                                                "Rename"
                                             }
-                                            button {
-                                                class: "ctx-item",
+                                            CtxMenuItem {
+                                                label: "Duplicate",
+                                                shortcut: Some(label_duplicate()),
                                                 onclick: move |_| {
                                                     ctx_menu.set(None);
                                                     on_event.call(SidebarEvent::new(
@@ -869,10 +1029,49 @@ pub fn Sidebar(
                                                         Some(mcol),
                                                     ));
                                                 },
-                                                "Duplicate"
                                             }
-                                            button {
-                                                class: "ctx-item",
+                                            CtxMenuItem {
+                                                label: "Cut",
+                                                shortcut: Some(label_cut()),
+                                                onclick: move |_| {
+                                                    ctx_menu.set(None);
+                                                    on_event.call(SidebarEvent::new(
+                                                        SidebarAction::Cut,
+                                                        Some(mid),
+                                                        Some(mcol),
+                                                    ));
+                                                },
+                                            }
+                                            CtxMenuItem {
+                                                label: "Copy",
+                                                shortcut: Some(label_copy()),
+                                                onclick: move |_| {
+                                                    ctx_menu.set(None);
+                                                    on_event.call(SidebarEvent::new(
+                                                        SidebarAction::Copy,
+                                                        Some(mid),
+                                                        Some(mcol),
+                                                    ));
+                                                },
+                                            }
+                                            CtxMenuItem {
+                                                label: "Paste",
+                                                shortcut: Some(label_paste()),
+                                                onclick: move |_| {
+                                                    ctx_menu.set(None);
+                                                    if let Some(parent) =
+                                                        paste_target_parent_id(&cols_paste, mid)
+                                                    {
+                                                        on_event.call(SidebarEvent::new(
+                                                            SidebarAction::Paste,
+                                                            Some(parent),
+                                                            Some(mcol),
+                                                        ));
+                                                    }
+                                                },
+                                            }
+                                            CtxMenuItem {
+                                                label: "Copy ID",
                                                 onclick: move |_| {
                                                     ctx_menu.set(None);
                                                     on_event.call(SidebarEvent::new(
@@ -881,10 +1080,11 @@ pub fn Sidebar(
                                                         Some(mcol),
                                                     ));
                                                 },
-                                                "Copy ID"
                                             }
-                                            button {
-                                                class: "ctx-item danger",
+                                            CtxMenuItem {
+                                                label: "Delete",
+                                                shortcut: Some(label_delete()),
+                                                danger: true,
                                                 onclick: move |_| {
                                                     ctx_menu.set(None);
                                                     on_event.call(SidebarEvent::new(
@@ -893,7 +1093,6 @@ pub fn Sidebar(
                                                         Some(mcol),
                                                     ));
                                                 },
-                                                "Delete"
                                             }
                                         }
                                     }

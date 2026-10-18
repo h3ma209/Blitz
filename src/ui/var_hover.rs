@@ -5,8 +5,14 @@ use std::time::Duration;
 use dioxus::prelude::*;
 
 use crate::core::{
-    find_var_at, render_var_highlight_html, VarHoverInfo, VarResolveScope, VariableContext,
+    apply_var_insert, find_var_at, render_var_highlight_html, var_insert_context, VarHoverInfo,
+    VarResolveScope, VariableContext, VariableSuggestion,
 };
+
+use super::var_autocomplete::{
+    read_field_caret_anchor, restore_field_caret, VarSuggestDropdown, VarSuggestMenu,
+};
+use super::DismissBackdrop;
 
 /// Grace window so pointer can travel from token → popover without flicker.
 const DISMISS_GRACE_MS: u64 = 200;
@@ -93,12 +99,13 @@ pub fn VarHoverInput(
     let mut editing = use_signal(|| false);
     let mut over_popover = use_signal(|| false);
     let mut dismiss_gen = use_signal(|| 0u64);
+    let mut var_suggest = use_signal(|| None::<VarSuggestMenu>);
     let mirror_html = render_var_highlight_html(&value, Some(&vars));
     let input_class = format!("{class} var-highlight-input");
 
     rsx! {
         div {
-            class: "var-hover-host var-highlight-host",
+            class: "var-hover-host var-highlight-host code-editor-host",
             onmouseleave: move |_| {
                 schedule_dismiss(popover, dismiss_gen, editing, over_popover);
             },
@@ -113,9 +120,78 @@ pub fn VarHoverInput(
                 r#type: "text",
                 value: "{value}",
                 placeholder: "{placeholder}",
-                oninput: move |evt| {
-                    popover.set(None);
-                    on_input.call(evt.value());
+                oninput: {
+                    let value = value.clone();
+                    let vars = vars.clone();
+                    let input_id = input_id.clone();
+                    move |evt| {
+                        popover.set(None);
+                        let val = evt.value();
+                        on_input.call(val);
+                        let value = value.clone();
+                        let vars = vars.clone();
+                        let input_id = input_id.clone();
+                        spawn(async move {
+                            if let Some((caret, left, top)) = read_field_caret_anchor(&input_id).await {
+                                if var_insert_context(&value, caret).is_some() {
+                                    var_suggest.set(VarSuggestMenu::refresh(&value, caret, &vars, left, top));
+                                } else {
+                                    var_suggest.set(None);
+                                }
+                            }
+                        });
+                    }
+                },
+                onkeydown: {
+                    let value = value.clone();
+                    let input_id = input_id.clone();
+                    let on_input = on_input.clone();
+                    move |evt: Event<KeyboardData>| {
+                        if let Some(mut m) = var_suggest() {
+                            match evt.key() {
+                                Key::ArrowDown => {
+                                    evt.prevent_default();
+                                    m.move_selection(1);
+                                    var_suggest.set(Some(m));
+                                    return;
+                                }
+                                Key::ArrowUp => {
+                                    evt.prevent_default();
+                                    m.move_selection(-1);
+                                    var_suggest.set(Some(m));
+                                    return;
+                                }
+                                Key::Escape => {
+                                    evt.prevent_default();
+                                    var_suggest.set(None);
+                                    return;
+                                }
+                                Key::Enter | Key::Tab => {
+                                    if let Some(item) = m.pick() {
+                                        evt.prevent_default();
+                                        let open = m.open_at;
+                                        let item = item.clone();
+                                        let value = value.clone();
+                                        let input_id = input_id.clone();
+                                        let on_input = on_input.clone();
+                                        spawn(async move {
+                                            if let Some((caret, _, _)) =
+                                                read_field_caret_anchor(&input_id).await
+                                            {
+                                                let (new_text, new_caret) =
+                                                    apply_var_insert(&value, caret, open, &item.insert);
+                                                on_input.call(new_text);
+                                                restore_field_caret(&input_id, new_caret).await;
+                                            }
+                                        });
+                                        var_suggest.set(None);
+                                    }
+                                    return;
+                                }
+                                _ => {}
+                            }
+                        }
+                    }
                 },
                 onscroll: {
                     let input_id = input_id.clone();
@@ -148,6 +224,26 @@ pub fn VarHoverInput(
                     let value = value.clone();
                     let vars = vars.clone();
                     move |evt: Event<KeyboardData>| {
+                        let value_s = value.clone();
+                        let vars_for_suggest = vars.clone();
+                        let input_id_for_suggest = input_id.clone();
+                        spawn(async move {
+                            if let Some((caret, left, top)) =
+                                read_field_caret_anchor(&input_id_for_suggest).await
+                            {
+                                if var_insert_context(&value_s, caret).is_some() {
+                                    var_suggest.set(VarSuggestMenu::refresh(
+                                        &value_s,
+                                        caret,
+                                        &vars_for_suggest,
+                                        left,
+                                        top,
+                                    ));
+                                } else {
+                                    var_suggest.set(None);
+                                }
+                            }
+                        });
                         if matches!(evt.key(), Key::Escape) {
                             dismiss_gen.set(dismiss_gen() + 1);
                             editing.set(false);
@@ -196,6 +292,34 @@ pub fn VarHoverInput(
                 },
             }
 
+            if let Some(menu) = var_suggest() {
+                VarSuggestDropdown {
+                    menu: menu.clone(),
+                    on_pick: {
+                        let open = menu.open_at;
+                        let input_id = input_id.clone();
+                        let value = value.clone();
+                        let on_input = on_input.clone();
+                        move |item: VariableSuggestion| {
+                            let input_id = input_id.clone();
+                            let value = value.clone();
+                            let on_input = on_input.clone();
+                            let item = item.clone();
+                            spawn(async move {
+                                if let Some((caret, _, _)) = read_field_caret_anchor(&input_id).await {
+                                    let (new_text, new_caret) =
+                                        apply_var_insert(&value, caret, open, &item.insert);
+                                    on_input.call(new_text);
+                                    restore_field_caret(&input_id, new_caret).await;
+                                }
+                            });
+                            var_suggest.set(None);
+                        }
+                    },
+                    on_dismiss: move |_| var_suggest.set(None),
+                }
+            }
+
             if let Some(state) = popover() {
                 {
                     let info = state.info.clone();
@@ -204,6 +328,14 @@ pub fn VarHoverInput(
                     let top = state.top;
                     let token = format!("{{{{{}}}}}", info.name);
                     rsx! {
+                        DismissBackdrop {
+                            z_index: 48,
+                            on_dismiss: move |_| {
+                                dismiss_gen.set(dismiss_gen() + 1);
+                                editing.set(false);
+                                popover.set(None);
+                            },
+                        }
                         div {
                             class: "var-popover",
                             style: "left: {left}px; top: {top}px;",

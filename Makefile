@@ -85,7 +85,7 @@ help: ## List available targets
 		'' \
 		'Desktop deps (Dioxus WebView):' \
 		'  macOS:   system WebKit (Xcode CLT usually enough)' \
-		'  Linux:   webkit2gtk + related (distro packages)' \
+		'  Linux:   webkit2gtk, gtk3, libxdo-dev, appindicator (see README / CI workflow)' \
 		'  Windows: WebView2 runtime'
 
 # --- cargo-only (old `make install` behavior) ---
