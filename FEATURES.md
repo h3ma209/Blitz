@@ -33,11 +33,11 @@ EvilPostman is a single-window desktop workbench for building, sending, scriptin
 ### 2.1 Shell layout
 
 - **Top bar:** brand, shortcut hint, **File** menu (collections / env / HAR / OpenAPI), Runner, Perf, Proxy, Cookies, Col vars, Settings, environment selector, variables eye (👁), code snippets (`</>`), Mock start/stop, Trash.
-- **Left sidebar:** collections tree (search box) + history; **drag right edge** to resize (180–480px, persisted). Tree starts **fully collapsed** (collections + folders); expand deliberately. Refolds after snapshot load, import, and cloud sync reload (session expand state not persisted).
-- **Startup splash:** full-screen EvilPostman brand overlay until initial snapshot load finishes, then ~300ms fade (fixed overlay inside `.app-shell`, not a grid child).
+- **Left sidebar:** collections tree (search box) + **collapsible History** (▸/▾; default collapsed, `history_collapsed` in UiSettings); **drag right edge** to resize (180–480px, persisted). Tree starts **fully collapsed** (collections + folders); expand deliberately. Refolds after snapshot load, import, and cloud sync reload (session expand state not persisted).
+- **Startup splash:** full-screen EvilPostman brand overlay until initial snapshot load finishes, then configurable min hold (`splash_min_ms`, default 80) + ~320ms fade (fixed overlay inside `.app-shell`, not a grid child).
 - **Env switch overlay:** compact centered card (logo + “Switching environment…” + name) while git checkout / tree reload runs; hides on success or error (status message kept).
 - **Center:** multi-tab request strip (hover ✕ closes tab; last tab resets to untitled), request builder, response pane, console — **drag handles** resize request/response split and console height (persisted).
-- **Modals:** settings, runner, env manager, import/export, command palette, trash, snippets, collection variables.
+- **Modals:** shared `ModalShell` (title + ✕, scrollable `.modal-body` ≤85vh) — settings, runner, vars, cookies, col vars, import/export, command palette, trash, snippets, perf; env manager overlay also has ✕.
 
 ### 2.2 Tabs & shortcuts
 
@@ -233,7 +233,7 @@ On Send (simplified):
 4. Attach cookies from jar  
 5. Build body (raw / urlencoded / multipart / GraphQL)  
 6. Apply proxy + TLS + timeout + optional PEM client cert  
-7. HTTP via **reqwest** (rustls)  
+7. HTTP via **reqwest** (rustls; auto `gzip`/`deflate`/`br` negotiate + decompress). Does **not** inject manual `Accept-Encoding` (that disables reqwest decompress). Safety net: if `Content-Encoding` / gzip magic still present, inflate before body text (`encoding: decompressed …` in pipeline log).  
 8. Store Set-Cookie; run post scripts; update Test Results / Console / History  
 9. Apply script env/collection maps back to active `Environment` / `Collection` + `persist()`
 
@@ -246,7 +246,7 @@ While sending, the primary button becomes **Cancel**. Cancel sets a cooperative 
 | Tab / control | Behavior |
 |---------------|----------|
 | Status / time / size | Shown above body |
-| Pretty | JSON pretty-print when possible |
+| Pretty | JSON pretty-print + syntax highlight (keys/strings/numbers/bools/null) when Content-Type or body is JSON; plain text stays mono |
 | Raw | Exact body |
 | Preview | HTML-oriented display (source when HTML-like) |
 | Headers | Response headers list |
@@ -404,9 +404,18 @@ Generated from the current draft (URL, method, headers, auth, body).
 
 - **Proxy:** env (`HTTP(S)_PROXY`), none, or custom `host:port`  
 - **Client certificate:** PEM, or **PKCS#12** via `openssl pkcs12` conversion when openssl is on PATH  
-- **Appearance:** UI font size, editor (mono/body) font size, sidebar width, request pane height, console height — CSS vars on `.app-shell` / `.workbench` (`--fs-base`, `--fs-editor`, `--sidebar-w`, `--request-h`, `--console-h`); Reset in Settings  
+- **Appearance** (Settings → Appearance; Reset restores defaults):  
+  - UI / editor font sizes, sidebar width, request pane height, console height — CSS vars on `.app-shell` / `.workbench` (`--fs-base`, `--fs-editor`, `--sidebar-w`, `--request-h`, `--console-h`)  
+  - **Density** comfortable / compact — scales `--space-*` (+ shorter top bar when compact)  
+  - **Wrap editor text** — `white-space` on `.body-editor` / `.response-body`  
+  - **Tab size** 2 / 4 — `--editor-tab-size`  
+  - **Accent intensity** soft / normal / strong — `--accent-soft` / `--bg-active` (green theme kept)  
+  - **Reduce motion** — kills animations / transitions on shell  
+  - **Show status bar** — toggles workbench `.status-line`  
+  - **Default response tab** Pretty / Raw / Headers  
+  - **Splash min duration** — hold before startup fade (0–2000ms)  
 - Workbench drag handles update `request_pane_height_px` / `console_height_px` (clamped); never mount drag UI as bare `.app-shell` grid children  
-- Persisted in snapshot  
+- Class tokens via `UiSettings::shell_class_tokens()` on `.app-shell`; persisted in snapshot  
 
 ---
 

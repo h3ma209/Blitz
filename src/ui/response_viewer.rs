@@ -1,6 +1,7 @@
 use dioxus::prelude::*;
 
-use crate::core::ResponseView;
+use crate::core::{DefaultResponseTab, ResponseView};
+use super::json_highlight::{render_json_highlight_html, should_highlight_json};
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum RespTab {
@@ -14,13 +15,22 @@ enum RespTab {
     Timeline,
 }
 
+fn resp_tab_from_default(tab: DefaultResponseTab) -> RespTab {
+    match tab {
+        DefaultResponseTab::Pretty => RespTab::Pretty,
+        DefaultResponseTab::Raw => RespTab::Raw,
+        DefaultResponseTab::Headers => RespTab::Headers,
+    }
+}
+
 #[component]
 pub fn ResponseViewer(
     response: Option<ResponseView>,
     sending: bool,
+    #[props(default)] default_tab: DefaultResponseTab,
     on_save_example: EventHandler<()>,
 ) -> Element {
-    let mut tab = use_signal(|| RespTab::Pretty);
+    let mut tab = use_signal(|| resp_tab_from_default(default_tab));
 
     rsx! {
         section { class: "response-pane",
@@ -82,9 +92,20 @@ pub fn ResponseViewer(
                 }
 
                 match tab() {
-                    RespTab::Pretty => rsx! {
-                        pre { class: "response-body",
-                            "{pretty_body(&resp.body)}"
+                    RespTab::Pretty => {
+                        let pretty = pretty_body(&resp.body);
+                        if should_highlight_json(&resp.body, &resp.headers) {
+                            let html = render_json_highlight_html(&pretty);
+                            rsx! {
+                                pre {
+                                    class: "response-body response-body-json",
+                                    dangerous_inner_html: "{html}",
+                                }
+                            }
+                        } else {
+                            rsx! {
+                                pre { class: "response-body", "{pretty}" }
+                            }
                         }
                     },
                     RespTab::Raw => rsx! {
@@ -104,7 +125,22 @@ pub fn ResponseViewer(
                             }
                         } else {
                             p { class: "hint", "Preview is for HTML responses. Showing Pretty instead." }
-                            pre { class: "response-body", "{pretty_body(&resp.body)}" }
+                            {
+                                let pretty = pretty_body(&resp.body);
+                                if should_highlight_json(&resp.body, &resp.headers) {
+                                    let html = render_json_highlight_html(&pretty);
+                                    rsx! {
+                                        pre {
+                                            class: "response-body response-body-json",
+                                            dangerous_inner_html: "{html}",
+                                        }
+                                    }
+                                } else {
+                                    rsx! {
+                                        pre { class: "response-body", "{pretty}" }
+                                    }
+                                }
+                            }
                         }
                     },
                     RespTab::Headers => rsx! {

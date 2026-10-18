@@ -40,6 +40,7 @@ use crate::ui::runner_panel::{RunnerEvent, RunnerPanel};
 use crate::ui::settings_panel::{SettingsEvent, SettingsPanel};
 use crate::ui::sidebar::{Sidebar, SidebarAction, SidebarEvent};
 use crate::ui::CommentableTextarea;
+use crate::ui::ModalShell;
 
 /// Vertical pane drag state — handled on `.workbench`, never as bare `.app-shell` grid children.
 #[derive(Clone, Copy, PartialEq)]
@@ -144,8 +145,9 @@ pub fn Workbench() -> Element {
         fold_epoch.set(fold_epoch() + 1);
         loaded.set(true);
         // Paint opaque splash first, then fade out (not a bare grid child).
+        let splash_hold = app_settings().ui.clamped().splash_min_ms as u64;
         spawn(async move {
-            tokio::time::sleep(Duration::from_millis(80)).await;
+            tokio::time::sleep(Duration::from_millis(splash_hold)).await;
             splash_leaving.set(true);
             tokio::time::sleep(Duration::from_millis(320)).await;
             splash_visible.set(false);
@@ -935,6 +937,12 @@ pub fn Workbench() -> Element {
                     None => status_msg.set("no collection to export".into()),
                 }
             }
+            SidebarAction::ToggleHistoryCollapse => {
+                let mut s = app_settings();
+                s.ui.history_collapsed = !s.ui.history_collapsed;
+                app_settings.set(s);
+                persist();
+            }
         }
     };
 
@@ -999,17 +1007,22 @@ pub fn Workbench() -> Element {
 
     let ui = app_settings().ui.clone().clamped();
     let shell_style = format!(
-        "--fs-base: {}px; --fs-body: {}px; --fs-editor: {}px; --sidebar-w: {}px;",
-        ui.ui_font_size_px, ui.ui_font_size_px, ui.editor_font_size_px, ui.sidebar_width_px
+        "--fs-base: {}px; --fs-body: {}px; --fs-editor: {}px; --sidebar-w: {}px; --editor-tab-size: {};",
+        ui.ui_font_size_px,
+        ui.ui_font_size_px,
+        ui.editor_font_size_px,
+        ui.sidebar_width_px,
+        ui.tab_size
     );
     let workbench_style = format!(
         "--request-h: {}px; --console-h: {}px;",
         ui.request_pane_height_px, ui.console_height_px
     );
+    let appearance_tokens = ui.shell_class_tokens();
     let shell_class = if sidebar_drag().is_some() {
-        "app-shell sidebar-resizing"
+        format!("app-shell sidebar-resizing {appearance_tokens}")
     } else {
-        "app-shell"
+        format!("app-shell {appearance_tokens}")
     };
     let workbench_class = match pane_drag() {
         Some(PaneDrag::Request { .. } | PaneDrag::Console { .. }) => "workbench pane-resizing-v",
@@ -1885,9 +1898,14 @@ pub fn Workbench() -> Element {
             }
 
             if show_vars() {
-                div { class: "modal-backdrop",
-                    div { class: "modal vars-modal",
-                        h3 { "Variables" }
+                ModalShell {
+                    title: "Variables".to_string(),
+                    class: "vars-modal".to_string(),
+                    on_close: move |_| {
+                        show_vars.set(false);
+                        persist();
+                    },
+                    div { class: "modal-body",
                         p { class: "hint",
                             "Resolve order: local → environment → collection → global. Vault via {{{{vault:key}}}}."
                         }
@@ -2120,9 +2138,11 @@ pub fn Workbench() -> Element {
             }
 
             if show_palette() {
-                div { class: "modal-backdrop",
-                    div { class: "modal palette-modal",
-                        h3 { "Command palette" }
+                ModalShell {
+                    title: "Command palette".to_string(),
+                    class: "palette-modal".to_string(),
+                    on_close: move |_| show_palette.set(false),
+                    div { class: "modal-body",
                         button {
                             class: if sending() { "btn btn-ghost btn-cancel" } else { "btn btn-ghost" },
                             onclick: move |_| { do_send(()); show_palette.set(false); },
@@ -2133,15 +2153,15 @@ pub fn Workbench() -> Element {
                         button { class: "btn btn-ghost", onclick: move |_| { show_runner.set(true); show_palette.set(false); }, "Runner" }
                         button { class: "btn btn-ghost", onclick: move |_| { console_open.set(true); show_palette.set(false); }, "Console" }
                         button { class: "btn btn-ghost", onclick: move |_| { show_settings.set(true); show_palette.set(false); }, "Settings" }
-                        button { class: "btn btn-ghost", onclick: move |_| show_palette.set(false), "Close" }
                     }
                 }
             }
 
             if show_trash() {
-                div { class: "modal-backdrop",
-                    div { class: "modal",
-                        h3 { "Trash" }
+                ModalShell {
+                    title: "Trash".to_string(),
+                    on_close: move |_| show_trash.set(false),
+                    div { class: "modal-body",
                         if trash().is_empty() {
                             p { class: "hint", "Empty." }
                         } else {
@@ -2176,15 +2196,18 @@ pub fn Workbench() -> Element {
                                 }
                             }
                         }
+                    }
+                    div { class: "modal-actions",
                         button { class: "btn btn-ghost", onclick: move |_| show_trash.set(false), "Close" }
                     }
                 }
             }
 
             if show_snippets() {
-                div { class: "modal-backdrop",
-                    div { class: "modal",
-                        h3 { "Code snippet" }
+                ModalShell {
+                    title: "Code snippet".to_string(),
+                    on_close: move |_| show_snippets.set(false),
+                    div { class: "modal-body",
                         select {
                             value: "{snippet_lang()}",
                             onchange: move |evt| snippet_lang.set(evt.value()),
@@ -2193,6 +2216,8 @@ pub fn Workbench() -> Element {
                             }
                         }
                         pre { class: "response-body", "{generate_snippet(&snippet_lang(), &draft())}" }
+                    }
+                    div { class: "modal-actions",
                         button { class: "btn btn-ghost", onclick: move |_| show_snippets.set(false), "Close" }
                     }
                 }
@@ -2327,9 +2352,11 @@ pub fn Workbench() -> Element {
             }
 
             if show_perf() {
-                div { class: "modal-backdrop",
-                    div { class: "modal runner-modal",
-                        h3 { "Performance (minimal VUs)" }
+                ModalShell {
+                    title: "Performance (minimal VUs)".to_string(),
+                    class: "runner-modal".to_string(),
+                    on_close: move |_| show_perf.set(false),
+                    div { class: "modal-body",
                         p { class: "hint", "Concurrent VUs hit active collection for a duration. Reuses HTTP send pipeline." }
                         label { class: "hint", "VUs" }
                         input {
@@ -2432,6 +2459,7 @@ pub fn Workbench() -> Element {
                         active_collection_id: active_collection_id(),
                         active_request_id: active_request_id(),
                         history: history(),
+                        history_collapsed: app_settings().ui.history_collapsed,
                         on_event: on_sidebar,
                     }
                     div {
@@ -2903,6 +2931,7 @@ pub fn Workbench() -> Element {
                 ResponseViewer {
                     response: response(),
                     sending: sending(),
+                    default_tab: app_settings().ui.default_response_tab,
                     on_save_example: move |_| {
                         if let Some(view) = response() {
                             let mut d = draft();
@@ -2942,7 +2971,9 @@ pub fn Workbench() -> Element {
                     },
                 }
 
-                if mock_port().is_some() || !status_msg().is_empty() {
+                if app_settings().ui.show_status_bar
+                    && (mock_port().is_some() || !status_msg().is_empty())
+                {
                     p { class: "status-line",
                         if let Some(p) = mock_port() {
                             span { class: "mock-status-pill", "mock :{p}" }
@@ -2958,9 +2989,13 @@ pub fn Workbench() -> Element {
             }
 
             if show_cookies() {
-                div { class: "modal-backdrop",
-                    div { class: "modal",
-                        h3 { "Cookie manager" }
+                ModalShell {
+                    title: "Cookie manager".to_string(),
+                    on_close: move |_| {
+                        show_cookies.set(false);
+                        persist();
+                    },
+                    div { class: "modal-body",
                         p { class: "hint", "Jar used on send (domain / path match)." }
                         table { class: "kv-table",
                             thead {
@@ -3078,9 +3113,14 @@ pub fn Workbench() -> Element {
             }
 
             if show_col_vars() {
-                div { class: "modal-backdrop",
-                    div { class: "modal col-vars-modal",
-                        h3 { "Collection variables" }
+                ModalShell {
+                    title: "Collection variables".to_string(),
+                    class: "col-vars-modal".to_string(),
+                    on_close: move |_| {
+                        show_col_vars.set(false);
+                        persist();
+                    },
+                    div { class: "modal-body",
                         div { class: "modal-tabs",
                             button {
                                 class: if !col_vars_all() { "builder-tab active" } else { "builder-tab" },
@@ -3505,27 +3545,28 @@ fn ImpexDialog(
     };
 
     rsx! {
-        div { class: "modal-backdrop",
-            div { class: "modal",
-                h3 { "{title}" }
+        ModalShell {
+            title,
+            on_close: move |_| on_close.call(()),
+            div { class: "modal-body",
                 p { class: "hint", "{limitations_blurb()}" }
                 CommentableTextarea {
                     class: "impex-editor".to_string(),
                     value: text(),
                     on_change: move |v: String| text.set(v),
                 }
-                div { class: "modal-actions",
+            }
+            div { class: "modal-actions",
+                button {
+                    class: "btn btn-ghost",
+                    onclick: move |_| on_close.call(()),
+                    "Close"
+                }
+                if is_import {
                     button {
-                        class: "btn btn-ghost",
-                        onclick: move |_| on_close.call(()),
-                        "Close"
-                    }
-                    if is_import {
-                        button {
-                            class: "btn btn-send",
-                            onclick: move |_| on_import.call(text()),
-                            "Import"
-                        }
+                        class: "btn btn-send",
+                        onclick: move |_| on_import.call(text()),
+                        "Import"
                     }
                 }
             }

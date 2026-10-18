@@ -3,6 +3,7 @@
 
 #![allow(unused_imports)]
 
+pub mod decode_body;
 pub mod pipeline;
 pub mod postman_defaults;
 pub mod runner;

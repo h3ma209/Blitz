@@ -3,6 +3,7 @@ use uuid::Uuid;
 
 use crate::core::Collection;
 use crate::runtime::RunnerReport;
+use crate::ui::ModalShell;
 
 #[derive(Clone, PartialEq)]
 pub enum RunnerEvent {
@@ -29,9 +30,11 @@ pub fn RunnerPanel(
     let mut data_file = use_signal(String::new);
 
     rsx! {
-        div { class: "modal-backdrop",
-            div { class: "modal runner-modal",
-                h3 { "Collection Runner" }
+        ModalShell {
+            title: "Collection Runner".to_string(),
+            class: "runner-modal".to_string(),
+            on_close: move |_| on_event.call(RunnerEvent::Close),
+            div { class: "modal-body",
                 p { class: "hint", "Tree order · env + cookies · collection/folder/request scripts · setNextRequest." }
 
                 select {

@@ -27,6 +27,7 @@ pub enum SidebarAction {
     SaveHistoryToCollection,
     ImportCollection,
     ExportCollection,
+    ToggleHistoryCollapse,
 }
 
 #[derive(Clone, PartialEq, Eq)]
@@ -77,6 +78,7 @@ pub fn Sidebar(
     active_collection_id: Option<Uuid>,
     active_request_id: Option<Uuid>,
     history: Vec<HistoryEntry>,
+    #[props(default = true)] history_collapsed: bool,
     on_event: EventHandler<SidebarEvent>,
 ) -> Element {
     // Empty = all folded (Postman-style). Parent remounts via `key=fold_epoch` to refold.
@@ -132,6 +134,7 @@ pub fn Sidebar(
                 }));
             },
 
+            div { class: "sidebar-collections",
             div { class: "sidebar-section-head",
                 h3 { class: "type-label", "Collections" }
                 div { class: "sidebar-actions",
@@ -575,53 +578,71 @@ pub fn Sidebar(
                     }
                 }
             }
+            } // .sidebar-collections
 
-            h3 { class: "type-label", "History" }
-            if history.is_empty() {
-                p { class: "hint", "Empty — Send to log." }
-            } else {
-                div { class: "history-list",
-                    for entry in history.iter().take(40) {
-                        {
-                            let id = entry.id;
-                            let method = entry.method;
-                            let url = truncate(&entry.url, 42);
-                            let status = entry
-                                .status
-                                .map(|s| s.to_string())
-                                .unwrap_or_else(|| "—".into());
-                            let status_cls = match entry.status {
-                                Some(s) if (200..400).contains(&s) => "history-status status-ok",
-                                Some(_) => "history-status status-err",
-                                None => "history-status status-pending",
-                            };
-                            let when = entry.at.format("%H:%M:%S").to_string();
-                            rsx! {
-                                div { class: "history-row",
-                                    button {
-                                        class: "history-main",
-                                        title: "{entry.url}",
-                                        onclick: move |_| on_event.call(SidebarEvent::new(
-                                            SidebarAction::OpenHistory,
-                                            Some(id),
-                                            None,
-                                        )),
-                                        span { class: "method-badge method-{method_class(method)}",
-                                            "{method.as_str()}"
+            div { class: "sidebar-history",
+                button {
+                    class: "sidebar-history-toggle",
+                    r#type: "button",
+                    title: if history_collapsed { "Expand history" } else { "Collapse history" },
+                    onclick: move |_| on_event.call(SidebarEvent::new(
+                        SidebarAction::ToggleHistoryCollapse,
+                        None,
+                        None,
+                    )),
+                    span { class: "sidebar-history-chevron",
+                        if history_collapsed { "▸" } else { "▾" }
+                    }
+                    span { class: "type-label", "History" }
+                }
+                if !history_collapsed {
+                    if history.is_empty() {
+                        p { class: "hint", "Empty — Send to log." }
+                    } else {
+                        div { class: "history-list",
+                            for entry in history.iter().take(40) {
+                                {
+                                    let id = entry.id;
+                                    let method = entry.method;
+                                    let url = truncate(&entry.url, 42);
+                                    let status = entry
+                                        .status
+                                        .map(|s| s.to_string())
+                                        .unwrap_or_else(|| "—".into());
+                                    let status_cls = match entry.status {
+                                        Some(s) if (200..400).contains(&s) => "history-status status-ok",
+                                        Some(_) => "history-status status-err",
+                                        None => "history-status status-pending",
+                                    };
+                                    let when = entry.at.format("%H:%M:%S").to_string();
+                                    rsx! {
+                                        div { class: "history-row",
+                                            button {
+                                                class: "history-main",
+                                                title: "{entry.url}",
+                                                onclick: move |_| on_event.call(SidebarEvent::new(
+                                                    SidebarAction::OpenHistory,
+                                                    Some(id),
+                                                    None,
+                                                )),
+                                                span { class: "method-badge method-{method_class(method)}",
+                                                    "{method.as_str()}"
+                                                }
+                                                span { class: "{status_cls}", "{status}" }
+                                                span { class: "tree-label", "{url}" }
+                                                span { class: "history-time", "{when}" }
+                                            }
+                                            button {
+                                                class: "btn-icon",
+                                                title: "Save to collection",
+                                                onclick: move |_| on_event.call(SidebarEvent::new(
+                                                    SidebarAction::SaveHistoryToCollection,
+                                                    Some(id),
+                                                    active_collection_id,
+                                                )),
+                                                "+"
+                                            }
                                         }
-                                        span { class: "{status_cls}", "{status}" }
-                                        span { class: "tree-label", "{url}" }
-                                        span { class: "history-time", "{when}" }
-                                    }
-                                    button {
-                                        class: "btn-icon",
-                                        title: "Save to collection",
-                                        onclick: move |_| on_event.call(SidebarEvent::new(
-                                            SidebarAction::SaveHistoryToCollection,
-                                            Some(id),
-                                            active_collection_id,
-                                        )),
-                                        "+"
                                     }
                                 }
                             }
