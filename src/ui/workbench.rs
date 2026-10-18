@@ -7,7 +7,7 @@ use crate::core::{
     clone_or_ensure, duplicate_across, ensure_default_environments, export_collection_v21,
     export_environment_json, find_environment, find_request_across, generate_snippet,
     graphql_ws_subscribe, grpc_reflection_list, grpc_unary, import_collection_v21, import_curl,
-    import_environment_json, import_har, import_openapi3, interceptor_limits_blurb,
+    import_environment_texts, import_har, import_openapi3, interceptor_limits_blurb,
     limitations_blurb, link_folder, mcp_call_tool, mcp_list_tools, mqtt_publish, mqtt_subscribe_once,
     move_item_to, open_in_file_manager, pull_workspace, purge_from_trash, push_console, push_history,
     push_workspace, refresh_status, remove_across, rename_across, reorder_before, restore_from_trash,
@@ -428,7 +428,27 @@ pub fn Workbench() -> Element {
             return;
         }
 
-        let req = draft();
+        let mut req = draft();
+
+        // Apply environment-specific overrides from active collection
+        let mut override_vars = Vec::new();
+        if let Some(col_id) = active_collection_id() {
+            if let Some(col) = collections().iter().find(|c| c.id == col_id) {
+                if let Some(_env) = find_environment(&environments(), active_env_id()) {
+                    if let Some(override_) = col.environment_overrides.requests.get(&req.id) {
+                        req = req.apply_env_override(override_);
+                        // Collect override variables to merge into collection vars
+                        override_vars = override_.variables.clone();
+                    }
+                    // Collection-level variable overrides
+                    for kv in &col.environment_overrides.variables {
+                        if kv.enabled && !kv.key.is_empty() {
+                            override_vars.push(kv.clone());
+                        }
+                    }
+                }
+            }
+        }
 
         // gRPC unary via shared Send button / Invoke
         if req.protocol == RequestProtocol::Grpc {
@@ -518,9 +538,23 @@ pub fn Workbench() -> Element {
         if let Some(col_id) = active_collection_id() {
             if let Some(col) = collections().iter().find(|c| c.id == col_id) {
                 ctx.collection = col.variables_map();
+        // Apply collection-level environment overrides
+                if let Some(_env) = find_environment(&environments(), active_env_id()) {
+                    for kv in &col.environment_overrides.variables {
+                        if kv.enabled && !kv.key.is_empty() {
+                            ctx.collection.insert(kv.key.clone(), kv.value.clone());
+                        }
+                    }
+                }
             }
         } else {
             ctx.collection.clear();
+        }
+        // Merge request-level environment override variables
+        for kv in override_vars {
+            if kv.enabled && !kv.key.is_empty() {
+                ctx.collection.insert(kv.key, kv.value);
+            }
         }
         if let Some(env) = find_environment(&environments(), active_env_id()) {
             ctx.environment = env.to_map();
@@ -534,7 +568,15 @@ pub fn Workbench() -> Element {
             collections()
                 .into_iter()
                 .find(|c| c.id == id)
-                .map(|c| c.auth)
+                .map(|c| {
+                    // Check for collection-level auth override for active environment
+                    if let Some(_env) = find_environment(&environments(), active_env_id()) {
+                        if let Some(override_) = c.environment_overrides.auth.as_ref() {
+                            return override_.clone();
+                        }
+                    }
+                    c.auth
+                })
         });
         let mut jar = cookies();
         let settings = app_settings();
@@ -1275,33 +1317,42 @@ pub fn Workbench() -> Element {
                                     is_loading.set(true);
                                     spawn(async move {
                                         let picked = rfd::FileDialog::new()
-                                            .set_title("Import Postman environment")
+                                            .set_title("Import Postman environment(s)")
                                             .add_filter("Environment JSON", &["json"])
-                                            .pick_file();
-                                        let Some(path) = picked else {
+                                            .pick_files();
+                                        let Some(paths) = picked else {
                                             is_loading.set(false);
                                             return;
                                         };
-                                        match std::fs::read_to_string(&path)
-                                            .map_err(|e| e.to_string())
-                                            .and_then(|t| import_environment_json(&t))
-                                        {
-                                            Ok(env) => {
-                                                let name = env.name.clone();
-                                                let id = env.id;
-                                                let mut envs = environments();
-                                                envs.push(env);
-                                                environments.set(envs);
-                                                active_env_id.set(Some(id));
+                                        if paths.is_empty() {
+                                            is_loading.set(false);
+                                            return;
+                                        }
+                                        let texts: Vec<String> = paths
+                                            .iter()
+                                            .filter_map(|p| std::fs::read_to_string(p).ok())
+                                            .collect();
+                                        match import_environment_texts(&texts) {
+                                            Ok(envs) => {
+                                                let count = envs.len();
+                                                let mut store = environments();
+                                                for env in envs {
+                                                    let id = env.id;
+                                                    store.push(env);
+                                                    active_env_id.set(Some(id));
+                                                }
+                                                environments.set(store);
                                                 persist();
-                                                status_msg.set(format!("imported environment “{name}”"));
+                                                status_msg.set(format!(
+                                                    "imported {count} environment(s)"
+                                                ));
                                             }
                                             Err(e) => status_msg.set(format!("env import: {e}")),
                                         }
                                         is_loading.set(false);
                                     });
                                 },
-                                "Import environment…"
+                                "Import environment(s)…"
                             }
                             button {
                                 class: "menu-item",

@@ -179,6 +179,30 @@ pub fn import_environment_json(text: &str) -> Result<Environment, String> {
     Ok(env)
 }
 
+/// Import one or more Postman environment export JSON documents.
+///
+/// Each input is parsed independently; a failure on one file does not abort the
+/// rest (the error is attached to that file's result). Returns the successfully
+/// imported environments in input order.
+pub fn import_environment_texts(texts: &[String]) -> Result<Vec<Environment>, String> {
+    let mut out = Vec::with_capacity(texts.len());
+    let mut first_err: Option<String> = None;
+    for (i, text) in texts.iter().enumerate() {
+        match import_environment_json(text) {
+            Ok(env) => out.push(env),
+            Err(e) => {
+                if first_err.is_none() {
+                    first_err = Some(format!("file {i}: {e}"));
+                }
+            }
+        }
+    }
+    if out.is_empty() {
+        return Err(first_err.unwrap_or_else(|| "no environments in selection".into()));
+    }
+    Ok(out)
+}
+
 /// Export environment as Postman-compatible JSON.
 pub fn export_environment_json(env: &Environment) -> Result<String, String> {
     let values: Vec<serde_json::Value> = env

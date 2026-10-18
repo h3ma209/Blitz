@@ -327,7 +327,9 @@ fn write_collection_split(dir: &Path, col: &Collection) -> Result<(), CloudTreeE
         .collect();
 
     let auth = export_auth_json(&col.auth);
-    let doc = json!({
+    let env_overrides = &col.environment_overrides;
+    let has_env_overrides = !env_overrides.is_empty();
+    let mut doc = json!({
         "info": {
             "name": col.name,
             "description": col.description,
@@ -344,6 +346,11 @@ fn write_collection_split(dir: &Path, col: &Collection) -> Result<(), CloudTreeE
             "split": true,
         }
     });
+    if has_env_overrides {
+        if let Some(obj) = doc.as_object_mut() {
+            obj.insert("environmentOverrides".into(), serde_json::to_value(env_overrides)?);
+        }
+    }
     fs::write(dir.join("collection.json"), serde_json::to_string_pretty(&doc)?)?;
     Ok(())
 }
@@ -611,6 +618,11 @@ fn read_collection_split(dir: &Path) -> Result<Collection, CloudTreeError> {
             auth_type: AuthType::NoAuth,
             ..Default::default()
         };
+        // Import environment overrides if present
+        if let Some(env_overrides) = root.get("environmentOverrides") {
+            col.environment_overrides = serde_json::from_value(env_overrides.clone())
+                .unwrap_or_default();
+        }
         col.items = read_order_items(dir, &item)?;
         Ok(col)
     } else {

@@ -1,9 +1,77 @@
 //! Collection / folder model (postman-collection–inspired; reports/04).
 
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use uuid::Uuid;
 
-use super::request::{AuthConfig, AuthType, HttpMethod, KeyValue, RequestDraft};
+use super::request::{AuthConfig, AuthType, BodyMode, FormDataField, HttpMethod, KeyValue, RequestDraft};
+
+/// Per-environment override for a request.
+/// Allows different auth, URL, headers, body per environment without duplicating collections.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RequestEnvOverride {
+    /// Override the request URL for this environment.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub url: Option<String>,
+    /// Override the HTTP method for this environment.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub method: Option<HttpMethod>,
+    /// Override request headers for this environment (replaces base headers).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub headers: Vec<KeyValue>,
+    /// Override request body mode for this environment.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub body_mode: Option<BodyMode>,
+    /// Override raw body content.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub body_raw: String,
+    /// Override body content type (for raw mode).
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub body_content_type: String,
+    /// Override URL-encoded body.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub body_urlencoded: Vec<KeyValue>,
+    /// Override form-data fields.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub body_formdata: Vec<FormDataField>,
+    /// Override GraphQL query.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub graphql_query: String,
+    /// Override GraphQL variables.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub graphql_variables: String,
+    /// Override binary file path.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub binary_path: String,
+    /// Override auth configuration for this environment.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub auth: Option<AuthConfig>,
+    /// Additional collection variables for this environment (merged into vars.collection).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub variables: Vec<KeyValue>,
+    /// Override pre-request script for this environment.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub pre_request_script: String,
+    /// Override test script for this environment.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub test_script: String,
+}
+
+/// Per-environment overrides for the entire collection.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CollectionEnvOverrides {
+    /// Override collection-level variables per environment.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub variables: Vec<KeyValue>,
+    /// Override collection-level auth per environment.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub auth: Option<AuthConfig>,
+    /// Per-request overrides keyed by request UUID.
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    pub requests: HashMap<Uuid, RequestEnvOverride>,
+}
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Collection {
@@ -23,6 +91,17 @@ pub struct Collection {
     /// Collection variables (synced → VariableContext.collection when active).
     #[serde(default)]
     pub variables: Vec<KeyValue>,
+    /// Per-environment overrides (optional, for team sync without git branch switching).
+    #[serde(default, skip_serializing_if = "CollectionEnvOverrides::is_empty")]
+    pub environment_overrides: CollectionEnvOverrides,
+}
+
+impl CollectionEnvOverrides {
+    pub fn is_empty(&self) -> bool {
+        self.variables.is_empty()
+            && self.auth.is_none()
+            && self.requests.is_empty()
+    }
 }
 
 impl Default for Collection {
@@ -40,6 +119,7 @@ impl Default for Collection {
             pre_request_script: String::new(),
             test_script: String::new(),
             variables: vec![],
+            environment_overrides: CollectionEnvOverrides::default(),
         }
     }
 }
@@ -59,6 +139,7 @@ impl Collection {
             pre_request_script: String::new(),
             test_script: String::new(),
             variables: vec![],
+            environment_overrides: CollectionEnvOverrides::default(),
         }
     }
 

@@ -392,6 +392,63 @@ impl Default for RequestDraft {
     }
 }
 
+impl RequestDraft {
+    /// Apply environment-specific overrides to this request draft.
+    /// Returns a new RequestDraft with overrides applied.
+    pub fn apply_env_override(&self, override_: &crate::core::collection::RequestEnvOverride) -> Self {
+        let mut resolved = self.clone();
+        if let Some(url) = &override_.url {
+            resolved.url = url.clone();
+        }
+        if let Some(method) = override_.method {
+            resolved.method = method;
+        }
+        if !override_.headers.is_empty() {
+            resolved.headers = override_.headers.clone();
+        }
+        if let Some(body_mode) = override_.body_mode {
+            resolved.body_mode = body_mode;
+        }
+        if !override_.body_raw.is_empty() {
+            resolved.body = override_.body_raw.clone();
+        }
+        if !override_.body_content_type.is_empty() {
+            // Content-Type is stored in headers, update or add it
+            let ct_key = "Content-Type";
+            if let Some(h) = resolved.headers.iter_mut().find(|h| h.key.eq_ignore_ascii_case(ct_key)) {
+                h.value = override_.body_content_type.clone();
+            } else {
+                resolved.headers.push(KeyValue::new(ct_key, override_.body_content_type.clone()));
+            }
+        }
+        if !override_.body_urlencoded.is_empty() {
+            resolved.body_urlencoded = override_.body_urlencoded.clone();
+        }
+        if !override_.body_formdata.is_empty() {
+            resolved.body_formdata = override_.body_formdata.clone();
+        }
+        if !override_.graphql_query.is_empty() {
+            resolved.graphql_query = override_.graphql_query.clone();
+        }
+        if !override_.graphql_variables.is_empty() {
+            resolved.graphql_variables = override_.graphql_variables.clone();
+        }
+        if !override_.binary_path.is_empty() {
+            resolved.binary_path = override_.binary_path.clone();
+        }
+        if let Some(auth) = &override_.auth {
+            resolved.auth = auth.clone();
+        }
+        if !override_.pre_request_script.is_empty() {
+            resolved.pre_request_script = override_.pre_request_script.clone();
+        }
+        if !override_.test_script.is_empty() {
+            resolved.test_script = override_.test_script.clone();
+        }
+        resolved
+    }
+}
+
 /// Test assertion result from `pm.test`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TestResult {

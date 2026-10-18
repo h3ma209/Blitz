@@ -224,8 +224,8 @@ pub fn sync_environment(
     let clone = settings.cloud_sync.resolved_clone_path(data_root);
     ensure_clone(remote, &clone).map_err(|e| e.to_string())?;
 
-    let branch = branch_name_for_env(env_name);
-    checkout_env_branch(&clone, &branch).map_err(|e| e.to_string())?;
+    let branch = "main";
+    checkout_env_branch(&clone, branch).map_err(|e| e.to_string())?;
 
     export_to_clone(
         &clone,
@@ -253,7 +253,7 @@ pub fn sync_environment(
     let pull = pull_rebase(&clone).map_err(|e| e.to_string())?;
     if !pull.ok {
         settings.cloud_sync.last_status = pull.message.clone();
-        settings.cloud_sync.last_branch = branch.clone();
+        settings.cloud_sync.last_branch = branch.into();
         return Ok((Vec::new(), Vec::new(), pull));
     }
 
@@ -269,7 +269,7 @@ pub fn sync_environment(
     let push = push_only(&clone).map_err(|e| e.to_string())?;
     let status = status_detail(&clone)
         .map(|s| s.summary_line())
-        .unwrap_or_else(|_| branch.clone());
+        .unwrap_or_else(|_| branch.into());
 
     let message = if push.ok {
         let commit_note = if commit.skipped {
@@ -282,7 +282,7 @@ pub fn sync_environment(
         format!("{} · {}", pull.message, push.message)
     };
 
-    settings.cloud_sync.last_branch = branch.clone();
+    settings.cloud_sync.last_branch = branch.into();
     settings.cloud_sync.last_status = message.clone();
 
     Ok((
@@ -292,13 +292,14 @@ pub fn sync_environment(
             ok: push.ok,
             skipped: false,
             message,
-            branch,
+            branch: branch.into(),
         },
     ))
 }
 
-/// Switch environment branch: commit current tree (no push), checkout target, reload from files.
+/// Switch environment: commit current tree to main branch, reload environment variables from main.
 /// Returns updated collections/environments when reload succeeds.
+/// With per-collection environment overrides, no git branch switching is needed.
 pub fn switch_env_branch(
     data_root: &Path,
     settings: &mut AppSettings,
@@ -322,28 +323,26 @@ pub fn switch_env_branch(
         return Ok((collections.to_vec(), environments.to_vec()));
     }
 
-    // Save current branch state first (commit only — Sync pushes).
-    if !is_no_environment(from_env_name) {
-        let from_branch = branch_name_for_env(from_env_name);
-        let _ = checkout_env_branch(&clone, &from_branch);
-        export_to_clone(
-            &clone,
-            remote,
-            from_env_name,
-            collections,
-            environments,
-            variables,
-        )?;
-        let _ = commit_local_changes(&clone, None);
-    }
+    // Save current state to main branch (commit only — Sync pushes).
+    let main_branch = "main";
+    let _ = checkout_env_branch(&clone, main_branch);
+    export_to_clone(
+        &clone,
+        remote,
+        from_env_name,
+        collections,
+        environments,
+        variables,
+    )?;
+    let _ = commit_local_changes(&clone, None);
 
     if is_no_environment(to_env_name) {
         settings.cloud_sync.last_status = "local (no environment)".into();
         return Ok((collections.to_vec(), environments.to_vec()));
     }
 
-    let to_branch = branch_name_for_env(to_env_name);
-    checkout_env_branch(&clone, &to_branch).map_err(|e| e.to_string())?;
+    // Checkout main branch (contains all collections with environment overrides)
+    checkout_env_branch(&clone, main_branch).map_err(|e| e.to_string())?;
 
     let (mut cols, mut envs) = import_workspace_tree(&clone).map_err(|e| e.to_string())?;
     // Prefer local secret values over redacted git placeholders.
@@ -355,12 +354,11 @@ pub fn switch_env_branch(
         envs = environments.to_vec();
     }
 
-    settings.cloud_sync.last_branch = to_branch;
+    settings.cloud_sync.last_branch = main_branch.into();
     if let Ok(s) = status_summary(&clone) {
         settings.cloud_sync.last_status = s;
     } else {
-        settings.cloud_sync.last_status =
-            format!("checked out {}", branch_name_for_env(to_env_name));
+        settings.cloud_sync.last_status = format!("switched to {}", to_env_name);
     }
 
     Ok((cols, envs))
@@ -486,6 +484,7 @@ pub fn refresh_status(data_root: &Path, settings: &mut AppSettings) -> SyncResul
 }
 
 /// Pull with rebase, then import tree into app (merge local secrets).
+/// Uses main branch which contains all collections with environment overrides.
 pub fn pull_workspace(
     data_root: &Path,
     settings: &mut AppSettings,
@@ -500,6 +499,7 @@ pub fn pull_workspace(
     }
     let clone = settings.cloud_sync.resolved_clone_path(data_root);
     ensure_clone(remote, &clone).map_err(|e| e.to_string())?;
+    checkout_env_branch(&clone, "main").map_err(|e| e.to_string())?;
     let result = pull_rebase(&clone).map_err(|e| e.to_string())?;
     settings.cloud_sync.last_status = result.message.clone();
     if !result.branch.is_empty() {
@@ -563,15 +563,15 @@ pub fn push_workspace(
             branch: String::new(),
         };
     }
-    let branch = branch_name_for_env(active_env_name);
-    if let Err(e) = checkout_env_branch(&clone, &branch) {
+    let branch = "main";
+    if let Err(e) = checkout_env_branch(&clone, branch) {
         let msg = format!("cloud sync checkout: {e}");
         settings.cloud_sync.last_status = msg.clone();
         return SyncResult {
             ok: false,
             skipped: false,
             message: msg,
-            branch,
+            branch: branch.into(),
         };
     }
     if let Err(e) = export_to_clone(
@@ -588,7 +588,7 @@ pub fn push_workspace(
             ok: false,
             skipped: false,
             message: msg,
-            branch,
+            branch: branch.into(),
         };
     }
     let msg = commit_message
@@ -597,13 +597,13 @@ pub fn push_workspace(
         .unwrap_or("");
     match push_commit(&clone, msg) {
         Ok(r) => {
-            settings.cloud_sync.last_branch = branch.clone();
+            settings.cloud_sync.last_branch = branch.into();
             settings.cloud_sync.last_status = r.message.clone();
             SyncResult {
                 ok: r.ok,
                 skipped: r.skipped,
                 message: r.message,
-                branch,
+                branch: branch.into(),
             }
         }
         Err(e) => {
@@ -613,7 +613,7 @@ pub fn push_workspace(
                 ok: false,
                 skipped: false,
                 message: msg,
-                branch,
+                branch: branch.into(),
             }
         }
     }

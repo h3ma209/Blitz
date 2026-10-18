@@ -44,7 +44,8 @@ pub use cookies::{Cookie, CookieJar};
 pub use digest::{build_digest_authorization, digest_uri, DigestChallenge};
 pub use environment::{
     demo_environments, ensure_default_environments, export_environment_json, find_environment,
-    find_environment_by_name, import_environment_json, EnvVar, Environment, DEFAULT_ENV_NAMES,
+    find_environment_by_name, import_environment_json, import_environment_texts, EnvVar,
+    Environment, DEFAULT_ENV_NAMES,
 };
 pub use history::{push_history, HistoryEntry, HISTORY_MAX};
 pub use impex::{
