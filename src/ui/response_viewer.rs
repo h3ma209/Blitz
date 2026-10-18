@@ -2,6 +2,7 @@ use dioxus::prelude::*;
 
 use crate::core::{DefaultResponseTab, ResponseView};
 use super::json_highlight::{render_json_highlight_html, should_highlight_json};
+use super::loading::{LoadingOverlay, SkeletonBars, Spinner};
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum RespTab {
@@ -35,7 +36,11 @@ pub fn ResponseViewer(
     rsx! {
         section { class: "response-pane",
             if sending {
-                p { class: "hint", "Sending…" }
+                div { class: "response-sending",
+                    Spinner { }
+                    p { class: "hint", "Sending…" }
+                    SkeletonBars { n: 4 }
+                }
             } else if let Some(resp) = response.as_ref() {
                 div { class: "response-meta",
                     if let Some(err) = &resp.error {

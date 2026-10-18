@@ -50,6 +50,25 @@ pub struct AppSnapshot {
     /// Soft-deleted collections (Trash).
     #[serde(default)]
     pub trash: Vec<CollectionCompat>,
+    /// Open tabs with unsaved drafts.
+    #[serde(default)]
+    pub open_tabs: Vec<crate::core::RequestDraft>,
+    /// Cached responses per request id for restoration.
+    #[serde(default)]
+    pub responses: std::collections::HashMap<Uuid, crate::core::ResponseView>,
+    /// Panel open states restored on startup.
+    #[serde(default)]
+    pub show_vars: bool,
+    #[serde(default)]
+    pub show_settings: bool,
+    #[serde(default)]
+    pub show_runner: bool,
+    #[serde(default)]
+    pub show_perf: bool,
+    #[serde(default)]
+    pub show_env_manager: bool,
+    #[serde(default)]
+    pub show_col_vars: bool,
 }
 
 /// Alias so serde still deserializes `collections` as our Collection type.
@@ -178,6 +197,7 @@ impl JsonStore {
             active_request_id,
             settings: AppSettings::default(),
             trash: vec![],
+            ..Default::default()
         }
     }
 }

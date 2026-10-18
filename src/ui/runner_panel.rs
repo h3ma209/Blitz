@@ -3,7 +3,7 @@ use uuid::Uuid;
 
 use crate::core::Collection;
 use crate::runtime::RunnerReport;
-use crate::ui::ModalShell;
+use crate::ui::{ModalShell, loading::Spinner};
 
 #[derive(Clone, PartialEq)]
 pub enum RunnerEvent {
@@ -100,8 +100,19 @@ pub fn RunnerPanel(
                                 });
                             }
                         },
-                        if running { "Running…" } else { "Run collection" }
+                        if running {
+                            div { class: "loading-row",
+                                Spinner { }
+                                span { class: "loading-text", "Running…" }
+                            }
+                        } else {
+                            "Run collection"
+                        }
                     }
+                }
+
+                if running && report.is_none() {
+                    div { class: "loading-row", Spinner { } span { class: "loading-text", "Executing iterations…" } }
                 }
 
                 if let Some(rep) = report.as_ref() {

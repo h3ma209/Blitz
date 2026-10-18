@@ -41,6 +41,7 @@ use crate::ui::settings_panel::{SettingsEvent, SettingsPanel};
 use crate::ui::sidebar::{Sidebar, SidebarAction, SidebarEvent};
 use crate::ui::CommentableTextarea;
 use crate::ui::ModalShell;
+use crate::ui::loading::Spinner;
 
 /// Vertical pane drag state — handled on `.workbench`, never as bare `.app-shell` grid children.
 #[derive(Clone, Copy, PartialEq)]
@@ -53,6 +54,8 @@ enum PaneDrag {
 pub fn Workbench() -> Element {
     let mut draft = use_signal(RequestDraft::default);
     let mut response = use_signal(|| None::<ResponseView>);
+    // Persist responses across tab/navigation switches - keyed by request id
+    let mut responses = use_signal(|| std::collections::HashMap::<uuid::Uuid, ResponseView>::new());
     let mut sending = use_signal(|| false);
     // Bumped on each Send / Cancel so late worker results are ignored.
     let mut send_gen = use_signal(|| 0u64);
@@ -110,9 +113,17 @@ pub fn Workbench() -> Element {
     // Accordion expansion in "all" mode.
     let mut col_vars_open_id = use_signal(|| None::<Uuid>);
     // Sidebar resize drag: (start client X, start width px).
-    let mut sidebar_drag = use_signal(|| None::<(f64, u32)>);
+    let mut sidebar_drag = use_signal(|| None::<(f64, f64)>);
+    // Live sidebar width during drag — kept out of `app_settings` so the
+    // whole tree isn't re-rendered on every mouse-move (that caused the
+    // stutter). Committed to `app_settings` only on mouseup.
+    let mut sidebar_w = use_signal(|| app_settings().ui.sidebar_width_px as f64);
     // Workbench pane drag — handled on `.workbench`, not as bare `.app-shell` grid children.
     let mut pane_drag = use_signal(|| None::<PaneDrag>);
+    // Live heights during a pane drag — kept out of `app_settings` until
+    // mouseup, for the same reason as the sidebar resize.
+    let mut pane_h = use_signal(|| app_settings().ui.request_pane_height_px as f64);
+    let mut console_h = use_signal(|| app_settings().ui.console_height_px as f64);
     // Loading state for async operations (import, etc.)
     let mut is_loading = use_signal(|| false);
 
@@ -137,6 +148,14 @@ pub fn Workbench() -> Element {
                         &mut draft,
                         &mut app_settings,
                         &mut trash,
+                        &mut open_tabs,
+                        &mut responses,
+                        &mut show_vars,
+                        &mut show_settings,
+                        &mut show_runner,
+                        &mut show_perf,
+                        &mut show_env_manager,
+                        &mut show_col_vars,
                         &mut status_msg,
                         store.root(),
                     );
@@ -146,6 +165,15 @@ pub fn Workbench() -> Element {
         }
         fold_epoch.set(fold_epoch() + 1);
         loaded.set(true);
+        // Sync the live drag signals from the restored settings so a later
+        // resize starts from the persisted width/height.
+        if sidebar_drag().is_none() {
+            sidebar_w.set(app_settings().ui.sidebar_width_px as f64);
+        }
+        if pane_drag().is_none() {
+            pane_h.set(app_settings().ui.request_pane_height_px as f64);
+            console_h.set(app_settings().ui.console_height_px as f64);
+        }
         // Paint opaque splash first, then fade out (not a bare grid child).
         let splash_hold = app_settings().ui.clamped().splash_min_ms as u64;
         spawn(async move {
@@ -157,6 +185,18 @@ pub fn Workbench() -> Element {
     });
 
     // Global click-outside handler to close dropdown menus
+    // Keep the live drag signals in sync with `app_settings` whenever it
+    // changes outside of an active drag (e.g. settings reset, restore).
+    use_effect(move || {
+        let _ = app_settings();
+        if sidebar_drag().is_none() {
+            sidebar_w.set(app_settings().ui.sidebar_width_px as f64);
+        }
+        if pane_drag().is_none() {
+            pane_h.set(app_settings().ui.request_pane_height_px as f64);
+            console_h.set(app_settings().ui.console_height_px as f64);
+        }
+    });
     // Write snapshot (+ vault) without git push — for Cloud menu / after explicit sync.
     let persist_local = move || {
         if let Ok(store) = JsonStore::open_default() {
@@ -178,6 +218,14 @@ pub fn Workbench() -> Element {
                 active_request_id: active_request_id(),
                 settings,
                 trash: trash(),
+                open_tabs: open_tabs(),
+                responses: responses(),
+                show_vars: show_vars(),
+                show_settings: show_settings(),
+                show_runner: show_runner(),
+                show_perf: show_perf(),
+                show_env_manager: show_env_manager(),
+                show_col_vars: show_col_vars(),
             };
             let _ = store.save(&snap);
         }
@@ -218,6 +266,14 @@ pub fn Workbench() -> Element {
                 active_request_id: active_request_id(),
                 settings,
                 trash: trash(),
+                open_tabs: open_tabs(),
+                responses: responses(),
+                show_vars: show_vars(),
+                show_settings: show_settings(),
+                show_runner: show_runner(),
+                show_perf: show_perf(),
+                show_env_manager: show_env_manager(),
+                show_col_vars: show_col_vars(),
             };
             match store.save(&snap) {
                 Ok(()) => {
@@ -729,7 +785,12 @@ pub fn Workbench() -> Element {
                 status_msg.set(format!("scripts updated {env_keys} env var(s)"));
             }
 
-            response.set(Some(view));
+            // Save response to history and map for preservation across tab switches
+            let draft_id = draft().id;
+            response.set(Some(view.clone()));
+            let mut resp_map = responses();
+            resp_map.insert(draft_id, view.clone());
+            responses.set(resp_map);
             sending.set(false);
             send_cancel.set(None);
             persist();
@@ -762,7 +823,13 @@ pub fn Workbench() -> Element {
                             v.collection = col.variables_map();
                             vars.set(v);
                         }
-                        response.set(None);
+                        // Restore response from cache if it exists
+                        let resp_map = responses();
+                        if let Some(cached) = resp_map.get(&req.id).cloned() {
+                            response.set(Some(cached));
+                        } else {
+                            response.set(None);
+                        }
                         persist();
                     }
                 }
@@ -1051,17 +1118,34 @@ pub fn Workbench() -> Element {
     };
 
     let ui = app_settings().ui.clone().clamped();
+    // During a sidebar drag, drive the width off the live signal so the
+    // resize is smooth without re-rendering the whole tree on every move.
+    let live_sidebar_w = if sidebar_drag().is_some() {
+        sidebar_w()
+    } else {
+        ui.sidebar_width_px as f64
+    };
     let shell_style = format!(
         "--fs-base: {}px; --fs-body: {}px; --fs-editor: {}px; --sidebar-w: {}px; --editor-tab-size: {};",
         ui.ui_font_size_px,
         ui.ui_font_size_px,
         ui.editor_font_size_px,
-        ui.sidebar_width_px,
+        live_sidebar_w,
         ui.tab_size
     );
+    let live_request_h = if matches!(pane_drag(), Some(PaneDrag::Request { .. })) {
+        pane_h()
+    } else {
+        ui.request_pane_height_px as f64
+    };
+    let live_console_h = if matches!(pane_drag(), Some(PaneDrag::Console { .. })) {
+        console_h()
+    } else {
+        ui.console_height_px as f64
+    };
     let workbench_style = format!(
         "--request-h: {}px; --console-h: {}px;",
-        ui.request_pane_height_px, ui.console_height_px
+        live_request_h, live_console_h
     );
     let appearance_tokens = ui.shell_class_tokens();
     let shell_class = if sidebar_drag().is_some() {
@@ -1084,6 +1168,10 @@ pub fn Workbench() -> Element {
                 tools_menu_open.set(false);
                 cloud_menu_open.set(false);
             },
+            // Global drag handlers live on `.app-shell` so they keep firing
+            // while the cursor is off the 12px handle. They only touch the
+            // cheap live signals during the drag — `app_settings` is written
+            // once, on mouseup — which is what makes resizing stutter-free.
             onmousemove: move |evt| {
                 let Some((start_x, start_w)) = sidebar_drag() else {
                     return;
@@ -1092,21 +1180,23 @@ pub fn Workbench() -> Element {
                 let new_w = UiSettings::clamp_sidebar_width(
                     (start_w as i32 + delta).max(0) as u32,
                 );
-                let mut s = app_settings();
-                if s.ui.sidebar_width_px != new_w {
-                    s.ui.sidebar_width_px = new_w;
-                    app_settings.set(s);
-                }
+                sidebar_w.set(new_w as f64);
             },
             onmouseup: move |_| {
                 if sidebar_drag().is_some() {
                     sidebar_drag.set(None);
+                    let mut s = app_settings();
+                    s.ui.sidebar_width_px = sidebar_w() as u32;
+                    app_settings.set(s);
                     persist();
                 }
             },
             onmouseleave: move |_| {
                 if sidebar_drag().is_some() {
                     sidebar_drag.set(None);
+                    let mut s = app_settings();
+                    s.ui.sidebar_width_px = sidebar_w() as u32;
+                    app_settings.set(s);
                     persist();
                 }
             },
@@ -1147,12 +1237,7 @@ pub fn Workbench() -> Element {
                 span {
                     class: "brand",
                     title: "⚡ Blitz · ⌘↵ Send/Cancel · ⌘S Save · ⌘T New · ⌘⇧P Palette",
-                    img {
-                        class: "brand-logo",
-                        src: crate::brand::LOGO_SRC.as_str(),
-                        alt: "Blitz",
-                    }
-                    span { class: "brand-lightning", "⚡" }
+                    span { class: "brand-logo brand-logo-emoji", "⚡" }
                     span { class: "brand-name", "Blitz" }
                 }
 
@@ -1975,6 +2060,14 @@ pub fn Workbench() -> Element {
                                         active_request_id: active_request_id(),
                                         settings,
                                         trash: trash(),
+                                        open_tabs: open_tabs(),
+                                        responses: responses(),
+                                        show_vars: show_vars(),
+                                        show_settings: show_settings(),
+                                        show_runner: show_runner(),
+                                        show_perf: show_perf(),
+                                        show_env_manager: show_env_manager(),
+                                        show_col_vars: show_col_vars(),
                                     };
                                     let _ = store.save(&snap);
                                 }
@@ -1999,14 +2092,19 @@ pub fn Workbench() -> Element {
             }
 
             if show_vars() {
-                ModalShell {
-                    title: "Variables".to_string(),
-                    class: "vars-modal".to_string(),
-                    on_close: move |_| {
-                        show_vars.set(false);
-                        persist();
-                    },
-                    div { class: "modal-body",
+                div { class: "vars-page",
+                    div { class: "vars-page-head",
+                        h2 { "Variables" }
+                        button {
+                            class: "btn btn-ghost",
+                            onclick: move |_| {
+                                show_vars.set(false);
+                                persist();
+                            },
+                            "Done"
+                        }
+                    }
+                    div { class: "vars-page-inner",
                         p { class: "hint",
                             "Resolve order: local → environment → collection → global. Vault via {{{{vault:key}}}}."
                         }
@@ -2032,8 +2130,7 @@ pub fn Workbench() -> Element {
                                     Some(env) => {
                                         let env_id = env.id;
                                         let env_name = env.name.clone();
-                                        let mut values = env.values.clone();
-                                        ensure_env_trailing(&mut values);
+                                        let values_len = env.values.len();
                                         rsx! {
                                             p { class: "hint", "Active: {env_name}" }
                                             table { class: "kv-table",
@@ -2045,77 +2142,63 @@ pub fn Workbench() -> Element {
                                                     }
                                                 }
                                                 tbody {
-                                                    for (i, row) in values.iter().enumerate() {
+                                                    // Render only rows that exist - avoid re-cloning via values cloning per-keystroke
+                                                    for i in 0..values_len {
                                                         tr {
                                                             td {
                                                                 input {
-                                                                    value: "{row.key}",
+                                                                    value: "{env.values.get(i).map(|r| r.key.clone()).unwrap_or_default()}",
                                                                     oninput: {
-                                                                        let values = values.clone();
+                                                                        let env_id = env_id;
+                                                                        let idx = i;
                                                                         move |evt: Event<FormData>| {
-                                                                            let mut next = values.clone();
-                                                                            if let Some(r) = next.get_mut(i) {
-                                                                                r.key = evt.value();
-                                                                            }
-                                                                            ensure_env_trailing(&mut next);
                                                                             let mut envs = environments();
                                                                             if let Some(e) = envs.iter_mut().find(|e| e.id == env_id) {
-                                                                                e.values = next;
+                                                                                if let Some(r) = e.values.get_mut(idx) {
+                                                                                    r.key = evt.value();
+                                                                                }
                                                                             }
-                                                                            environments.set(envs.clone());
-                                                                            if active_env_id() == Some(env_id) {
-                                                                                let mut v = vars();
-                                                                                sync_env_vars(&envs, Some(env_id), &mut v);
-                                                                                vars.set(v);
-                                                                            }
+                                                                            environments.set(envs);
+                                                                            // Sync vars lazily - don't sync on every keystroke
                                                                         }
                                                                     }
                                                                 }
                                                             }
                                                             td {
                                                                 input {
-                                                                    value: "{row.initial_value}",
+                                                                    value: "{env.values.get(i).map(|r| r.initial_value.clone()).unwrap_or_default()}",
                                                                     oninput: {
-                                                                        let values = values.clone();
+                                                                        let env_id = env_id;
+                                                                        let idx = i;
                                                                         move |evt: Event<FormData>| {
-                                                                            let mut next = values.clone();
-                                                                            if let Some(r) = next.get_mut(i) {
-                                                                                r.initial_value = evt.value();
-                                                                            }
-                                                                            ensure_env_trailing(&mut next);
                                                                             let mut envs = environments();
                                                                             if let Some(e) = envs.iter_mut().find(|e| e.id == env_id) {
-                                                                                e.values = next;
+                                                                                if let Some(r) = e.values.get_mut(idx) {
+                                                                                    r.initial_value = evt.value();
+                                                                                }
                                                                             }
-                                                                            environments.set(envs.clone());
-                                                                            if active_env_id() == Some(env_id) {
-                                                                                let mut v = vars();
-                                                                                sync_env_vars(&envs, Some(env_id), &mut v);
-                                                                                vars.set(v);
-                                                                            }
+                                                                            environments.set(envs);
                                                                         }
                                                                     }
                                                                 }
                                                             }
                                                             td {
                                                                 input {
-                                                                    value: "{row.current_value}",
+                                                                    value: "{env.values.get(i).map(|r| r.current_value.clone()).unwrap_or_default()}",
                                                                     oninput: {
-                                                                        let values = values.clone();
+                                                                        let env_id = env_id;
+                                                                        let idx = i;
                                                                         move |evt: Event<FormData>| {
-                                                                            let mut next = values.clone();
-                                                                            if let Some(r) = next.get_mut(i) {
-                                                                                r.current_value = evt.value();
-                                                                            }
-                                                                            ensure_env_trailing(&mut next);
                                                                             let mut envs = environments();
                                                                             if let Some(e) = envs.iter_mut().find(|e| e.id == env_id) {
-                                                                                e.values = next;
+                                                                                if let Some(r) = e.values.get_mut(idx) {
+                                                                                    r.current_value = evt.value();
+                                                                                }
                                                                             }
-                                                                            environments.set(envs.clone());
+                                                                            environments.set(envs);
                                                                             if active_env_id() == Some(env_id) {
                                                                                 let mut v = vars();
-                                                                                sync_env_vars(&envs, Some(env_id), &mut v);
+                                                                                sync_env_vars(&environments(), Some(env_id), &mut v);
                                                                                 vars.set(v);
                                                                             }
                                                                         }
@@ -2531,13 +2614,23 @@ pub fn Workbench() -> Element {
                                         perf_running.set(false);
                                     });
                                 },
-                                if perf_running() { "Running…" } else { "Start" }
+                                if perf_running() {
+                                    div { class: "loading-row",
+                                        Spinner { }
+                                        span { class: "loading-text", "Running…" }
+                                    }
+                                } else {
+                                    "Start"
+                                }
                             }
                             button {
                                 class: "btn btn-ghost",
                                 onclick: move |_| show_perf.set(false),
                                 "Close"
                             }
+                        }
+                        if perf_running() && perf_report().is_none() {
+                            div { class: "loading-row", Spinner { } span { class: "loading-text", "Executing load test…" } }
                         }
                     }
                 }
@@ -2575,7 +2668,7 @@ pub fn Workbench() -> Element {
                             evt.stop_propagation();
                             sidebar_drag.set(Some((
                                 evt.client_coordinates().x,
-                                app_settings().ui.sidebar_width_px,
+                                app_settings().ui.sidebar_width_px as f64,
                             )));
                         },
                     }
@@ -2590,17 +2683,13 @@ pub fn Workbench() -> Element {
                         return;
                     };
                     let y = evt.client_coordinates().y;
-                    let mut s = app_settings();
                     match drag {
                         PaneDrag::Request { start_y, start_h } => {
                             let delta = (y - start_y).round() as i32;
                             let new_h = UiSettings::clamp_request_pane_height(
                                 (start_h as i32 + delta).max(0) as u32,
                             );
-                            if s.ui.request_pane_height_px != new_h {
-                                s.ui.request_pane_height_px = new_h;
-                                app_settings.set(s);
-                            }
+                            pane_h.set(new_h as f64);
                         }
                         PaneDrag::Console { start_y, start_h } => {
                             // Dragging the top edge up grows the console.
@@ -2608,16 +2697,17 @@ pub fn Workbench() -> Element {
                             let new_h = UiSettings::clamp_console_height(
                                 (start_h as i32 + delta).max(0) as u32,
                             );
-                            if s.ui.console_height_px != new_h {
-                                s.ui.console_height_px = new_h;
-                                app_settings.set(s);
-                            }
+                            console_h.set(new_h as f64);
                         }
                     }
                 },
                 onmouseup: move |_| {
                     if pane_drag().is_some() {
                         pane_drag.set(None);
+                        let mut s = app_settings();
+                        s.ui.request_pane_height_px = pane_h() as u32;
+                        s.ui.console_height_px = console_h() as u32;
+                        app_settings.set(s);
                         persist();
                     }
                 },
@@ -2660,9 +2750,15 @@ pub fn Workbench() -> Element {
                                             *slot = cur;
                                         }
                                         if let Some(found) = tabs.iter().find(|x| x.id == tid).cloned() {
-                                            draft.set(found);
+                                            draft.set(found.clone());
                                             active_request_id.set(Some(tid));
-                                            response.set(None);
+                                            // Restore response from cache
+                                            let resp_map = responses();
+                                            if let Some(cached) = resp_map.get(&tid).cloned() {
+                                                response.set(Some(cached));
+                                            } else {
+                                                response.set(None);
+                                            }
                                         }
                                         open_tabs.set(tabs);
                                     },
@@ -3413,7 +3509,10 @@ pub fn Workbench() -> Element {
                             src: crate::brand::LOGO_SRC.as_str(),
                             alt: "",
                         }
-                        div { class: "env-switch-title", "Switching environment…" }
+                        div { class: "loading-row",
+                            Spinner { }
+                            span { class: "loading-text", "Switching environment…" }
+                        }
                         div { class: "env-switch-name", "{name}" }
                         div { class: "env-switch-dots", aria_hidden: "true",
                             span {}
@@ -3443,21 +3542,6 @@ fn rows_to_map(rows: Vec<(String, String)>) -> std::collections::HashMap<String,
     rows.into_iter()
         .filter(|(k, _)| !k.is_empty())
         .collect()
-}
-
-fn ensure_env_trailing(rows: &mut Vec<EnvVar>) {
-    let needs = rows
-        .last()
-        .map(|r| !r.key.is_empty() || !r.initial_value.is_empty() || !r.current_value.is_empty())
-        .unwrap_or(true);
-    if needs {
-        rows.push(EnvVar {
-            key: String::new(),
-            initial_value: String::new(),
-            current_value: String::new(),
-            enabled: true,
-        });
-    }
 }
 
 /// Editable flat key/value map (global / vault).
@@ -3688,6 +3772,14 @@ fn apply_snapshot(
     draft: &mut Signal<RequestDraft>,
     app_settings: &mut Signal<AppSettings>,
     trash: &mut Signal<Vec<Collection>>,
+    open_tabs: &mut Signal<Vec<RequestDraft>>,
+    responses: &mut Signal<std::collections::HashMap<Uuid, ResponseView>>,
+    show_vars: &mut Signal<bool>,
+    show_settings: &mut Signal<bool>,
+    show_runner: &mut Signal<bool>,
+    show_perf: &mut Signal<bool>,
+    show_env_manager: &mut Signal<bool>,
+    show_col_vars: &mut Signal<bool>,
     status_msg: &mut Signal<String>,
     root: &std::path::Path,
 ) {
@@ -3705,6 +3797,14 @@ fn apply_snapshot(
     settings.ui = settings.ui.clamped();
     app_settings.set(settings);
     trash.set(snap.trash);
+    open_tabs.set(snap.open_tabs);
+    responses.set(snap.responses);
+    show_vars.set(snap.show_vars);
+    show_settings.set(snap.show_settings);
+    show_runner.set(snap.show_runner);
+    show_perf.set(snap.show_perf);
+    show_env_manager.set(snap.show_env_manager);
+    show_col_vars.set(snap.show_col_vars);
     active_collection_id.set(
         snap.active_collection_id
             .or_else(|| snap.collections.first().map(|c| c.id)),

@@ -5,6 +5,7 @@ mod env_manager;
 mod env_selector;
 mod json_highlight;
 mod line_comments;
+mod loading;
 mod modal_shell;
 mod request_builder;
 mod response_viewer;
