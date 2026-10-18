@@ -1,6 +1,10 @@
 //! Postman Runtime default / system headers + JSON body prep.
 //! Observed in Postman.app ASAR (`postman-runtime`): User-Agent PostmanRuntime/*,
-//! Accept */*, Accept-Encoding, Cache-Control, Postman-Token, Connection.
+//! Accept */*, Cache-Control, Postman-Token, Connection.
+//!
+//! Deliberately omits `Accept-Encoding`: setting it manually disables reqwest's
+//! auto-decompress, which leaves gzip/br bodies as binary garbage in the UI.
+//! With reqwest `gzip`/`deflate`/`brotli` features, the client negotiates encodings.
 
 use uuid::Uuid;
 
@@ -11,7 +15,6 @@ pub fn inject_postman_system_headers(draft: &mut RequestDraft, log: &mut Vec<Str
     let defaults = [
         ("User-Agent", "PostmanRuntime/7.43.0"),
         ("Accept", "*/*"),
-        ("Accept-Encoding", "gzip, deflate, br"),
         ("Connection", "keep-alive"),
         ("Cache-Control", "no-cache"),
     ];
@@ -268,7 +271,10 @@ mod tests {
         assert!(has_header(&d, "Accept"));
         assert!(has_header(&d, "Cache-Control"));
         assert!(has_header(&d, "Postman-Token"));
-        assert!(has_header(&d, "Accept-Encoding"));
+        assert!(
+            !has_header(&d, "Accept-Encoding"),
+            "Accept-Encoding must not be injected (breaks reqwest decompress)"
+        );
         // Don't override
         d.headers
             .iter_mut()

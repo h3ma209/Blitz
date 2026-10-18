@@ -42,10 +42,12 @@ pub fn EnvManager(
                         "+"
                     }
                     button {
-                        class: "btn-icon",
+                        class: "modal-close",
+                        r#type: "button",
                         title: "Close",
+                        aria_label: "Close",
                         onclick: move |_| on_event.call(EnvManagerEvent::Close),
-                        "×"
+                        "✕"
                     }
                 }
             }

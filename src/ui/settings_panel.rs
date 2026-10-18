@@ -1,9 +1,10 @@
 use dioxus::prelude::*;
 
 use crate::core::{
-    AppSettings, ClientCertSettings, CloudSyncSettings, ProxyMode, ProxySettings, UiSettings,
-    DEFAULT_CLOUD_REMOTE,
+    AccentIntensity, AppSettings, ClientCertSettings, CloudSyncSettings, DefaultResponseTab,
+    ProxyMode, ProxySettings, UiDensity, UiSettings, DEFAULT_CLOUD_REMOTE,
 };
+use crate::ui::ModalShell;
 
 #[derive(Clone, PartialEq)]
 pub enum SettingsEvent {
@@ -27,12 +28,21 @@ pub fn SettingsPanel(
     let mut sidebar_w = use_signal(|| settings.ui.sidebar_width_px);
     let mut request_h = use_signal(|| settings.ui.request_pane_height_px);
     let mut console_h = use_signal(|| settings.ui.console_height_px);
+    let mut density = use_signal(|| settings.ui.density);
+    let mut wrap_editor = use_signal(|| settings.ui.wrap_editor_text);
+    let mut tab_size = use_signal(|| settings.ui.tab_size);
+    let mut accent = use_signal(|| settings.ui.accent_intensity);
+    let mut reduce_motion = use_signal(|| settings.ui.reduce_motion);
+    let mut show_status = use_signal(|| settings.ui.show_status_bar);
+    let mut default_resp_tab = use_signal(|| settings.ui.default_response_tab);
+    let mut splash_ms = use_signal(|| settings.ui.splash_min_ms);
     let mut cloud_enabled = use_signal(|| settings.cloud_sync.enabled);
     let mut cloud_remote = use_signal(|| settings.cloud_sync.remote_url.clone());
     let mut cloud_clone = use_signal(|| settings.cloud_sync.clone_path.clone());
     let mut cloud_commit_msg = use_signal(|| settings.cloud_sync.commit_message.clone());
     let cloud_last_status = settings.cloud_sync.last_status.clone();
     let cloud_last_branch = settings.cloud_sync.last_branch.clone();
+    let history_collapsed = settings.ui.history_collapsed;
     let default_clone_hint = format!("{data_root}/cloud");
 
     let mode_str = match proxy_mode() {
@@ -40,11 +50,28 @@ pub fn SettingsPanel(
         ProxyMode::None => "none",
         ProxyMode::Custom => "custom",
     };
+    let density_str = match density() {
+        UiDensity::Comfortable => "comfortable",
+        UiDensity::Compact => "compact",
+    };
+    let accent_str = match accent() {
+        AccentIntensity::Soft => "soft",
+        AccentIntensity::Normal => "normal",
+        AccentIntensity::Strong => "strong",
+    };
+    let resp_tab_str = match default_resp_tab() {
+        DefaultResponseTab::Pretty => "pretty",
+        DefaultResponseTab::Raw => "raw",
+        DefaultResponseTab::Headers => "headers",
+    };
+    let tab_size_str = if tab_size() >= 4 { "4" } else { "2" };
 
     rsx! {
-        div { class: "modal-backdrop",
-            div { class: "modal settings-modal",
-                h3 { "Settings" }
+        ModalShell {
+            title: "Settings".to_string(),
+            class: "settings-modal".to_string(),
+            on_close: move |_| on_event.call(SettingsEvent::Close),
+            div { class: "modal-body",
                 p { class: "hint", "Proxy, certificates, appearance, cloud sync. Data: {data_root}" }
 
                 h4 { "Appearance" }
@@ -119,6 +146,104 @@ pub fn SettingsPanel(
                             },
                         }
                     }
+                    label { class: "settings-row",
+                        span { "Density" }
+                        select {
+                            value: "{density_str}",
+                            onchange: move |evt: Event<FormData>| {
+                                density.set(match evt.value().as_str() {
+                                    "compact" => UiDensity::Compact,
+                                    _ => UiDensity::Comfortable,
+                                });
+                            },
+                            option { value: "comfortable", "Comfortable" }
+                            option { value: "compact", "Compact" }
+                        }
+                    }
+                    label { class: "checkbox-row",
+                        input {
+                            r#type: "checkbox",
+                            checked: wrap_editor(),
+                            onchange: move |evt| wrap_editor.set(evt.checked()),
+                        }
+                        " Wrap editor text"
+                    }
+                    label { class: "settings-row",
+                        span { "Tab size" }
+                        select {
+                            value: "{tab_size_str}",
+                            onchange: move |evt: Event<FormData>| {
+                                tab_size.set(UiSettings::clamp_tab_size(
+                                    evt.value().parse().unwrap_or(2),
+                                ));
+                            },
+                            option { value: "2", "2 spaces" }
+                            option { value: "4", "4 spaces" }
+                        }
+                    }
+                    label { class: "settings-row",
+                        span { "Accent intensity" }
+                        select {
+                            value: "{accent_str}",
+                            onchange: move |evt: Event<FormData>| {
+                                accent.set(match evt.value().as_str() {
+                                    "soft" => AccentIntensity::Soft,
+                                    "strong" => AccentIntensity::Strong,
+                                    _ => AccentIntensity::Normal,
+                                });
+                            },
+                            option { value: "soft", "Soft" }
+                            option { value: "normal", "Normal" }
+                            option { value: "strong", "Strong" }
+                        }
+                    }
+                    label { class: "checkbox-row",
+                        input {
+                            r#type: "checkbox",
+                            checked: reduce_motion(),
+                            onchange: move |evt| reduce_motion.set(evt.checked()),
+                        }
+                        " Reduce motion"
+                    }
+                    label { class: "checkbox-row",
+                        input {
+                            r#type: "checkbox",
+                            checked: show_status(),
+                            onchange: move |evt| show_status.set(evt.checked()),
+                        }
+                        " Show status bar"
+                    }
+                    label { class: "settings-row",
+                        span { "Default response tab" }
+                        select {
+                            value: "{resp_tab_str}",
+                            onchange: move |evt: Event<FormData>| {
+                                default_resp_tab.set(match evt.value().as_str() {
+                                    "raw" => DefaultResponseTab::Raw,
+                                    "headers" => DefaultResponseTab::Headers,
+                                    _ => DefaultResponseTab::Pretty,
+                                });
+                            },
+                            option { value: "pretty", "Pretty" }
+                            option { value: "raw", "Raw" }
+                            option { value: "headers", "Headers" }
+                        }
+                    }
+                    label { class: "settings-row",
+                        span { "Splash min duration ({splash_ms()}ms)" }
+                        input {
+                            r#type: "range",
+                            min: "{UiSettings::SPLASH_MIN_MS}",
+                            max: "{UiSettings::SPLASH_MAX_MS}",
+                            step: "20",
+                            value: "{splash_ms()}",
+                            oninput: move |evt| {
+                                if let Ok(v) = evt.value().parse::<u32>() {
+                                    splash_ms.set(UiSettings::clamp_splash_min_ms(v));
+                                }
+                            },
+                        }
+                    }
                     button {
                         class: "btn btn-ghost",
                         onclick: move |_| {
@@ -128,6 +253,14 @@ pub fn SettingsPanel(
                             sidebar_w.set(d.sidebar_width_px);
                             request_h.set(d.request_pane_height_px);
                             console_h.set(d.console_height_px);
+                            density.set(d.density);
+                            wrap_editor.set(d.wrap_editor_text);
+                            tab_size.set(d.tab_size);
+                            accent.set(d.accent_intensity);
+                            reduce_motion.set(d.reduce_motion);
+                            show_status.set(d.show_status_bar);
+                            default_resp_tab.set(d.default_response_tab);
+                            splash_ms.set(d.splash_min_ms);
                         },
                         "Reset appearance"
                     }
@@ -228,54 +361,62 @@ pub fn SettingsPanel(
                         "Branch: {cloud_last_branch} · {cloud_last_status}"
                     }
                 }
-
-                div { class: "modal-actions",
-                    button {
-                        class: "btn btn-ghost",
-                        onclick: move |_| on_event.call(SettingsEvent::Close),
-                        "Cancel"
-                    }
-                    button {
-                        class: "btn btn-send",
-                        onclick: move |_| {
-                            let remote = {
-                                let r = cloud_remote().trim().to_string();
-                                if r.is_empty() {
-                                    DEFAULT_CLOUD_REMOTE.to_string()
-                                } else {
-                                    r
-                                }
-                            };
-                            on_event.call(SettingsEvent::Save(AppSettings {
-                                proxy: ProxySettings {
-                                    mode: proxy_mode(),
-                                    host_port: host_port(),
-                                },
-                                client_cert: ClientCertSettings {
-                                    cert_path: cert_path(),
-                                    passphrase: cert_pass(),
-                                    enabled: cert_enabled(),
-                                },
-                                ui: UiSettings {
-                                    ui_font_size_px: ui_font(),
-                                    editor_font_size_px: editor_font(),
-                                    sidebar_width_px: sidebar_w(),
-                                    request_pane_height_px: request_h(),
-                                    console_height_px: console_h(),
-                                }
-                                .clamped(),
-                                cloud_sync: CloudSyncSettings {
-                                    enabled: cloud_enabled(),
-                                    remote_url: remote,
-                                    clone_path: cloud_clone().trim().to_string(),
-                                    commit_message: cloud_commit_msg().trim().to_string(),
-                                    last_status: cloud_last_status.clone(),
-                                    last_branch: cloud_last_branch.clone(),
-                                },
-                            }));
-                        },
-                        "Save"
-                    }
+            }
+            div { class: "modal-actions",
+                button {
+                    class: "btn btn-ghost",
+                    onclick: move |_| on_event.call(SettingsEvent::Close),
+                    "Cancel"
+                }
+                button {
+                    class: "btn btn-send",
+                    onclick: move |_| {
+                        let remote = {
+                            let r = cloud_remote().trim().to_string();
+                            if r.is_empty() {
+                                DEFAULT_CLOUD_REMOTE.to_string()
+                            } else {
+                                r
+                            }
+                        };
+                        on_event.call(SettingsEvent::Save(AppSettings {
+                            proxy: ProxySettings {
+                                mode: proxy_mode(),
+                                host_port: host_port(),
+                            },
+                            client_cert: ClientCertSettings {
+                                cert_path: cert_path(),
+                                passphrase: cert_pass(),
+                                enabled: cert_enabled(),
+                            },
+                            ui: UiSettings {
+                                ui_font_size_px: ui_font(),
+                                editor_font_size_px: editor_font(),
+                                sidebar_width_px: sidebar_w(),
+                                request_pane_height_px: request_h(),
+                                console_height_px: console_h(),
+                                density: density(),
+                                wrap_editor_text: wrap_editor(),
+                                tab_size: tab_size(),
+                                accent_intensity: accent(),
+                                reduce_motion: reduce_motion(),
+                                show_status_bar: show_status(),
+                                default_response_tab: default_resp_tab(),
+                                splash_min_ms: splash_ms(),
+                                history_collapsed,
+                            }
+                            .clamped(),
+                            cloud_sync: CloudSyncSettings {
+                                enabled: cloud_enabled(),
+                                remote_url: remote,
+                                clone_path: cloud_clone().trim().to_string(),
+                                commit_message: cloud_commit_msg().trim().to_string(),
+                                last_status: cloud_last_status.clone(),
+                                last_branch: cloud_last_branch.clone(),
+                            },
+                        }));
+                    },
+                    "Save"
                 }
             }
         }

@@ -80,8 +80,8 @@ pub use cloud_sync::{
     switch_env_branch, sync_environment, sync_on_save, SyncResult,
 };
 pub use settings::{
-    AppSettings, ClientCertSettings, CloudSyncSettings, ProxyMode, ProxySettings, RequestSettings,
-    UiSettings, DEFAULT_CLOUD_REMOTE,
+    AccentIntensity, AppSettings, ClientCertSettings, CloudSyncSettings, DefaultResponseTab,
+    ProxyMode, ProxySettings, RequestSettings, UiDensity, UiSettings, DEFAULT_CLOUD_REMOTE,
 };
 pub use variables::{
     apply_collection_map, apply_collection_var_edit, apply_env_var_edit, apply_environment_map,

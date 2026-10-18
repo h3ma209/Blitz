@@ -73,6 +73,55 @@ fn default_console_height_px() -> u32 {
     148
 }
 
+fn default_tab_size() -> u32 {
+    2
+}
+
+fn default_wrap_editor_text() -> bool {
+    true
+}
+
+fn default_show_status_bar() -> bool {
+    true
+}
+
+fn default_splash_min_ms() -> u32 {
+    80
+}
+
+fn default_history_collapsed() -> bool {
+    true
+}
+
+/// Padding density for workbench chrome.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum UiDensity {
+    #[default]
+    Comfortable,
+    Compact,
+}
+
+/// Accent soft-fill strength (Spotify green stays; only intensity scales).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum AccentIntensity {
+    Soft,
+    #[default]
+    Normal,
+    Strong,
+}
+
+/// Default response pane tab after Send.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum DefaultResponseTab {
+    #[default]
+    Pretty,
+    Raw,
+    Headers,
+}
+
 /// Font sizes + shell layout prefs (persisted in snapshot).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct UiSettings {
@@ -91,6 +140,33 @@ pub struct UiSettings {
     /// Console body height in px when open (`--console-h`).
     #[serde(default = "default_console_height_px")]
     pub console_height_px: u32,
+    /// Compact vs comfortable padding (`--space-*` scale).
+    #[serde(default)]
+    pub density: UiDensity,
+    /// Soft-wrap body / script editors and response pre.
+    #[serde(default = "default_wrap_editor_text")]
+    pub wrap_editor_text: bool,
+    /// CSS `tab-size` on editors (2 or 4).
+    #[serde(default = "default_tab_size")]
+    pub tab_size: u32,
+    /// Accent soft-fill intensity class on `.app-shell`.
+    #[serde(default)]
+    pub accent_intensity: AccentIntensity,
+    /// Disable UI animations / transitions.
+    #[serde(default)]
+    pub reduce_motion: bool,
+    /// Show workbench status line when there is status / mock info.
+    #[serde(default = "default_show_status_bar")]
+    pub show_status_bar: bool,
+    /// Initial response pane tab after a successful send view mount.
+    #[serde(default)]
+    pub default_response_tab: DefaultResponseTab,
+    /// Minimum splash hold before fade starts (ms).
+    #[serde(default = "default_splash_min_ms")]
+    pub splash_min_ms: u32,
+    /// Sidebar History section collapsed (default on — Collections keep vertical space).
+    #[serde(default = "default_history_collapsed")]
+    pub history_collapsed: bool,
 }
 
 impl Default for UiSettings {
@@ -101,6 +177,15 @@ impl Default for UiSettings {
             sidebar_width_px: default_sidebar_width_px(),
             request_pane_height_px: default_request_pane_height_px(),
             console_height_px: default_console_height_px(),
+            density: UiDensity::default(),
+            wrap_editor_text: default_wrap_editor_text(),
+            tab_size: default_tab_size(),
+            accent_intensity: AccentIntensity::default(),
+            reduce_motion: false,
+            show_status_bar: default_show_status_bar(),
+            default_response_tab: DefaultResponseTab::default(),
+            splash_min_ms: default_splash_min_ms(),
+            history_collapsed: default_history_collapsed(),
         }
     }
 }
@@ -114,6 +199,8 @@ impl UiSettings {
     pub const REQUEST_PANE_MAX_PX: u32 = 560;
     pub const CONSOLE_MIN_PX: u32 = 72;
     pub const CONSOLE_MAX_PX: u32 = 420;
+    pub const SPLASH_MIN_MS: u32 = 0;
+    pub const SPLASH_MAX_MS: u32 = 2_000;
 
     pub fn clamp_font_size(px: u32) -> u32 {
         px.clamp(Self::FONT_MIN_PX, Self::FONT_MAX_PX)
@@ -131,6 +218,18 @@ impl UiSettings {
         px.clamp(Self::CONSOLE_MIN_PX, Self::CONSOLE_MAX_PX)
     }
 
+    pub fn clamp_tab_size(n: u32) -> u32 {
+        if n >= 4 {
+            4
+        } else {
+            2
+        }
+    }
+
+    pub fn clamp_splash_min_ms(ms: u32) -> u32 {
+        ms.clamp(Self::SPLASH_MIN_MS, Self::SPLASH_MAX_MS)
+    }
+
     /// Normalize all fields into allowed ranges.
     pub fn clamped(mut self) -> Self {
         self.ui_font_size_px = Self::clamp_font_size(self.ui_font_size_px);
@@ -138,7 +237,36 @@ impl UiSettings {
         self.sidebar_width_px = Self::clamp_sidebar_width(self.sidebar_width_px);
         self.request_pane_height_px = Self::clamp_request_pane_height(self.request_pane_height_px);
         self.console_height_px = Self::clamp_console_height(self.console_height_px);
+        self.tab_size = Self::clamp_tab_size(self.tab_size);
+        self.splash_min_ms = Self::clamp_splash_min_ms(self.splash_min_ms);
         self
+    }
+
+    /// Extra class tokens for `.app-shell` (density / wrap / accent / motion).
+    pub fn shell_class_tokens(&self) -> String {
+        let density = match self.density {
+            UiDensity::Comfortable => "density-comfortable",
+            UiDensity::Compact => "density-compact",
+        };
+        let wrap = if self.wrap_editor_text {
+            "editor-wrap"
+        } else {
+            "editor-nowrap"
+        };
+        let accent = match self.accent_intensity {
+            AccentIntensity::Soft => "accent-soft",
+            AccentIntensity::Normal => "accent-normal",
+            AccentIntensity::Strong => "accent-strong",
+        };
+        let motion = if self.reduce_motion {
+            "reduce-motion"
+        } else {
+            ""
+        };
+        format!("{density} {wrap} {accent} {motion}")
+            .split_whitespace()
+            .collect::<Vec<_>>()
+            .join(" ")
     }
 }
 
@@ -244,6 +372,15 @@ mod tests {
         assert_eq!(ui.sidebar_width_px, 268);
         assert_eq!(ui.request_pane_height_px, 220);
         assert_eq!(ui.console_height_px, 148);
+        assert_eq!(ui.density, UiDensity::Comfortable);
+        assert!(ui.wrap_editor_text);
+        assert_eq!(ui.tab_size, 2);
+        assert_eq!(ui.accent_intensity, AccentIntensity::Normal);
+        assert!(!ui.reduce_motion);
+        assert!(ui.show_status_bar);
+        assert_eq!(ui.default_response_tab, DefaultResponseTab::Pretty);
+        assert_eq!(ui.splash_min_ms, 80);
+        assert!(ui.history_collapsed);
         assert_eq!(UiSettings::clamp_sidebar_width(100), 180);
         assert_eq!(UiSettings::clamp_sidebar_width(999), 480);
         assert_eq!(UiSettings::clamp_font_size(8), 10);
@@ -252,6 +389,32 @@ mod tests {
         assert_eq!(UiSettings::clamp_request_pane_height(900), 560);
         assert_eq!(UiSettings::clamp_console_height(10), 72);
         assert_eq!(UiSettings::clamp_console_height(900), 420);
+        assert_eq!(UiSettings::clamp_tab_size(1), 2);
+        assert_eq!(UiSettings::clamp_tab_size(3), 2);
+        assert_eq!(UiSettings::clamp_tab_size(4), 4);
+        assert_eq!(UiSettings::clamp_tab_size(8), 4);
+        assert_eq!(UiSettings::clamp_splash_min_ms(9_999), 2_000);
+        let tokens = ui.shell_class_tokens();
+        assert!(tokens.contains("density-comfortable"));
+        assert!(tokens.contains("editor-wrap"));
+        assert!(tokens.contains("accent-normal"));
+        assert!(!tokens.contains("reduce-motion"));
+    }
+
+    #[test]
+    fn ui_shell_class_tokens_compact_motion() {
+        let ui = UiSettings {
+            density: UiDensity::Compact,
+            wrap_editor_text: false,
+            accent_intensity: AccentIntensity::Strong,
+            reduce_motion: true,
+            ..Default::default()
+        };
+        let tokens = ui.shell_class_tokens();
+        assert!(tokens.contains("density-compact"));
+        assert!(tokens.contains("editor-nowrap"));
+        assert!(tokens.contains("accent-strong"));
+        assert!(tokens.contains("reduce-motion"));
     }
 
     #[test]

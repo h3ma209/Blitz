@@ -22,6 +22,7 @@ use crate::core::{
     SandboxExtras, SandboxResponse, TestResult, TimingBreakdown, VariableContext,
     AppSettings, ClientCertSettings, ProxyMode, ProxySettings,
 };
+use crate::runtime::decode_body::decode_response_body;
 use crate::runtime::postman_defaults::{
     inject_postman_system_headers, prepare_raw_body_for_send,
 };
@@ -1066,10 +1067,11 @@ pub fn send_request_with_options(
         }
     }
 
-    let body = blocking_http_cancelable(&opts.cancel, move || {
-        Ok(response.text().unwrap_or_default())
+    let raw_bytes = blocking_http_cancelable(&opts.cancel, move || {
+        Ok(response.bytes().unwrap_or_default().to_vec())
     })?;
     check_cancelled(&opts.cancel)?;
+    let body = decode_response_body(&raw_bytes, &resp_headers, &mut log);
     let download_ms = started.elapsed().as_millis().saturating_sub(ttfb_ms);
     log.push(format!("http: {status} in {elapsed_ms}ms"));
     console.push(format!(

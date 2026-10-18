@@ -3,7 +3,9 @@
 mod console_panel;
 mod env_manager;
 mod env_selector;
+mod json_highlight;
 mod line_comments;
+mod modal_shell;
 mod request_builder;
 mod response_viewer;
 mod runner_panel;
@@ -11,6 +13,8 @@ mod settings_panel;
 mod sidebar;
 mod var_hover;
 mod workbench;
+
+pub(crate) use modal_shell::ModalShell;
 
 pub(crate) use line_comments::CommentableTextarea;
 pub use workbench::Workbench;
