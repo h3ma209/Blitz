@@ -53,7 +53,7 @@ pub fn EnvSelector(
                     menu_open.set(false);
                     on_manage.call(());
                 },
-                span { class: "action-icon action-icon-settings", aria_hidden: "true" }
+                span { class: "action-icon action-icon-edit", aria_hidden: "true" }
             }
 
             if menu_open() {

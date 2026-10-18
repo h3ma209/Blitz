@@ -4,14 +4,13 @@ use crate::core::{
     AccentIntensity, AppSettings, ClientCertSettings, CloudSyncSettings, DefaultResponseTab,
     ProxyMode, ProxySettings, UiDensity, UiSettings, UiTheme, DEFAULT_CLOUD_REMOTE,
 };
-use crate::ui::ModalShell;
-
 #[derive(Clone, PartialEq)]
 pub enum SettingsEvent {
     Close,
     Save(AppSettings),
 }
 
+/// Full-page settings editor (proxy, certs, appearance, cloud sync).
 #[component]
 pub fn SettingsPanel(
     settings: AppSettings,
@@ -74,11 +73,19 @@ pub fn SettingsPanel(
     let tab_size_str = if tab_size() >= 4 { "4" } else { "2" };
 
     rsx! {
-        ModalShell {
-            title: "Settings".to_string(),
-            class: "settings-modal".to_string(),
-            on_close: move |_| on_event.call(SettingsEvent::Close),
-            div { class: "modal-body",
+        div { class: "settings-page",
+            div { class: "settings-page-head",
+                h3 { "Settings" }
+                button {
+                    class: "modal-close",
+                    r#type: "button",
+                    title: "Back to workbench",
+                    aria_label: "Close settings",
+                    onclick: move |_| on_event.call(SettingsEvent::Close),
+                    "✕"
+                }
+            }
+            div { class: "settings-page-body",
                 p { class: "hint", "Proxy, certificates, appearance, cloud sync. Data: {data_root}" }
 
                 h4 { "Appearance" }
@@ -388,7 +395,7 @@ pub fn SettingsPanel(
                     }
                 }
             }
-            div { class: "modal-actions",
+            div { class: "settings-page-actions",
                 button {
                     class: "btn btn-ghost",
                     onclick: move |_| on_event.call(SettingsEvent::Close),

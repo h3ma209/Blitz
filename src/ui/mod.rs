@@ -15,6 +15,7 @@ mod request_builder;
 mod response_viewer;
 mod runner_panel;
 mod settings_panel;
+mod theme_selector;
 mod sidebar;
 mod sidebar_shortcuts;
 mod var_hover;

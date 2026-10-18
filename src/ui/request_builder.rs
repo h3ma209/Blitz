@@ -1415,13 +1415,13 @@ fn ScriptsEditor(
 ) -> Element {
     rsx! {
         p { class: "hint",
-            "Supported: pm.variables|environment|collectionVariables|globals (.get/set/unset/has/toObject/clear, replaceIn), vault, cookies (get/set/clear), request (url.getPath, method, headers.upsert, body), response (code/status/responseTime/json/text/headers, to.have.status/jsonBody), test/expect (equal/eql/include/ok/above/below/a/property/not), sendRequest, execution, info, visualizer, console.*, CryptoJS.SHA256/HmacSHA256. require: crypto-js only. No async tests / npm / uvm."
+            "Supported: epm.variables|environment|collectionVariables|globals (.get/set/unset/has/toObject/clear, replaceIn), vault, cookies (get/set/clear), request (url.getPath, method, headers.upsert, body), response (code/status/responseTime/json/text/headers, to.have.status/jsonBody), test/expect (equal/eql/include/ok/above/below/a/property/not), sendRequest, execution, info, visualizer, console.*, CryptoJS.SHA256/HmacSHA256. require: crypto-js only. No async tests / npm / uvm."
         }
         label { "Pre-request" }
         ScriptCodeEditor {
             class: "body-editor".to_string(),
             value: pre.clone(),
-            placeholder: "pm.environment.set(\"baseUrl\", \"https://httpbin.org\");\nconsole.log(\"pre\");".to_string(),
+            placeholder: "epm.environment.set(\"baseUrl\", \"https://httpbin.org\");\nconsole.log(\"pre\");".to_string(),
             vars: vars.clone(),
             on_change: {
                 let test = test.clone();
@@ -1441,7 +1441,7 @@ fn ScriptsEditor(
                             pre.clone(),
                             append_script_snippet(
                                 &test,
-                                "pm.test(\"Status 200\", function () {\n  pm.response.to.have.status(200);\n});\n",
+                                "epm.test(\"Status 200\", function () {\n  epm.response.to.have.status(200);\n});\n",
                             ),
                         ))
                     }
@@ -1459,7 +1459,7 @@ fn ScriptsEditor(
                             pre.clone(),
                             append_script_snippet(
                                 &test,
-                                "pm.test(\"Save token\", function () {\n  var t = pm.response.json().data.token;\n  pm.environment.set(\"token\", t);\n  pm.collectionVariables.set(\"token\", t);\n});\n",
+                                "epm.test(\"Save token\", function () {\n  var t = epm.response.json().data.token;\n  epm.environment.set(\"token\", t);\n  epm.collectionVariables.set(\"token\", t);\n});\n",
                             ),
                         ))
                     }
@@ -1477,7 +1477,7 @@ fn ScriptsEditor(
                             pre.clone(),
                             append_script_snippet(
                                 &test,
-                                "pm.test(\"JSON ok\", function () {\n  pm.response.to.have.jsonBody();\n  pm.expect(pm.response.json()).to.be.ok;\n});\n",
+                                "epm.test(\"JSON ok\", function () {\n  epm.response.to.have.jsonBody();\n  epm.expect(epm.response.json()).to.be.ok;\n});\n",
                             ),
                         ))
                     }
@@ -1488,7 +1488,7 @@ fn ScriptsEditor(
         ScriptCodeEditor {
             class: "body-editor".to_string(),
             value: test.clone(),
-            placeholder: "pm.test(\"status ok\", function () {{\n  pm.expect(pm.response.code).to.equal(200);\n}});".to_string(),
+            placeholder: "epm.test(\"status ok\", function () {{\n  epm.expect(epm.response.code).to.equal(200);\n}});".to_string(),
             vars: vars.clone(),
             on_change: {
                 let pre = pre.clone();

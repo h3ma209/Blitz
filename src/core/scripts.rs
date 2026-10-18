@@ -1,6 +1,6 @@
 //! Script execution: boa JS sandbox (preferred) + legacy line helpers fallback.
 //!
-//! See `runtime/sandbox.rs` for supported `pm.*` surface.
+//! See `runtime/sandbox.rs` for supported `epm.*` surface.
 
 use regex::Regex;
 use std::sync::OnceLock;
@@ -146,7 +146,7 @@ mod tests {
     fn js_sets_environment_var() {
         let mut ctx = VariableContext::default();
         let out = run_script(
-            r#"pm.environment.set("baseUrl", "http://localhost");"#,
+            r#"epm.environment.set("baseUrl", "http://localhost");"#,
             "pre-request",
             &mut ctx,
             None,
@@ -165,7 +165,7 @@ mod tests {
 
         let mut ctx = VariableContext::default();
         let out = run_script(
-            r#"pm.environment.set("endpoint_rcell_auth", "http://x");"#,
+            r#"epm.environment.set("endpoint_rcell_auth", "http://x");"#,
             "pre-request",
             &mut ctx,
             None,
@@ -191,7 +191,7 @@ mod tests {
     fn helpers_still_work() {
         let mut ctx = VariableContext::default();
         let out = run_script_helpers(
-            r#"pm.environment.set("baseUrl", "http://localhost");"#,
+            r#"epm.environment.set("baseUrl", "http://localhost");"#,
             "pre-request",
             &mut ctx,
         );

@@ -221,7 +221,7 @@ mod tests {
     #[test]
     fn js_var_mirror_preserves_tokens() {
         let ctx = VariableContext::demo();
-        let html = render_js_var_mirror_html("pm.test(\"t\", () => {{baseUrl}});", Some(&ctx));
+        let html = render_js_var_mirror_html("epm.test(\"t\", () => {{baseUrl}});", Some(&ctx));
         assert!(html.contains("js-pm") || html.contains("pm"));
         assert!(html.contains("var-token"));
     }

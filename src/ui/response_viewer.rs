@@ -182,7 +182,7 @@ pub fn ResponseViewer(
                         div { class: "test-results",
                             if resp.test_results.is_empty() {
                                 p { class: "hint",
-                                    "No test results. Add pm.test(\"name\", function() {{ … }}) in Scripts."
+                                    "No test results. Add epm.test(\"name\", function() {{ … }}) in Scripts."
                                 }
                             } else {
                                 for t in resp.test_results.iter() {
@@ -201,7 +201,7 @@ pub fn ResponseViewer(
                         div { class: "visualizer-pane",
                             if resp.visualizer_html.is_empty() {
                                 p { class: "hint",
-                                    "No visualizer output. In Tests: pm.visualizer.set(\"<h1>{{{{title}}}}</h1>\", {{title:\"hi\"}}) — or return HTML body."
+                                    "No visualizer output. In Tests: epm.visualizer.set(\"<h1>{{{{title}}}}</h1>\", {{title:\"hi\"}}) — or return HTML body."
                                 }
                             } else {
                                 p { class: "hint", "Visualizer HTML (source — desktop has no iframe sandbox):" }

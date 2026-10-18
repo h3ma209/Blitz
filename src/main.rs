@@ -27,6 +27,8 @@ fn main() {
     // (or CARGO_MANIFEST_DIR). Plain cargo + Finder-launched .app gets "Dioxus App"
     // and broken stylesheet URLs otherwise.
     let cfg = Config::new()
+        // In-app top bar has File/Tools/Cloud; hide duplicate macOS menu bar.
+        .with_menu(None)
         .with_window(WindowBuilder::new().with_title("EvilPostman"))
         .with_custom_head(format!("<style>{}</style>", brand::STYLES_CSS));
 
