@@ -2,22 +2,22 @@ use dioxus::prelude::*;
 use uuid::Uuid;
 
 use crate::core::{
-    add_folder_under, add_request_under, apply_collection_var_edit, apply_env_var_edit,
-    branch_name_for_env, bundled_postman_collections, clone_or_ensure, duplicate_across,
-    ensure_default_environments, export_collection_v21, export_environment_json, find_environment,
-    find_request_across, generate_snippet, graphql_ws_subscribe, grpc_reflection_list, grpc_unary,
-    import_collection_v21, import_curl, import_environment_json, import_har, import_openapi3,
-    interceptor_limits_blurb, limitations_blurb, link_folder, mcp_call_tool, mcp_list_tools,
-    mqtt_publish, mqtt_subscribe_once, move_item_to, open_in_file_manager, pull_workspace,
-    purge_from_trash, push_console, push_history, push_workspace, refresh_status, remove_across,
-    rename_across, reorder_before, restore_from_trash, routes_from_collections, run_performance,
-    save_example_to_request, save_request_to_collections, snippet_languages, socketio_session,
-    sort_collections, split_mcp_args, sse_listen, start_capture_proxy, start_mock,
-    switch_env_branch, sync_environment, sync_on_save, trash_collection, ws_connect_session,
-    AppSettings, CaptureProxyHandle, Collection, ConsoleLine, Cookie, CookieJar, EnvVar,
-    Environment, Folder, HistoryEntry, KeyValue, MockHandle, PerfReport, RequestDraft,
-    RequestProtocol, ResponseView, SavedExample, UiSettings, VarResolveScope, VariableContext,
-    VaultStore, WsSession, DEFAULT_CLOUD_REMOTE, HISTORY_MAX,
+    add_folder_under, add_request_under, apply_collection_map, apply_collection_var_edit,
+    apply_environment_map, apply_env_var_edit, branch_name_for_env, bundled_postman_collections,
+    clone_or_ensure, duplicate_across, ensure_default_environments, export_collection_v21,
+    export_environment_json, find_environment, find_request_across, generate_snippet,
+    graphql_ws_subscribe, grpc_reflection_list, grpc_unary, import_collection_v21, import_curl,
+    import_environment_json, import_har, import_openapi3, interceptor_limits_blurb,
+    limitations_blurb, link_folder, mcp_call_tool, mcp_list_tools, mqtt_publish, mqtt_subscribe_once,
+    move_item_to, open_in_file_manager, pull_workspace, purge_from_trash, push_console, push_history,
+    push_workspace, refresh_status, remove_across, rename_across, reorder_before, restore_from_trash,
+    routes_from_collections, run_performance, save_example_to_request, save_request_to_collections,
+    snippet_languages, socketio_session, sort_collections, split_mcp_args, sse_listen,
+    start_capture_proxy, start_mock, switch_env_branch, sync_environment, sync_on_save,
+    trash_collection, ws_connect_session, AppSettings, CaptureProxyHandle, Collection, ConsoleLine,
+    Cookie, CookieJar, EnvVar, Environment, Folder, HistoryEntry, KeyValue, MockHandle, PerfReport,
+    RequestDraft, RequestProtocol, ResponseView, SavedExample, UiSettings, VarResolveScope,
+    VariableContext, VaultStore, WsSession, DEFAULT_CLOUD_REMOTE, HISTORY_MAX,
 };
 use crate::runtime::{
     run_collection_with_config, send_request_with_options, RunnerConfig, RunnerReport, SendError,
@@ -73,6 +73,8 @@ pub fn Workbench() -> Element {
     let mut loaded = use_signal(|| false);
     let mut splash_visible = use_signal(|| true);
     let mut splash_leaving = use_signal(|| false);
+    // Compact overlay while cloud checkout / tree reload runs (not a bare grid child).
+    let mut env_switch_overlay = use_signal(|| None::<String>);
     // Remount sidebar (via `key`) so tree starts fully folded after load/import/sync.
     let mut fold_epoch = use_signal(|| 0u64);
     let mut app_settings = use_signal(AppSettings::default);
@@ -294,6 +296,41 @@ pub fn Workbench() -> Element {
         }
     };
 
+    // Env dropdown / manager: paint compact overlay, then checkout+reload (hide on success or error).
+    let mut switch_to_env = move |new_id: Option<Uuid>| {
+        let cur = active_env_id();
+        let envs = environments();
+        let to_name = find_environment(&envs, new_id)
+            .map(|e| e.name.clone())
+            .unwrap_or_else(|| "No Environment".into());
+        // No overlay for No Environment or re-selecting the same env.
+        let skip_overlay = new_id.is_none() || cur == new_id;
+
+        let mut finish = move |id: Option<Uuid>| {
+            active_env_id.set(id);
+            editing_env_id.set(id);
+            let mut v = vars();
+            sync_env_vars(&environments(), id, &mut v);
+            vars.set(v);
+            persist();
+            env_switch_overlay.set(None);
+        };
+
+        if skip_overlay {
+            let id = apply_env_cloud_switch(new_id);
+            finish(id);
+            return;
+        }
+
+        env_switch_overlay.set(Some(to_name));
+        spawn(async move {
+            // Yield so the overlay paints before sync git/checkout work.
+            tokio::time::sleep(Duration::from_millis(40)).await;
+            let id = apply_env_cloud_switch(new_id);
+            finish(id);
+        });
+    };
+
     let do_save = use_callback(move |_| {
         let mut cols = collections();
         let owner = save_request_to_collections(&mut cols, active_collection_id(), draft());
@@ -321,6 +358,42 @@ pub fn Workbench() -> Element {
         active_request_id.set(None);
         response.set(None);
         status_msg.set("new tab (unsaved)".into());
+    });
+
+    let do_close_tab = use_callback(move |tab_id: Uuid| {
+        let mut tabs = open_tabs();
+        let cur = draft();
+        if let Some(slot) = tabs.iter_mut().find(|t| t.id == cur.id) {
+            *slot = cur.clone();
+        } else {
+            tabs.push(cur.clone());
+        }
+        let Some(idx) = tabs.iter().position(|t| t.id == tab_id) else {
+            return;
+        };
+        let closing_active = cur.id == tab_id;
+        tabs.remove(idx);
+
+        if tabs.is_empty() {
+            let empty = RequestDraft::default();
+            draft.set(empty.clone());
+            tabs.push(empty);
+            active_request_id.set(None);
+            response.set(None);
+            open_tabs.set(tabs);
+            status_msg.set("tab closed".into());
+            return;
+        }
+
+        if closing_active {
+            let next_idx = if idx < tabs.len() { idx } else { tabs.len() - 1 };
+            let next = tabs[next_idx].clone();
+            draft.set(next.clone());
+            active_request_id.set(Some(next.id));
+            response.set(None);
+        }
+        open_tabs.set(tabs);
+        status_msg.set("tab closed".into());
     });
 
     let do_send = use_callback(move |_| {
@@ -435,10 +508,22 @@ pub fn Workbench() -> Element {
         status_msg.set(String::new());
 
         let mut ctx = vars();
+        // Always sync collection vars from active collection (needed for
+        // pm.collectionVariables.get in Initiate Envs / SNB scripts).
+        if let Some(col_id) = active_collection_id() {
+            if let Some(col) = collections().iter().find(|c| c.id == col_id) {
+                ctx.collection = col.variables_map();
+            }
+        } else {
+            ctx.collection.clear();
+        }
         if let Some(env) = find_environment(&environments(), active_env_id()) {
             ctx.environment = env.to_map();
             ctx.local
                 .insert("environment".into(), env.name.clone());
+        } else {
+            ctx.environment.clear();
+            ctx.local.remove("environment");
         }
         let col_auth = active_collection_id().and_then(|id| {
             collections()
@@ -449,11 +534,14 @@ pub fn Workbench() -> Element {
         let mut jar = cookies();
         let settings = app_settings();
 
+        let had_active_env = active_env_id().is_some();
+        let active_col_id = active_collection_id();
+
         spawn(async move {
             let result = tokio::task::spawn_blocking(move || {
-                send_request_with_options(
+                let send = send_request_with_options(
                     &req,
-                    &ctx,
+                    &mut ctx,
                     SendOptions {
                         secrets_store: None,
                         collection_auth: col_auth.as_ref(),
@@ -462,8 +550,10 @@ pub fn Workbench() -> Element {
                         cancel: Some(cancel_flag),
                         ..Default::default()
                     },
-                )
-                .map(|view| (view, jar, ctx))
+                );
+                // Always return mutated ctx so prerequest/test side-effects persist
+                // even when HTTP fails (Postman semantics).
+                (send, jar, ctx)
             })
             .await;
 
@@ -472,13 +562,11 @@ pub fn Workbench() -> Element {
                 return;
             }
 
-            let (view, new_jar, new_ctx) = match result {
-                Ok(Ok((view, jar, ctx))) => (view, jar, Some(ctx)),
-                Ok(Err(SendError::Cancelled)) => {
-                    sending.set(false);
-                    send_cancel.set(None);
-                    status_msg.set("cancelled".into());
-                    response.set(Some(ResponseView {
+            let (view, new_jar, new_ctx, cancelled) = match result {
+                Ok((Ok(view), jar, ctx)) => (view, jar, ctx, false),
+                Ok((Err(SendError::Cancelled), jar, ctx)) => {
+                    // Still apply script vars from prerequest that already ran.
+                    (ResponseView {
                         status: 0,
                         status_text: "CANCELLED".into(),
                         headers: vec![],
@@ -491,18 +579,19 @@ pub fn Workbench() -> Element {
                         resolved_url: String::new(),
                         timing: Default::default(),
                         visualizer_html: String::new(),
-                    }));
-                    return;
+                    }, jar, ctx, true)
                 }
-                Ok(Err(e)) => (
+                Ok((Err(e), jar, ctx)) => (
                     ResponseView::error(e.to_string(), vec!["pipeline failed".into()]),
-                    cookies(),
-                    None,
+                    jar,
+                    ctx,
+                    false,
                 ),
                 Err(e) => (
                     ResponseView::error(format!("join: {e}"), vec![]),
                     cookies(),
-                    None,
+                    vars(),
+                    false,
                 ),
             };
 
@@ -512,29 +601,31 @@ pub fn Workbench() -> Element {
 
             cookies.set(new_jar);
 
-            let mut hist = history();
-            let draft_snap = draft();
-            let hist_url = if view.resolved_url.is_empty() {
-                draft_snap.url.clone()
-            } else {
-                view.resolved_url.clone()
-            };
-            let entry = HistoryEntry::from_send(
-                &draft_snap,
-                &hist_url,
-                if view.error.is_some() {
-                    None
+            if !cancelled {
+                let mut hist = history();
+                let draft_snap = draft();
+                let hist_url = if view.resolved_url.is_empty() {
+                    draft_snap.url.clone()
                 } else {
-                    Some(view.status)
-                },
-                if view.error.is_some() {
-                    None
-                } else {
-                    Some(view.elapsed_ms)
-                },
-            );
-            push_history(&mut hist, entry, HISTORY_MAX);
-            history.set(hist);
+                    view.resolved_url.clone()
+                };
+                let entry = HistoryEntry::from_send(
+                    &draft_snap,
+                    &hist_url,
+                    if view.error.is_some() {
+                        None
+                    } else {
+                        Some(view.status)
+                    },
+                    if view.error.is_some() {
+                        None
+                    } else {
+                        Some(view.elapsed_ms)
+                    },
+                );
+                push_history(&mut hist, entry, HISTORY_MAX);
+                history.set(hist);
+            }
 
             let mut lines = console_lines();
             for msg in &view.console_messages {
@@ -546,29 +637,49 @@ pub fn Workbench() -> Element {
             console_lines.set(lines);
             console_open.set(true);
 
-            if let Some(mut v) = new_ctx {
-                // Write env mutations from scripts back into active Environment.
-                if let Some(id) = active_env_id() {
-                    let mut envs = environments();
-                    if let Some(env) = envs.iter_mut().find(|e| e.id == id) {
-                        for (k, val) in v.environment.iter() {
-                            if let Some(ev) = env.values.iter_mut().find(|ev| ev.key == *k) {
-                                ev.current_value = val.clone();
-                            } else {
-                                env.values.push(EnvVar {
-                                    key: k.clone(),
-                                    initial_value: val.clone(),
-                                    current_value: val.clone(),
-                                    enabled: true,
-                                });
-                            }
-                        }
-                    }
-                    environments.set(envs);
+            // Persist script scope mutations → Environment / Collection + VariableContext.
+            let env_keys = new_ctx.environment.len();
+            let mut v = new_ctx;
+            let vault = vars().vault.clone();
+            v.vault = vault;
+
+            if let Some(id) = active_env_id() {
+                let mut envs = environments();
+                if let Some(env) = envs.iter_mut().find(|e| e.id == id) {
+                    apply_environment_map(env, &v.environment);
                 }
-                let vault = vars().vault.clone();
-                v.vault = vault;
-                vars.set(v);
+                environments.set(envs);
+            } else if env_keys > 0 {
+                // Prefer Postman semantics: require an active environment.
+                // Do not silently globalize; clear ephemeral env map so Vars UI stays honest.
+                let mut lines = console_lines();
+                push_console(
+                    &mut lines,
+                    ConsoleLine::error(
+                        "no active environment — pm.environment.set ignored (select Local/Development/Production first)",
+                    ),
+                );
+                console_lines.set(lines);
+                status_msg.set(
+                    "no active environment — pm.environment.set ignored".into(),
+                );
+                v.environment.clear();
+            }
+
+            if let Some(col_id) = active_col_id {
+                let mut cols = collections();
+                if let Some(col) = cols.iter_mut().find(|c| c.id == col_id) {
+                    apply_collection_map(col, &v.collection);
+                }
+                collections.set(cols);
+            }
+
+            vars.set(v);
+
+            if cancelled {
+                status_msg.set("cancelled".into());
+            } else if had_active_env && env_keys > 0 && status_msg().is_empty() {
+                status_msg.set(format!("scripts updated {env_keys} env var(s)"));
             }
 
             response.set(Some(view));
@@ -831,13 +942,7 @@ pub fn Workbench() -> Element {
         match evt {
             EnvManagerEvent::Close => show_env_manager.set(false),
             EnvManagerEvent::Select(id) => {
-                let id = apply_env_cloud_switch(id);
-                active_env_id.set(id);
-                editing_env_id.set(id);
-                let mut v = vars();
-                sync_env_vars(&environments(), id, &mut v);
-                vars.set(v);
-                persist();
+                switch_to_env(id);
             }
             EnvManagerEvent::Create => {
                 let mut envs = environments();
@@ -961,10 +1066,7 @@ pub fn Workbench() -> Element {
                     }
                     Key::Character(c) if meta && !shift && c.eq_ignore_ascii_case("w") => {
                         evt.prevent_default();
-                        // Close: clear to untitled
-                        draft.set(RequestDraft::default());
-                        active_request_id.set(None);
-                        response.set(None);
+                        do_close_tab(draft().id);
                     }
                     Key::Character(c) if meta && shift && c.eq_ignore_ascii_case("p") => {
                         evt.prevent_default();
@@ -1044,9 +1146,14 @@ pub fn Workbench() -> Element {
                                         }
                                     }
                                     if imported_n > 0 {
-                                        collections.set(cols);
+                                        collections.set(cols.clone());
                                         if let Some(id) = last_id {
                                             active_collection_id.set(Some(id));
+                                            if let Some(col) = cols.iter().find(|c| c.id == id) {
+                                                let mut v = vars();
+                                                v.collection = col.variables_map();
+                                                vars.set(v);
+                                            }
                                         }
                                         fold_epoch.set(fold_epoch() + 1);
                                         persist();
@@ -1083,14 +1190,19 @@ pub fn Workbench() -> Element {
                                     let n = bundled.len();
                                     let last_id = bundled.last().map(|c| c.id);
                                     cols.extend(bundled);
-                                    collections.set(cols);
+                                    collections.set(cols.clone());
                                     if let Some(id) = last_id {
                                         active_collection_id.set(Some(id));
+                                        if let Some(col) = cols.iter().find(|c| c.id == id) {
+                                            let mut v = vars();
+                                            v.collection = col.variables_map();
+                                            vars.set(v);
+                                        }
                                     }
                                     fold_epoch.set(fold_epoch() + 1);
                                     persist();
                                     status_msg.set(format!(
-                                        "loaded {n} bundled Postman export(s)"
+                                        "loaded {n} bundled Postman export(s) — open Initiate Envs → Local/SNB and Send (with an active environment) to seed endpoint_* vars"
                                     ));
                                 },
                                 "Load bundled sample exports"
@@ -1218,6 +1330,9 @@ pub fn Workbench() -> Element {
                                             match col {
                                                 Ok(c) => {
                                                     let id = c.id;
+                                                    let mut v = vars();
+                                                    v.collection = c.variables_map();
+                                                    vars.set(v);
                                                     let mut cols = collections();
                                                     cols.push(c);
                                                     collections.set(cols);
@@ -1653,13 +1768,7 @@ pub fn Workbench() -> Element {
                         environments: environments(),
                         active_id: active_env_id(),
                         on_change: move |id| {
-                            let id = apply_env_cloud_switch(id);
-                            active_env_id.set(id);
-                            editing_env_id.set(id);
-                            let mut v = vars();
-                            sync_env_vars(&environments(), id, &mut v);
-                            vars.set(v);
-                            persist();
+                            switch_to_env(id);
                         },
                         on_sync: move |id| {
                             let envs = environments();
@@ -1668,6 +1777,13 @@ pub fn Workbench() -> Element {
                                 return;
                             };
                             let env_name = env.name.clone();
+                            if env_name.trim().eq_ignore_ascii_case("Local") {
+                                status_msg.set(
+                                    "Local environment is not synced — pick Development/Production (or another team env)"
+                                        .into(),
+                                );
+                                return;
+                            }
                             // Activate this env first (UI + var map).
                             active_env_id.set(Some(id));
                             editing_env_id.set(Some(id));
@@ -2131,9 +2247,14 @@ pub fn Workbench() -> Element {
                                 return;
                             };
                             let mut ctx = vars();
+                            ctx.collection = col.variables_map();
                             if let Some(env) = find_environment(&environments(), active_env_id()) {
                                 ctx.environment = env.to_map();
+                            } else {
+                                ctx.environment.clear();
                             }
+                            let env_id = active_env_id();
+                            let col_id = col.id;
                             let mut jar = cookies();
                             let settings = app_settings();
                             let cfg = RunnerConfig {
@@ -2145,18 +2266,41 @@ pub fn Workbench() -> Element {
                                 let report = tokio::task::spawn_blocking(move || {
                                     let rep = run_collection_with_config(
                                         &col,
-                                        &ctx,
+                                        &mut ctx,
                                         &mut jar,
                                         Some(&settings),
                                         None,
                                         &cfg,
                                     );
-                                    (rep, jar)
+                                    (rep, jar, ctx)
                                 })
                                 .await;
                                 match report {
-                                    Ok((rep, jar)) => {
+                                    Ok((rep, jar, mut ctx)) => {
                                         cookies.set(jar);
+                                        if let Some(id) = env_id {
+                                            let mut envs = environments();
+                                            if let Some(env) =
+                                                envs.iter_mut().find(|e| e.id == id)
+                                            {
+                                                apply_environment_map(env, &ctx.environment);
+                                            }
+                                            environments.set(envs);
+                                        } else if !ctx.environment.is_empty() {
+                                            status_msg.set(
+                                                "no active environment — pm.environment.set ignored"
+                                                    .into(),
+                                            );
+                                            ctx.environment.clear();
+                                        }
+                                        let mut cols = collections();
+                                        if let Some(c) = cols.iter_mut().find(|c| c.id == col_id) {
+                                            apply_collection_map(c, &ctx.collection);
+                                        }
+                                        collections.set(cols);
+                                        let vault = vars().vault.clone();
+                                        ctx.vault = vault;
+                                        vars.set(ctx);
                                         let mut lines = console_lines();
                                         for m in &rep.console {
                                             push_console(&mut lines, ConsoleLine::info(m.clone()));
@@ -2376,8 +2520,10 @@ pub fn Workbench() -> Element {
                             let tname = t.name.clone();
                             let active = draft().id == tid;
                             rsx! {
-                                button {
+                                div {
                                     class: if active { "tab active" } else { "tab" },
+                                    role: "button",
+                                    tabindex: "0",
                                     onclick: move |_| {
                                         let mut tabs = open_tabs();
                                         let cur = draft();
@@ -2391,7 +2537,17 @@ pub fn Workbench() -> Element {
                                         }
                                         open_tabs.set(tabs);
                                     },
-                                    "{tname}"
+                                    span { class: "tab-label", "{tname}" }
+                                    button {
+                                        class: "tab-close",
+                                        r#type: "button",
+                                        title: "Close tab",
+                                        onclick: move |evt| {
+                                            evt.stop_propagation();
+                                            do_close_tab(tid);
+                                        },
+                                        "×"
+                                    }
                                 }
                             }
                         }
@@ -3062,6 +3218,9 @@ pub fn Workbench() -> Element {
                         match imported {
                             Ok(col) => {
                                 let id = col.id;
+                                let mut v = vars();
+                                v.collection = col.variables_map();
+                                vars.set(v);
                                 let mut cols = collections();
                                 cols.push(col);
                                 collections.set(cols);
@@ -3096,6 +3255,26 @@ pub fn Workbench() -> Element {
                             span { class: "brand-name", "Postman" }
                         }
                         div { class: "startup-splash-dots", aria_hidden: "true",
+                            span {}
+                            span {}
+                            span {}
+                        }
+                    }
+                }
+            }
+
+            // Compact env-switch loader (modal-backdrop style) — not a grid child.
+            if let Some(name) = env_switch_overlay() {
+                div { class: "env-switch-overlay",
+                    div { class: "env-switch-card",
+                        img {
+                            class: "env-switch-logo",
+                            src: asset!("/assets/logo.png"),
+                            alt: "",
+                        }
+                        div { class: "env-switch-title", "Switching environment…" }
+                        div { class: "env-switch-name", "{name}" }
+                        div { class: "env-switch-dots", aria_hidden: "true",
                             span {}
                             span {}
                             span {}

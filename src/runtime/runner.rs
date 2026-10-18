@@ -157,9 +157,11 @@ pub fn load_data_rows(path: &str) -> Result<Vec<HashMap<String, String>>, String
 }
 
 /// Run all requests in a collection sequentially (1 iteration, no delay).
+///
+/// Mutates `ctx` so script env/collection/global side-effects persist after the run.
 pub fn run_collection(
     col: &Collection,
-    ctx: &VariableContext,
+    ctx: &mut VariableContext,
     cookie_jar: &mut CookieJar,
     app_settings: Option<&AppSettings>,
     secrets_store: Option<&dyn SecretsStore>,
@@ -180,7 +182,7 @@ pub fn run_collection(
 
 pub fn run_collection_with_config(
     col: &Collection,
-    ctx: &VariableContext,
+    ctx: &mut VariableContext,
     cookie_jar: &mut CookieJar,
     app_settings: Option<&AppSettings>,
     secrets_store: Option<&dyn SecretsStore>,
@@ -202,6 +204,9 @@ pub fn run_collection_with_config(
         col.name
     ));
 
+    // Seed collection variables into the shared context (Postman: collection scope).
+    ctx.collection = col.variables_map();
+
     let col_auth: AuthConfig = col.auth.clone();
 
     for iter in 0..iterations {
@@ -209,7 +214,8 @@ pub fn run_collection_with_config(
             .get(iter % data_rows.len())
             .cloned()
             .unwrap_or_default();
-        let mut ctx = ctx.clone();
+        // Keep env/collection/globals across requests; only refresh iteration locals.
+        ctx.local.clear();
         for (k, v) in &row {
             ctx.local.insert(k.clone(), v.clone());
         }
@@ -264,7 +270,7 @@ pub fn run_collection_with_config(
 
             let result = send_request_with_options(
                 req,
-                &ctx,
+                ctx,
                 SendOptions {
                     secrets_store,
                     collection_auth: Some(&col_auth),

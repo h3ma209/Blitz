@@ -771,6 +771,7 @@ fn BodyEditor(
                 class: "body-editor".to_string(),
                 value: body.clone(),
                 placeholder: "{\"hello\": \"world\"}".to_string(),
+                vars: Some(vars.clone()),
                 on_change: {
                     let binary_path = binary_path.clone();
                     let urlencoded = urlencoded.clone();
@@ -885,6 +886,7 @@ fn BodyEditor(
                 class: "body-editor".to_string(),
                 value: graphql_query.clone(),
                 placeholder: "query {{ viewer {{ login }} }}".to_string(),
+                vars: Some(vars.clone()),
                 on_change: {
                     let body = body.clone();
                     let binary_path = binary_path.clone();
@@ -907,6 +909,7 @@ fn BodyEditor(
                 class: "body-editor".to_string(),
                 value: graphql_variables.clone(),
                 placeholder: "{}".to_string(),
+                vars: Some(vars.clone()),
                 on_change: {
                     let body = body.clone();
                     let binary_path = binary_path.clone();

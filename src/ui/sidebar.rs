@@ -381,9 +381,17 @@ pub fn Sidebar(
                                             "{glyph}"
                                         }
                                         if is_col {
-                                            span { class: "kind-badge kind-collection", "Col" }
+                                            span {
+                                                class: "tree-icon tree-icon-collection",
+                                                title: "Collection",
+                                                aria_hidden: "true",
+                                            }
                                         } else if is_folder {
-                                            span { class: "kind-badge kind-folder", "Folder" }
+                                            span {
+                                                class: "tree-icon tree-icon-folder",
+                                                title: "Folder",
+                                                aria_hidden: "true",
+                                            }
                                         } else if let TreeRowKind::Request { method } = kind {
                                             span { class: "method-badge method-{method_class(method)}",
                                                 "{method.as_str()}"

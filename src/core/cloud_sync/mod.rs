@@ -39,6 +39,11 @@ fn is_no_environment(name: &str) -> bool {
     t.is_empty() || t.eq_ignore_ascii_case("No Environment")
 }
 
+/// Local is machine-only (like No Environment) — not a team/git Sync target.
+fn is_local_environment(name: &str) -> bool {
+    name.trim().eq_ignore_ascii_case("Local")
+}
+
 fn export_to_clone(
     clone: &Path,
     remote: &str,
@@ -88,6 +93,14 @@ pub fn sync_on_save(
             ok: true,
             skipped: true,
             message: "no environment — local save only".into(),
+            branch: String::new(),
+        };
+    }
+    if is_local_environment(active_env_name) {
+        return SyncResult {
+            ok: true,
+            skipped: true,
+            message: "Local environment — local save only (not synced)".into(),
             branch: String::new(),
         };
     }
@@ -195,6 +208,9 @@ pub fn sync_environment(
 ) -> Result<(Vec<Collection>, Vec<Environment>, SyncResult), String> {
     if is_no_environment(env_name) {
         return Err("pick an environment before Sync".into());
+    }
+    if is_local_environment(env_name) {
+        return Err("Local environment is not synced — pick Development/Production (or another team env)".into());
     }
     if !settings.cloud_sync.enabled {
         return Err("cloud sync disabled — enable in Settings or Cloud menu".into());

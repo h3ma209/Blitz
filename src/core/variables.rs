@@ -81,19 +81,78 @@ fn var_token_re() -> &'static Regex {
 /// Index may equal `end` (caret after closing `}}`).
 pub fn find_var_at(text: &str, index: usize) -> Option<VarSpan> {
     let index = index.min(text.len());
-    for caps in var_token_re().captures_iter(text) {
-        let m = caps.get(0)?;
-        let start = m.start();
-        let end = m.end();
-        if index >= start && index <= end {
-            let raw = caps.get(1)?.as_str().trim().to_string();
-            if raw.is_empty() {
-                continue;
-            }
-            return Some(VarSpan { start, end, raw });
+    for span in iter_var_spans(text) {
+        if index >= span.start && index <= span.end {
+            return Some(span);
         }
     }
     None
+}
+
+/// All non-empty `{{…}}` spans in `text` (left → right).
+pub fn iter_var_spans(text: &str) -> impl Iterator<Item = VarSpan> + '_ {
+    var_token_re().captures_iter(text).filter_map(|caps| {
+        let m = caps.get(0)?;
+        let raw = caps.get(1)?.as_str().trim().to_string();
+        if raw.is_empty() {
+            return None;
+        }
+        Some(VarSpan {
+            start: m.start(),
+            end: m.end(),
+            raw,
+        })
+    })
+}
+
+fn escape_html(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for c in s.chars() {
+        match c {
+            '&' => out.push_str("&amp;"),
+            '<' => out.push_str("&lt;"),
+            '>' => out.push_str("&gt;"),
+            '"' => out.push_str("&quot;"),
+            '\'' => out.push_str("&#39;"),
+            _ => out.push(c),
+        }
+    }
+    out
+}
+
+/// HTML for a highlight mirror: plain text escaped, `{{…}}` wrapped in
+/// `<span class="var-token">` (adds ` unresolved` when `vars` marks it unresolved).
+pub fn render_var_highlight_html(text: &str, vars: Option<&VariableContext>) -> String {
+    let mut html = String::with_capacity(text.len().saturating_mul(2));
+    let mut cursor = 0;
+    for span in iter_var_spans(text) {
+        if span.start > cursor {
+            html.push_str(&escape_html(&text[cursor..span.start]));
+        }
+        let token = &text[span.start..span.end];
+        let unresolved = vars
+            .map(|v| v.inspect_var(&span.raw).is_unresolved())
+            .unwrap_or(false);
+        let class = if unresolved {
+            "var-token unresolved"
+        } else {
+            "var-token"
+        };
+        html.push_str("<span class=\"");
+        html.push_str(class);
+        html.push_str("\">");
+        html.push_str(&escape_html(token));
+        html.push_str("</span>");
+        cursor = span.end;
+    }
+    if cursor < text.len() {
+        html.push_str(&escape_html(&text[cursor..]));
+    }
+    // Trailing newline keeps last empty line visible in multiline mirrors.
+    if text.ends_with('\n') {
+        html.push('\n');
+    }
+    html
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -254,6 +313,23 @@ pub fn apply_env_var_edit(env: &mut Environment, key: &str, value: &str) {
     }
 }
 
+/// Write a full environment scope map (from scripts) onto [`Environment::values`].
+///
+/// - Keys present → upsert current (and create if missing)
+/// - Enabled keys missing from map → removed (`pm.environment.unset` / `.clear`)
+/// - Disabled rows are preserved even if absent from the map
+pub fn apply_environment_map(env: &mut Environment, map: &HashMap<String, String>) {
+    for (k, v) in map {
+        if k.is_empty() {
+            continue;
+        }
+        apply_env_var_edit(env, k, v);
+    }
+    env.values.retain(|ev| {
+        ev.key.is_empty() || !ev.enabled || map.contains_key(&ev.key)
+    });
+}
+
 /// Set/update a collection variable (creates row if missing).
 pub fn apply_collection_var_edit(col: &mut Collection, key: &str, value: &str) {
     if let Some(v) = col.variables.iter_mut().find(|v| v.key == key) {
@@ -262,6 +338,19 @@ pub fn apply_collection_var_edit(col: &mut Collection, key: &str, value: &str) {
     } else {
         col.variables.push(KeyValue::new(key, value));
     }
+}
+
+/// Write a full collection scope map (from scripts) onto [`Collection::variables`].
+pub fn apply_collection_map(col: &mut Collection, map: &HashMap<String, String>) {
+    for (k, v) in map {
+        if k.is_empty() {
+            continue;
+        }
+        apply_collection_var_edit(col, k, v);
+    }
+    col.variables.retain(|kv| {
+        kv.key.is_empty() || !kv.enabled || map.contains_key(&kv.key)
+    });
 }
 
 #[cfg(test)]
@@ -314,6 +403,22 @@ mod tests {
         let span = find_var_at(text, start + 4).unwrap();
         assert_eq!(span.raw, "endpoint_hakki_user");
         assert_eq!(&text[span.start..span.end], "{{endpoint_hakki_user}}");
+    }
+
+    #[test]
+    fn iter_var_spans_and_highlight_html() {
+        let text = "https://{{baseUrl}}/<x>&{{missing}}";
+        let spans: Vec<_> = iter_var_spans(text).collect();
+        assert_eq!(spans.len(), 2);
+        assert_eq!(spans[0].raw, "baseUrl");
+        assert_eq!(spans[1].raw, "missing");
+
+        let ctx = VariableContext::demo();
+        let html = render_var_highlight_html(text, Some(&ctx));
+        assert!(html.contains("<span class=\"var-token\">{{baseUrl}}</span>"));
+        assert!(html.contains("<span class=\"var-token unresolved\">{{missing}}</span>"));
+        assert!(html.contains("&lt;x&gt;&amp;"));
+        assert!(!html.contains("<x>"));
     }
 
     #[test]
@@ -377,5 +482,47 @@ mod tests {
 
         ctx.apply_edit(VarResolveScope::Vault, "k", "vv");
         assert_eq!(ctx.vault.get("k"), Some("vv"));
+    }
+
+    #[test]
+    fn apply_environment_map_persists_script_sets() {
+        let mut env = Environment::new("Local");
+        env.values.push(EnvVar::new("baseUrl", "http://old"));
+        let mut map = HashMap::new();
+        map.insert("baseUrl".into(), "http://x".into());
+        map.insert("endpoint_rcell_auth".into(), "http://x".into());
+        apply_environment_map(&mut env, &map);
+        assert_eq!(
+            env.values
+                .iter()
+                .find(|v| v.key == "endpoint_rcell_auth")
+                .map(|v| v.effective()),
+            Some("http://x")
+        );
+        assert_eq!(
+            env.values
+                .iter()
+                .find(|v| v.key == "baseUrl")
+                .map(|v| v.current_value.as_str()),
+            Some("http://x")
+        );
+        // unset: key missing from map → enabled row removed
+        let mut only_one = HashMap::new();
+        only_one.insert("endpoint_rcell_auth".into(), "http://x".into());
+        apply_environment_map(&mut env, &only_one);
+        assert!(!env.values.iter().any(|v| v.key == "baseUrl"));
+        assert!(env.values.iter().any(|v| v.key == "endpoint_rcell_auth"));
+    }
+
+    #[test]
+    fn apply_collection_map_persists_script_sets() {
+        let mut col = Collection::new("C");
+        apply_collection_var_edit(&mut col, "basic_auth_020j", "Basic xxx");
+        let mut map = HashMap::new();
+        map.insert("basic_auth_020j".into(), "Basic yyy".into());
+        map.insert("token".into(), "t1".into());
+        apply_collection_map(&mut col, &map);
+        assert_eq!(col.variables_map().get("basic_auth_020j").unwrap(), "Basic yyy");
+        assert_eq!(col.variables_map().get("token").unwrap(), "t1");
     }
 }

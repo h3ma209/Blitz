@@ -98,7 +98,7 @@ fn run_collection_cli(args: &[String]) -> i32 {
     let mut failed = 0usize;
     for (idx, draft) in drafts.iter().enumerate() {
         eprint!("[{}/{}] {} {} … ", idx + 1, drafts.len(), draft.method, draft.name);
-        match send_request_with_options(draft, &ctx, SendOptions::default()) {
+        match send_request_with_options(draft, &mut ctx, SendOptions::default()) {
             Ok(view) => {
                 let tests_fail = view.test_results.iter().filter(|t| !t.passed).count();
                 if view.error.is_some() || view.status >= 400 || tests_fail > 0 {

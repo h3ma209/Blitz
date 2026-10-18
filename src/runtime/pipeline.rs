@@ -1,5 +1,6 @@
 //! Primary request send path (reports/07 pseudocode, simplified).
 
+use std::error::Error as StdError;
 use std::fs;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc;
@@ -19,7 +20,7 @@ use crate::core::{
     run_script_ex, AuthConfig, AuthType, BodyMode, Cookie, CookieJar, DigestChallenge,
     FormDataField, HttpMethod, KeyValue, RequestDraft, RequestSettings, ResponseView,
     SandboxExtras, SandboxResponse, TestResult, TimingBreakdown, VariableContext,
-    AppSettings, ProxyMode,
+    AppSettings, ClientCertSettings, ProxyMode, ProxySettings,
 };
 use crate::runtime::postman_defaults::{
     inject_postman_system_headers, prepare_raw_body_for_send,
@@ -31,7 +32,7 @@ pub enum SendError {
     #[error("invalid URL: {0}")]
     InvalidUrl(String),
     #[error("HTTP client error: {0}")]
-    Http(#[from] reqwest::Error),
+    Http(String),
     #[error("header error: {0}")]
     Header(String),
     #[error("digest auth: {0}")]
@@ -43,6 +44,70 @@ pub enum SendError {
 }
 
 pub type SendResult = Result<ResponseView, SendError>;
+
+/// reqwest `Display` for Kind::Builder is just `"builder error"` — chain sources.
+fn format_reqwest_error(e: &reqwest::Error) -> String {
+    let mut parts = Vec::new();
+    let mut cur: Option<&dyn StdError> = Some(e);
+    while let Some(err) = cur {
+        let s = err.to_string();
+        if parts.last() != Some(&s) {
+            parts.push(s);
+        }
+        cur = err.source();
+    }
+    parts.join(" — ")
+}
+
+fn map_reqwest(e: reqwest::Error) -> SendError {
+    SendError::Http(format_reqwest_error(&e))
+}
+
+/// Reject unresolved `{{vars}}` / non-http(s) URLs before reqwest (avoids opaque builder error).
+/// `raw_before_resolve` is the draft URL before `{{…}}` substitution (for better diagnostics).
+fn ensure_absolute_http_url(url: &str, raw_before_resolve: &str) -> Result<(), SendError> {
+    let trimmed = url.trim();
+    let raw = raw_before_resolve.trim();
+    let template_hint = if raw.contains("{{") {
+        format!(" (raw URL had templates: {raw})")
+    } else {
+        String::new()
+    };
+
+    if trimmed.is_empty() {
+        return Err(SendError::InvalidUrl(format!(
+            "empty URL{template_hint}"
+        )));
+    }
+    if trimmed.contains("{{") {
+        return Err(SendError::InvalidUrl(format!(
+            "unresolved template in URL (missing env/collection var?): {trimmed}"
+        )));
+    }
+    // Missing `{{base}}` resolves to "" → path-only "/auth/login".
+    if trimmed.starts_with('/') || !trimmed.contains("://") {
+        return Err(SendError::InvalidUrl(format!(
+            "not an absolute http(s) URL: {trimmed}{template_hint}"
+        )));
+    }
+    let parsed = url::Url::parse(trimmed).map_err(|e| {
+        SendError::InvalidUrl(format!("{e}: {trimmed}{template_hint}"))
+    })?;
+    match parsed.scheme() {
+        "http" | "https" => {}
+        other => {
+            return Err(SendError::InvalidUrl(format!(
+                "unsupported scheme '{other}' (need http/https): {trimmed}"
+            )));
+        }
+    }
+    if parsed.host_str().is_none() {
+        return Err(SendError::InvalidUrl(format!(
+            "missing host: {trimmed}{template_hint}"
+        )));
+    }
+    Ok(())
+}
 
 /// Optional inputs for a send (collection auth, cookies, secrets, app settings).
 #[derive(Default)]
@@ -90,7 +155,7 @@ where
 {
     check_cancelled(cancel)?;
     let Some(flag) = cancel.clone() else {
-        return work().map_err(SendError::from);
+        return work().map_err(map_reqwest);
     };
     let (tx, rx) = mpsc::channel();
     thread::Builder::new()
@@ -102,7 +167,7 @@ where
     loop {
         match rx.recv_timeout(Duration::from_millis(50)) {
             Ok(Ok(v)) => return Ok(v),
-            Ok(Err(e)) => return Err(SendError::from(e)),
+            Ok(Err(e)) => return Err(map_reqwest(e)),
             Err(mpsc::RecvTimeoutError::Timeout) => {
                 if flag.load(Ordering::SeqCst) {
                     return Err(SendError::Cancelled);
@@ -516,33 +581,43 @@ fn build_client(
             }
             ProxyMode::Custom => {
                 if let Some(url) = app.custom_proxy_url() {
-                    let proxy = reqwest::Proxy::all(&url)
-                        .map_err(|e| SendError::Client(format!("proxy: {e}")))?;
+                    let proxy = reqwest::Proxy::all(&url).map_err(|e| {
+                        SendError::Client(format!("proxy: {}", format_reqwest_error(&e)))
+                    })?;
                     builder = builder.proxy(proxy);
                     log.push(format!("proxy: custom {url}"));
                 } else {
+                    // Custom selected but host empty — do not call Proxy::all("").
                     log.push("proxy: custom empty — ignored".into());
                 }
             }
         }
 
-        // Client cert — PEM or PKCS#12 (via openssl conversion)
-        if app.client_cert.enabled && !app.client_cert.cert_path.trim().is_empty() {
+        // Client cert — PEM or PKCS#12 (via openssl conversion). Never fail the builder
+        // when path/identity is bad; skip and log so default HTTPS Send still works.
+        if app.client_cert.enabled {
             let path = app.client_cert.cert_path.trim();
-            match load_client_identity_pem(path, &app.client_cert.passphrase) {
-                Ok(pem) => match reqwest::Identity::from_pem(&pem) {
-                    Ok(id) => {
-                        builder = builder.identity(id);
-                        log.push(format!("client-cert: loaded {path}"));
-                    }
+            if path.is_empty() {
+                log.push("client-cert: enabled but path empty — skipped".into());
+            } else if !std::path::Path::new(path).is_file() {
+                log.push(format!("client-cert: path missing ({path}) — skipped"));
+            } else {
+                match load_client_identity_pem(path, &app.client_cert.passphrase) {
+                    Ok(pem) => match reqwest::Identity::from_pem(&pem) {
+                        Ok(id) => {
+                            builder = builder.identity(id);
+                            log.push(format!("client-cert: loaded {path}"));
+                        }
+                        Err(e) => {
+                            log.push(format!(
+                                "client-cert: identity failed ({}) — skipped",
+                                format_reqwest_error(&e)
+                            ));
+                        }
+                    },
                     Err(e) => {
-                        log.push(format!(
-                            "client-cert: identity failed ({e}) — need PEM cert+key"
-                        ));
+                        log.push(format!("client-cert: {e} — skipped"));
                     }
-                },
-                Err(e) => {
-                    log.push(format!("client-cert: {e}"));
                 }
             }
         } else if !app.client_cert.cert_path.trim().is_empty() {
@@ -552,7 +627,7 @@ fn build_client(
 
     builder
         .build()
-        .map_err(|e| SendError::Client(e.to_string()))
+        .map_err(|e| SendError::Client(format_reqwest_error(&e)))
 }
 
 fn build_formdata(
@@ -613,14 +688,17 @@ fn method_from(m: HttpMethod) -> reqwest::Method {
 }
 
 /// Full send pipeline (blocking — call from worker thread / spawn_blocking).
-pub fn send_request(draft: &RequestDraft, ctx: &VariableContext) -> SendResult {
+///
+/// Mutates `ctx` in place so `pm.environment` / `pm.collectionVariables` / globals
+/// side-effects from scripts are visible to the caller (Postman semantics).
+pub fn send_request(draft: &RequestDraft, ctx: &mut VariableContext) -> SendResult {
     send_request_with_options(draft, ctx, SendOptions::default())
 }
 
 /// Like [`send_request`], but uses an explicit secrets backend when provided.
 pub fn send_request_with_secrets(
     draft: &RequestDraft,
-    ctx: &VariableContext,
+    ctx: &mut VariableContext,
     secrets_store: Option<&dyn SecretsStore>,
 ) -> SendResult {
     send_request_with_options(
@@ -635,12 +713,11 @@ pub fn send_request_with_secrets(
 
 pub fn send_request_with_options(
     draft: &RequestDraft,
-    ctx: &VariableContext,
+    mut ctx: &mut VariableContext,
     mut opts: SendOptions<'_>,
 ) -> SendResult {
     let mut log = Vec::new();
     let mut console = Vec::new();
-    let mut ctx = ctx.clone();
 
     let secrets_owned;
     let secrets_ref: Option<&dyn SecretsStore> = match opts.secrets_store {
@@ -791,6 +868,7 @@ pub fn send_request_with_options(
 
     // 3b. Cookies
     let url = build_url(&resolved)?;
+    ensure_absolute_http_url(&url, &draft.url)?;
     let (host, path) = parse_host_path(&url);
     if let Some(jar) = opts.cookie_jar.as_deref() {
         if let Some(cookie_hdr) = jar.header_for(&host, &path) {
@@ -1144,9 +1222,10 @@ mod tests {
             url: "https://example.invalid/slow".into(),
             ..Default::default()
         };
+        let mut ctx = VariableContext::default();
         let err = send_request_with_options(
             &draft,
-            &VariableContext::default(),
+            &mut ctx,
             SendOptions {
                 cancel: Some(flag),
                 ..Default::default()
@@ -1170,5 +1249,103 @@ mod tests {
         flag.store(true, Ordering::SeqCst);
         let err = handle.join().unwrap().unwrap_err();
         assert!(matches!(err, SendError::Cancelled));
+    }
+
+    #[test]
+    fn ensure_url_rejects_unresolved_templates() {
+        let err =
+            ensure_absolute_http_url("{{endpoint_rcell_auth}}/auth/login", "{{endpoint_rcell_auth}}/auth/login")
+                .unwrap_err();
+        match err {
+            SendError::InvalidUrl(msg) => {
+                assert!(msg.contains("unresolved template"), "{msg}");
+                assert!(msg.contains("endpoint_rcell_auth"), "{msg}");
+            }
+            other => panic!("expected InvalidUrl, got {other}"),
+        }
+    }
+
+    #[test]
+    fn ensure_url_rejects_path_only_after_empty_var() {
+        let err = ensure_absolute_http_url(
+            "/auth/login",
+            "{{endpoint_rcell_auth}}/auth/login",
+        )
+        .unwrap_err();
+        match err {
+            SendError::InvalidUrl(msg) => {
+                assert!(msg.contains("not an absolute"), "{msg}");
+                assert!(msg.contains("endpoint_rcell_auth"), "{msg}");
+            }
+            other => panic!("expected InvalidUrl, got {other}"),
+        }
+    }
+
+    #[test]
+    fn ensure_url_accepts_https() {
+        ensure_absolute_http_url("https://httpbin.org/get", "https://httpbin.org/get").unwrap();
+    }
+
+    #[test]
+    fn format_reqwest_error_includes_source_chain() {
+        let err = reqwest::blocking::Client::new()
+            .get("{{endpoint}}/x")
+            .build()
+            .unwrap_err();
+        let msg = format_reqwest_error(&err);
+        assert!(msg.contains("builder error"), "{msg}");
+        assert!(
+            msg.contains("relative URL") || msg.contains("without a base"),
+            "{msg}"
+        );
+    }
+
+    #[test]
+    fn build_client_custom_proxy_empty_does_not_fail() {
+        let settings = RequestSettings::default();
+        let app = AppSettings {
+            proxy: ProxySettings {
+                mode: ProxyMode::Custom,
+                host_port: String::new(),
+            },
+            ..Default::default()
+        };
+        let mut log = Vec::new();
+        build_client(&settings, Some(&app), &mut log).expect("empty custom proxy must build");
+        assert!(log.iter().any(|l| l.contains("custom empty")));
+    }
+
+    #[test]
+    fn build_client_missing_cert_path_skips_not_fails() {
+        let settings = RequestSettings::default();
+        let app = AppSettings {
+            client_cert: ClientCertSettings {
+                enabled: true,
+                cert_path: "/tmp/evilpostman-missing-cert.pem".into(),
+                passphrase: String::new(),
+            },
+            ..Default::default()
+        };
+        let mut log = Vec::new();
+        build_client(&settings, Some(&app), &mut log).expect("missing cert must not fail builder");
+        assert!(log.iter().any(|l| l.contains("path missing") || l.contains("skipped")));
+    }
+
+    #[test]
+    fn send_unresolved_url_surfaces_invalid_url_not_builder() {
+        let draft = RequestDraft {
+            url: "{{endpoint_rcell_auth}}/auth/login".into(),
+            ..Default::default()
+        };
+        let mut ctx = VariableContext::default();
+        let err = send_request(&draft, &mut ctx).unwrap_err();
+        let msg = err.to_string();
+        assert!(
+            matches!(err, SendError::InvalidUrl(_)),
+            "got {err:?} / {msg}"
+        );
+        // Missing var → "" → "/auth/login"; message must keep raw template hint.
+        assert!(msg.contains("endpoint_rcell_auth") || msg.contains("not an absolute"), "{msg}");
+        assert!(!msg.contains("HTTP client error: builder error"), "{msg}");
     }
 }

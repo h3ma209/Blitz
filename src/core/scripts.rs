@@ -159,6 +159,35 @@ mod tests {
     }
 
     #[test]
+    fn js_environment_set_applies_to_environment_values() {
+        use crate::core::variables::apply_environment_map;
+        use crate::core::Environment;
+
+        let mut ctx = VariableContext::default();
+        let out = run_script(
+            r#"pm.environment.set("endpoint_rcell_auth", "http://x");"#,
+            "pre-request",
+            &mut ctx,
+            None,
+        );
+        assert!(out.error.is_none(), "{:?}", out.error);
+        assert_eq!(
+            ctx.environment.get("endpoint_rcell_auth").map(String::as_str),
+            Some("http://x")
+        );
+
+        let mut env = Environment::new("Local");
+        apply_environment_map(&mut env, &ctx.environment);
+        assert_eq!(
+            env.values
+                .iter()
+                .find(|v| v.key == "endpoint_rcell_auth")
+                .map(|v| v.effective()),
+            Some("http://x")
+        );
+    }
+
+    #[test]
     fn helpers_still_work() {
         let mut ctx = VariableContext::default();
         let out = run_script_helpers(

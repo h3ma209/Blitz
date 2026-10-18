@@ -28,8 +28,10 @@ pub fn EnvSelector(
                 span { class: "env-select-label", "{active_name}" }
                 span { class: "env-select-caret", "▾" }
             }
-            // Sync only when an environment is active (not "No Environment" / local).
-            if active_id.is_some() {
+            // Sync only for team/git envs — hide for No Environment and Local.
+            if active_id.is_some()
+                && !active_name.trim().eq_ignore_ascii_case("Local")
+            {
                 button {
                     class: "env-sync-btn",
                     title: "Sync with team: pull → commit local → push. Local/script vars stay on this machine.",
