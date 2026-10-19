@@ -38,3 +38,14 @@ credentials.json
 # Local clone of blitz-cloud (app uses data_dir/cloud; never nest secrets here)
 /cloud/
 .aider*
+
+# Local notes, reports, and extracted tooling (keep local only, do not publish)
+reports/
+exported-postman-jsons/
+ProxyNodeProcess.js
+runner.html
+tester_sandbox.html
+*.min.js
+package.json
+notPostman.code-workspace
+chat_history.json
