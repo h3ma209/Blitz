@@ -1397,7 +1397,11 @@ pub fn Workbench() -> Element {
                 span {
                     class: "brand",
                     title: "⚡ Blitz · ⌘↵ Send/Cancel · ⌘S Save · ⌘T New · ⌘⇧P Palette",
-                    span { class: "brand-logo brand-logo-emoji", "⚡" }
+                    img {
+                        class: "brand-logo",
+                        src: "{crate::brand::LOGO_SRC.as_str()}",
+                        alt: "Blitz",
+                    }
                     span { class: "brand-name", "Blitz" }
                 }
 
@@ -3720,7 +3724,11 @@ pub fn Workbench() -> Element {
                         "startup-splash"
                     },
                     div { class: "startup-splash-inner",
-                        span { class: "brand-logo brand-logo-emoji brand-logo-splash", "⚡" }
+                        img {
+                            class: "brand-logo brand-logo-splash",
+                            src: "{crate::brand::LOGO_SRC.as_str()}",
+                            alt: "Blitz",
+                        }
                         div { class: "startup-splash-wordmark",
                             span { class: "brand-name", "Blitz" }
                         }
@@ -3737,7 +3745,11 @@ pub fn Workbench() -> Element {
             if let Some(name) = env_switch_overlay() {
                 div { class: "env-switch-overlay",
                     div { class: "env-switch-card",
-                        span { class: "brand-logo brand-logo-emoji brand-logo-env", "⚡" }
+                        img {
+                            class: "brand-logo brand-logo-env",
+                            src: "{crate::brand::LOGO_SRC.as_str()}",
+                            alt: "Blitz",
+                        }
                         div { class: "loading-row",
                             Spinner { }
                             span { class: "loading-text", "Switching environment…" }

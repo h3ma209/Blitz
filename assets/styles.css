@@ -385,12 +385,13 @@ body {
   width: 26px;
   height: 26px;
   margin-right: 10px;
-  border-radius: 50%;
+  border-radius: 6px;
   object-fit: cover;
   flex-shrink: 0;
-  box-shadow: 0 0 0 2px rgba(29, 185, 84, 0.28), 0 0 16px rgba(29, 185, 84, 0.3);
+  box-shadow: 0 0 0 1px rgba(29, 185, 84, 0.28), 0 0 14px rgba(29, 185, 84, 0.35);
   animation: mark-pulse 2.4s ease-in-out infinite;
   background: transparent;
+  display: inline-block;
 }
 
 .brand-logo-emoji {
@@ -405,15 +406,15 @@ body {
   width: 64px;
   height: 64px;
   margin-right: 0;
-  font-size: 36px;
-  box-shadow: 0 0 0 3px rgba(29, 185, 84, 0.28), 0 0 28px rgba(29, 185, 84, 0.35);
+  border-radius: 14px;
+  box-shadow: 0 0 0 2px rgba(29, 185, 84, 0.35), 0 0 32px rgba(29, 185, 84, 0.45);
 }
 
 .brand-logo-env {
   width: 36px;
   height: 36px;
   margin-right: 0;
-  font-size: 20px;
+  border-radius: 8px;
   box-shadow: 0 0 0 2px rgba(29, 185, 84, 0.28), 0 0 16px rgba(29, 185, 84, 0.3);
 }
 
