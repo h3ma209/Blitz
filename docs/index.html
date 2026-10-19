@@ -88,22 +88,31 @@
   <div class="absolute inset-0 h-[5800px] bg-grid pointer-events-none z-0"></div>
 
   <!-- Floating Glass Navbar -->
-  <header class="fixed top-5 inset-x-0 z-50 flex justify-center px-4">
-    <nav class="w-full max-w-5xl h-14 rounded-full glass flex items-center justify-between px-6">
-      <div class="flex items-center gap-3">
-        <img src="logo.png" alt="Blitz Logo" class="w-8 h-8 rounded-lg shadow-sm">
-        <span class="font-extrabold text-lg tracking-tight">Blitz</span>
-        <span class="text-[10px] font-bold text-spot-bright bg-spot-green/15 px-2 py-0.5 rounded tracking-wide">RUST</span>
+  <header class="fixed top-4 inset-x-0 z-50 flex justify-center px-3 sm:px-6">
+    <nav class="w-full max-w-6xl rounded-2xl sm:rounded-full glass flex flex-wrap items-center justify-between px-4 sm:px-6 py-2.5 sm:py-0 sm:h-14 transition-all">
+      <div class="flex items-center gap-2.5">
+        <a href="#" class="flex items-center gap-2.5 group">
+          <img src="logo.png" alt="Blitz Logo" class="w-8 h-8 rounded-lg shadow-sm group-hover:scale-105 transition-transform">
+          <span class="font-extrabold text-lg tracking-tight">Blitz</span>
+        </a>
+        <span class="text-[10px] font-bold text-spot-bright bg-spot-green/15 px-2 py-0.5 rounded tracking-wide font-mono">RUST</span>
       </div>
 
-      <div class="flex items-center gap-6 text-sm font-medium">
+      <!-- Mobile Hamburger Button -->
+      <button onclick="toggleMobileNav()" class="lg:hidden p-2 text-spot-muted hover:text-white rounded-lg focus:outline-none" aria-label="Toggle Navigation">
+        <svg id="nav-open-icon" class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16M4 18h16"/></svg>
+        <svg id="nav-close-icon" class="w-5 h-5 hidden" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
+      </button>
+
+      <!-- Desktop Nav Items -->
+      <div class="hidden lg:flex items-center gap-5 xl:gap-6 text-[13px] font-medium whitespace-nowrap">
         <a href="#why-switch" class="text-spot-bright hover:text-white transition-colors">Why Switch?</a>
-        <a href="#git-cloud" class="text-spot-muted hover:text-white transition-colors">Git Cloud Sync</a>
+        <a href="#git-cloud" class="text-spot-muted hover:text-white transition-colors">Git Cloud</a>
         <a href="#features" class="text-spot-muted hover:text-white transition-colors">Features</a>
         <a href="#protocols" class="text-spot-muted hover:text-white transition-colors">Protocols</a>
         <a href="#cli-runner" class="text-spot-muted hover:text-white transition-colors">CLI &amp; CI</a>
         <a href="#benchmarks" class="text-spot-muted hover:text-white transition-colors">Comparison</a>
-        <a href="#inspector" class="text-spot-bright hover:text-white transition-colors">Inspector</a>
+        <a href="#inspector" class="text-spot-bright hover:text-white transition-colors font-semibold">Inspector</a>
         <a href="#install" class="text-spot-muted hover:text-white transition-colors">Install</a>
         <a href="https://github.com/h3ma209/Blitz" target="_blank" rel="noopener" class="flex items-center gap-1.5 text-spot-muted hover:text-white transition-colors">
           <svg class="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
@@ -111,12 +120,35 @@
           </svg>
           GitHub
         </a>
-        <button onclick="toggleShortcutsModal()" class="text-xs font-mono text-spot-muted hover:text-spot-bright px-2.5 py-1 rounded-lg border border-white/10 hover:border-spot-bright/30 transition-all">
+        <button onclick="toggleShortcutsModal()" class="text-xs font-mono text-spot-muted hover:text-spot-bright px-2.5 py-1 rounded-lg border border-white/10 hover:border-spot-bright/30 transition-all" title="Keyboard Shortcuts (⌘K)">
           ⌘K
         </button>
-        <a href="#install" class="hidden sm:inline-flex items-center justify-center bg-spot-bright hover:bg-[#25e96d] text-spot-black font-semibold text-xs px-4 py-2 rounded-full transition-all shadow-[0_2px_14px_rgba(30,215,96,0.35)] hover:shadow-[0_4px_20px_rgba(30,215,96,0.45)]">
+        <a href="#install" class="inline-flex items-center justify-center bg-spot-bright hover:bg-[#25e96d] text-spot-black font-semibold text-xs px-3.5 py-1.5 rounded-full transition-all shadow-[0_2px_14px_rgba(30,215,96,0.35)] hover:shadow-[0_4px_20px_rgba(30,215,96,0.45)]">
           Get Blitz
         </a>
+      </div>
+
+      <!-- Mobile Dropdown Menu -->
+      <div id="mobile-nav" class="hidden w-full lg:hidden pt-4 pb-2 border-t border-white/10 mt-3 flex flex-col gap-3 text-sm">
+        <a href="#why-switch" onclick="toggleMobileNav()" class="text-spot-bright py-1">Why Switch?</a>
+        <a href="#git-cloud" onclick="toggleMobileNav()" class="text-spot-muted hover:text-white py-1">Git Cloud Sync</a>
+        <a href="#features" onclick="toggleMobileNav()" class="text-spot-muted hover:text-white py-1">Features</a>
+        <a href="#protocols" onclick="toggleMobileNav()" class="text-spot-muted hover:text-white py-1">Protocols</a>
+        <a href="#cli-runner" onclick="toggleMobileNav()" class="text-spot-muted hover:text-white py-1">CLI &amp; CI</a>
+        <a href="#benchmarks" onclick="toggleMobileNav()" class="text-spot-muted hover:text-white py-1">Comparison</a>
+        <a href="#inspector" onclick="toggleMobileNav()" class="text-spot-bright py-1 font-semibold">Inspector (Demo)</a>
+        <a href="#install" onclick="toggleMobileNav()" class="text-spot-muted hover:text-white py-1">Install</a>
+        <div class="flex items-center justify-between pt-2 border-t border-white/5">
+          <a href="https://github.com/h3ma209/Blitz" target="_blank" rel="noopener" class="flex items-center gap-1.5 text-spot-muted hover:text-white text-xs">
+            <svg class="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/>
+            </svg>
+            GitHub
+          </a>
+          <button onclick="toggleShortcutsModal(); toggleMobileNav();" class="text-xs font-mono text-spot-bright px-2 py-1 rounded bg-white/5">
+            Shortcuts (⌘K)
+          </button>
+        </div>
       </div>
     </nav>
   </header>
@@ -1081,6 +1113,24 @@ make run</code></pre>
         toggleShortcutsModal();
       }
     });
+
+    function toggleMobileNav() {
+      const menu = document.getElementById('mobile-nav');
+      const openIcon = document.getElementById('nav-open-icon');
+      const closeIcon = document.getElementById('nav-close-icon');
+      if (menu) {
+        const isHidden = menu.classList.contains('hidden');
+        if (isHidden) {
+          menu.classList.remove('hidden');
+          openIcon.classList.add('hidden');
+          closeIcon.classList.remove('hidden');
+        } else {
+          menu.classList.add('hidden');
+          openIcon.classList.remove('hidden');
+          closeIcon.classList.add('hidden');
+        }
+      }
+    }
 
     // In-Browser Collection Inspector Logic
     const fileInput = document.getElementById('collection-file-input');
