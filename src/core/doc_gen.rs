@@ -410,6 +410,106 @@ fn collect_endpoints<'a>(
     }
 }
 
+/// Compiles a collection into a standalone interactive Swagger UI HTML file.
+pub fn generate_swagger_ui_html(collection: &Collection) -> Result<String, crate::core::impex::ImpexError> {
+    let openapi_json = crate::core::impex::export_openapi3(collection)?;
+    let escaped_title = html_escape(&collection.name);
+
+    let html = format!(
+        r#"<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>{title} — Swagger UI</title>
+  <link rel="stylesheet" href="https://unpkg.com/swagger-ui-dist@5/swagger-ui.css" />
+  <style>
+    body {{
+      margin: 0;
+      padding: 0;
+      background: #0d1117;
+      color: #c9d1d9;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    }}
+    .swagger-ui {{
+      filter: invert(88%) hue-rotate(180deg);
+    }}
+    .swagger-ui .topbar {{
+      display: none;
+    }}
+    .top-header {{
+      background: #161b22;
+      border-bottom: 1px solid #30363d;
+      padding: 12px 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }}
+    .top-header h1 {{
+      margin: 0;
+      font-size: 18px;
+      color: #58a6ff;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }}
+    .top-header .tag {{
+      background: #238636;
+      color: #fff;
+      font-size: 11px;
+      font-weight: 700;
+      padding: 2px 8px;
+      border-radius: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }}
+    .top-header .meta {{
+      font-size: 12px;
+      color: #8b949e;
+    }}
+  </style>
+</head>
+<body>
+  <div class="top-header">
+    <h1><span>⚡</span> {title} <span class="tag">OpenAPI 3.0</span></h1>
+    <div class="meta">Exported from Blitz API Workbench</div>
+  </div>
+  <div id="swagger-ui"></div>
+  <script src="https://unpkg.com/swagger-ui-dist@5/swagger-ui-bundle.js" crossorigin></script>
+  <script src="https://unpkg.com/swagger-ui-dist@5/swagger-ui-standalone-preset.js" crossorigin></script>
+  <script id="openapi-spec" type="application/json">
+{openapi_json}
+  </script>
+  <script>
+    window.onload = () => {{
+      const spec = JSON.parse(document.getElementById('openapi-spec').textContent);
+      window.ui = SwaggerUIBundle({{
+        spec: spec,
+        dom_id: '#swagger-ui',
+        deepLinking: true,
+        presets: [
+          SwaggerUIBundle.presets.apis,
+          SwaggerUIStandalonePreset
+        ],
+        plugins: [
+          SwaggerUIBundle.plugins.DownloadUrl
+        ],
+        layout: "BaseLayout",
+        defaultModelsExpandDepth: -1
+      }});
+    }};
+  </script>
+</body>
+</html>
+"#,
+        title = escaped_title,
+        openapi_json = openapi_json
+    );
+
+    Ok(html)
+}
+
 fn html_escape(s: &str) -> String {
     s.replace('&', "&amp;")
         .replace('<', "&lt;")
@@ -442,5 +542,22 @@ mod tests {
         assert!(html.contains("https://api.example.com/users"));
         assert!(html.contains("cURL"));
         assert!(html.contains("reqwest"));
+    }
+
+    #[test]
+    fn test_generate_swagger_ui_html() {
+        let mut col = Collection::new("Petstore API");
+        col.description = "Swagger UI Export Test".into();
+
+        let mut req = RequestDraft::default();
+        req.name = "List Pets".into();
+        req.url = "https://petstore.example.com/pets".into();
+        col.items.push(CollectionItem::Request(req));
+
+        let html = generate_swagger_ui_html(&col).expect("swagger export");
+        assert!(html.contains("Petstore API"));
+        assert!(html.contains("SwaggerUIBundle"));
+        assert!(html.contains("openapi-spec"));
+        assert!(html.contains("/pets"));
     }
 }

@@ -53,7 +53,7 @@ pub use collection::{
 pub use console::{push_console, ConsoleLevel, ConsoleLine, CONSOLE_MAX};
 pub use cookies::{Cookie, CookieJar};
 pub use digest::{build_digest_authorization, digest_uri, DigestChallenge};
-pub use doc_gen::generate_static_doc_html;
+pub use doc_gen::{generate_static_doc_html, generate_swagger_ui_html};
 pub use environment::{
     demo_environments, ensure_default_environments, export_environment_json, find_environment,
     find_environment_by_name, import_environment_json, import_environment_texts, EnvVar,

@@ -26,6 +26,7 @@ pub fn CollectionEditor(
 ) -> Element {
     let mut tab = use_signal(|| CollectionEditorTab::Overview);
     let mut exporting_docs = use_signal(|| false);
+    let mut exporting_swagger = use_signal(|| false);
 
     // Runs tab runner state
     let mut runner_iterations = use_signal(|| 1usize);
@@ -179,6 +180,49 @@ pub fn CollectionEditor(
                                         span { style: "margin-left: 6px;", "Exporting…" }
                                     } else {
                                         "Export HTML Docs"
+                                    }
+                                }
+                                button {
+                                    class: "btn btn-secondary",
+                                    style: "white-space: nowrap; margin-left: 8px;",
+                                    disabled: exporting_swagger(),
+                                    onclick: {
+                                        let collection = collection.clone();
+                                        move |_| {
+                                            if exporting_swagger() {
+                                                return;
+                                            }
+                                            exporting_swagger.set(true);
+                                            let collection = collection.clone();
+                                            spawn(async move {
+                                                if let Ok(html) = crate::core::generate_swagger_ui_html(&collection) {
+                                                    let safe_name = collection.name.to_lowercase().replace(' ', "-");
+                                                    let script = format!(
+                                                        r#"
+                                                        const blob = new Blob([{}], {{ type: 'text/html' }});
+                                                        const url = URL.createObjectURL(blob);
+                                                        const a = document.createElement('a');
+                                                        a.href = url;
+                                                        a.download = '{}-swagger.html';
+                                                        document.body.appendChild(a);
+                                                        a.click();
+                                                        document.body.removeChild(a);
+                                                        URL.revokeObjectURL(url);
+                                                        "#,
+                                                        serde_json::to_string(&html).unwrap_or_else(|_| "\"\"".into()),
+                                                        safe_name
+                                                    );
+                                                    let _ = document::eval(&script).await;
+                                                }
+                                                exporting_swagger.set(false);
+                                            });
+                                        }
+                                    },
+                                    if exporting_swagger() {
+                                        Spinner { class: "spinner-sm".to_string() }
+                                        span { style: "margin-left: 6px;", "Exporting…" }
+                                    } else {
+                                        "Export Swagger UI"
                                     }
                                 }
                             }

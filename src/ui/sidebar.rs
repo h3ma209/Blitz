@@ -39,6 +39,7 @@ pub enum SidebarAction {
     ImportCollection,
     ExportCollection,
     ExportStaticDoc,
+    ExportSwaggerDoc,
     ToggleHistoryCollapse,
 }
 
@@ -942,6 +943,17 @@ pub fn Sidebar(
                                                     ctx_menu.set(None);
                                                     on_event.call(SidebarEvent::new(
                                                         SidebarAction::ExportStaticDoc,
+                                                        Some(mid),
+                                                        Some(mcol),
+                                                    ));
+                                                },
+                                            }
+                                            CtxMenuItem {
+                                                label: "Export Swagger UI Docs",
+                                                onclick: move |_| {
+                                                    ctx_menu.set(None);
+                                                    on_event.call(SidebarEvent::new(
+                                                        SidebarAction::ExportSwaggerDoc,
                                                         Some(mid),
                                                         Some(mcol),
                                                     ));

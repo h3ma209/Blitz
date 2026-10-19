@@ -7,7 +7,7 @@ use crate::core::{
     clone_or_ensure, delete_needs_confirmation, duplicate_across, ensure_default_environments,
     export_collection_v21, flatten_collections, insert_item_under,
     export_environment_json, find_environment, find_request_across,
-    generate_snippet_resolved, generate_static_doc_html,
+    generate_snippet_resolved, generate_static_doc_html, generate_swagger_ui_html,
     graphql_ws_subscribe, grpc_reflection_list, grpc_unary, import_collection_v21, import_curl,
     import_environment_texts, import_har, import_openapi3, interceptor_limits_blurb,
     limitations_blurb, link_folder, mcp_call_tool, mcp_list_tools, mqtt_publish, mqtt_subscribe_once,
@@ -1231,6 +1231,42 @@ pub fn Workbench() -> Element {
                     status_msg.set(format!("exported static docs for '{}'", c.name));
                 }
             }
+            SidebarAction::ExportSwaggerDoc => {
+                let cols = collections();
+                let col = evt
+                    .collection_id
+                    .and_then(|id| cols.iter().find(|c| c.id == id))
+                    .or_else(|| cols.first());
+                if let Some(c) = col {
+                    match generate_swagger_ui_html(c) {
+                        Ok(html) => {
+                            let safe_name = c.name.to_lowercase().replace(' ', "-");
+                            let script = format!(
+                                r#"
+                                const blob = new Blob([{}], {{ type: 'text/html' }});
+                                const url = URL.createObjectURL(blob);
+                                const a = document.createElement('a');
+                                a.href = url;
+                                a.download = '{}-swagger.html';
+                                document.body.appendChild(a);
+                                a.click();
+                                document.body.removeChild(a);
+                                URL.revokeObjectURL(url);
+                                "#,
+                                serde_json::to_string(&html).unwrap_or_else(|_| "\"\"".into()),
+                                safe_name
+                            );
+                            spawn(async move {
+                                let _ = document::eval(&script).await;
+                            });
+                            status_msg.set(format!("exported swagger ui docs for '{}'", c.name));
+                        }
+                        Err(err) => {
+                            status_msg.set(format!("failed to export swagger docs: {}", err));
+                        }
+                    }
+                }
+            }
             SidebarAction::ToggleHistoryCollapse => {
                 let mut s = app_settings();
                 s.ui.history_collapsed = !s.ui.history_collapsed;
@@ -1675,6 +1711,29 @@ pub fn Workbench() -> Element {
                                     }
                                 },
                                 "Export Static HTML Docs…"
+                            }
+                            button {
+                                class: "menu-item",
+                                onclick: move |_| {
+                                    file_menu_open.set(false);
+                                    let cols = collections();
+                                    let col = active_collection_id()
+                                        .and_then(|id| cols.iter().find(|c| c.id == id))
+                                        .or_else(|| cols.first());
+                                    match col {
+                                        Some(c) => match generate_swagger_ui_html(c) {
+                                            Ok(html) => {
+                                                impex_modal.set(Some(ImpexModal::Export {
+                                                    name: format!("{}_swagger.html", c.name.to_lowercase().replace(' ', "_")),
+                                                    text: html,
+                                                }));
+                                            }
+                                            Err(err) => status_msg.set(format!("failed to export swagger: {}", err)),
+                                        },
+                                        None => status_msg.set("no collection to export swagger".into()),
+                                    }
+                                },
+                                "Export Swagger UI Docs…"
                             }
                             button {
                                 class: "menu-item",
