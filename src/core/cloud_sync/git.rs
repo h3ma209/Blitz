@@ -4,6 +4,7 @@ use std::path::Path;
 use std::process::Command;
 
 use chrono::{SecondsFormat, Utc};
+use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 #[derive(Debug, Error)]
@@ -613,6 +614,172 @@ pub fn resolve_git_conflicts(cwd: &Path, paths: &[String], keep_local: bool) -> 
     Ok(())
 }
 
+/// Team member contributor summary from git log.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct TeamMember {
+    pub name: String,
+    pub email: String,
+    pub commit_count: usize,
+    pub last_active: String,
+}
+
+/// Commit entry for recent team activity.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct TeamCommit {
+    pub hash: String,
+    pub author_name: String,
+    pub author_email: String,
+    pub date: String,
+    pub message: String,
+    pub files: Vec<String>,
+}
+
+/// Uncommitted or modified file status in the workspace git repo.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ChangedFile {
+    pub path: String,
+    /// 'M' = Modified, 'A' = Added, 'D' = Deleted, '?' = Untracked, 'R' = Renamed, 'U' = Unmerged
+    pub status: String,
+}
+
+/// Comprehensive Team Workspace Activity snapshot.
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+pub struct TeamActivity {
+    pub members: Vec<TeamMember>,
+    pub recent_commits: Vec<TeamCommit>,
+    pub uncommitted_changes: Vec<ChangedFile>,
+    pub branch: String,
+    pub remote_url: String,
+}
+
+/// Query team contributors, recent commits with file diffs, and local modified files.
+pub fn get_team_activity(cwd: &Path, limit_commits: usize) -> Result<TeamActivity, CloudGitError> {
+    let branch = run_git(cwd, &["rev-parse", "--abbrev-ref", "HEAD"]).unwrap_or_else(|_| "main".into());
+    let remote_url = run_git(cwd, &["remote", "get-url", "origin"]).unwrap_or_default();
+
+    // 1. Members via `git shortlog -sn --all`
+    let mut members = Vec::new();
+    if let Ok(shortlog) = run_git(cwd, &["shortlog", "-sne", "--all"]) {
+        for line in shortlog.lines() {
+            let line = line.trim();
+            if line.is_empty() {
+                continue;
+            }
+            // format: "  12\tAlice Bob <alice@example.com>"
+            let mut parts = line.splitn(2, '\t');
+            let count_str = parts.next().unwrap_or("0").trim();
+            let count: usize = count_str.parse().unwrap_or(0);
+            if let Some(author_email) = parts.next() {
+                let name = if let Some(idx) = author_email.find('<') {
+                    author_email[..idx].trim().to_string()
+                } else {
+                    author_email.trim().to_string()
+                };
+                let email = if let (Some(start), Some(end)) = (author_email.find('<'), author_email.find('>')) {
+                    if start < end {
+                        author_email[start + 1..end].trim().to_string()
+                    } else {
+                        String::new()
+                    }
+                } else {
+                    String::new()
+                };
+
+                // Find last active date for this author
+                let last_active = run_git(
+                    cwd,
+                    &[
+                        "log",
+                        "-1",
+                        &format!("--author={}", name),
+                        "--format=%cr",
+                    ],
+                )
+                .unwrap_or_else(|_| "recently".into());
+
+                members.push(TeamMember {
+                    name,
+                    email,
+                    commit_count: count,
+                    last_active,
+                });
+            }
+        }
+    }
+
+    // 2. Recent commits via `git log -n {limit} --name-only --format=%H|%an|%ae|%cr|%s`
+    let mut recent_commits = Vec::new();
+    let limit_str = limit_commits.max(5).to_string();
+    if let Ok(log_out) = run_git(
+        cwd,
+        &[
+            "log",
+            "-n",
+            &limit_str,
+            "--name-only",
+            "--format=COMMIT_DELIM%H|%an|%ae|%cr|%s",
+        ],
+    ) {
+        let commit_blocks = log_out.split("COMMIT_DELIM");
+        for block in commit_blocks {
+            let block = block.trim();
+            if block.is_empty() {
+                continue;
+            }
+            let mut lines = block.lines();
+            if let Some(header) = lines.next() {
+                let parts: Vec<&str> = header.splitn(5, '|').collect();
+                if parts.len() >= 5 {
+                    let hash = parts[0].chars().take(7).collect();
+                    let author_name = parts[1].to_string();
+                    let author_email = parts[2].to_string();
+                    let date = parts[3].to_string();
+                    let message = parts[4].to_string();
+
+                    let files: Vec<String> = lines
+                        .map(|l| l.trim().to_string())
+                        .filter(|l| !l.is_empty())
+                        .collect();
+
+                    recent_commits.push(TeamCommit {
+                        hash,
+                        author_name,
+                        author_email,
+                        date,
+                        message,
+                        files,
+                    });
+                }
+            }
+        }
+    }
+
+    // 3. Uncommitted / edited files via `git status --porcelain`
+    let mut uncommitted_changes = Vec::new();
+    if let Ok(status_out) = run_git(cwd, &["status", "--porcelain"]) {
+        for line in status_out.lines() {
+            if line.len() >= 3 {
+                let status_code = line[..2].trim().to_string();
+                let path = line[3..].trim().to_string();
+                if !path.is_empty() {
+                    uncommitted_changes.push(ChangedFile {
+                        path,
+                        status: if status_code.is_empty() { "M".into() } else { status_code },
+                    });
+                }
+            }
+        }
+    }
+
+    Ok(TeamActivity {
+        members,
+        recent_commits,
+        uncommitted_changes,
+        branch,
+        remote_url,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -701,6 +868,29 @@ mod tests {
         assert!(!log.is_empty());
 
         // root is …/blitz-git-N/wt — remove the whole base (wt + git-meta).
+        if let Some(base) = root.parent() {
+            let _ = fs::remove_dir_all(base);
+        }
+    }
+
+    #[test]
+    fn test_get_team_activity() {
+        let root = temp_git_repo();
+        // Create initial commit
+        fs::write(root.join("init.txt"), "first commit").unwrap();
+        let _ = commit_local_changes(&root, Some("initial commit")).unwrap();
+
+        // Let's create an uncommitted file to test uncommitted_changes.
+        fs::write(root.join("new_work.txt"), "hello work").unwrap();
+
+        let activity = get_team_activity(&root, 10).unwrap();
+        assert!(!activity.members.is_empty(), "should list members");
+        assert_eq!(activity.members[0].name, "Test");
+        assert!(!activity.recent_commits.is_empty(), "should list recent commits");
+        assert!(activity.recent_commits[0].message.contains("initial commit"));
+        assert!(!activity.uncommitted_changes.is_empty(), "should list uncommitted edited files");
+        assert!(activity.uncommitted_changes.iter().any(|f| f.path.contains("new_work.txt")));
+
         if let Some(base) = root.parent() {
             let _ = fs::remove_dir_all(base);
         }

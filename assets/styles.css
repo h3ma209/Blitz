@@ -3483,3 +3483,374 @@ html:has(.app-shell.theme-high-contrast) body {
   --accent-soft: rgba(92, 255, 154, 0.32);
   --bg-active: rgba(92, 255, 154, 0.38);
 }
+
+/* =========================================================================
+   TEAM COLLABORATION & ACTIVITY MODAL
+   ========================================================================= */
+.modal.team-modal {
+  max-width: 960px;
+  width: 90vw;
+  height: 80vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.team-modal-content {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.team-meta-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 16px;
+  background: rgba(0, 0, 0, 0.3);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  gap: 12px;
+}
+
+.team-repo-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.team-badge {
+  background: rgba(29, 185, 84, 0.18);
+  color: #1ed760;
+  font-weight: 700;
+  font-size: 10px;
+  text-transform: uppercase;
+  padding: 2px 7px;
+  border-radius: 4px;
+  letter-spacing: 0.06em;
+}
+
+.team-branch-pill {
+  background: rgba(255, 255, 255, 0.08);
+  color: #f0f0f0;
+  font-size: 11px;
+  font-family: var(--mono);
+  padding: 2px 8px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.team-remote-url {
+  font-size: 11px;
+  color: var(--gray-4);
+  font-family: var(--mono);
+  max-width: 320px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.team-actions-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.team-tabs-bar {
+  display: flex;
+  gap: 4px;
+  padding: 8px 16px;
+  background: rgba(255, 255, 255, 0.02);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.team-tab {
+  background: transparent;
+  border: none;
+  padding: 6px 14px;
+  color: var(--gray-4);
+  font-size: 12px;
+  font-weight: 600;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.team-tab:hover {
+  background: rgba(255, 255, 255, 0.06);
+  color: #ffffff;
+}
+
+.team-tab.active {
+  background: rgba(29, 185, 84, 0.15);
+  color: #1ed760;
+  border-bottom: 2px solid #1ed760;
+}
+
+.team-tab-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 16px;
+}
+
+/* Commits Master-Detail Split */
+.team-commits-split {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  height: 100%;
+  min-height: 380px;
+}
+
+.team-commits-list {
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-right: 6px;
+}
+
+.commit-row {
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 8px;
+  padding: 10px 12px;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.commit-row:hover {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.12);
+}
+
+.commit-row.selected {
+  background: rgba(29, 185, 84, 0.1);
+  border-color: rgba(29, 185, 84, 0.4);
+}
+
+.commit-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  margin-bottom: 4px;
+}
+
+.commit-hash {
+  font-family: var(--mono);
+  color: #60a5fa;
+  font-weight: 700;
+  background: rgba(96, 165, 250, 0.12);
+  padding: 1px 5px;
+  border-radius: 4px;
+}
+
+.commit-author {
+  font-weight: 600;
+  color: #f3f4f6;
+}
+
+.commit-date {
+  color: var(--gray-4);
+  margin-left: auto;
+}
+
+.commit-msg {
+  font-size: 12px;
+  color: #d1d5db;
+  line-height: 1.4;
+  margin-bottom: 4px;
+}
+
+.commit-files-count {
+  font-size: 10px;
+  color: #9ca3af;
+  font-family: var(--mono);
+}
+
+.team-commit-detail {
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  padding: 16px;
+  overflow-y: auto;
+}
+
+.detail-header {
+  margin-bottom: 14px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.detail-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: #ffffff;
+  margin-bottom: 6px;
+}
+
+.detail-meta {
+  font-size: 11px;
+  color: var(--gray-4);
+}
+
+.author-badge {
+  color: #a78bfa;
+}
+
+.detail-files-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: #9ca3af;
+  margin-bottom: 8px;
+}
+
+.detail-files-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.detail-files-list li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 8px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.02);
+  font-size: 11px;
+  font-family: var(--mono);
+}
+
+.detail-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: var(--gray-4);
+  font-size: 12px;
+}
+
+/* Local Edited Files Table */
+.team-files-table-container {
+  overflow-y: auto;
+}
+
+.status-badge {
+  display: inline-block;
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 700;
+  font-family: var(--mono);
+  text-align: center;
+}
+
+.status-badge.status-m {
+  background: rgba(245, 158, 11, 0.2);
+  color: #fbbf24;
+}
+
+.status-badge.status-a {
+  background: rgba(16, 185, 129, 0.2);
+  color: #34d399;
+}
+
+.status-badge.status-d {
+  background: rgba(239, 68, 68, 0.2);
+  color: #f87171;
+}
+
+/* Team Members Grid */
+.team-members-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 12px;
+}
+
+.team-member-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 10px;
+  transition: transform 0.15s ease, border-color 0.15s ease;
+}
+
+.team-member-card:hover {
+  transform: translateY(-1px);
+  border-color: rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.member-avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #1ed760, #10b981);
+  color: #000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 800;
+  font-size: 16px;
+  flex-shrink: 0;
+}
+
+.member-info {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.member-name {
+  font-size: 13px;
+  font-weight: 700;
+  color: #ffffff;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.member-email {
+  font-size: 11px;
+  color: var(--gray-4);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.member-stats {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px;
+  font-size: 10px;
+}
+
+.member-commits {
+  color: #1ed760;
+  font-weight: 600;
+}
+
+.member-active {
+  color: var(--gray-4);
+}
+
+.team-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 48px 16px;
+  text-align: center;
+  color: var(--gray-4);
+}

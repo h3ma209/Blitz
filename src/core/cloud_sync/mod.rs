@@ -20,9 +20,10 @@ mod tree;
 
 pub use git::{
     build_commit_message, checkout_env_branch, commit_local_changes, detect_git_conflicts,
-    ensure_clone, git_available, open_in_file_manager, pull_rebase, push_commit, push_only,
-    resolve_commit_message, resolve_git_conflicts, status_detail, status_summary, sync_pull_push,
-    CloudGitError, GitStatus, SyncResult,
+    ensure_clone, get_team_activity, git_available, open_in_file_manager, pull_rebase, push_commit,
+    push_only, resolve_commit_message, resolve_git_conflicts, status_detail, status_summary,
+    sync_pull_push, ChangedFile, CloudGitError, GitStatus, SyncResult, TeamActivity, TeamCommit,
+    TeamMember,
 };
 pub use tree::{
     branch_name_for_env, export_workspace_tree, import_workspace_tree, merge_secret_values,

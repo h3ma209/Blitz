@@ -19,8 +19,11 @@ mod settings_panel;
 mod theme_selector;
 mod sidebar;
 mod sidebar_shortcuts;
+mod team_modal;
 mod var_hover;
 mod workbench;
+
+pub(crate) use team_modal::TeamModal;
 
 pub(crate) use dismiss_backdrop::DismissBackdrop;
 pub(crate) use modal_shell::ModalShell;

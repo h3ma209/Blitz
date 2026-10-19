@@ -46,8 +46,9 @@ use crate::ui::settings_panel::{SettingsEvent, SettingsPanel};
 use crate::ui::theme_selector::ThemeSelector;
 use crate::ui::sidebar::{Sidebar, SidebarAction, SidebarEvent};
 use crate::ui::CommentableTextarea;
-use crate::ui::{DismissBackdrop, ModalShell};
+use crate::ui::{DismissBackdrop, ModalShell, TeamModal};
 use crate::ui::loading::Spinner;
+use crate::core::{get_team_activity, TeamActivity};
 
 /// Vertical pane drag state — handled on `.workbench`, never as bare `.app-shell` grid children.
 #[derive(Clone, Copy, PartialEq)]
@@ -160,6 +161,8 @@ pub fn Workbench() -> Element {
     let mut tools_menu_open = use_signal(|| false);
     let mut cloud_menu_open = use_signal(|| false);
     let mut show_cookies = use_signal(|| false);
+    let mut show_team = use_signal(|| false);
+    let mut team_activity = use_signal(TeamActivity::default);
     let mut show_col_vars = use_signal(|| false);
     // false = active collection, true = browse all collections.
     let mut col_vars_all = use_signal(|| false);
@@ -2102,6 +2105,27 @@ pub fn Workbench() -> Element {
                                 class: "menu-item",
                                 onclick: move |_| {
                                     cloud_menu_open.set(false);
+                                    let Ok(store) = JsonStore::open_default() else {
+                                        status_msg.set("team: cannot open store".into());
+                                        return;
+                                    };
+                                    let mut settings = app_settings();
+                                    if settings.cloud_sync.remote_url.trim().is_empty() {
+                                        settings.cloud_sync.remote_url = DEFAULT_CLOUD_REMOTE.to_string();
+                                    }
+                                    let _ = clone_or_ensure(store.root(), &mut settings);
+                                    let clone_path = settings.cloud_sync.resolved_clone_path(store.root());
+                                    if let Ok(act) = get_team_activity(&clone_path, 30) {
+                                        team_activity.set(act);
+                                    }
+                                    show_team.set(true);
+                                },
+                                "Team activity…"
+                            }
+                            button {
+                                class: "menu-item",
+                                onclick: move |_| {
+                                    cloud_menu_open.set(false);
                                     show_env_manager.set(false);
                                     show_settings.set(true);
                                 },
@@ -2156,6 +2180,27 @@ pub fn Workbench() -> Element {
                                 span { class: "live-chip live-proxy", title: "Capture proxy running", "Proxy :{p}" }
                             }
                         }
+                    }
+                    button {
+                        class: if show_team() { "top-icon top-icon-on" } else { "top-icon" },
+                        title: "Team collaboration · Members, recent git commits & edited files",
+                        onclick: move |_| {
+                            let Ok(store) = JsonStore::open_default() else {
+                                status_msg.set("team: cannot open store".into());
+                                return;
+                            };
+                            let mut settings = app_settings();
+                            if settings.cloud_sync.remote_url.trim().is_empty() {
+                                settings.cloud_sync.remote_url = DEFAULT_CLOUD_REMOTE.to_string();
+                            }
+                            let _ = clone_or_ensure(store.root(), &mut settings);
+                            let clone_path = settings.cloud_sync.resolved_clone_path(store.root());
+                            if let Ok(act) = get_team_activity(&clone_path, 30) {
+                                team_activity.set(act);
+                            }
+                            show_team.set(!show_team());
+                        },
+                        "Team"
                     }
                     button {
                         class: if show_vars() { "top-icon top-icon-on" } else { "top-icon" },
@@ -3654,6 +3699,72 @@ pub fn Workbench() -> Element {
                             }
                         }
                     }
+                }
+            }
+
+            if show_team() {
+                TeamModal {
+                    activity: team_activity(),
+                    on_close: move |_| show_team.set(false),
+                    on_refresh: move |_| {
+                        let Ok(store) = JsonStore::open_default() else { return; };
+                        let settings = app_settings();
+                        let clone_path = settings.cloud_sync.resolved_clone_path(store.root());
+                        if let Ok(act) = get_team_activity(&clone_path, 30) {
+                            team_activity.set(act);
+                            status_msg.set("team: refreshed activity".into());
+                        }
+                    },
+                    on_pull: move |_| {
+                        let Ok(store) = JsonStore::open_default() else { return; };
+                        let mut settings = app_settings();
+                        match pull_workspace(store.root(), &mut settings, &environments()) {
+                            Ok((cols, envs, r)) => {
+                                app_settings.set(settings.clone());
+                                if !cols.is_empty() {
+                                    collections.set(cols);
+                                    fold_epoch.set(fold_epoch() + 1);
+                                }
+                                if !envs.is_empty() {
+                                    let mut v = vars();
+                                    sync_env_vars(&envs, active_env_id(), &mut v);
+                                    vars.set(v);
+                                    environments.set(envs);
+                                }
+                                let clone_path = settings.cloud_sync.resolved_clone_path(store.root());
+                                if let Ok(act) = get_team_activity(&clone_path, 30) {
+                                    team_activity.set(act);
+                                }
+                                status_msg.set(r.message);
+                                persist_local();
+                            }
+                            Err(e) => status_msg.set(format!("pull: {e}")),
+                        }
+                    },
+                    on_push: move |_| {
+                        let Ok(store) = JsonStore::open_default() else { return; };
+                        let mut settings = app_settings();
+                        let active_env_name = find_environment(&environments(), active_env_id())
+                            .map(|e| e.name.clone())
+                            .unwrap_or_else(|| "No Environment".into());
+                        let commit = settings.cloud_sync.commit_message.clone();
+                        let r = push_workspace(
+                            store.root(),
+                            &mut settings,
+                            &collections(),
+                            &environments(),
+                            &active_env_name,
+                            Some(commit.as_str()),
+                            &vars(),
+                        );
+                        app_settings.set(settings.clone());
+                        let clone_path = settings.cloud_sync.resolved_clone_path(store.root());
+                        if let Ok(act) = get_team_activity(&clone_path, 30) {
+                            team_activity.set(act);
+                        }
+                        status_msg.set(r.message);
+                        persist_local();
+                    },
                 }
             }
 

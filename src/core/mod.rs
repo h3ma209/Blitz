@@ -85,9 +85,9 @@ pub use sandbox::{
 pub use scripts::{run_script, run_script_ex, run_script_helpers, ScriptRunOutcome};
 pub use cloud_sync::{
     apply_sync_to_snapshot, branch_name_for_env, clone_or_ensure, detect_git_conflicts,
-    git_available, link_folder, open_in_file_manager, pull_workspace, push_workspace,
-    refresh_status, resolve_git_conflicts, status_summary, switch_env_branch, sync_environment,
-    sync_on_save, SyncResult,
+    get_team_activity, git_available, link_folder, open_in_file_manager, pull_workspace,
+    push_workspace, refresh_status, resolve_git_conflicts, status_summary, switch_env_branch,
+    sync_environment, sync_on_save, ChangedFile, SyncResult, TeamActivity, TeamCommit, TeamMember,
 };
 pub use settings::{
     AccentIntensity, AppSettings, ClientCertSettings, CloudSyncSettings, DefaultResponseTab,
