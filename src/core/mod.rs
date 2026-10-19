@@ -3,6 +3,7 @@
 
 #![allow(unused_imports)] // re-exports form public module surface
 
+pub mod assets;
 pub mod auth_extra;
 pub mod capture_proxy;
 pub mod cli_runner;
@@ -28,6 +29,9 @@ pub mod settings;
 pub mod variables;
 pub mod vault;
 
+pub use assets::{
+    copy_file_to_assets, ensure_assets_dir, resolve_asset_path, DEFAULT_ASSETS_DIR,
+};
 pub use capture_proxy::{
     interceptor_limits_blurb, start_capture_proxy, CaptureProxyHandle, CapturedRequest,
 };
@@ -37,10 +41,10 @@ pub use collection::{
     collapsible_tree_ids, delete_needs_confirmation, demo_collections, duplicate_across,
     filter_tree_rows, find_request_across, flatten_collections, flatten_collections_filtered,
     folder_child_count, folder_path_to_request, insert_item_under, item_contains_id, move_item_to,
-    paste_target_parent_id, remint_pasted_item, request_tab_display_name, snapshot_tree_item,
-    purge_from_trash, remove_across, rename_across, reorder_before, reorder_within_parent,
-    restore_from_trash, save_request_to_collections, sort_collections, trash_collection,
-    Collection, CollectionItem, Folder, TreeRow, TreeRowKind,
+    paste_target_parent_id, remint_pasted_item, request_tab_display_name, resolve_ancestor_auth,
+    snapshot_tree_item, purge_from_trash, remove_across, rename_across, reorder_before,
+    reorder_within_parent, restore_from_trash, save_request_to_collections, sort_collections,
+    trash_collection, AncestorAuthOrigin, Collection, CollectionItem, Folder, TreeRow, TreeRowKind,
 };
 pub use console::{push_console, ConsoleLevel, ConsoleLine, CONSOLE_MAX};
 pub use cookies::{Cookie, CookieJar};

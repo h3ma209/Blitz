@@ -115,6 +115,8 @@ fn ensure_absolute_http_url(url: &str, raw_before_resolve: &str) -> Result<(), S
 pub struct SendOptions<'a> {
     pub secrets_store: Option<&'a dyn SecretsStore>,
     pub collection_auth: Option<&'a AuthConfig>,
+    /// Hierarchical ancestor auth: (effective AuthConfig, origin name/label e.g. "folder 'Auth'")
+    pub ancestor_auth: Option<(&'a AuthConfig, &'a str)>,
     pub cookie_jar: Option<&'a mut CookieJar>,
     pub app_settings: Option<&'a AppSettings>,
     /// Pre-request scripts outside the request (collection → folder), run first.
@@ -127,6 +129,8 @@ pub struct SendOptions<'a> {
     pub execution: Option<&'a mut ExecutionHints>,
     /// Cooperative cancel: set to true to abort (best-effort during blocking HTTP).
     pub cancel: Option<Arc<AtomicBool>>,
+    /// Optional workspace root for resolving relative assets paths (e.g. assets/payloads/file.pdf).
+    pub workspace_root: Option<&'a std::path::Path>,
 }
 
 fn is_cancelled(cancel: &Option<Arc<AtomicBool>>) -> bool {
@@ -275,11 +279,23 @@ fn auth_has_secret_refs(draft: &RequestDraft) -> bool {
 
 fn resolve_inherit_auth(
     draft: &mut RequestDraft,
+    ancestor_auth: Option<(&AuthConfig, &str)>,
     collection_auth: Option<&AuthConfig>,
     log: &mut Vec<String>,
 ) {
     if draft.auth.auth_type != AuthType::Inherit {
         return;
+    }
+    if let Some((auth, origin)) = ancestor_auth {
+        if auth.auth_type != AuthType::Inherit && auth.auth_type != AuthType::NoAuth {
+            draft.auth = auth.clone();
+            log.push(format!(
+                "auth: inherited from {} ({})",
+                origin,
+                auth_label(auth.auth_type)
+            ));
+            return;
+        }
     }
     match collection_auth {
         Some(ca) if ca.auth_type != AuthType::Inherit => {
@@ -291,7 +307,7 @@ fn resolve_inherit_auth(
         }
         _ => {
             draft.auth.auth_type = AuthType::NoAuth;
-            log.push("auth: inherit → none (no collection auth)".into());
+            log.push("auth: inherit → none (no ancestor auth configured)".into());
         }
     }
 }
@@ -633,6 +649,7 @@ fn build_client(
 
 fn build_formdata(
     fields: &[FormDataField],
+    workspace_root: Option<&std::path::Path>,
     log: &mut Vec<String>,
 ) -> Result<Option<multipart::Form>, SendError> {
     let enabled: Vec<_> = fields
@@ -648,10 +665,15 @@ fn build_formdata(
     let mut file_n = 0usize;
     for f in enabled {
         if f.is_file {
-            let path = f.value.trim();
-            match fs::read(path) {
+            let path_str = f.value.trim();
+            let resolved_path = if let Some(ws) = workspace_root {
+                crate::core::resolve_asset_path(ws, path_str)
+            } else {
+                std::path::PathBuf::from(path_str)
+            };
+            match fs::read(&resolved_path) {
                 Ok(bytes) => {
-                    let filename = std::path::Path::new(path)
+                    let filename = resolved_path
                         .file_name()
                         .and_then(|n| n.to_str())
                         .unwrap_or("file")
@@ -661,7 +683,7 @@ fn build_formdata(
                     file_n += 1;
                 }
                 Err(e) => {
-                    form = form.text(f.key.clone(), format!("[file missing: {path}: {e}]"));
+                    form = form.text(f.key.clone(), format!("[file missing: {path_str}: {e}]"));
                     file_stub += 1;
                 }
             }
@@ -852,7 +874,12 @@ pub fn send_request_with_options(
     }
 
     // 2b. Inherit auth
-    resolve_inherit_auth(&mut resolved, opts.collection_auth, &mut log);
+    resolve_inherit_auth(
+        &mut resolved,
+        opts.ancestor_auth,
+        opts.collection_auth,
+        &mut log,
+    );
 
     // 2c. secret:// in auth
     if auth_has_secret_refs(&resolved) {
@@ -934,13 +961,18 @@ pub fn send_request_with_options(
             }
         }
         BodyMode::Binary => {
-            let path = resolved.binary_path.trim();
-            if path.is_empty() {
+            let path_str = resolved.binary_path.trim();
+            if path_str.is_empty() {
                 log.push("body: binary skipped (empty path)".into());
             } else {
-                match fs::read(path) {
+                let resolved_path = if let Some(ws) = opts.workspace_root {
+                    crate::core::resolve_asset_path(ws, path_str)
+                } else {
+                    std::path::PathBuf::from(path_str)
+                };
+                match fs::read(&resolved_path) {
                     Ok(bytes) => {
-                        log.push(format!("body: binary {} bytes from {path}", bytes.len()));
+                        log.push(format!("body: binary {} bytes from {}", bytes.len(), resolved_path.display()));
                         body_bytes = Some(bytes);
                         if !has_header(&resolved, "Content-Type") {
                             resolved.headers.push(KeyValue::new(
@@ -950,7 +982,7 @@ pub fn send_request_with_options(
                         }
                     }
                     Err(e) => {
-                        log.push(format!("body: binary read failed {path}: {e}"));
+                        log.push(format!("body: binary read failed {}: {e}", resolved_path.display()));
                     }
                 }
             }
@@ -971,7 +1003,7 @@ pub fn send_request_with_options(
                        log: &mut Vec<String>|
      -> Result<reqwest::blocking::RequestBuilder, SendError> {
         if use_formdata {
-            if let Some(f) = build_formdata(form_fields, log)? {
+            if let Some(f) = build_formdata(form_fields, opts.workspace_root, log)? {
                 return Ok(builder.multipart(f));
             }
         } else if let Some(b) = bytes {
@@ -1188,9 +1220,25 @@ mod tests {
             ..Default::default()
         };
         let mut log = Vec::new();
-        resolve_inherit_auth(&mut draft, Some(&col), &mut log);
+        resolve_inherit_auth(&mut draft, None, Some(&col), &mut log);
         assert_eq!(draft.auth.auth_type, AuthType::Bearer);
         assert_eq!(draft.auth.token, "col-tok");
+
+        // Test folder ancestor auth overrides collection
+        let mut draft2 = RequestDraft::default();
+        draft2.auth.auth_type = AuthType::Inherit;
+        let folder_auth = AuthConfig {
+            auth_type: AuthType::ApiKey,
+            api_key_header: "X-Folder-Key".into(),
+            token: "f-123".into(),
+            ..Default::default()
+        };
+        let mut log2 = Vec::new();
+        resolve_inherit_auth(&mut draft2, Some((&folder_auth, "folder 'V1'")), Some(&col), &mut log2);
+        assert_eq!(draft2.auth.auth_type, AuthType::ApiKey);
+        assert_eq!(draft2.auth.api_key_header, "X-Folder-Key");
+        assert_eq!(draft2.auth.token, "f-123");
+        assert!(log2.iter().any(|l| l.contains("folder 'V1'")));
     }
 
     #[test]
@@ -1212,7 +1260,7 @@ mod tests {
                 is_file: true,
             },
         ];
-        let form = build_formdata(&fields, &mut log).unwrap();
+        let form = build_formdata(&fields, None, &mut log).unwrap();
         assert!(form.is_some());
         assert!(log.iter().any(|l| l.contains("form-data")));
     }

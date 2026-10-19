@@ -21,6 +21,7 @@ pub enum EditorSyntax {
     #[default]
     Plain,
     JavaScript,
+    Json,
 }
 
 /// Postman sandbox API snippets for script editor autocomplete.
@@ -121,9 +122,10 @@ pub fn MultilineCodeField(
     let mut var_menu = use_signal(|| None::<VarSuggestMenu>);
     let mut js_menu = use_signal(|| None::<JsSuggestMenu>);
 
-    let highlight = vars.is_some() || syntax == EditorSyntax::JavaScript;
+    let highlight = vars.is_some() || syntax == EditorSyntax::JavaScript || syntax == EditorSyntax::Json;
     let mirror_html = match (syntax, vars.as_ref()) {
         (EditorSyntax::JavaScript, v) => render_js_var_mirror_html(&value, v),
+        (EditorSyntax::Json, v) => super::json_highlight::render_json_var_mirror_html(&value, v),
         (_, Some(v)) => render_var_mirror_html(&value, v),
         _ => String::new(),
     };
@@ -132,11 +134,7 @@ pub fn MultilineCodeField(
     } else {
         class.clone()
     };
-    let host_class = if syntax == EditorSyntax::JavaScript {
-        "var-highlight-host var-highlight-host-multiline code-editor-host"
-    } else {
-        "var-highlight-host var-highlight-host-multiline code-editor-host"
-    };
+    let host_class = "var-highlight-host var-highlight-host-multiline code-editor-host";
 
     let textarea = rsx! {
         textarea {

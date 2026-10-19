@@ -281,6 +281,8 @@ pub fn run_collection_with_config(
                     iteration_data_json: Some(&iter_json),
                     execution: Some(&mut hints),
                     cancel: None,
+                    ancestor_auth: None,
+                    workspace_root: None,
                 },
             );
 

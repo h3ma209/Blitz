@@ -1,6 +1,7 @@
 //! Pretty JSON → escaped HTML with token spans (keys, strings, numbers, bools/null).
 
 use serde_json::Value;
+use crate::core::{iter_var_spans, VariableContext};
 
 fn escape_html(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
@@ -15,6 +16,127 @@ fn escape_html(s: &str) -> String {
         }
     }
     out
+}
+
+/// Highlight JSON fragment tokens (keys, strings, numbers, booleans, null, punctuation).
+pub fn highlight_json_fragment(text: &str) -> String {
+    let mut html = String::with_capacity(text.len().saturating_mul(2));
+    let mut i = 0usize;
+    while i < text.len() {
+        let rest = &text[i..];
+        let rb = rest.as_bytes();
+
+        // String or Key
+        if rb[0] == b'"' {
+            let mut j = 1usize;
+            while j < rb.len() {
+                if rb[j] == b'\\' {
+                    j += 2;
+                    continue;
+                }
+                if rb[j] == b'"' {
+                    j += 1;
+                    break;
+                }
+                j += 1;
+            }
+            let end = i + j.min(rb.len());
+            let str_val = &text[i..end];
+            // Check if followed by colon (ignoring whitespace) → key
+            let is_key = text[end..].trim_start().starts_with(':');
+            let class = if is_key { "json-key" } else { "json-string" };
+            html.push_str("<span class=\"");
+            html.push_str(class);
+            html.push_str("\">");
+            html.push_str(&escape_html(str_val));
+            html.push_str("</span>");
+            i = end;
+            continue;
+        }
+
+        // Numbers
+        if rb[0].is_ascii_digit() || (rb[0] == b'-' && rb.len() > 1 && rb[1].is_ascii_digit()) {
+            let mut j = 0usize;
+            while j < rb.len() {
+                let c = rb[j];
+                if c.is_ascii_digit() || c == b'.' || c == b'e' || c == b'E' || c == b'+' || c == b'-' {
+                    j += 1;
+                } else {
+                    break;
+                }
+            }
+            let end = i + j;
+            html.push_str("<span class=\"json-number\">");
+            html.push_str(&escape_html(&text[i..end]));
+            html.push_str("</span>");
+            i = end;
+            continue;
+        }
+
+        // Booleans & Null
+        if rest.starts_with("true") {
+            html.push_str("<span class=\"json-bool\">true</span>");
+            i += 4;
+            continue;
+        }
+        if rest.starts_with("false") {
+            html.push_str("<span class=\"json-bool\">false</span>");
+            i += 5;
+            continue;
+        }
+        if rest.starts_with("null") {
+            html.push_str("<span class=\"json-null\">null</span>");
+            i += 4;
+            continue;
+        }
+
+        // Structural syntax
+        if rb[0] == b'{' || rb[0] == b'}' || rb[0] == b'[' || rb[0] == b']' || rb[0] == b':' || rb[0] == b',' {
+            html.push_str("<span class=\"json-punct\">");
+            html.push(rb[0] as char);
+            html.push_str("</span>");
+            i += 1;
+            continue;
+        }
+
+        // Other character (whitespace, formatting)
+        html.push_str(&escape_html(&text[i..i + 1]));
+        i += 1;
+    }
+    html
+}
+
+/// Highlight a live JSON editor buffer, preserving variable tokens `{{var}}` with resolution status.
+pub fn render_json_var_mirror_html(text: &str, vars: Option<&VariableContext>) -> String {
+    let mut html = String::with_capacity(text.len().saturating_mul(2));
+    let mut cursor = 0;
+    for span in iter_var_spans(text) {
+        if span.start > cursor {
+            html.push_str(&highlight_json_fragment(&text[cursor..span.start]));
+        }
+        let token = &text[span.start..span.end];
+        let unresolved = vars
+            .map(|v| v.inspect_var(&span.raw).is_unresolved())
+            .unwrap_or(false);
+        let class = if unresolved {
+            "var-token unresolved"
+        } else {
+            "var-token"
+        };
+        html.push_str("<span class=\"");
+        html.push_str(class);
+        html.push_str("\">");
+        html.push_str(&escape_html(token));
+        html.push_str("</span>");
+        cursor = span.end;
+    }
+    if cursor < text.len() {
+        html.push_str(&highlight_json_fragment(&text[cursor..]));
+    }
+    if text.ends_with('\n') {
+        html.push('\n');
+    }
+    html
 }
 
 /// True when Content-Type looks like JSON or body parses as JSON.

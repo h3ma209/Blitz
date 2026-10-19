@@ -225,6 +225,11 @@ impl CollectionItem {
 pub struct Folder {
     pub id: Uuid,
     pub name: String,
+    #[serde(default)]
+    pub description: String,
+    /// Folder-level auth (used when child request auth is Inherit).
+    #[serde(default)]
+    pub auth: AuthConfig,
     pub items: Vec<CollectionItem>,
     #[serde(default)]
     pub pre_request_script: String,
@@ -239,6 +244,11 @@ impl Folder {
         Self {
             id: Uuid::new_v4(),
             name: name.into(),
+            description: String::new(),
+            auth: AuthConfig {
+                auth_type: AuthType::Inherit,
+                ..Default::default()
+            },
             items: vec![],
             pre_request_script: String::new(),
             test_script: String::new(),
@@ -732,6 +742,56 @@ pub fn item_contains_id(collections: &[Collection], folder_id: Uuid, needle: Uui
         }
     }
     false
+}
+
+/// Represents an ancestor node in the collection tree (Folder or Collection)
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AncestorAuthOrigin {
+    pub id: Uuid,
+    pub name: String,
+    pub is_collection: bool,
+    pub auth: AuthConfig,
+}
+
+/// Resolves the effective inherited auth by traversing ancestors from immediate parent up to collection.
+/// Returns `Some((effective_auth, origin))` or `None` if all ancestors are Inherit or NoAuth.
+pub fn resolve_ancestor_auth(
+    collections: &[Collection],
+    request_id: Uuid,
+) -> Option<(AuthConfig, AncestorAuthOrigin)> {
+    for col in collections {
+        if col.find_request(request_id).is_some() {
+            let folders = folder_path_to_request(col, request_id);
+            // Walk from deepest folder upwards to root folder
+            for f in folders.iter().rev() {
+                if f.auth.auth_type != AuthType::Inherit && f.auth.auth_type != AuthType::NoAuth {
+                    return Some((
+                        f.auth.clone(),
+                        AncestorAuthOrigin {
+                            id: f.id,
+                            name: f.name.clone(),
+                            is_collection: false,
+                            auth: f.auth.clone(),
+                        },
+                    ));
+                }
+            }
+            // If no folder configured auth, check collection
+            if col.auth.auth_type != AuthType::Inherit && col.auth.auth_type != AuthType::NoAuth {
+                return Some((
+                    col.auth.clone(),
+                    AncestorAuthOrigin {
+                        id: col.id,
+                        name: col.name.clone(),
+                        is_collection: true,
+                        auth: col.auth.clone(),
+                    },
+                ));
+            }
+            return None;
+        }
+    }
+    None
 }
 
 /// Returns all ancestor IDs (collection ID and all containing folder IDs) for a given request.
@@ -1541,6 +1601,65 @@ mod tests {
 
         let ancestors = ancestor_ids_for_request(&cols, req_id);
         assert_eq!(ancestors, vec![col_id, folder_id]);
+    }
+
+    #[test]
+    fn test_resolve_ancestor_auth_multilevel() {
+        let mut cols = demo_collections();
+        let col_id = cols[0].id;
+        cols[0].auth = AuthConfig {
+            auth_type: AuthType::Bearer,
+            token: "col-bearer-token".into(),
+            ..Default::default()
+        };
+
+        // Create outer folder inheriting from collection
+        let mut outer = Folder::new("Outer Folder");
+        outer.auth.auth_type = AuthType::Inherit;
+        let outer_id = outer.id;
+        assert!(add_folder_under(&mut cols, col_id, outer));
+
+        // Create inner folder with ApiKey override
+        let mut inner = Folder::new("Inner Folder");
+        inner.auth = AuthConfig {
+            auth_type: AuthType::ApiKey,
+            api_key_header: "X-Inner-Key".into(),
+            token: "inner-secret".into(),
+            ..Default::default()
+        };
+        let inner_id = inner.id;
+        assert!(add_folder_under(&mut cols, outer_id, inner));
+
+        // Create request in inner folder inheriting auth
+        let mut req = RequestDraft::default();
+        req.auth.auth_type = AuthType::Inherit;
+        let req_id = req.id;
+        assert!(add_request_under(&mut cols, inner_id, req));
+
+        // Should resolve to Inner Folder auth
+        let resolved = resolve_ancestor_auth(&cols, req_id);
+        assert!(resolved.is_some());
+        let (auth, origin) = resolved.unwrap();
+        assert_eq!(origin.id, inner_id);
+        assert_eq!(origin.name, "Inner Folder");
+        assert!(!origin.is_collection);
+        assert_eq!(auth.auth_type, AuthType::ApiKey);
+        assert_eq!(auth.api_key_header, "X-Inner-Key");
+        assert_eq!(auth.token, "inner-secret");
+
+        // Now test request directly in outer folder inheriting auth -> should resolve to collection
+        let mut req_outer = RequestDraft::default();
+        req_outer.auth.auth_type = AuthType::Inherit;
+        let req_outer_id = req_outer.id;
+        assert!(add_request_under(&mut cols, outer_id, req_outer));
+
+        let resolved_outer = resolve_ancestor_auth(&cols, req_outer_id);
+        assert!(resolved_outer.is_some());
+        let (auth_col, origin_col) = resolved_outer.unwrap();
+        assert_eq!(origin_col.id, col_id);
+        assert!(origin_col.is_collection);
+        assert_eq!(auth_col.auth_type, AuthType::Bearer);
+        assert_eq!(auth_col.token, "col-bearer-token");
     }
 
     #[test]

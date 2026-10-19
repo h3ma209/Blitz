@@ -2060,25 +2060,97 @@ textarea:focus {
 }
 
 /* Pretty JSON tokens — Spotify stage palette (no purple sludge) */
-.response-body-json .json-key {
+.response-body-json .json-key,
+.code-editor-mirror .json-key {
   color: #9bd4b5;
   font-weight: 500;
 }
-.response-body-json .json-string {
+.response-body-json .json-string,
+.code-editor-mirror .json-string {
   color: #e6c98a;
 }
-.response-body-json .json-number {
+.response-body-json .json-number,
+.code-editor-mirror .json-number {
   color: var(--spot-green-bright);
 }
-.response-body-json .json-bool {
+.response-body-json .json-bool,
+.code-editor-mirror .json-bool {
   color: #8eb8d0;
 }
-.response-body-json .json-null {
+.response-body-json .json-null,
+.code-editor-mirror .json-null {
   color: var(--spot-faint);
   font-style: italic;
 }
-.response-body-json .json-punct {
+.response-body-json .json-punct,
+.code-editor-mirror .json-punct {
   color: var(--spot-muted);
+}
+
+/* Inherited Auth Origin Card */
+.auth-inherited-card {
+  margin: var(--space-3) 0;
+  padding: var(--space-3) var(--space-4);
+  background: rgba(29, 185, 84, 0.08);
+  border: 1px solid rgba(29, 185, 84, 0.25);
+  border-radius: var(--radius-md);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.auth-inherited-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+.auth-inherited-origin {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-weight: 600;
+  font-size: var(--fs-caption);
+  color: var(--spot-green-bright);
+}
+.auth-inherited-badge {
+  background: rgba(29, 185, 84, 0.2);
+  color: #a7f3d0;
+  padding: 2px 8px;
+  border-radius: 9999px;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-weight: 700;
+}
+.auth-inherited-details {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  font-size: var(--fs-caption);
+  color: var(--text-secondary);
+  font-family: var(--mono);
+}
+.auth-token-preview {
+  background: rgba(0, 0, 0, 0.3);
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
+  color: #e6c98a;
+}
+
+/* Colorful Form & URL-encoded styling */
+.kv-table td input[type="text"]:focus {
+  border-color: rgba(29, 185, 84, 0.5);
+}
+.kv-file-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: rgba(142, 184, 208, 0.15);
+  color: #8eb8d0;
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
+  font-size: 11px;
+  font-weight: 600;
 }
 
 .hint {

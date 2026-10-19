@@ -5,6 +5,7 @@ use crate::core::{
     OAuth2Grant, RequestDraft, RequestProtocol, RequestSettings, VariableContext,
 };
 use super::var_hover::{VarEditEvent, VarHoverInput};
+use super::code_editor::{EditorSyntax, MultilineCodeField};
 use super::{CommentableTextarea, ScriptCodeEditor};
 
 pub use super::var_hover::VarEditEvent as RequestVarEditEvent;
@@ -23,6 +24,8 @@ pub enum BuilderTab {
 #[component]
 pub fn RequestBuilder(
     draft: RequestDraft,
+    #[props(default)] ancestor_origin: Option<crate::core::AncestorAuthOrigin>,
+    #[props(default)] on_edit_parent_auth: EventHandler<uuid::Uuid>,
     on_change: EventHandler<RequestDraft>,
     on_send: EventHandler<()>,
     /// Protocol actions: ws_connect | ws_send | ws_disconnect | mqtt_publish | mqtt_subscribe | mcp_list | mcp_call
@@ -31,6 +34,7 @@ pub fn RequestBuilder(
     ws_connected: bool,
     protocol_log: Vec<String>,
     vars: VariableContext,
+    #[props(default)] data_root: String,
     on_var_edit: EventHandler<VarEditEvent>,
 ) -> Element {
     let mut tab = use_signal(|| BuilderTab::Params);
@@ -187,6 +191,7 @@ pub fn RequestBuilder(
                         graphql_query: draft.graphql_query.clone(),
                         graphql_variables: draft.graphql_variables.clone(),
                         vars: vars.clone(),
+                        data_root: data_root.clone(),
                         on_var_edit: on_var_edit.clone(),
                         on_change: {
                             let draft = draft.clone();
@@ -207,6 +212,8 @@ pub fn RequestBuilder(
                 BuilderTab::Auth => rsx! {
                     AuthEditor {
                         auth: draft.auth.clone(),
+                        ancestor_origin: ancestor_origin.clone(),
+                        on_edit_parent_auth: on_edit_parent_auth.clone(),
                         on_change: {
                             let draft = draft.clone();
                             move |auth| {
@@ -711,6 +718,7 @@ fn BodyEditor(
     graphql_query: String,
     graphql_variables: String,
     vars: VariableContext,
+    #[props(default)] data_root: String,
     on_var_edit: EventHandler<VarEditEvent>,
     on_change: EventHandler<(
         BodyMode,
@@ -768,11 +776,12 @@ fn BodyEditor(
             option { value: "binary", "binary (file)" }
         }
         if mode == BodyMode::Raw {
-            CommentableTextarea {
+            MultilineCodeField {
                 class: "body-editor".to_string(),
                 value: body.clone(),
                 placeholder: "{\"hello\": \"world\"}".to_string(),
                 vars: Some(vars.clone()),
+                syntax: EditorSyntax::Json,
                 on_change: {
                     let binary_path = binary_path.clone();
                     let urlencoded = urlencoded.clone();
@@ -791,11 +800,11 @@ fn BodyEditor(
                 },
             }
         } else if mode == BodyMode::Binary {
-            label { class: "hint", "Local file path (raw bytes on send)" }
+            label { class: "hint", "Local file path (raw bytes on send) or workspace assets path" }
             input {
                 class: "url-input",
                 value: "{binary_path}",
-                placeholder: "/path/to/file.bin",
+                placeholder: "assets/payloads/file.bin or /path/to/file.bin",
                 oninput: {
                     let body = body.clone();
                     let urlencoded = urlencoded.clone();
@@ -813,30 +822,68 @@ fn BodyEditor(
                     ))
                 }
             }
-            button {
-                class: "btn btn-ghost",
-                onclick: {
-                    let body = body.clone();
-                    let urlencoded = urlencoded.clone();
-                    let formdata = formdata.clone();
-                    let graphql_query = graphql_query.clone();
-                    let graphql_variables = graphql_variables.clone();
-                    let on_change = on_change.clone();
-                    move |_| {
-                        if let Some(p) = rfd::FileDialog::new().pick_file() {
-                            on_change.call((
-                                BodyMode::Binary,
-                                body.clone(),
-                                p.display().to_string(),
-                                urlencoded.clone(),
-                                formdata.clone(),
-                                graphql_query.clone(),
-                                graphql_variables.clone(),
-                            ));
+            div { class: "btn-group", style: "display: flex; gap: 8px; margin-top: 6px;",
+                button {
+                    class: "btn btn-ghost",
+                    onclick: {
+                        let body = body.clone();
+                        let urlencoded = urlencoded.clone();
+                        let formdata = formdata.clone();
+                        let graphql_query = graphql_query.clone();
+                        let graphql_variables = graphql_variables.clone();
+                        let on_change = on_change.clone();
+                        move |_| {
+                            if let Some(p) = rfd::FileDialog::new().pick_file() {
+                                on_change.call((
+                                    BodyMode::Binary,
+                                    body.clone(),
+                                    p.display().to_string(),
+                                    urlencoded.clone(),
+                                    formdata.clone(),
+                                    graphql_query.clone(),
+                                    graphql_variables.clone(),
+                                ));
+                            }
                         }
-                    }
-                },
-                "Browse…"
+                    },
+                    "Browse…"
+                }
+                button {
+                    class: "btn btn-ghost",
+                    title: "Select file and save copy to workspace assets/ directory for git sync",
+                    onclick: {
+                        let body = body.clone();
+                        let urlencoded = urlencoded.clone();
+                        let formdata = formdata.clone();
+                        let graphql_query = graphql_query.clone();
+                        let graphql_variables = graphql_variables.clone();
+                        let on_change = on_change.clone();
+                        let data_root = data_root.clone();
+                        move |_| {
+                            if let Some(p) = rfd::FileDialog::new().pick_file() {
+                                let path_str = if !data_root.is_empty() {
+                                    crate::core::copy_file_to_assets(
+                                        std::path::Path::new(&data_root),
+                                        &p,
+                                        Some("payloads"),
+                                    ).unwrap_or_else(|_| p.display().to_string())
+                                } else {
+                                    p.display().to_string()
+                                };
+                                on_change.call((
+                                    BodyMode::Binary,
+                                    body.clone(),
+                                    path_str,
+                                    urlencoded.clone(),
+                                    formdata.clone(),
+                                    graphql_query.clone(),
+                                    graphql_variables.clone(),
+                                ));
+                            }
+                        }
+                    },
+                    "↑ Upload to Assets…"
+                }
             }
         } else if mode == BodyMode::Urlencoded {
             KvEditor {
@@ -861,10 +908,11 @@ fn BodyEditor(
                 }
             }
         } else if mode == BodyMode::FormData {
-            p { class: "hint", "Check File? and put a local path in Value to upload that file." }
+            p { class: "hint", "Check File? and click Upload or put a path in Value to attach files." }
             FormDataEditor {
                 rows: formdata.clone(),
                 vars: vars.clone(),
+                data_root: data_root.clone(),
                 on_var_edit: on_var_edit.clone(),
                 on_change: {
                     let body = body.clone();
@@ -940,6 +988,7 @@ fn BodyEditor(
 fn FormDataEditor(
     rows: Vec<FormDataField>,
     vars: VariableContext,
+    #[props(default)] data_root: String,
     on_var_edit: EventHandler<VarEditEvent>,
     on_change: EventHandler<Vec<FormDataField>>,
 ) -> Element {
@@ -948,8 +997,9 @@ fn FormDataEditor(
             thead {
                 tr {
                     th { "Key" }
-                    th { "Value" }
+                    th { "Value / File path" }
                     th { "File?" }
+                    th { "Upload / Select" }
                 }
             }
             tbody {
@@ -977,7 +1027,7 @@ fn FormDataEditor(
                                 class: "kv-var-input".to_string(),
                                 value: row.value.clone(),
                                 placeholder: if row.is_file {
-                                    String::from("/path/to/file")
+                                    String::from("assets/payloads/... or /path/to/file")
                                 } else {
                                     String::from("value")
                                 },
@@ -1013,6 +1063,58 @@ fn FormDataEditor(
                                 }
                             }
                         }
+                        td {
+                            if row.is_file {
+                                div { class: "kv-upload-actions", style: "display: flex; gap: 4px;",
+                                    button {
+                                        class: "btn btn-ghost",
+                                        title: "Browse local file",
+                                        onclick: {
+                                            let rows = rows.clone();
+                                            move |_| {
+                                                if let Some(p) = rfd::FileDialog::new().pick_file() {
+                                                    let mut next = rows.clone();
+                                                    if let Some(r) = next.get_mut(i) {
+                                                        r.value = p.display().to_string();
+                                                    }
+                                                    ensure_trailing_form(&mut next);
+                                                    on_change.call(next);
+                                                }
+                                            }
+                                        },
+                                        "Browse…"
+                                    }
+                                    button {
+                                        class: "btn btn-ghost",
+                                        title: "Upload & copy file to workspace assets/payloads/ directory for git sync",
+                                        onclick: {
+                                            let rows = rows.clone();
+                                            let data_root = data_root.clone();
+                                            move |_| {
+                                                if let Some(p) = rfd::FileDialog::new().pick_file() {
+                                                    let path_str = if !data_root.is_empty() {
+                                                        crate::core::copy_file_to_assets(
+                                                            std::path::Path::new(&data_root),
+                                                            &p,
+                                                            Some("payloads"),
+                                                        ).unwrap_or_else(|_| p.display().to_string())
+                                                    } else {
+                                                        p.display().to_string()
+                                                    };
+                                                    let mut next = rows.clone();
+                                                    if let Some(r) = next.get_mut(i) {
+                                                        r.value = path_str;
+                                                    }
+                                                    ensure_trailing_form(&mut next);
+                                                    on_change.call(next);
+                                                }
+                                            }
+                                        },
+                                        "↑ Upload"
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -1031,7 +1133,12 @@ fn ensure_trailing_form(rows: &mut Vec<FormDataField>) {
 }
 
 #[component]
-fn AuthEditor(auth: AuthConfig, on_change: EventHandler<AuthConfig>) -> Element {
+fn AuthEditor(
+    auth: AuthConfig,
+    ancestor_origin: Option<crate::core::AncestorAuthOrigin>,
+    on_edit_parent_auth: EventHandler<uuid::Uuid>,
+    on_change: EventHandler<AuthConfig>,
+) -> Element {
     let auth_type = auth.auth_type;
     rsx! {
         select {
@@ -1221,7 +1328,55 @@ fn AuthEditor(auth: AuthConfig, on_change: EventHandler<AuthConfig>) -> Element 
             }
         }
         if auth_type == AuthType::Inherit {
-            p { class: "hint", "Uses collection-level auth when set." }
+            match ancestor_origin {
+                Some(origin) => {
+                    let origin_id = origin.id;
+                    let origin_name = origin.name.clone();
+                    let origin_kind = if origin.is_collection { "Collection" } else { "Folder" };
+                    let auth_kind = format!("{:?}", origin.auth.auth_type);
+                    let preview = match origin.auth.auth_type {
+                        AuthType::Bearer => {
+                            let t = &origin.auth.token;
+                            if t.len() > 8 {
+                                format!("{}…{}", &t[..4], &t[t.len().saturating_sub(4)..])
+                            } else if !t.is_empty() {
+                                "••••••••".into()
+                            } else {
+                                "(empty token)".into()
+                            }
+                        }
+                        AuthType::Basic => format!("User: {}", origin.auth.username),
+                        AuthType::ApiKey => format!("Header: {}", if origin.auth.api_key_header.is_empty() { "X-Api-Key" } else { &origin.auth.api_key_header }),
+                        _ => auth_kind.clone(),
+                    };
+                    rsx! {
+                        div { class: "auth-inherited-card",
+                            div { class: "auth-inherited-header",
+                                div { class: "auth-inherited-origin",
+                                    span { class: "auth-inherited-badge", "{origin_kind}" }
+                                    span { "Inheriting from “{origin_name}”" }
+                                }
+                                button {
+                                    class: "btn btn-ghost btn-sm",
+                                    onclick: move |_| on_edit_parent_auth.call(origin_id),
+                                    "Edit {origin_kind} Auth"
+                                }
+                            }
+                            div { class: "auth-inherited-details",
+                                span { "Method: {auth_kind}" }
+                                span { "Preview: " span { class: "auth-token-preview", "{preview}" } }
+                            }
+                        }
+                    }
+                }
+                None => rsx! {
+                    div { class: "auth-inherited-card",
+                        div { class: "auth-inherited-header",
+                            span { class: "hint", "No parent collection or folder has configured authentication." }
+                        }
+                    }
+                }
+            }
         }
         if auth_type == AuthType::Digest {
             p { class: "hint", "Digest: MD5 / qop=auth challenge after 401." }

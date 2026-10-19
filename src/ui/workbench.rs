@@ -22,6 +22,7 @@ use crate::core::{
     Cookie, CookieJar, EnvVar, Environment, Folder, HistoryEntry, KeyValue, MockHandle, PerfReport,
     RequestDraft, RequestProtocol, ResponseView, SavedExample, UiSettings, UiTheme, VarResolveScope,
     VariableContext, VaultStore, WsSession, DEFAULT_CLOUD_REMOTE, HISTORY_MAX,
+    resolve_ancestor_auth,
 };
 use crate::runtime::{
     run_collection_with_config, send_request_with_options, RunnerConfig, RunnerReport, SendError,
@@ -674,9 +675,11 @@ pub fn Workbench() -> Element {
             ctx.environment.clear();
             ctx.local.remove("environment");
         }
+        let cols_snapshot = collections();
+        let ancestor_resolved = resolve_ancestor_auth(&cols_snapshot, req.id);
         let col_auth = active_collection_id().and_then(|id| {
-            collections()
-                .into_iter()
+            cols_snapshot
+                .iter()
                 .find(|c| c.id == id)
                 .map(|c| {
                     // Check for collection-level auth override for active environment
@@ -685,7 +688,7 @@ pub fn Workbench() -> Element {
                             return override_.clone();
                         }
                     }
-                    c.auth
+                    c.auth.clone()
                 })
         });
         let mut jar = cookies();
@@ -693,21 +696,36 @@ pub fn Workbench() -> Element {
 
         let had_active_env = active_env_id().is_some();
         let active_col_id = active_collection_id();
+        let data_root_clone = data_root();
 
         spawn(async move {
             let result = tokio::task::spawn_blocking(move || {
-                let send = send_request_with_options(
-                    &req,
-                    &mut ctx,
-                    SendOptions {
-                        secrets_store: None,
-                        collection_auth: col_auth.as_ref(),
-                        cookie_jar: Some(&mut jar),
-                        app_settings: Some(&settings),
-                        cancel: Some(cancel_flag),
-                        ..Default::default()
-                    },
-                );
+                let ancestor_ref = ancestor_resolved.as_ref().map(|(auth, origin)| {
+                    let label = if origin.is_collection {
+                        format!("collection '{}'", origin.name)
+                    } else {
+                        format!("folder '{}'", origin.name)
+                    };
+                    (auth, label)
+                });
+                let ws_path = if !data_root_clone.is_empty() {
+                    Some(std::path::Path::new(&data_root_clone))
+                } else {
+                    None
+                };
+                let mut opts = SendOptions {
+                    secrets_store: None,
+                    collection_auth: col_auth.as_ref(),
+                    cookie_jar: Some(&mut jar),
+                    app_settings: Some(&settings),
+                    cancel: Some(cancel_flag),
+                    workspace_root: ws_path,
+                    ..Default::default()
+                };
+                if let Some((auth, ref label)) = ancestor_ref {
+                    opts.ancestor_auth = Some((auth, label.as_str()));
+                }
+                let send = send_request_with_options(&req, &mut ctx, opts);
                 // Always return mutated ctx so prerequest/test side-effects persist
                 // even when HTTP fails (Postman semantics).
                 (send, jar, ctx)
@@ -3101,12 +3119,24 @@ pub fn Workbench() -> Element {
                 }
 
                 div { class: "workbench-split",
-                RequestBuilder {
-                    draft: draft(),
-                    vars: vars(),
-                    on_change: move |d| draft.set(d),
-                    on_send: move |_| do_send(()),
-                    on_var_edit: move |evt: RequestVarEditEvent| {
+                {
+                    let cols_snap = collections();
+                    let cur_draft = draft();
+                    let ancestor_origin = resolve_ancestor_auth(&cols_snap, cur_draft.id).map(|(_, o)| o);
+                    rsx! {
+                        RequestBuilder {
+                            draft: cur_draft,
+                            vars: vars(),
+                            data_root: data_root(),
+                            ancestor_origin,
+                            on_edit_parent_auth: move |origin_id: uuid::Uuid| {
+                                col_vars_open_id.set(Some(origin_id));
+                                col_vars_all.set(true);
+                                show_col_vars.set(true);
+                            },
+                            on_change: move |d| draft.set(d),
+                            on_send: move |_| do_send(()),
+                            on_var_edit: move |evt: RequestVarEditEvent| {
                         match evt {
                             RequestVarEditEvent::Save {
                                 name,
@@ -3421,6 +3451,8 @@ pub fn Workbench() -> Element {
                     sending: sending(),
                     ws_connected: ws_connected(),
                     protocol_log: protocol_log(),
+                }
+                    }
                 }
 
                 div {
