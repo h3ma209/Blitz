@@ -9,15 +9,16 @@ use crate::core::request::RequestDraft;
 /// Compiles a collection into a standalone HTML file string.
 pub fn generate_static_doc_html(collection: &Collection) -> String {
     let mut endpoints = Vec::new();
-    collect_endpoints(&collection.items, &mut endpoints, "General");
+    collect_endpoints(&collection.items, &mut endpoints, "");
 
     let title = html_escape(&collection.name);
     let desc = html_escape(&collection.description);
 
     let mut nav_items = String::new();
     let mut sections = String::new();
+    let mut last_folder = String::new();
 
-    for (idx, (folder_name, req)) in endpoints.iter().enumerate() {
+    for (idx, (folder_path, req)) in endpoints.iter().enumerate() {
         let ep_id = format!("ep-{}", idx);
         let req_name = if req.name.is_empty() {
             "Untitled Request"
@@ -35,7 +36,25 @@ pub fn generate_static_doc_html(collection: &Collection) -> String {
             _ => "method-other",
         };
 
-        // Navigation entry
+        let current_folder_display = if folder_path.is_empty() {
+            "Root / General"
+        } else {
+            folder_path.as_str()
+        };
+
+        // If folder changed, render folder heading in sidebar nav
+        if current_folder_display != last_folder {
+            last_folder = current_folder_display.to_string();
+            let escaped_folder = html_escape(current_folder_display);
+            nav_items.push_str(&format!(
+                "<div class=\"nav-folder-heading\">\n\
+                    <span class=\"folder-icon\">📁</span>\n\
+                    <span>{escaped_folder}</span>\n\
+                </div>"
+            ));
+        }
+
+        // Navigation entry with folder sub-path and method tag
         nav_items.push_str(&format!(
             "<a href=\"#{ep_id}\" class=\"nav-item\">\n\
                 <span class=\"badge {method_class}\">{method}</span>\n\
@@ -99,7 +118,7 @@ pub fn generate_static_doc_html(collection: &Collection) -> String {
         sections.push_str(&format!(
             r#"<section id="{ep_id}" class="endpoint-card">
                 <div class="ep-header">
-                    <span class="folder-tag">{folder_tag}</span>
+                    <span class="folder-tag">📁 {folder_tag}</span>
                     <h3 class="ep-title">{escaped_name}</h3>
                 </div>
                 {doc_desc}
@@ -123,7 +142,7 @@ pub fn generate_static_doc_html(collection: &Collection) -> String {
                     <div id="{ep_id}-ts" class="tab-content"><pre class="code-block"><code>{ts_snippet}</code></pre></div>
                 </div>
             </section>"#,
-            folder_tag = html_escape(folder_name),
+            folder_tag = html_escape(current_folder_display),
             url = html_escape(&req.url),
         ));
     }
@@ -191,6 +210,24 @@ pub fn generate_static_doc_html(collection: &Collection) -> String {
       display: flex;
       flex-direction: column;
       gap: 4px;
+    }}
+    .nav-folder-heading {{
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--green);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      padding: 14px 10px 6px 10px;
+      border-top: 1px solid rgba(255, 255, 255, 0.05);
+      margin-top: 4px;
+    }}
+    .nav-folder-heading:first-child {{
+      border-top: none;
+      margin-top: 0;
+      padding-top: 4px;
     }}
     .nav-item {{
       display: flex;
@@ -359,7 +396,12 @@ fn collect_endpoints<'a>(
                 } else {
                     &f.name
                 };
-                collect_endpoints(&f.items, out, name);
+                let nested_path = if current_folder.is_empty() {
+                    name.to_string()
+                } else {
+                    format!("{current_folder} / {name}")
+                };
+                collect_endpoints(&f.items, out, &nested_path);
             }
             CollectionItem::Request(r) => {
                 out.push((current_folder.to_string(), r));
@@ -379,18 +421,23 @@ fn html_escape(s: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::core::collection::Folder;
 
     #[test]
     fn test_generate_static_doc_html() {
         let mut col = Collection::new("Demo API");
         col.description = "Test Description".into();
+
+        let mut folder = Folder::new("Authentication");
         let mut req = RequestDraft::default();
         req.name = "Get Users".into();
         req.url = "https://api.example.com/users".into();
-        col.items.push(CollectionItem::Request(req));
+        folder.items.push(CollectionItem::Request(req));
+        col.items.push(CollectionItem::Folder(folder));
 
         let html = generate_static_doc_html(&col);
         assert!(html.contains("Demo API"));
+        assert!(html.contains("Authentication"));
         assert!(html.contains("Get Users"));
         assert!(html.contains("https://api.example.com/users"));
         assert!(html.contains("cURL"));
