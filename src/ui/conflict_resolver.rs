@@ -19,7 +19,8 @@ pub fn ConflictResolver(
     let mut selected_idx = use_signal(|| conflict.selected_idx);
     let mut status_msg = use_signal(String::new);
 
-    let active_file = conflict.files.get(selected_idx()).cloned().unwrap_or_default();
+    let clamped_idx = selected_idx().min(conflict.files.len().saturating_sub(1));
+    let active_file = conflict.files.get(clamped_idx).cloned().unwrap_or_default();
     let (ours, theirs) = if !active_file.is_empty() {
         get_conflict_file_versions(&root, &active_file)
     } else {
@@ -82,7 +83,7 @@ pub fn ConflictResolver(
                 div { class: "conflict-file-tabs", style: "display: flex; gap: 4px; padding: 6px 16px; background: rgba(0,0,0,0.2); border-bottom: var(--glass-border); overflow-x: auto;",
                     for (i, file) in conflict.files.iter().enumerate() {
                         {
-                            let is_active = i == selected_idx();
+                            let is_active = i == clamped_idx;
                             let file_name = file.clone();
                             rsx! {
                                 button {
@@ -111,9 +112,11 @@ pub fn ConflictResolver(
                             let root = root.clone();
                             let file = active_file.clone();
                             move |_| {
-                                let _ = resolve_git_conflicts(&root, &[file.clone()], true);
-                                status_msg.set(format!("Resolved '{file}' with local version"));
-                                on_resolved.call(());
+                                if !file.is_empty() {
+                                    let _ = resolve_git_conflicts(&root, std::slice::from_ref(&file), true);
+                                    status_msg.set(format!("Resolved '{file}' with local version"));
+                                    on_resolved.call(());
+                                }
                             }
                         },
                         "Keep Mine for this file"
@@ -125,9 +128,11 @@ pub fn ConflictResolver(
                             let root = root.clone();
                             let file = active_file.clone();
                             move |_| {
-                                let _ = resolve_git_conflicts(&root, &[file.clone()], false);
-                                status_msg.set(format!("Resolved '{file}' with team version"));
-                                on_resolved.call(());
+                                if !file.is_empty() {
+                                    let _ = resolve_git_conflicts(&root, std::slice::from_ref(&file), false);
+                                    status_msg.set(format!("Resolved '{file}' with team version"));
+                                    on_resolved.call(());
+                                }
                             }
                         },
                         "Accept Team for this file"

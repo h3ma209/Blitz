@@ -82,10 +82,11 @@ pub fn sse_listen(
 }
 
 fn truncate(s: &str, n: usize) -> String {
-    if s.len() <= n {
+    if s.chars().count() <= n {
         s.to_string()
     } else {
-        format!("{}…", &s[..n])
+        let prefix: String = s.chars().take(n).collect();
+        format!("{prefix}…")
     }
 }
 
@@ -96,5 +97,13 @@ mod tests {
     #[test]
     fn truncate_short() {
         assert_eq!(truncate("hi", 10), "hi");
+    }
+
+    #[test]
+    fn truncate_multibyte_utf8_does_not_panic() {
+        let s = "🔥".repeat(250);
+        let out = truncate(&s, 200);
+        assert!(out.ends_with('…'));
+        assert_eq!(out.chars().count(), 201);
     }
 }

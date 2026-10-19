@@ -79,7 +79,7 @@ impl SecretsStore for InMemorySecrets {
     fn get(&self, service: &str, account: &str) -> Result<String, SecretError> {
         self.inner
             .lock()
-            .expect("secrets lock")
+            .unwrap_or_else(|e| e.into_inner())
             .get(&(service.to_string(), account.to_string()))
             .cloned()
             .ok_or_else(|| SecretError::NotFound(format!("{service}/{account}")))
@@ -88,7 +88,7 @@ impl SecretsStore for InMemorySecrets {
     fn set(&self, service: &str, account: &str, secret: &str) -> Result<(), SecretError> {
         self.inner
             .lock()
-            .expect("secrets lock")
+            .unwrap_or_else(|e| e.into_inner())
             .insert((service.to_string(), account.to_string()), secret.to_string());
         Ok(())
     }
@@ -96,7 +96,7 @@ impl SecretsStore for InMemorySecrets {
     fn delete(&self, service: &str, account: &str) -> Result<(), SecretError> {
         self.inner
             .lock()
-            .expect("secrets lock")
+            .unwrap_or_else(|e| e.into_inner())
             .remove(&(service.to_string(), account.to_string()));
         Ok(())
     }

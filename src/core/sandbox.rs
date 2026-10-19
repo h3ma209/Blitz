@@ -91,6 +91,12 @@ pub fn run_js_sandbox(
     run_js_sandbox_ex(script, phase, ctx, response, &SandboxExtras::default())
 }
 
+/// Normalize smart/curly quotes (common on macOS) to standard ASCII quotes.
+pub fn normalize_smart_quotes(code: &str) -> String {
+    code.replace(['“', '”', '„', '«', '»'], "\"")
+        .replace(['‘', '’', '‚', '‹', '›'], "'")
+}
+
 pub fn run_js_sandbox_ex(
     script: &str,
     phase: &str,
@@ -99,7 +105,8 @@ pub fn run_js_sandbox_ex(
     extras: &SandboxExtras,
 ) -> SandboxOutcome {
     let mut out = SandboxOutcome::default();
-    if script.trim().is_empty() {
+    let sanitized_script = normalize_smart_quotes(script);
+    if sanitized_script.trim().is_empty() {
         out.messages.push(format!("{phase}: skipped (empty)"));
         return out;
     }
@@ -527,7 +534,7 @@ blitz.request.toString = pm.request.toString;
 "#
     );
 
-    let full = format!("{prelude}\n{script}\n;JSON.stringify(__np);");
+    let full = format!("{prelude}\n{sanitized_script}\n;JSON.stringify(__np);");
 
     let result = context.eval(Source::from_bytes(full.as_bytes()));
     match result {

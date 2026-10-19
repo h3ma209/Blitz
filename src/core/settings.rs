@@ -159,6 +159,33 @@ pub enum AccentIntensity {
     Strong,
 }
 
+/// Workbench layout orientation for request and response panes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum WorkbenchLayout {
+    /// Top/bottom split (default).
+    #[default]
+    Column,
+    /// Side-by-side split.
+    Row,
+}
+
+impl WorkbenchLayout {
+    pub fn toggle(self) -> Self {
+        match self {
+            Self::Column => Self::Row,
+            Self::Row => Self::Column,
+        }
+    }
+
+    pub fn class_token(self) -> &'static str {
+        match self {
+            Self::Column => "layout-column",
+            Self::Row => "layout-row",
+        }
+    }
+}
+
 /// Default response pane tab after Send.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "snake_case")]
@@ -172,6 +199,9 @@ pub enum DefaultResponseTab {
 /// Font sizes + shell layout prefs (persisted in snapshot).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct UiSettings {
+    /// Request / response pane orientation (row = side-by-side, column = top/bottom).
+    #[serde(default)]
+    pub layout: WorkbenchLayout,
     /// Base UI font size in px (drives `--fs-base` / type scale).
     #[serde(default = "default_ui_font_size_px")]
     pub ui_font_size_px: u32,
@@ -222,6 +252,7 @@ pub struct UiSettings {
 impl Default for UiSettings {
     fn default() -> Self {
         Self {
+            layout: WorkbenchLayout::default(),
             ui_font_size_px: default_ui_font_size_px(),
             editor_font_size_px: default_editor_font_size_px(),
             sidebar_width_px: default_sidebar_width_px(),
@@ -502,5 +533,27 @@ mod tests {
             ..Default::default()
         };
         assert_eq!(s.custom_proxy_url().as_deref(), Some("http://127.0.0.1:8080"));
+    }
+
+    #[test]
+    fn workbench_layout_toggle_and_serde() {
+        assert_eq!(WorkbenchLayout::default(), WorkbenchLayout::Column);
+        assert_eq!(WorkbenchLayout::Column.toggle(), WorkbenchLayout::Row);
+        assert_eq!(WorkbenchLayout::Row.toggle(), WorkbenchLayout::Column);
+        assert_eq!(WorkbenchLayout::Column.class_token(), "layout-column");
+        assert_eq!(WorkbenchLayout::Row.class_token(), "layout-row");
+
+        let mut ui = UiSettings::default();
+        assert_eq!(ui.layout, WorkbenchLayout::Column);
+        ui.layout = WorkbenchLayout::Row;
+
+        let json = serde_json::to_string(&ui).unwrap();
+        let decoded: UiSettings = serde_json::from_str(&json).unwrap();
+        assert_eq!(decoded.layout, WorkbenchLayout::Row);
+
+        // Omitting layout from JSON falls back to Column via serde default
+        let json_without = r#"{"ui_font_size_px":13}"#;
+        let decoded_default: UiSettings = serde_json::from_str(json_without).unwrap();
+        assert_eq!(decoded_default.layout, WorkbenchLayout::Column);
     }
 }

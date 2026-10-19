@@ -166,6 +166,10 @@ impl McpSession {
             if content_len == 0 {
                 continue;
             }
+            const MAX_MCP_MESSAGE_BYTES: usize = 32 * 1024 * 1024;
+            if content_len > MAX_MCP_MESSAGE_BYTES {
+                return Err(format!("mcp message too large: {content_len} bytes"));
+            }
             let mut buf = vec![0u8; content_len];
             use std::io::Read;
             self.reader

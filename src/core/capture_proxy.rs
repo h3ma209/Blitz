@@ -276,10 +276,19 @@ fn forward_http(url: &str, method: &str, original: &[u8]) -> Result<(u16, Vec<u8
 
     let mut out = format!("HTTP/1.1 {status} {}\r\n", reason(status));
     for (k, v) in headers.iter() {
+        let name = k.as_str();
+        if name.eq_ignore_ascii_case("content-length")
+            || name.eq_ignore_ascii_case("transfer-encoding")
+            || name.eq_ignore_ascii_case("content-encoding")
+            || name.eq_ignore_ascii_case("connection")
+        {
+            continue;
+        }
         if let Ok(val) = v.to_str() {
             out.push_str(&format!("{k}: {val}\r\n"));
         }
     }
+    out.push_str("Connection: close\r\n");
     out.push_str(&format!("Content-Length: {}\r\n\r\n", bytes.len()));
     let mut resp_bytes = out.into_bytes();
     resp_bytes.extend_from_slice(&bytes);

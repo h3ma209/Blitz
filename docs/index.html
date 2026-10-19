@@ -132,7 +132,8 @@
 
       <!-- Desktop Nav Items -->
       <div class="hidden lg:flex items-center gap-5 xl:gap-6 text-[13px] font-medium whitespace-nowrap">
-        <a href="#why-switch" class="text-spot-bright hover:text-white transition-colors">Why Switch?</a>
+        <a href="#ui-gallery" class="text-spot-bright hover:text-white transition-colors font-semibold">Live UI Tour</a>
+        <a href="#why-switch" class="text-spot-muted hover:text-white transition-colors">Why Switch?</a>
         <a href="#git-cloud" class="text-spot-muted hover:text-white transition-colors">Git Cloud</a>
         <a href="#features" class="text-spot-muted hover:text-white transition-colors">Features</a>
         <a href="#protocols" class="text-spot-muted hover:text-white transition-colors">Protocols</a>
@@ -162,7 +163,8 @@
       <!-- Mobile Dropdown Menu -->
       <div id="mobile-nav"
         class="hidden w-full lg:hidden pt-4 pb-2 border-t border-white/10 mt-3 flex flex-col gap-3 text-sm">
-        <a href="#why-switch" onclick="toggleMobileNav()" class="text-spot-bright py-1">Why Switch?</a>
+        <a href="#ui-gallery" onclick="toggleMobileNav()" class="text-spot-bright py-1 font-semibold">Live UI Tour</a>
+        <a href="#why-switch" onclick="toggleMobileNav()" class="text-spot-muted hover:text-white py-1">Why Switch?</a>
         <a href="#git-cloud" onclick="toggleMobileNav()" class="text-spot-muted hover:text-white py-1">Git Cloud
           Sync</a>
         <a href="#features" onclick="toggleMobileNav()" class="text-spot-muted hover:text-white py-1">Features</a>
@@ -231,7 +233,27 @@
       </a>
     </div>
 
-    <!-- Frosted Glass Interface Showcase -->
+    <!-- Hero Stat Proof Badges -->
+    <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 max-w-4xl mx-auto mb-10">
+      <div class="p-4 rounded-xl glass text-center">
+        <div class="text-2xl sm:text-3xl font-extrabold text-spot-bright font-mono">&lt; 150ms</div>
+        <div class="text-xs text-spot-muted mt-1">Boot to Interactive</div>
+      </div>
+      <div class="p-4 rounded-xl glass text-center">
+        <div class="text-2xl sm:text-3xl font-extrabold text-spot-bright font-mono">~35 MB</div>
+        <div class="text-xs text-spot-muted mt-1">Idle RAM (vs 1.2GB)</div>
+      </div>
+      <div class="p-4 rounded-xl glass text-center">
+        <div class="text-2xl sm:text-3xl font-extrabold text-spot-bright font-mono">100%</div>
+        <div class="text-xs text-spot-muted mt-1">Offline &amp; Local-First</div>
+      </div>
+      <div class="p-4 rounded-xl glass text-center">
+        <div class="text-2xl sm:text-3xl font-extrabold text-spot-bright font-mono">$0 / mo</div>
+        <div class="text-xs text-spot-muted mt-1">Git Repo is Your Cloud</div>
+      </div>
+    </div>
+
+    <!-- Frosted Glass Interface Showcase - INTERACTIVE PLAYGROUND -->
     <div class="w-full rounded-2xl glass-strong shadow-2xl overflow-hidden border border-white/10 text-left">
       <!-- Titlebar -->
       <div class="h-10 bg-spot-black/95 border-b border-white/5 flex items-center justify-between px-4">
@@ -241,46 +263,65 @@
           <span class="w-3 h-3 rounded-full bg-[#27c93f]"></span>
         </div>
         <div class="flex items-center gap-2 text-xs font-medium text-spot-muted">
-          <span class="w-1.5 h-1.5 rounded-full bg-spot-bright"></span>
-          <span>Blitz — Requester Workbench</span>
+          <span class="w-2 h-2 rounded-full bg-spot-bright animate-ping"></span>
+          <span class="text-white font-semibold">Live Interactive Preview — Click "Send" Below</span>
         </div>
-        <div>
+        <div class="flex items-center gap-2">
+          <button id="hero-layout-btn" onclick="toggleHeroLayout()"
+            title="Toggle Split Layout: Row (Side-by-Side) / Column (Stacked)"
+            class="px-2.5 py-1 rounded-md bg-white/5 hover:bg-white/10 text-spot-muted hover:text-white transition-all border border-white/10 flex items-center gap-1.5 text-[11px] font-mono">
+            <svg id="hero-layout-icon-row" class="w-3.5 h-3.5 text-spot-bright" viewBox="0 0 16 16" fill="currentColor">
+              <path d="M2.5 3a1.5 1.5 0 0 0-1.5 1.5v7A1.5 1.5 0 0 0 2.5 13h11a1.5 1.5 0 0 0 1.5-1.5v-7A1.5 1.5 0 0 0 13.5 3h-11zm-.5 1.5a.5.5 0 0 1 .5-.5H7v8H2.5a.5.5 0 0 1-.5-.5v-7zm6-.5h4.5a.5.5 0 0 1 .5.5v7a.5.5 0 0 1-.5.5H8V4z"/>
+            </svg>
+            <svg id="hero-layout-icon-col" class="w-3.5 h-3.5 text-spot-bright hidden" viewBox="0 0 16 16" fill="currentColor">
+              <path d="M2.5 3a1.5 1.5 0 0 0-1.5 1.5v7A1.5 1.5 0 0 0 2.5 13h11a1.5 1.5 0 0 0 1.5-1.5v-7A1.5 1.5 0 0 0 13.5 3h-11zm-.5 1.5a.5.5 0 0 1 .5-.5h11a.5.5 0 0 1 .5.5V7H2V4.5zm0 3.5h12v3.5a.5.5 0 0 1-.5.5h-11a.5.5 0 0 1-.5-.5V8z"/>
+            </svg>
+            <span id="hero-layout-text" class="hidden sm:inline">Side-by-Side</span>
+          </button>
           <span
-            class="text-[11px] font-mono text-spot-bright bg-white/5 border border-white/10 px-2.5 py-0.5 rounded">Production
+            class="text-[11px] font-mono text-spot-bright bg-spot-green/15 border border-spot-green/30 px-2.5 py-0.5 rounded">Production
             (Git Synced) ▾</span>
         </div>
       </div>
 
       <!-- App Inner Grid -->
-      <div class="grid grid-cols-1 md:grid-cols-[250px_1fr] h-[460px] bg-spot-black font-sans">
+      <div class="grid grid-cols-1 md:grid-cols-[250px_1fr] min-h-[460px] bg-spot-black font-sans">
         <!-- Sidebar -->
         <div class="hidden md:flex flex-col border-r border-white/5 bg-black/40 p-4 text-xs">
           <div class="text-[10px] font-bold text-spot-faint tracking-wider mb-2">COLLECTIONS</div>
           <div class="flex items-center gap-2 py-1.5 px-2 rounded-lg bg-white/5 font-semibold text-white mb-1">
             <span>📁</span> Authentication API
           </div>
-          <div
-            class="flex items-center gap-2.5 py-1.5 pl-6 pr-2 rounded-lg bg-spot-green/15 font-mono text-white text-[11px] mb-1">
+          <button onclick="pickDemoRequest('POST', 'https://httpbin.org/post', 'token')"
+            id="demo-nav-token"
+            class="flex items-center gap-2.5 py-1.5 pl-6 pr-2 rounded-lg bg-spot-green/15 font-mono text-white text-[11px] mb-1 w-full text-left transition-colors">
             <span class="text-spot-bright font-bold">POST</span>
             <span class="truncate">/oauth/v2/token</span>
-          </div>
-          <div
-            class="flex items-center gap-2.5 py-1.5 pl-6 pr-2 rounded-lg font-mono text-spot-muted hover:text-white text-[11px]">
+          </button>
+          <button onclick="pickDemoRequest('GET', 'https://httpbin.org/get', 'profile')"
+            id="demo-nav-profile"
+            class="flex items-center gap-2.5 py-1.5 pl-6 pr-2 rounded-lg font-mono text-spot-muted hover:text-white text-[11px] w-full text-left transition-colors">
             <span class="text-blue-400 font-bold">GET</span>
             <span class="truncate">/user/profile</span>
-          </div>
-          <div
-            class="flex items-center gap-2.5 py-1.5 pl-6 pr-2 rounded-lg font-mono text-spot-muted hover:text-white text-[11px]">
+          </button>
+          <button onclick="pickDemoRequest('PUT', 'https://httpbin.org/put', 'settings')"
+            id="demo-nav-settings"
+            class="flex items-center gap-2.5 py-1.5 pl-6 pr-2 rounded-lg font-mono text-spot-muted hover:text-white text-[11px] w-full text-left transition-colors">
             <span class="text-amber-400 font-bold">PUT</span>
             <span class="truncate">/user/settings</span>
+          </button>
+
+          <div class="text-[10px] font-bold text-spot-faint tracking-wider mt-6 mb-2">ENVIRONMENTS (GIT BRANCH)</div>
+          <div class="flex items-center gap-2 py-1.5 px-2 rounded-lg text-spot-muted hover:text-white cursor-pointer">
+            <span>🌐</span> env/development
+          </div>
+          <div class="flex items-center gap-2 py-1.5 px-2 rounded-lg bg-spot-green/10 text-spot-bright font-medium">
+            <span>🔒</span> env/production (Active)
           </div>
 
-          <div class="text-[10px] font-bold text-spot-faint tracking-wider mt-6 mb-2">ENVIRONMENTS</div>
-          <div class="flex items-center gap-2 py-1.5 px-2 rounded-lg text-spot-muted hover:text-white">
-            <span>🌐</span> Development
-          </div>
-          <div class="flex items-center gap-2 py-1.5 px-2 rounded-lg text-white">
-            <span>🔒</span> Production (Git Synced)
+          <div class="mt-auto pt-4 border-t border-white/5 text-[11px] text-spot-muted flex items-center justify-between">
+            <span>RAM: <strong class="text-spot-bright">34.2 MB</strong></span>
+            <span>Boot: <strong class="text-spot-bright">118ms</strong></span>
           </div>
         </div>
 
@@ -288,63 +329,155 @@
         <div class="flex flex-col bg-[#141414]">
           <!-- Workbench Tabs -->
           <div class="flex items-center border-b border-white/5 bg-[#121212] text-xs font-mono">
-            <div
+            <div id="demo-tab-btn"
               class="flex items-center gap-2 px-4 py-2.5 bg-[#181818] border-t-2 border-spot-bright text-white border-r border-white/5">
-              <span class="text-spot-bright font-bold">POST</span>
-              <span>/oauth/v2/token</span>
-              <span class="text-spot-faint ml-2">×</span>
-            </div>
-            <div class="flex items-center gap-2 px-4 py-2.5 text-spot-muted hover:text-white border-r border-white/5">
-              <span class="text-blue-400 font-bold">GET</span>
-              <span>/user/profile</span>
+              <span id="demo-tab-method" class="text-spot-bright font-bold">POST</span>
+              <span id="demo-tab-title">/oauth/v2/token</span>
               <span class="text-spot-faint ml-2">×</span>
             </div>
             <div class="px-3 text-spot-faint hover:text-white cursor-pointer">+</div>
           </div>
 
           <!-- URL Bar -->
-          <div class="flex items-center gap-3 p-3 bg-[#181818] border-b border-white/5">
-            <span class="px-3 py-1.5 rounded-lg bg-spot-bright/15 text-spot-bright font-mono font-bold text-xs">POST
-              ▾</span>
-            <div class="flex-1 bg-black/40 border border-white/10 rounded-lg px-3 py-1.5 font-mono text-xs text-white">
-              <span class="text-amber-400">{{baseUrl}}</span>/api/v2/auth/token
+          <div class="flex items-center gap-2 p-3 bg-[#181818] border-b border-white/5">
+            <select id="demo-method-select"
+              class="px-2.5 py-1.5 rounded-lg bg-spot-bright/15 text-spot-bright font-mono font-bold text-xs border border-spot-bright/30 outline-none cursor-pointer">
+              <option value="POST">POST</option>
+              <option value="GET">GET</option>
+              <option value="PUT">PUT</option>
+              <option value="DELETE">DELETE</option>
+            </select>
+            <div class="flex-1 bg-black/40 border border-white/10 rounded-lg px-3 py-1.5 font-mono text-xs text-white flex items-center">
+              <span class="text-amber-400 shrink-0">https://api.blitz.local</span>
+              <input type="text" id="demo-url-input" value="/api/v2/auth/token"
+                class="bg-transparent border-none text-white focus:outline-none w-full ml-1 font-mono text-xs">
             </div>
-            <button
-              class="flex items-center gap-2 bg-spot-bright hover:bg-[#20e267] text-spot-black font-bold text-xs px-5 py-2 rounded-lg shadow-sm transition-colors">
+            <button onclick="triggerHeroSend()" id="hero-send-btn"
+              class="flex items-center gap-1.5 bg-spot-bright hover:bg-[#20e267] text-spot-black font-bold text-xs px-4 py-2 rounded-full shadow-[0_2px_12px_rgba(30,215,96,0.35)] transition-all active:scale-95">
               <span>Send</span>
               <span class="text-[10px] opacity-70">⌘↵</span>
             </button>
           </div>
 
           <!-- Split Request/Response View -->
-          <div class="grid grid-cols-1 md:grid-cols-2 flex-1 bg-[#151515] overflow-hidden text-xs font-mono">
+          <div id="hero-split-container"
+            class="grid grid-cols-1 md:grid-cols-2 flex-1 bg-[#151515] overflow-hidden text-xs font-mono min-h-[340px] transition-all">
             <!-- Request Pane -->
-            <div class="flex flex-col border-r border-white/5">
-              <div class="flex gap-4 px-4 py-2 border-b border-white/5 text-[11px] text-spot-muted">
-                <span class="text-white font-medium">Body (JSON)</span>
-                <span>Headers (6)</span>
-                <span>Auth</span>
-                <span>Scripts</span>
+            <div id="hero-req-pane" class="flex flex-col border-r border-white/5">
+              <div class="flex gap-4 px-4 py-2 border-b border-white/5 text-[11px] text-spot-muted bg-black/20">
+                <button id="req-subtab-body" onclick="switchReqTab('body')"
+                  class="text-white font-medium border-b border-spot-bright pb-1 transition-colors">Body (JSON)</button>
+                <button id="req-subtab-headers" onclick="switchReqTab('headers')"
+                  class="hover:text-white pb-1 transition-colors">Headers (4)</button>
+                <button id="req-subtab-auth" onclick="switchReqTab('auth')"
+                  class="hover:text-white pb-1 transition-colors">Auth (Vault)</button>
+                <button id="req-subtab-tests" onclick="switchReqTab('tests')"
+                  class="hover:text-white pb-1 transition-colors">Tests (3)</button>
               </div>
-              <pre class="p-4 text-emerald-200/90 leading-relaxed overflow-auto flex-1"><code>{
-  <span class="text-blue-400">"client_id"</span>: <span class="text-amber-300">"{{vault:oauth_id}}"</span>,
-  <span class="text-blue-400">"client_secret"</span>: <span class="text-emerald-300">"secret://oauth_secret"</span>,
-  <span class="text-blue-400">"grant_type"</span>: <span class="text-emerald-300">"client_credentials"</span>
-}</code></pre>
+
+              <!-- Sub-pane: Body -->
+              <div id="req-pane-body" class="p-4 flex-1 flex flex-col">
+                <textarea id="demo-req-body" spellcheck="false"
+                  class="p-0 bg-transparent text-emerald-200/90 leading-relaxed font-mono text-xs w-full flex-1 resize-none focus:outline-none">{
+  "client_id": "{{vault:oauth_id}}",
+  "client_secret": "secret://oauth_secret",
+  "grant_type": "client_credentials"
+}</textarea>
+              </div>
+
+              <!-- Sub-pane: Headers -->
+              <div id="req-pane-headers" class="hidden p-4 flex-1 space-y-2 font-mono text-xs overflow-y-auto">
+                <div class="grid grid-cols-[140px_1fr] py-1 border-b border-white/5 text-spot-faint text-[10px]">
+                  <span>KEY</span><span>VALUE</span>
+                </div>
+                <div class="grid grid-cols-[140px_1fr] py-1">
+                  <span class="text-emerald-300">Authorization</span>
+                  <span class="text-amber-300">Bearer {{vault:jwt_token}}</span>
+                </div>
+                <div class="grid grid-cols-[140px_1fr] py-1">
+                  <span class="text-emerald-300">Content-Type</span>
+                  <span class="text-white">application/json</span>
+                </div>
+                <div class="grid grid-cols-[140px_1fr] py-1">
+                  <span class="text-emerald-300">Accept-Encoding</span>
+                  <span class="text-white">gzip, deflate, br</span>
+                </div>
+                <div class="grid grid-cols-[140px_1fr] py-1">
+                  <span class="text-emerald-300">X-Client-App</span>
+                  <span class="text-spot-bright font-bold">Blitz/1.0 (Rust Engine)</span>
+                </div>
+              </div>
+
+              <!-- Sub-pane: Auth -->
+              <div id="req-pane-auth" class="hidden p-4 flex-1 space-y-3 font-mono text-xs">
+                <div class="text-spot-muted text-[11px]">Authentication Type:</div>
+                <div class="flex items-center gap-2">
+                  <span class="px-2.5 py-1 bg-white/10 rounded font-semibold text-white">Bearer Token / Vault Reference</span>
+                  <span class="text-[10px] text-spot-bright bg-spot-green/10 px-2 py-0.5 rounded border border-spot-green/30">Keychain AES-256</span>
+                </div>
+                <div class="mt-2 text-spot-muted text-[11px]">Token Reference:</div>
+                <div class="bg-black/50 border border-white/10 rounded px-3 py-2 text-amber-300 flex items-center justify-between">
+                  <span>{{vault:token_hakki}}</span>
+                  <span class="text-[10px] text-spot-faint">Resolved from OS Keychain</span>
+                </div>
+                <div class="text-spot-faint text-[11px]">Zero plaintext credentials stored in local repository.</div>
+              </div>
+
+              <!-- Sub-pane: Tests -->
+              <div id="req-pane-tests" class="hidden p-4 flex-1 space-y-2 font-mono text-xs overflow-y-auto">
+                <div class="flex items-center justify-between pb-2 border-b border-white/5">
+                  <span class="text-spot-faint text-[10px]">ASSERTIONS (TEST SCRIPTS)</span>
+                  <span class="text-spot-bright text-[10px] font-bold">✓ 3 Passing</span>
+                </div>
+                <pre class="text-emerald-300/90 leading-relaxed text-xs"><code>pm.test("Status code is 200", () => {
+  pm.response.to.have.status(200);
+});
+
+pm.test("Response time is under 150ms", () => {
+  pm.expect(pm.response.responseTime).to.be.below(150);
+});
+
+pm.test("Token returned in valid schema", () => {
+  const json = pm.response.json();
+  pm.expect(json.access_token).to.be.a('string');
+});</code></pre>
+              </div>
             </div>
 
             <!-- Response Pane -->
-            <div class="flex flex-col bg-[#111111]">
-              <div class="flex items-center gap-3 px-4 py-2 border-b border-white/5 text-[11px]">
-                <span class="bg-spot-bright/15 text-spot-bright font-bold px-2 py-0.5 rounded text-[10px]">200 OK</span>
-                <span class="text-spot-muted">14 ms</span>
-                <span class="text-spot-muted">418 B</span>
+            <div id="hero-res-pane" class="flex flex-col bg-[#111111]">
+              <div class="flex items-center justify-between px-4 py-2 border-b border-white/5 text-[11px] bg-black/40">
+                <div class="flex items-center gap-3">
+                  <span id="demo-res-status"
+                    class="bg-spot-bright/15 text-spot-bright font-bold px-2 py-0.5 rounded text-[10px]">200 OK</span>
+                  <span id="demo-res-time" class="text-spot-muted font-mono">14 ms</span>
+                  <span id="demo-res-size" class="text-spot-muted font-mono">418 B</span>
+                </div>
+                <div class="flex items-center gap-2">
+                  <button onclick="triggerAutoAssert()" title="Auto-generate test assertions from this response"
+                    class="flex items-center gap-1 text-[10px] text-spot-bright bg-spot-green/10 hover:bg-spot-green/20 border border-spot-green/30 px-2 py-0.5 rounded transition-all active:scale-95 font-sans font-medium">
+                    <span>⚡ Auto-Assert</span>
+                  </button>
+                  <span class="text-[10px] text-spot-faint hidden sm:inline">Native Runtime</span>
+                </div>
               </div>
-              <pre class="p-4 text-gray-300 leading-relaxed overflow-auto flex-1"><code>{
-  <span class="text-blue-400">"access_token"</span>: <span class="text-emerald-300">"eyJhbGciOiJSUzI1NiIsInR5..."</span>,
-  <span class="text-blue-400">"token_type"</span>: <span class="text-emerald-300">"Bearer"</span>,
-  <span class="text-blue-400">"expires_in"</span>: <span class="text-amber-400">3600</span>,
-  <span class="text-blue-400">"scope"</span>: <span class="text-emerald-300">"api:read api:write"</span>
+              <div id="auto-assert-toast"
+                class="hidden mx-4 mt-2 px-3 py-1.5 rounded-lg bg-spot-green/15 border border-spot-green/30 text-[11px] text-spot-bright flex items-center justify-between animate-fade-in font-sans">
+                <span>✓ Generated 3 test assertions from 200 OK response! Switched to Tests tab.</span>
+                <span class="cursor-pointer text-spot-muted hover:text-white ml-2"
+                  onclick="document.getElementById('auto-assert-toast').classList.add('hidden')">×</span>
+              </div>
+              <pre id="demo-res-body"
+                class="p-4 text-gray-300 leading-relaxed overflow-auto flex-1 font-mono text-xs"><code>{
+  "access_token": "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "token_type": "Bearer",
+  "expires_in": 3600,
+  "scope": "api:read api:write",
+  "blitz_stats": {
+    "engine": "Native Rust",
+    "ram_consumed": "34.2 MB",
+    "cloud_telemetry": "None (0 bytes sent)"
+  }
 }</code></pre>
             </div>
           </div>
@@ -453,6 +586,420 @@
             Full enterprise team sync without enterprise billing
           </div>
         </div>
+      </div>
+    </section>
+
+    <!-- ================================================================= -->
+    <!-- SECTION: LIVE UI GALLERY - REAL FUNCTIONALITY SHOWCASE -->
+    <!-- ================================================================= -->
+    <section id="ui-gallery" class="mt-36 text-center">
+      <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full glass-capsule text-xs text-spot-bright font-mono mb-4">
+        <span class="w-2 h-2 rounded-full bg-spot-bright animate-pulse"></span>
+        <span>LIVE WORKBENCH MODULES</span>
+      </div>
+      <h2 class="text-3xl sm:text-5xl font-extrabold tracking-tight mb-4">Real Capabilities. Real Interfaces.</h2>
+      <p class="text-spot-muted max-w-2xl mx-auto text-base sm:text-lg mb-10">
+        Interact with genuine Blitz workflow modules below. Experience how encrypted OS vaults, 1-click test assertions, visual Git conflict resolution, and multi-protocol streaming come together natively.
+      </p>
+
+      <!-- Module Selector Buttons -->
+      <div class="flex flex-wrap items-center justify-center gap-2 sm:gap-3 mb-10 max-w-5xl mx-auto">
+        <button onclick="switchGalleryTab('vault')" id="gallery-tab-vault"
+          class="gallery-nav-btn flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-semibold transition-all glass bg-spot-green/20 text-spot-bright border-spot-green/40 shadow-lg">
+          <span>🔐</span> Vault &amp; OS Keychain
+        </button>
+        <button onclick="switchGalleryTab('autoassert')" id="gallery-tab-autoassert"
+          class="gallery-nav-btn flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-semibold transition-all glass text-spot-muted hover:text-white">
+          <span>⚡</span> 1-Click Auto-Assert
+        </button>
+        <button onclick="switchGalleryTab('conflict')" id="gallery-tab-conflict"
+          class="gallery-nav-btn flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-semibold transition-all glass text-spot-muted hover:text-white">
+          <span>⚔️</span> Git Conflict Resolver
+        </button>
+        <button onclick="switchGalleryTab('proxy')" id="gallery-tab-proxy"
+          class="gallery-nav-btn flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-semibold transition-all glass text-spot-muted hover:text-white">
+          <span>🛰️</span> Traffic Proxy &amp; Mock
+        </button>
+        <button onclick="switchGalleryTab('protocols')" id="gallery-tab-protocols"
+          class="gallery-nav-btn flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-semibold transition-all glass text-spot-muted hover:text-white">
+          <span>📡</span> Multi-Protocol Suite
+        </button>
+      </div>
+
+      <!-- Module Container Window -->
+      <div class="w-full max-w-5xl mx-auto rounded-2xl glass-strong border border-white/10 shadow-2xl overflow-hidden text-left font-sans">
+        
+        <!-- PANE 1: VAULT & OS KEYCHAIN -->
+        <div id="gallery-pane-vault" class="gallery-pane block">
+          <!-- Window Bar -->
+          <div class="h-10 bg-spot-black/95 border-b border-white/5 flex items-center justify-between px-4 text-xs font-mono">
+            <div class="flex items-center gap-2">
+              <span class="w-3 h-3 rounded-full bg-[#ff5f56]"></span>
+              <span class="w-3 h-3 rounded-full bg-[#ffbd2e]"></span>
+              <span class="w-3 h-3 rounded-full bg-[#27c93f]"></span>
+              <span class="text-spot-muted font-sans font-medium ml-2">Blitz Vault &amp; Environment Variables</span>
+            </div>
+            <span class="text-spot-bright text-[11px] bg-spot-green/10 border border-spot-green/30 px-2 py-0.5 rounded font-mono">
+              AES-256 Keychain Enforced
+            </span>
+          </div>
+
+          <div class="p-6 bg-[#131313] space-y-6">
+            <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 p-3.5 rounded-xl bg-white/[0.03] border border-white/10 text-xs">
+              <div class="flex items-center gap-3">
+                <span class="text-xl">🛡️</span>
+                <div>
+                  <div class="font-bold text-white">4-Tier Zero-Leak Variable Architecture</div>
+                  <div class="text-spot-muted text-[11px]">Vault keys live in native OS Keychain. Never stored in collection JSON, never committed to Git.</div>
+                </div>
+              </div>
+              <div class="text-[11px] font-mono text-spot-bright bg-spot-green/10 px-2.5 py-1 rounded border border-spot-green/20">
+                Resolution: Vault &gt; Env &gt; Col &gt; Global
+              </div>
+            </div>
+
+            <!-- Vault Table -->
+            <div class="rounded-xl border border-white/10 overflow-hidden font-mono text-xs">
+              <div class="grid grid-cols-12 bg-black/50 p-2.5 text-spot-faint text-[10px] uppercase font-bold tracking-wider border-b border-white/5">
+                <div class="col-span-4">Variable Name</div>
+                <div class="col-span-4">Value (Encrypted at Rest)</div>
+                <div class="col-span-2">Scope</div>
+                <div class="col-span-2 text-right">Git Commit Safety</div>
+              </div>
+
+              <!-- Row 1 -->
+              <div class="grid grid-cols-12 items-center p-3 border-b border-white/5 hover:bg-white/[0.02] transition-colors">
+                <div class="col-span-4 font-bold text-white flex items-center gap-2">
+                  <span class="text-amber-400">vault:stripe_secret</span>
+                </div>
+                <div class="col-span-4 flex items-center gap-2">
+                  <span id="vault-val-1" class="text-spot-muted">sk_live_••••••••••••••••39a1</span>
+                  <button onclick="toggleVaultVisibility(1, 'sk_live_51N8zK4L2m901XyZ92839a1')" class="text-spot-faint hover:text-white text-[11px] px-1.5 py-0.5 rounded bg-white/5">👁️</button>
+                </div>
+                <div class="col-span-2">
+                  <span class="px-2 py-0.5 rounded text-[10px] font-bold bg-purple-500/15 text-purple-300">Vault (OS)</span>
+                </div>
+                <div class="col-span-2 text-right">
+                  <span class="text-[10px] text-spot-bright bg-spot-green/10 px-2 py-0.5 rounded font-bold">✓ Excluded from Git</span>
+                </div>
+              </div>
+
+              <!-- Row 2 -->
+              <div class="grid grid-cols-12 items-center p-3 border-b border-white/5 hover:bg-white/[0.02] transition-colors">
+                <div class="col-span-4 font-bold text-white flex items-center gap-2">
+                  <span class="text-amber-400">vault:token_hakki</span>
+                </div>
+                <div class="col-span-4 flex items-center gap-2">
+                  <span id="vault-val-2" class="text-spot-muted">eyJhbGciOi••••••••••••••••7F9a</span>
+                  <button onclick="toggleVaultVisibility(2, 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.e30.7F9a')" class="text-spot-faint hover:text-white text-[11px] px-1.5 py-0.5 rounded bg-white/5">👁️</button>
+                </div>
+                <div class="col-span-2">
+                  <span class="px-2 py-0.5 rounded text-[10px] font-bold bg-purple-500/15 text-purple-300">Vault (OS)</span>
+                </div>
+                <div class="col-span-2 text-right">
+                  <span class="text-[10px] text-spot-bright bg-spot-green/10 px-2 py-0.5 rounded font-bold">✓ Excluded from Git</span>
+                </div>
+              </div>
+
+              <!-- Row 3 -->
+              <div class="grid grid-cols-12 items-center p-3 border-b border-white/5 hover:bg-white/[0.02] transition-colors">
+                <div class="col-span-4 font-bold text-white flex items-center gap-2">
+                  <span class="text-blue-300">endpoint_user</span>
+                </div>
+                <div class="col-span-4 text-emerald-300">
+                  https://api.v2.internal.corp
+                </div>
+                <div class="col-span-2">
+                  <span class="px-2 py-0.5 rounded text-[10px] font-bold bg-blue-500/15 text-blue-300">Environment</span>
+                </div>
+                <div class="col-span-2 text-right">
+                  <span class="text-[10px] text-blue-400 bg-blue-500/10 px-2 py-0.5 rounded">Git Branch Synced</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Live Usage Demonstration -->
+            <div class="p-4 rounded-xl bg-black/60 border border-white/5 font-mono text-xs">
+              <div class="text-spot-faint text-[10px] mb-2">// How to use vault secrets in Request Header or Auth Tab:</div>
+              <div class="text-white">Authorization: Bearer <span class="text-amber-400 bg-amber-400/10 px-1 rounded">{{vault:token_hakki}}</span></div>
+              <div class="text-spot-muted text-[11px] mt-2">→ Blitz resolves this variable directly from system Keychain in 0.2ms at request time. Zero plain text saved to disk.</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- PANE 2: AUTO-ASSERTION TEST ENGINE -->
+        <div id="gallery-pane-autoassert" class="gallery-pane hidden">
+          <div class="h-10 bg-spot-black/95 border-b border-white/5 flex items-center justify-between px-4 text-xs font-mono">
+            <div class="flex items-center gap-2">
+              <span class="w-3 h-3 rounded-full bg-[#ff5f56]"></span>
+              <span class="w-3 h-3 rounded-full bg-[#ffbd2e]"></span>
+              <span class="w-3 h-3 rounded-full bg-[#27c93f]"></span>
+              <span class="text-spot-muted font-sans font-medium ml-2">Blitz Auto-Assertion Test Engine</span>
+            </div>
+            <span class="text-spot-bright text-[11px] bg-spot-green/10 border border-spot-green/30 px-2 py-0.5 rounded font-mono">
+              Zero Boilerplate Tests
+            </span>
+          </div>
+
+          <div class="p-6 bg-[#131313] space-y-6">
+            <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 p-4 rounded-xl bg-white/[0.03] border border-white/10">
+              <div>
+                <h4 class="font-bold text-white text-sm">One Click Inferred Test Generation</h4>
+                <p class="text-spot-muted text-xs mt-1">Blitz inspects the response status, headers, latency SLA, and JSON keys to generate production test assertions automatically.</p>
+              </div>
+              <button onclick="runAutoAssertDemo()" id="btn-run-autoassert"
+                class="flex items-center gap-2 px-4 py-2 rounded-full bg-spot-bright hover:bg-[#22e76a] text-spot-black font-bold text-xs shadow-[0_2px_12px_rgba(30,215,96,0.35)] transition-all active:scale-95 whitespace-nowrap">
+                <span>⚡ Click to Generate Assertions</span>
+              </button>
+            </div>
+
+            <!-- Two Column Live Comparison -->
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs font-mono">
+              <!-- Left: Response Snapshot -->
+              <div class="p-4 rounded-xl bg-black/60 border border-white/5 flex flex-col">
+                <div class="flex items-center justify-between pb-2 mb-3 border-b border-white/5">
+                  <span class="text-spot-faint text-[10px]">INCOMING RESPONSE</span>
+                  <div class="flex items-center gap-2">
+                    <span class="text-spot-bright font-bold">200 OK</span>
+                    <span class="text-spot-muted">18ms</span>
+                  </div>
+                </div>
+                <pre class="text-gray-300 leading-relaxed overflow-x-auto flex-1"><code>{
+  "status": "success",
+  "data": {
+    "user_id": 4821,
+    "email": "dev@blitz.rs",
+    "roles": ["admin", "tester"],
+    "created_at": "2026-10-19T18:00:00Z"
+  }
+}</code></pre>
+              </div>
+
+              <!-- Right: Generated Test Assertions -->
+              <div class="p-4 rounded-xl bg-black/60 border border-white/5 flex flex-col">
+                <div class="flex items-center justify-between pb-2 mb-3 border-b border-white/5">
+                  <span class="text-spot-faint text-[10px]">GENERATED TEST SCRIPT (pm.test)</span>
+                  <span id="autoassert-badge" class="text-spot-bright text-[10px] font-bold">✓ 4 Tests Ready</span>
+                </div>
+                <pre id="autoassert-code" class="text-emerald-300 leading-relaxed overflow-x-auto flex-1"><code>// 1. Status Code Assertion
+pm.test("Status code is 200", () => {
+  pm.response.to.have.status(200);
+});
+
+// 2. Latency Threshold
+pm.test("Response time is under 150ms", () => {
+  pm.expect(pm.response.responseTime).to.be.below(150);
+});
+
+// 3. Schema & Type Validations
+pm.test("Response payload contains user_id", () => {
+  const json = pm.response.json();
+  pm.expect(json.status).to.eql("success");
+  pm.expect(json.data.user_id).to.be.a("number");
+  pm.expect(json.data.roles).to.include("admin");
+});</code></pre>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- PANE 3: GIT CONFLICT RESOLVER -->
+        <div id="gallery-pane-conflict" class="gallery-pane hidden">
+          <div class="h-10 bg-spot-black/95 border-b border-white/5 flex items-center justify-between px-4 text-xs font-mono">
+            <div class="flex items-center gap-2">
+              <span class="w-3 h-3 rounded-full bg-[#ff5f56]"></span>
+              <span class="w-3 h-3 rounded-full bg-[#ffbd2e]"></span>
+              <span class="w-3 h-3 rounded-full bg-[#27c93f]"></span>
+              <span class="text-spot-muted font-sans font-medium ml-2">Blitz Visual 3-Way Git Merge Conflict Resolver</span>
+            </div>
+            <span class="text-amber-400 text-[11px] bg-amber-400/10 border border-amber-400/30 px-2 py-0.5 rounded font-mono font-bold">
+              ⚔️ 1 Merge Conflict
+            </span>
+          </div>
+
+          <div class="p-6 bg-[#131313] space-y-6">
+            <div class="p-4 rounded-xl bg-amber-500/10 border border-amber-500/30 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+              <div>
+                <div class="font-bold text-amber-300 text-sm flex items-center gap-2">
+                  <span>⚠️</span> Simultaneous Team Edit on <code>/api/v2/orders</code>
+                </div>
+                <div class="text-spot-muted text-xs mt-1">Both you and teammate @sarah modified headers and timeouts on branch <code>env/production</code>.</div>
+              </div>
+              <div class="flex items-center gap-2">
+                <button onclick="resolveConflictDemo('local')" class="px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-white font-bold text-xs transition-colors">Accept Mine (Local)</button>
+                <button onclick="resolveConflictDemo('remote')" class="px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-white font-bold text-xs transition-colors">Accept Theirs</button>
+                <button onclick="resolveConflictDemo('smart')" class="px-3.5 py-1.5 rounded-lg bg-spot-bright hover:bg-[#22e76a] text-spot-black font-bold text-xs transition-all shadow-[0_2px_10px_rgba(30,215,96,0.3)]">Smart 3-Way Merge</button>
+              </div>
+            </div>
+
+            <!-- Diff View -->
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs font-mono">
+              <div class="p-4 rounded-xl bg-black/60 border border-emerald-500/30">
+                <div class="flex items-center justify-between pb-2 mb-2 border-b border-white/5 text-[10px]">
+                  <span class="text-emerald-400 font-bold">YOUR LOCAL CHANGES (HEAD)</span>
+                  <span class="text-spot-faint">Saved 2m ago</span>
+                </div>
+                <pre class="text-emerald-200/90 leading-relaxed overflow-x-auto"><code>{
+  "name": "Create Order",
+  "method": "POST",
+  "url": "https://api.store.com/v2/orders",
+  <span class="bg-emerald-500/20 text-emerald-300 px-1 rounded">"timeout_ms": 3000,</span>
+  "headers": [
+    { "key": "X-Client-App", "value": "ios-mobile" }
+  ]
+}</code></pre>
+              </div>
+
+              <div class="p-4 rounded-xl bg-black/60 border border-blue-500/30">
+                <div class="flex items-center justify-between pb-2 mb-2 border-b border-white/5 text-[10px]">
+                  <span class="text-blue-400 font-bold">INCOMING REMOTE CHANGES (@sarah)</span>
+                  <span class="text-spot-faint">commit 8bf3a1c</span>
+                </div>
+                <pre class="text-blue-200/90 leading-relaxed overflow-x-auto"><code>{
+  "name": "Create Order",
+  "method": "POST",
+  "url": "https://api.store.com/v2/orders",
+  <span class="bg-blue-500/20 text-blue-300 px-1 rounded">"timeout_ms": 5000,</span>
+  "headers": [
+    { "key": "X-Client-App", "value": "ios-mobile" },
+    <span class="bg-blue-500/20 text-blue-300 px-1 rounded">{ "key": "X-Trace-Id", "value": "{{trace_id}}" }</span>
+  ]
+}</code></pre>
+              </div>
+            </div>
+
+            <div id="conflict-resolution-toast" class="hidden p-3 rounded-xl bg-spot-green/20 border border-spot-green/40 text-spot-bright text-xs font-mono flex items-center justify-between animate-fade-in">
+              <span>✓ Conflict resolved cleanly into valid Postman v2.1 collection! Committed to local git tree.</span>
+              <span class="font-bold cursor-pointer text-white" onclick="document.getElementById('conflict-resolution-toast').classList.add('hidden')">×</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- PANE 4: TRAFFIC PROXY & MOCK SERVER -->
+        <div id="gallery-pane-proxy" class="gallery-pane hidden">
+          <div class="h-10 bg-spot-black/95 border-b border-white/5 flex items-center justify-between px-4 text-xs font-mono">
+            <div class="flex items-center gap-2">
+              <span class="w-3 h-3 rounded-full bg-[#ff5f56]"></span>
+              <span class="w-3 h-3 rounded-full bg-[#ffbd2e]"></span>
+              <span class="w-3 h-3 rounded-full bg-[#27c93f]"></span>
+              <span class="text-spot-muted font-sans font-medium ml-2">Blitz Tools: Traffic Capture Proxy &amp; Mock Server</span>
+            </div>
+            <div class="flex items-center gap-2">
+              <span class="text-spot-bright text-[10px] bg-spot-green/10 border border-spot-green/30 px-2 py-0.5 rounded font-mono">Proxy :8080 Active</span>
+              <span class="text-blue-400 text-[10px] bg-blue-500/10 border border-blue-500/30 px-2 py-0.5 rounded font-mono">Mock :3001 Active</span>
+            </div>
+          </div>
+
+          <div class="p-6 bg-[#131313] space-y-6">
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <!-- Capture Proxy Feed -->
+              <div class="space-y-3">
+                <div class="flex items-center justify-between">
+                  <div class="font-bold text-white text-xs flex items-center gap-2">
+                    <span class="w-2 h-2 rounded-full bg-spot-bright animate-ping"></span>
+                    <span>Live Capture Proxy (127.0.0.1:8080)</span>
+                  </div>
+                  <span class="text-[10px] text-spot-faint font-mono">iOS / Android / curl</span>
+                </div>
+                <div class="rounded-xl border border-white/10 bg-black/60 p-3 space-y-2 font-mono text-xs max-h-56 overflow-y-auto">
+                  <div class="p-2 rounded bg-white/[0.03] border border-white/5 flex items-center justify-between">
+                    <div>
+                      <span class="text-spot-bright font-bold mr-2">POST</span>
+                      <span class="text-gray-300">/v1/charges</span>
+                    </div>
+                    <span class="text-[10px] text-spot-bright bg-spot-green/10 px-1.5 py-0.5 rounded">200 OK • 142ms</span>
+                  </div>
+                  <div class="p-2 rounded bg-white/[0.03] border border-white/5 flex items-center justify-between">
+                    <div>
+                      <span class="text-blue-400 font-bold mr-2">GET</span>
+                      <span class="text-gray-300">/v1/customer/cus_982</span>
+                    </div>
+                    <span class="text-[10px] text-spot-bright bg-spot-green/10 px-1.5 py-0.5 rounded">200 OK • 38ms</span>
+                  </div>
+                  <div class="p-2 rounded bg-white/[0.03] border border-white/5 flex items-center justify-between">
+                    <div>
+                      <span class="text-amber-400 font-bold mr-2">PUT</span>
+                      <span class="text-gray-300">/v1/subscriptions</span>
+                    </div>
+                    <span class="text-[10px] text-spot-bright bg-spot-green/10 px-1.5 py-0.5 rounded">204 No Content • 22ms</span>
+                  </div>
+                </div>
+                <div class="text-[11px] text-spot-muted">Captured calls automatically convert into replayable request items with complete headers and payloads.</div>
+              </div>
+
+              <!-- Instant Mock Server -->
+              <div class="space-y-3">
+                <div class="flex items-center justify-between">
+                  <div class="font-bold text-white text-xs flex items-center gap-2">
+                    <span class="text-blue-400">⚡</span>
+                    <span>Instant Local Mock Server (127.0.0.1:3001)</span>
+                  </div>
+                  <span class="text-[10px] text-spot-bright font-mono">&lt; 1ms Latency</span>
+                </div>
+                <div class="rounded-xl border border-white/10 bg-black/60 p-3 space-y-2 font-mono text-xs max-h-56 overflow-y-auto">
+                  <div class="p-2 rounded bg-white/[0.03] border border-white/5">
+                    <div class="flex items-center justify-between mb-1">
+                      <span class="text-blue-400 font-bold">GET /api/v1/users/:id</span>
+                      <span class="text-spot-bright text-[10px]">Matched: "User Example"</span>
+                    </div>
+                    <div class="text-spot-faint text-[10px]">Wildcard pattern matching with pre-saved example payloads.</div>
+                  </div>
+                  <div class="p-2 rounded bg-white/[0.03] border border-white/5">
+                    <div class="flex items-center justify-between mb-1">
+                      <span class="text-spot-bright font-bold">POST /api/v1/auth/login</span>
+                      <span class="text-spot-bright text-[10px]">Matched: "200 Success"</span>
+                    </div>
+                    <div class="text-spot-faint text-[10px]">Stub responses for frontend testing before backend deployment.</div>
+                  </div>
+                </div>
+                <div class="text-[11px] text-spot-muted">Mock responses spin up locally in 10ms with zero Docker containers or external servers required.</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- PANE 5: MULTI PROTOCOL STREAMING -->
+        <div id="gallery-pane-protocols" class="gallery-pane hidden">
+          <div class="h-10 bg-spot-black/95 border-b border-white/5 flex items-center justify-between px-4 text-xs font-mono">
+            <div class="flex items-center gap-2">
+              <span class="w-3 h-3 rounded-full bg-[#ff5f56]"></span>
+              <span class="w-3 h-3 rounded-full bg-[#ffbd2e]"></span>
+              <span class="w-3 h-3 rounded-full bg-[#27c93f]"></span>
+              <span class="text-spot-muted font-sans font-medium ml-2">Blitz Multi-Protocol Live Session (WebSocket / MCP)</span>
+            </div>
+            <span class="text-spot-bright text-[11px] bg-spot-green/10 border border-spot-green/30 px-2 py-0.5 rounded font-mono">
+              ● Connected wss://echo.websocket.events
+            </span>
+          </div>
+
+          <div class="p-6 bg-[#131313] space-y-4">
+            <div class="flex items-center gap-3 p-3 bg-black/60 border border-white/10 rounded-xl font-mono text-xs">
+              <span class="text-purple-400 font-bold">WS</span>
+              <input type="text" readonly value="wss://echo.websocket.events" class="bg-transparent text-white w-full outline-none">
+              <span class="text-spot-bright text-[11px] bg-spot-green/15 px-2 py-0.5 rounded">Connected</span>
+            </div>
+
+            <!-- Terminal Stream Log -->
+            <div id="ws-stream-log" class="rounded-xl border border-white/10 bg-black/80 p-4 font-mono text-xs space-y-2 h-44 overflow-y-auto">
+              <div class="text-spot-faint text-[10px]">// Bi-directional WebSocket stream session initiated via tokio-tungstenite</div>
+              <div class="text-spot-muted"><span class="text-spot-faint">18:04:12.102</span> <span class="text-spot-bright font-bold">↑ SEND</span> {"event":"subscribe","channel":"ticker:BTC-USD"}</div>
+              <div class="text-emerald-300"><span class="text-spot-faint">18:04:12.148</span> <span class="text-blue-400 font-bold">↓ RECV</span> {"event":"subscribed","channel":"ticker:BTC-USD","status":"ok"}</div>
+              <div class="text-emerald-300"><span class="text-spot-faint">18:04:13.204</span> <span class="text-blue-400 font-bold">↓ RECV</span> {"price":98450.25,"volume":14.82,"ts":1749281023}</div>
+              <div class="text-emerald-300"><span class="text-spot-faint">18:04:14.210</span> <span class="text-blue-400 font-bold">↓ RECV</span> {"price":98455.10,"volume":2.41,"ts":1749281024}</div>
+            </div>
+
+            <!-- Interactive Send Form -->
+            <div class="flex items-center gap-2">
+              <input type="text" id="ws-input-msg" value='{"action":"ping","nonce":42}'
+                class="flex-1 bg-black/60 border border-white/10 rounded-lg px-3 py-2 font-mono text-xs text-white focus:outline-none focus:border-spot-bright">
+              <button onclick="sendWsDemoMessage()"
+                class="px-4 py-2 rounded-lg bg-spot-bright hover:bg-[#22e76a] text-spot-black font-bold text-xs font-mono transition-all">
+                Send Frame
+              </button>
+            </div>
+          </div>
+        </div>
+
       </div>
     </section>
 
@@ -1632,6 +2179,273 @@ make run</code></pre>
         .replace(/>/g, '&gt;')
         .replace(/"/g, '&quot;')
         .replace(/'/g, '&#039;');
+    }
+
+    // Interactive Hero Workbench logic
+    const demoEndpoints = {
+      token: {
+        method: 'POST',
+        url: '/api/v2/auth/token',
+        body: '{\n  "client_id": "{{vault:oauth_id}}",\n  "client_secret": "secret://oauth_secret",\n  "grant_type": "client_credentials"\n}',
+        resStatus: '200 OK',
+        resTime: '12 ms',
+        resSize: '418 B',
+        resBody: '{\n  "access_token": "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9...",\n  "token_type": "Bearer",\n  "expires_in": 3600,\n  "scope": "api:read api:write",\n  "blitz_stats": {\n    "engine": "Native Rust",\n    "ram_consumed": "34.2 MB",\n    "cloud_telemetry": "None (0 bytes sent)"\n  }\n}'
+      },
+      profile: {
+        method: 'GET',
+        url: '/api/v2/user/profile',
+        body: '',
+        resStatus: '200 OK',
+        resTime: '9 ms',
+        resSize: '294 B',
+        resBody: '{\n  "id": "usr_9921",\n  "email": "engineer@company.local",\n  "tier": "enterprise-self-hosted",\n  "git_repo": "git@github.com:myorg/api-suite.git",\n  "branch": "env/production"\n}'
+      },
+      settings: {
+        method: 'PUT',
+        url: '/api/v2/user/settings',
+        body: '{\n  "theme": "spotify-dark",\n  "keychain_storage": true,\n  "auto_git_sync": true\n}',
+        resStatus: '204 No Content',
+        resTime: '16 ms',
+        resSize: '0 B',
+        resBody: '{\n  "updated": true,\n  "synced_to_git": true,\n  "commit_hash": "a1f89c4"\n}'
+      }
+    };
+
+    function pickDemoRequest(method, url, key) {
+      const data = demoEndpoints[key];
+      if (!data) return;
+
+      document.getElementById('demo-method-select').value = data.method;
+      document.getElementById('demo-tab-method').innerText = data.method;
+      document.getElementById('demo-tab-title').innerText = data.url;
+      document.getElementById('demo-url-input').value = data.url;
+      document.getElementById('demo-req-body').value = data.body;
+
+      ['token', 'profile', 'settings'].forEach(k => {
+        const el = document.getElementById(`demo-nav-${k}`);
+        if (el) {
+          if (k === key) {
+            el.className = 'flex items-center gap-2.5 py-1.5 pl-6 pr-2 rounded-lg bg-spot-green/15 font-mono text-white text-[11px] mb-1 w-full text-left transition-colors font-bold';
+          } else {
+            el.className = 'flex items-center gap-2.5 py-1.5 pl-6 pr-2 rounded-lg font-mono text-spot-muted hover:text-white text-[11px] w-full text-left transition-colors';
+          }
+        }
+      });
+
+      triggerHeroSend(data);
+    }
+
+    function triggerHeroSend(overrideData) {
+      const btn = document.getElementById('hero-send-btn');
+      const statusEl = document.getElementById('demo-res-status');
+      const timeEl = document.getElementById('demo-res-time');
+      const sizeEl = document.getElementById('demo-res-size');
+      const bodyEl = document.getElementById('demo-res-body');
+
+      btn.disabled = true;
+      btn.innerHTML = `<span class="w-3 h-3 rounded-full border-2 border-black/40 border-t-black animate-spin mr-1"></span> Sending`;
+
+      const method = document.getElementById('demo-method-select').value;
+      const url = document.getElementById('demo-url-input').value;
+
+      setTimeout(() => {
+        btn.disabled = false;
+        btn.innerHTML = `<span>Send</span><span class="text-[10px] opacity-70">⌘↵</span>`;
+
+        const randomTime = Math.floor(Math.random() * 12) + 8;
+        timeEl.innerText = `${randomTime} ms`;
+
+        if (overrideData) {
+          statusEl.innerText = overrideData.resStatus;
+          sizeEl.innerText = overrideData.resSize;
+          bodyEl.innerHTML = `<code>${escapeHtml(overrideData.resBody)}</code>`;
+        } else {
+          statusEl.innerText = '200 OK';
+          sizeEl.innerText = '482 B';
+          const sample = {
+            method: method,
+            url: "https://api.blitz.local" + url,
+            authenticated: true,
+            storage: "OS Keychain Protected",
+            git_branch: "env/production",
+            latency: `${randomTime}ms (Native Tokio Engine)`,
+            client: "Blitz v1.0 (Dioxus Native Desktop)"
+          };
+          bodyEl.innerHTML = `<code>${escapeHtml(JSON.stringify(sample, null, 2))}</code>`;
+        }
+      }, 160);
+    }
+
+    // Toggle Hero Split Layout (Side-by-Side vs Stacked)
+    let heroLayoutIsRow = true;
+    function toggleHeroLayout() {
+      heroLayoutIsRow = !heroLayoutIsRow;
+      const container = document.getElementById('hero-split-container');
+      const reqPane = document.getElementById('hero-req-pane');
+      const iconRow = document.getElementById('hero-layout-icon-row');
+      const iconCol = document.getElementById('hero-layout-icon-col');
+      const textLabel = document.getElementById('hero-layout-text');
+
+      if (heroLayoutIsRow) {
+        container.className = 'grid grid-cols-1 md:grid-cols-2 flex-1 bg-[#151515] overflow-hidden text-xs font-mono min-h-[340px] transition-all';
+        reqPane.className = 'flex flex-col border-r border-white/5';
+        iconRow.classList.remove('hidden');
+        iconCol.classList.add('hidden');
+        textLabel.innerText = 'Side-by-Side (Row)';
+      } else {
+        container.className = 'grid grid-cols-1 flex-1 bg-[#151515] overflow-hidden text-xs font-mono min-h-[340px] transition-all';
+        reqPane.className = 'flex flex-col border-b border-white/10';
+        iconRow.classList.add('hidden');
+        iconCol.classList.remove('hidden');
+        textLabel.innerText = 'Stacked (Column)';
+      }
+    }
+
+    // Switch Request Sub-Tabs in Hero (Body, Headers, Auth, Tests)
+    function switchReqTab(tabName) {
+      const tabs = ['body', 'headers', 'auth', 'tests'];
+      tabs.forEach(t => {
+        const btn = document.getElementById(`req-subtab-${t}`);
+        const pane = document.getElementById(`req-pane-${t}`);
+        if (btn && pane) {
+          if (t === tabName) {
+            btn.className = 'text-white font-medium border-b border-spot-bright pb-1 transition-colors';
+            pane.classList.remove('hidden');
+          } else {
+            btn.className = 'hover:text-white pb-1 transition-colors text-spot-muted';
+            pane.classList.add('hidden');
+          }
+        }
+      });
+    }
+
+    // Auto-assertion generator trigger
+    function triggerAutoAssert() {
+      const toast = document.getElementById('auto-assert-toast');
+      if (toast) {
+        toast.classList.remove('hidden');
+      }
+      switchReqTab('tests');
+    }
+
+    // Live UI Gallery Module Switcher
+    function switchGalleryTab(key) {
+      const keys = ['vault', 'autoassert', 'conflict', 'proxy', 'protocols'];
+      keys.forEach(k => {
+        const btn = document.getElementById(`gallery-tab-${k}`);
+        const pane = document.getElementById(`gallery-pane-${k}`);
+        if (btn && pane) {
+          if (k === key) {
+            btn.className = 'gallery-nav-btn flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-semibold transition-all glass bg-spot-green/20 text-spot-bright border-spot-green/40 shadow-lg';
+            pane.classList.remove('hidden');
+            pane.classList.add('block');
+          } else {
+            btn.className = 'gallery-nav-btn flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-semibold transition-all glass text-spot-muted hover:text-white';
+            pane.classList.remove('block');
+            pane.classList.add('hidden');
+          }
+        }
+      });
+    }
+
+    // Vault visibility toggle (mask / reveal)
+    const vaultMasked = { 1: true, 2: true };
+    function toggleVaultVisibility(id, realVal) {
+      const el = document.getElementById(`vault-val-${id}`);
+      if (!el) return;
+      if (vaultMasked[id]) {
+        el.innerText = realVal;
+        el.className = 'text-amber-300 font-bold';
+        vaultMasked[id] = false;
+      } else {
+        el.innerText = realVal.substring(0, 8) + '••••••••••••••••' + realVal.slice(-4);
+        el.className = 'text-spot-muted';
+        vaultMasked[id] = true;
+      }
+    }
+
+    // Auto-Assert Demo Generator Button
+    function runAutoAssertDemo() {
+      const btn = document.getElementById('btn-run-autoassert');
+      const badge = document.getElementById('autoassert-badge');
+      const code = document.getElementById('autoassert-code');
+      btn.innerHTML = '<span>⚡ Analyzing Schema...</span>';
+      btn.disabled = true;
+
+      setTimeout(() => {
+        btn.innerHTML = '<span>✓ Assertions Generated</span>';
+        btn.disabled = false;
+        badge.innerText = '✓ 4 Tests Inferred & Passing';
+        badge.className = 'text-spot-bright text-[10px] font-bold animate-pulse';
+        code.innerHTML = `<code>// 1. Status Code Assertion
+pm.test("Status code is 200", () => {
+  pm.response.to.have.status(200);
+});
+
+// 2. Latency Threshold (<150ms SLA)
+pm.test("Response time is under 150ms", () => {
+  pm.expect(pm.response.responseTime).to.be.below(150);
+});
+
+// 3. Schema & Key Existence
+pm.test("Payload has valid user_id and email", () => {
+  const json = pm.response.json();
+  pm.expect(json.status).to.eql("success");
+  pm.expect(json.data.user_id).to.be.a("number");
+  pm.expect(json.data.email).to.include("@blitz.rs");
+});
+
+// 4. Role Permissions
+pm.test("Admin role authorized", () => {
+  pm.expect(pm.response.json().data.roles).to.include("admin");
+});</code>`;
+      }, 350);
+    }
+
+    // Conflict Resolution Demo Action
+    function resolveConflictDemo(type) {
+      const toast = document.getElementById('conflict-resolution-toast');
+      if (toast) {
+        toast.classList.remove('hidden');
+        let msg = '';
+        if (type === 'smart') {
+          msg = 'Smart 3-Way Merge: Kept timeout 5000ms and merged both headers! Auto-committed to local Git.';
+        } else if (type === 'local') {
+          msg = 'Accepted Local HEAD changes. Remote commit overwritten locally.';
+        } else {
+          msg = 'Accepted Remote changes from @sarah. Local draft updated.';
+        }
+        toast.innerHTML = `<span>✓ ${msg}</span><span class="font-bold cursor-pointer text-white ml-2" onclick="document.getElementById('conflict-resolution-toast').classList.add('hidden')">×</span>`;
+      }
+    }
+
+    // WebSocket Demo Live Frame Sender
+    function sendWsDemoMessage() {
+      const input = document.getElementById('ws-input-msg');
+      const log = document.getElementById('ws-stream-log');
+      if (!input || !log || !input.value.trim()) return;
+
+      const now = new Date();
+      const timeStr = now.toTimeString().split(' ')[0] + '.' + String(now.getMilliseconds()).padStart(3, '0');
+      const val = escapeHtml(input.value.trim());
+
+      // Append send frame
+      const sendDiv = document.createElement('div');
+      sendDiv.className = 'text-spot-muted animate-fade-in';
+      sendDiv.innerHTML = `<span class="text-spot-faint">${timeStr}</span> <span class="text-spot-bright font-bold">↑ SEND</span> ${val}`;
+      log.appendChild(sendDiv);
+
+      // Simulate instantaneous echo from websocket server
+      setTimeout(() => {
+        const recvDiv = document.createElement('div');
+        recvDiv.className = 'text-emerald-300 animate-fade-in';
+        recvDiv.innerHTML = `<span class="text-spot-faint">${timeStr}</span> <span class="text-blue-400 font-bold">↓ RECV</span> (Echo) ${val}`;
+        log.appendChild(recvDiv);
+        log.scrollTop = log.scrollHeight;
+      }, 60);
+
+      log.scrollTop = log.scrollHeight;
     }
   </script>
 </body>

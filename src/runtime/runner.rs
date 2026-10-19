@@ -226,7 +226,16 @@ pub fn run_collection_with_config(
 
         let mut i = 0usize;
         let mut next_override: Option<String> = None;
+        let max_steps = requests.len().saturating_mul(10).max(100);
+        let mut steps = 0usize;
         while i < requests.len() {
+            if steps >= max_steps {
+                report.console.push(format!(
+                    "runner: max step limit ({max_steps}) reached in iteration — aborting cycle"
+                ));
+                break;
+            }
+            steps += 1;
             if let Some(name) = next_override.take() {
                 if name.is_empty() {
                     report.console.push("runner: setNextRequest(null) — stop".into());
@@ -279,6 +288,7 @@ pub fn run_collection_with_config(
                     inherited_pre: inherited_pre.clone(),
                     inherited_post: inherited_post.clone(),
                     iteration_data_json: Some(&iter_json),
+                    iteration: iter,
                     execution: Some(&mut hints),
                     cancel: None,
                     ancestor_auth: None,

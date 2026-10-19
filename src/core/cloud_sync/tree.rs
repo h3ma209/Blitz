@@ -401,6 +401,68 @@ fn export_auth_json(auth: &AuthConfig) -> Value {
     }
 }
 
+fn import_auth_json(auth: Option<&Value>) -> AuthConfig {
+    let Some(auth) = auth else {
+        return AuthConfig {
+            auth_type: AuthType::NoAuth,
+            ..Default::default()
+        };
+    };
+    if auth.is_null() {
+        return AuthConfig {
+            auth_type: AuthType::Inherit,
+            ..Default::default()
+        };
+    }
+    let ty = auth.get("type").and_then(|v| v.as_str()).unwrap_or("noauth");
+    let kv = |section: &str, key: &str| -> String {
+        auth.get(section)
+            .and_then(|v| v.as_array())
+            .into_iter()
+            .flatten()
+            .find(|e| e.get("key").and_then(|k| k.as_str()) == Some(key))
+            .and_then(|e| e.get("value"))
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string()
+    };
+    let mut cfg = AuthConfig::default();
+    match ty {
+        "noauth" => cfg.auth_type = AuthType::NoAuth,
+        "bearer" => {
+            cfg.auth_type = AuthType::Bearer;
+            cfg.token = kv("bearer", "token");
+        }
+        "basic" => {
+            cfg.auth_type = AuthType::Basic;
+            cfg.username = kv("basic", "username");
+            cfg.password = kv("basic", "password");
+        }
+        "apikey" => {
+            cfg.auth_type = AuthType::ApiKey;
+            cfg.api_key_header = kv("apikey", "key");
+            cfg.token = kv("apikey", "value");
+        }
+        "digest" => {
+            cfg.auth_type = AuthType::Digest;
+            cfg.username = kv("digest", "username");
+            cfg.password = kv("digest", "password");
+        }
+        "oauth2" => {
+            cfg.auth_type = AuthType::Oauth2;
+            cfg.oauth2.access_token = kv("oauth2", "accessToken");
+            cfg.oauth2.token_url = kv("oauth2", "tokenUrl");
+        }
+        "oauth1" => cfg.auth_type = AuthType::Oauth1,
+        "hawk" => cfg.auth_type = AuthType::Hawk,
+        "ntlm" => cfg.auth_type = AuthType::Ntlm,
+        "awsv4" => cfg.auth_type = AuthType::AwsSigV4,
+        "edgegrid" => cfg.auth_type = AuthType::EdgeGrid,
+        _ => cfg.auth_type = AuthType::NoAuth,
+    }
+    cfg
+}
+
 /// Write items; return order refs for collection.json.
 fn write_items(
     col_root: &Path,
@@ -613,11 +675,8 @@ fn read_collection_split(dir: &Path) -> Result<Collection, CloudTreeError> {
                 })
                 .collect();
         }
-        // Auth: leave Inherit/NoAuth; secrets stay local
-        col.auth = AuthConfig {
-            auth_type: AuthType::NoAuth,
-            ..Default::default()
-        };
+        // Auth: import non-secret structure (auth type, username, header name, tokenUrl); secrets stay local
+        col.auth = import_auth_json(root.get("auth"));
         // Import environment overrides if present
         if let Some(env_overrides) = root.get("environmentOverrides") {
             col.environment_overrides = serde_json::from_value(env_overrides.clone())

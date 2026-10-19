@@ -188,16 +188,21 @@ pub fn render_var_highlight_html(text: &str, vars: Option<&VariableContext>) -> 
             html.push_str(&escape_html(&text[cursor..span.start]));
         }
         let token = &text[span.start..span.end];
-        let unresolved = vars
-            .map(|v| v.inspect_var(&span.raw).is_unresolved())
-            .unwrap_or(false);
-        let class = if unresolved {
-            "var-token unresolved"
-        } else {
-            "var-token"
+        let (class, title) = match vars {
+            Some(v) => {
+                let info = v.inspect_var(&span.raw);
+                if info.is_unresolved() {
+                    ("var-token unresolved", format!("{}: (unresolved)", span.raw))
+                } else {
+                    ("var-token", format!("{}: {} ({})", span.raw, info.value, info.scope.label()))
+                }
+            }
+            None => ("var-token", span.raw.clone()),
         };
         html.push_str("<span class=\"");
         html.push_str(class);
+        html.push_str("\" title=\"");
+        html.push_str(&escape_html(&title));
         html.push_str("\">");
         html.push_str(&escape_html(token));
         html.push_str("</span>");
@@ -534,8 +539,8 @@ mod tests {
 
         let ctx = VariableContext::demo();
         let html = render_var_highlight_html(text, Some(&ctx));
-        assert!(html.contains("<span class=\"var-token\">{{baseUrl}}</span>"));
-        assert!(html.contains("<span class=\"var-token unresolved\">{{missing}}</span>"));
+        assert!(html.contains("<span class=\"var-token\" title=\"baseUrl: https://httpbin.org (environment)\">{{baseUrl}}</span>"));
+        assert!(html.contains("<span class=\"var-token unresolved\" title=\"missing: (unresolved)\">{{missing}}</span>"));
         assert!(html.contains("&lt;x&gt;&amp;"));
         assert!(!html.contains("<x>"));
     }

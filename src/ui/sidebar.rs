@@ -493,32 +493,19 @@ pub fn Sidebar(
                                                     Some(row_id),
                                                     Some(col_id),
                                                 ));
-                                            } else if is_col {
+                                            } else if is_col || is_folder {
+                                                let mut set = expanded();
+                                                if set.contains(&row_id) {
+                                                    set.remove(&row_id);
+                                                } else {
+                                                    set.insert(row_id);
+                                                }
+                                                expanded.set(set);
                                                 on_event.call(SidebarEvent::new(
-                                                    SidebarAction::SelectCollection,
+                                                    SidebarAction::ToggleExpand,
                                                     Some(row_id),
                                                     Some(col_id),
                                                 ));
-                                                let mut set = expanded();
-                                                if set.contains(&row_id) {
-                                                    set.remove(&row_id);
-                                                } else {
-                                                    set.insert(row_id);
-                                                }
-                                                expanded.set(set);
-                                            } else if is_folder {
-                                                on_event.call(SidebarEvent::new(
-                                                    SidebarAction::SelectCollection,
-                                                    Some(col_id),
-                                                    Some(col_id),
-                                                ));
-                                                let mut set = expanded();
-                                                if set.contains(&row_id) {
-                                                    set.remove(&row_id);
-                                                } else {
-                                                    set.insert(row_id);
-                                                }
-                                                expanded.set(set);
                                             }
                                         },
                                         span {

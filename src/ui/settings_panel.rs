@@ -2,21 +2,33 @@ use dioxus::prelude::*;
 
 use crate::core::{
     AccentIntensity, AppSettings, ClientCertSettings, CloudSyncSettings, DefaultResponseTab,
-    ProxyMode, ProxySettings, UiDensity, UiSettings, UiTheme, DEFAULT_CLOUD_REMOTE,
+    ProxyMode, ProxySettings, UiDensity, UiSettings, UiTheme, WorkbenchLayout, DEFAULT_CLOUD_REMOTE,
 };
+
 #[derive(Clone, PartialEq)]
 pub enum SettingsEvent {
     Close,
     Save(AppSettings),
 }
 
-/// Full-page settings editor (proxy, certs, appearance, cloud sync).
+#[derive(Clone, Copy, PartialEq, Eq, Default)]
+pub enum SettingsTab {
+    #[default]
+    Appearance,
+    Network,
+    Certificates,
+    CloudSync,
+}
+
+/// Full-page settings editor with modern category sidebar, segmented cards, and clean controls.
 #[component]
 pub fn SettingsPanel(
     settings: AppSettings,
     data_root: String,
     on_event: EventHandler<SettingsEvent>,
 ) -> Element {
+    let mut active_tab = use_signal(|| SettingsTab::Appearance);
+
     let mut proxy_mode = use_signal(|| settings.proxy.mode);
     let mut host_port = use_signal(|| settings.proxy.host_port.clone());
     let mut cert_path = use_signal(|| settings.client_cert.cert_path.clone());
@@ -35,6 +47,7 @@ pub fn SettingsPanel(
     let mut reduce_motion = use_signal(|| settings.ui.reduce_motion);
     let mut show_status = use_signal(|| settings.ui.show_status_bar);
     let mut default_resp_tab = use_signal(|| settings.ui.default_response_tab);
+    let mut workbench_layout = use_signal(|| settings.ui.layout);
     let mut splash_ms = use_signal(|| settings.ui.splash_min_ms);
     let mut cloud_enabled = use_signal(|| settings.cloud_sync.enabled);
     let mut cloud_remote = use_signal(|| settings.cloud_sync.remote_url.clone());
@@ -75,7 +88,10 @@ pub fn SettingsPanel(
     rsx! {
         div { class: "settings-page",
             div { class: "settings-page-head",
-                h3 { "Settings" }
+                div { class: "settings-header-meta",
+                    h3 { "Settings & Preferences" }
+                    span { class: "settings-data-path", title: "{data_root}", "Data: {data_root}" }
+                }
                 button {
                     class: "modal-close",
                     r#type: "button",
@@ -85,316 +101,487 @@ pub fn SettingsPanel(
                     "✕"
                 }
             }
-            div { class: "settings-page-body",
-                p { class: "hint", "Proxy, certificates, appearance, cloud sync. Data: {data_root}" }
 
-                h4 { "Appearance" }
-                div { class: "settings-fields",
-                    label { class: "settings-row",
-                        span { "UI font size ({ui_font()}px)" }
-                        input {
-                            r#type: "range",
-                            min: "{UiSettings::FONT_MIN_PX}",
-                            max: "{UiSettings::FONT_MAX_PX}",
-                            value: "{ui_font()}",
-                            oninput: move |evt| {
-                                if let Ok(v) = evt.value().parse::<u32>() {
-                                    ui_font.set(UiSettings::clamp_font_size(v));
-                                }
-                            },
-                        }
-                    }
-                    label { class: "settings-row",
-                        span { "Editor font size ({editor_font()}px)" }
-                        input {
-                            r#type: "range",
-                            min: "{UiSettings::FONT_MIN_PX}",
-                            max: "{UiSettings::FONT_MAX_PX}",
-                            value: "{editor_font()}",
-                            oninput: move |evt| {
-                                if let Ok(v) = evt.value().parse::<u32>() {
-                                    editor_font.set(UiSettings::clamp_font_size(v));
-                                }
-                            },
-                        }
-                    }
-                    label { class: "settings-row",
-                        span { "Sidebar width ({sidebar_w()}px)" }
-                        input {
-                            r#type: "range",
-                            min: "{UiSettings::SIDEBAR_MIN_PX}",
-                            max: "{UiSettings::SIDEBAR_MAX_PX}",
-                            value: "{sidebar_w()}",
-                            oninput: move |evt| {
-                                if let Ok(v) = evt.value().parse::<u32>() {
-                                    sidebar_w.set(UiSettings::clamp_sidebar_width(v));
-                                }
-                            },
-                        }
-                    }
-                    label { class: "settings-row",
-                        span { "Request pane ({request_h()}px)" }
-                        input {
-                            r#type: "range",
-                            min: "{UiSettings::REQUEST_PANE_MIN_PX}",
-                            max: "{UiSettings::REQUEST_PANE_MAX_PX}",
-                            value: "{request_h()}",
-                            oninput: move |evt| {
-                                if let Ok(v) = evt.value().parse::<u32>() {
-                                    request_h.set(UiSettings::clamp_request_pane_height(v));
-                                }
-                            },
-                        }
-                    }
-                    label { class: "settings-row",
-                        span { "Console height ({console_h()}px)" }
-                        input {
-                            r#type: "range",
-                            min: "{UiSettings::CONSOLE_MIN_PX}",
-                            max: "{UiSettings::CONSOLE_MAX_PX}",
-                            value: "{console_h()}",
-                            oninput: move |evt| {
-                                if let Ok(v) = evt.value().parse::<u32>() {
-                                    console_h.set(UiSettings::clamp_console_height(v));
-                                }
-                            },
-                        }
-                    }
-                    label { class: "settings-row",
-                        span { "Theme" }
-                        select {
-                            value: "{theme_str}",
-                            onchange: move |evt: Event<FormData>| {
-                                theme.set(match evt.value().as_str() {
-                                    "slate" => UiTheme::Slate,
-                                    "light" => UiTheme::Light,
-                                    "high_contrast" => UiTheme::HighContrast,
-                                    _ => UiTheme::Spotify,
-                                });
-                            },
-                            option { value: "spotify", "Spotify (default)" }
-                            option { value: "slate", "Dark slate" }
-                            option { value: "light", "Light" }
-                            option { value: "high_contrast", "High contrast" }
-                        }
-                    }
-                    label { class: "settings-row",
-                        span { "Density" }
-                        select {
-                            value: "{density_str}",
-                            onchange: move |evt: Event<FormData>| {
-                                density.set(match evt.value().as_str() {
-                                    "compact" => UiDensity::Compact,
-                                    _ => UiDensity::Comfortable,
-                                });
-                            },
-                            option { value: "comfortable", "Comfortable" }
-                            option { value: "compact", "Compact" }
-                        }
-                    }
-                    label { class: "checkbox-row",
-                        input {
-                            r#type: "checkbox",
-                            checked: wrap_editor(),
-                            onchange: move |evt| wrap_editor.set(evt.checked()),
-                        }
-                        " Wrap editor text"
-                    }
-                    label { class: "settings-row",
-                        span { "Tab size" }
-                        select {
-                            value: "{tab_size_str}",
-                            onchange: move |evt: Event<FormData>| {
-                                tab_size.set(UiSettings::clamp_tab_size(
-                                    evt.value().parse().unwrap_or(2),
-                                ));
-                            },
-                            option { value: "2", "2 spaces" }
-                            option { value: "4", "4 spaces" }
-                        }
-                    }
-                    label { class: "settings-row",
-                        span { "Accent intensity" }
-                        select {
-                            value: "{accent_str}",
-                            onchange: move |evt: Event<FormData>| {
-                                accent.set(match evt.value().as_str() {
-                                    "soft" => AccentIntensity::Soft,
-                                    "strong" => AccentIntensity::Strong,
-                                    _ => AccentIntensity::Normal,
-                                });
-                            },
-                            option { value: "soft", "Soft" }
-                            option { value: "normal", "Normal" }
-                            option { value: "strong", "Strong" }
-                        }
-                    }
-                    label { class: "checkbox-row",
-                        input {
-                            r#type: "checkbox",
-                            checked: reduce_motion(),
-                            onchange: move |evt| reduce_motion.set(evt.checked()),
-                        }
-                        " Reduce motion"
-                    }
-                    label { class: "checkbox-row",
-                        input {
-                            r#type: "checkbox",
-                            checked: show_status(),
-                            onchange: move |evt| show_status.set(evt.checked()),
-                        }
-                        " Show status bar"
-                    }
-                    label { class: "settings-row",
-                        span { "Default response tab" }
-                        select {
-                            value: "{resp_tab_str}",
-                            onchange: move |evt: Event<FormData>| {
-                                default_resp_tab.set(match evt.value().as_str() {
-                                    "raw" => DefaultResponseTab::Raw,
-                                    "headers" => DefaultResponseTab::Headers,
-                                    _ => DefaultResponseTab::Pretty,
-                                });
-                            },
-                            option { value: "pretty", "Pretty" }
-                            option { value: "raw", "Raw" }
-                            option { value: "headers", "Headers" }
-                        }
-                    }
-                    label { class: "settings-row",
-                        span { "Splash min duration ({splash_ms()}ms)" }
-                        input {
-                            r#type: "range",
-                            min: "{UiSettings::SPLASH_MIN_MS}",
-                            max: "{UiSettings::SPLASH_MAX_MS}",
-                            step: "20",
-                            value: "{splash_ms()}",
-                            oninput: move |evt| {
-                                if let Ok(v) = evt.value().parse::<u32>() {
-                                    splash_ms.set(UiSettings::clamp_splash_min_ms(v));
-                                }
-                            },
+            div { class: "settings-layout",
+                // Left Navigation Sidebar
+                aside { class: "settings-nav",
+                    button {
+                        class: if active_tab() == SettingsTab::Appearance { "settings-nav-item active" } else { "settings-nav-item" },
+                        onclick: move |_| active_tab.set(SettingsTab::Appearance),
+                        span { class: "settings-nav-icon", "🎨" }
+                        div { class: "settings-nav-text",
+                            span { class: "settings-nav-title", "Appearance" }
+                            span { class: "settings-nav-desc", "Theme, fonts & layout" }
                         }
                     }
                     button {
-                        class: "btn btn-ghost",
-                        onclick: move |_| {
-                            let d = UiSettings::default();
-                            ui_font.set(d.ui_font_size_px);
-                            editor_font.set(d.editor_font_size_px);
-                            sidebar_w.set(d.sidebar_width_px);
-                            request_h.set(d.request_pane_height_px);
-                            console_h.set(d.console_height_px);
-                            density.set(d.density);
-                            wrap_editor.set(d.wrap_editor_text);
-                            tab_size.set(d.tab_size);
-                            theme.set(d.theme);
-                            accent.set(d.accent_intensity);
-                            reduce_motion.set(d.reduce_motion);
-                            show_status.set(d.show_status_bar);
-                            default_resp_tab.set(d.default_response_tab);
-                            splash_ms.set(d.splash_min_ms);
+                        class: if active_tab() == SettingsTab::Network { "settings-nav-item active" } else { "settings-nav-item" },
+                        onclick: move |_| active_tab.set(SettingsTab::Network),
+                        span { class: "settings-nav-icon", "🌐" }
+                        div { class: "settings-nav-text",
+                            span { class: "settings-nav-title", "Network & Proxy" }
+                            span { class: "settings-nav-desc", "HTTP proxy settings" }
+                        }
+                    }
+                    button {
+                        class: if active_tab() == SettingsTab::Certificates { "settings-nav-item active" } else { "settings-nav-item" },
+                        onclick: move |_| active_tab.set(SettingsTab::Certificates),
+                        span { class: "settings-nav-icon", "🔒" }
+                        div { class: "settings-nav-text",
+                            span { class: "settings-nav-title", "Certificates" }
+                            span { class: "settings-nav-desc", "Client PEM identities" }
+                        }
+                    }
+                    button {
+                        class: if active_tab() == SettingsTab::CloudSync { "settings-nav-item active" } else { "settings-nav-item" },
+                        onclick: move |_| active_tab.set(SettingsTab::CloudSync),
+                        span { class: "settings-nav-icon", "☁️" }
+                        div { class: "settings-nav-text",
+                            span { class: "settings-nav-title", "Git Cloud Sync" }
+                            span { class: "settings-nav-desc", "Team sync & remote" }
+                        }
+                    }
+                }
+
+                // Main Content Body
+                div { class: "settings-page-body",
+                    match active_tab() {
+                        SettingsTab::Appearance => rsx! {
+                            div { class: "settings-card",
+                                div { class: "settings-card-head",
+                                    h4 { "Theme & Color Scheme" }
+                                    p { class: "hint", "Select UI color palette and green accent vibrance." }
+                                }
+                                div { class: "settings-grid-2",
+                                    div { class: "settings-field",
+                                        label { "Theme" }
+                                        select {
+                                            value: "{theme_str}",
+                                            onchange: move |evt: Event<FormData>| {
+                                                theme.set(match evt.value().as_str() {
+                                                    "slate" => UiTheme::Slate,
+                                                    "light" => UiTheme::Light,
+                                                    "high_contrast" => UiTheme::HighContrast,
+                                                    _ => UiTheme::Spotify,
+                                                });
+                                            },
+                                            option { value: "spotify", "Spotify (Dark & Green)" }
+                                            option { value: "slate", "Dark Slate" }
+                                            option { value: "light", "Light Surface" }
+                                            option { value: "high_contrast", "High Contrast" }
+                                        }
+                                    }
+                                    div { class: "settings-field",
+                                        label { "Accent Intensity" }
+                                        select {
+                                            value: "{accent_str}",
+                                            onchange: move |evt: Event<FormData>| {
+                                                accent.set(match evt.value().as_str() {
+                                                    "soft" => AccentIntensity::Soft,
+                                                    "strong" => AccentIntensity::Strong,
+                                                    _ => AccentIntensity::Normal,
+                                                });
+                                            },
+                                            option { value: "soft", "Subtle Soft" }
+                                            option { value: "normal", "Standard" }
+                                            option { value: "strong", "High Vibrance" }
+                                        }
+                                    }
+                                }
+                            }
+
+                            div { class: "settings-card",
+                                div { class: "settings-card-head",
+                                    h4 { "Typography & Zoom" }
+                                    p { class: "hint", "Adjust font sizes. Tip: Use ⌘+ / ⌘- in workbench to scale on the fly." }
+                                }
+                                div { class: "settings-slider-group",
+                                    div { class: "settings-slider-row",
+                                        div { class: "slider-label-wrap",
+                                            span { class: "slider-name", "UI Font Size" }
+                                            span { class: "slider-badge", "{ui_font()} px" }
+                                        }
+                                        input {
+                                            r#type: "range",
+                                            min: "{UiSettings::FONT_MIN_PX}",
+                                            max: "{UiSettings::FONT_MAX_PX}",
+                                            value: "{ui_font()}",
+                                            oninput: move |evt| {
+                                                if let Ok(v) = evt.value().parse::<u32>() {
+                                                    ui_font.set(UiSettings::clamp_font_size(v));
+                                                }
+                                            },
+                                        }
+                                    }
+                                    div { class: "settings-slider-row",
+                                        div { class: "slider-label-wrap",
+                                            span { class: "slider-name", "Editor Font Size" }
+                                            span { class: "slider-badge", "{editor_font()} px" }
+                                        }
+                                        input {
+                                            r#type: "range",
+                                            min: "{UiSettings::FONT_MIN_PX}",
+                                            max: "{UiSettings::FONT_MAX_PX}",
+                                            value: "{editor_font()}",
+                                            oninput: move |evt| {
+                                                if let Ok(v) = evt.value().parse::<u32>() {
+                                                    editor_font.set(UiSettings::clamp_font_size(v));
+                                                }
+                                            },
+                                        }
+                                    }
+                                }
+                            }
+
+                            div { class: "settings-card",
+                                div { class: "settings-card-head",
+                                    h4 { "Dimensions & Panes" }
+                                    p { class: "hint", "Customize default widths and heights for workbench panels." }
+                                }
+                                div { class: "settings-slider-group",
+                                    div { class: "settings-slider-row",
+                                        div { class: "slider-label-wrap",
+                                            span { class: "slider-name", "Sidebar Width" }
+                                            span { class: "slider-badge", "{sidebar_w()} px" }
+                                        }
+                                        input {
+                                            r#type: "range",
+                                            min: "{UiSettings::SIDEBAR_MIN_PX}",
+                                            max: "{UiSettings::SIDEBAR_MAX_PX}",
+                                            value: "{sidebar_w()}",
+                                            oninput: move |evt| {
+                                                if let Ok(v) = evt.value().parse::<u32>() {
+                                                    sidebar_w.set(UiSettings::clamp_sidebar_width(v));
+                                                }
+                                            },
+                                        }
+                                    }
+                                    div { class: "settings-slider-row",
+                                        div { class: "slider-label-wrap",
+                                            span { class: "slider-name", "Request Pane Height" }
+                                            span { class: "slider-badge", "{request_h()} px" }
+                                        }
+                                        input {
+                                            r#type: "range",
+                                            min: "{UiSettings::REQUEST_PANE_MIN_PX}",
+                                            max: "{UiSettings::REQUEST_PANE_MAX_PX}",
+                                            value: "{request_h()}",
+                                            oninput: move |evt| {
+                                                if let Ok(v) = evt.value().parse::<u32>() {
+                                                    request_h.set(UiSettings::clamp_request_pane_height(v));
+                                                }
+                                            },
+                                        }
+                                    }
+                                    div { class: "settings-slider-row",
+                                        div { class: "slider-label-wrap",
+                                            span { class: "slider-name", "Console Height" }
+                                            span { class: "slider-badge", "{console_h()} px" }
+                                        }
+                                        input {
+                                            r#type: "range",
+                                            min: "{UiSettings::CONSOLE_MIN_PX}",
+                                            max: "{UiSettings::CONSOLE_MAX_PX}",
+                                            value: "{console_h()}",
+                                            oninput: move |evt| {
+                                                if let Ok(v) = evt.value().parse::<u32>() {
+                                                    console_h.set(UiSettings::clamp_console_height(v));
+                                                }
+                                            },
+                                        }
+                                    }
+                                    div { class: "settings-slider-row",
+                                        div { class: "slider-label-wrap",
+                                            span { class: "slider-name", "Splash Hold Duration" }
+                                            span { class: "slider-badge", "{splash_ms()} ms" }
+                                        }
+                                        input {
+                                            r#type: "range",
+                                            min: "{UiSettings::SPLASH_MIN_MS}",
+                                            max: "{UiSettings::SPLASH_MAX_MS}",
+                                            step: "20",
+                                            value: "{splash_ms()}",
+                                            oninput: move |evt| {
+                                                if let Ok(v) = evt.value().parse::<u32>() {
+                                                    splash_ms.set(UiSettings::clamp_splash_min_ms(v));
+                                                }
+                                            },
+                                        }
+                                    }
+                                }
+                            }
+
+                            div { class: "settings-card",
+                                div { class: "settings-card-head",
+                                    h4 { "Editor & Layout Behavior" }
+                                    p { class: "hint", "Editor wrapping, indentation, padding density, and defaults." }
+                                }
+                                div { class: "settings-grid-2",
+                                    div { class: "settings-field",
+                                        label { "Padding Density" }
+                                        select {
+                                            value: "{density_str}",
+                                            onchange: move |evt: Event<FormData>| {
+                                                density.set(match evt.value().as_str() {
+                                                    "compact" => UiDensity::Compact,
+                                                    _ => UiDensity::Comfortable,
+                                                });
+                                            },
+                                            option { value: "comfortable", "Comfortable (Standard)" }
+                                            option { value: "compact", "Compact (Dense)" }
+                                        }
+                                    }
+                                    div { class: "settings-field",
+                                        label { "Editor Tab Size" }
+                                        select {
+                                            value: "{tab_size_str}",
+                                            onchange: move |evt: Event<FormData>| {
+                                                tab_size.set(UiSettings::clamp_tab_size(
+                                                    evt.value().parse().unwrap_or(2),
+                                                ));
+                                            },
+                                            option { value: "2", "2 Spaces" }
+                                            option { value: "4", "4 Spaces" }
+                                        }
+                                    }
+                                    div { class: "settings-field",
+                                        label { "Default Response Tab" }
+                                        select {
+                                            value: "{resp_tab_str}",
+                                            onchange: move |evt: Event<FormData>| {
+                                                default_resp_tab.set(match evt.value().as_str() {
+                                                    "raw" => DefaultResponseTab::Raw,
+                                                    "headers" => DefaultResponseTab::Headers,
+                                                    _ => DefaultResponseTab::Pretty,
+                                                });
+                                            },
+                                            option { value: "pretty", "Pretty (Formatted)" }
+                                            option { value: "raw", "Raw Text" }
+                                            option { value: "headers", "Response Headers" }
+                                        }
+                                    }
+                                    div { class: "settings-field",
+                                        label { "Workbench Split Layout" }
+                                        select {
+                                            value: match workbench_layout() {
+                                                WorkbenchLayout::Column => "column",
+                                                WorkbenchLayout::Row => "row",
+                                            },
+                                            onchange: move |evt: Event<FormData>| {
+                                                workbench_layout.set(match evt.value().as_str() {
+                                                    "row" => WorkbenchLayout::Row,
+                                                    _ => WorkbenchLayout::Column,
+                                                });
+                                            },
+                                            option { value: "column", "Stacked (Top / Bottom)" }
+                                            option { value: "row", "Side-by-Side (Left / Right)" }
+                                        }
+                                    }
+                                }
+
+                                div { class: "settings-toggles-list",
+                                    label { class: "settings-toggle-row",
+                                        input {
+                                            r#type: "checkbox",
+                                            checked: wrap_editor(),
+                                            onchange: move |evt| wrap_editor.set(evt.checked()),
+                                        }
+                                        div { class: "toggle-meta",
+                                            span { class: "toggle-label", "Soft-wrap editor text" }
+                                            span { class: "toggle-desc", "Wrap long lines in body, script editors, and preview" }
+                                        }
+                                    }
+                                    label { class: "settings-toggle-row",
+                                        input {
+                                            r#type: "checkbox",
+                                            checked: reduce_motion(),
+                                            onchange: move |evt| reduce_motion.set(evt.checked()),
+                                        }
+                                        div { class: "toggle-meta",
+                                            span { class: "toggle-label", "Reduce UI motion" }
+                                            span { class: "toggle-desc", "Disable subtle transition animations and slide effects" }
+                                        }
+                                    }
+                                    label { class: "settings-toggle-row",
+                                        input {
+                                            r#type: "checkbox",
+                                            checked: show_status(),
+                                            onchange: move |evt| show_status.set(evt.checked()),
+                                        }
+                                        div { class: "toggle-meta",
+                                            span { class: "toggle-label", "Show bottom status bar" }
+                                            span { class: "toggle-desc", "Display active mock ports, background sync state, and messages" }
+                                        }
+                                    }
+                                }
+
+                                div { class: "settings-card-foot",
+                                    button {
+                                        class: "btn btn-ghost",
+                                        onclick: move |_| {
+                                            let d = UiSettings::default();
+                                            ui_font.set(d.ui_font_size_px);
+                                            editor_font.set(d.editor_font_size_px);
+                                            sidebar_w.set(d.sidebar_width_px);
+                                            request_h.set(d.request_pane_height_px);
+                                            console_h.set(d.console_height_px);
+                                            density.set(d.density);
+                                            wrap_editor.set(d.wrap_editor_text);
+                                            tab_size.set(d.tab_size);
+                                            theme.set(d.theme);
+                                            accent.set(d.accent_intensity);
+                                            reduce_motion.set(d.reduce_motion);
+                                            show_status.set(d.show_status_bar);
+                                            default_resp_tab.set(d.default_response_tab);
+                                            splash_ms.set(d.splash_min_ms);
+                                        },
+                                        "Reset appearance to defaults"
+                                    }
+                                }
+                            }
                         },
-                        "Reset appearance"
-                    }
-                }
 
-                h4 { "Proxy" }
-                select {
-                    value: "{mode_str}",
-                    onchange: move |evt: Event<FormData>| {
-                        proxy_mode.set(match evt.value().as_str() {
-                            "none" => ProxyMode::None,
-                            "custom" => ProxyMode::Custom,
-                            _ => ProxyMode::Env,
-                        });
-                    },
-                    option { value: "env", "Use HTTP(S)_PROXY env" }
-                    option { value: "none", "No proxy" }
-                    option { value: "custom", "Custom host:port" }
-                }
-                if proxy_mode() == ProxyMode::Custom {
-                    input {
-                        r#type: "text",
-                        placeholder: "127.0.0.1:8080",
-                        value: "{host_port}",
-                        oninput: move |evt| host_port.set(evt.value()),
-                    }
-                }
+                        SettingsTab::Network => rsx! {
+                            div { class: "settings-card",
+                                div { class: "settings-card-head",
+                                    h4 { "HTTP Proxy" }
+                                    p { class: "hint", "Route outbound HTTP/HTTPS requests through an HTTP proxy or environment variables." }
+                                }
+                                div { class: "settings-field",
+                                    label { "Proxy Mode" }
+                                    select {
+                                        value: "{mode_str}",
+                                        onchange: move |evt: Event<FormData>| {
+                                            proxy_mode.set(match evt.value().as_str() {
+                                                "none" => ProxyMode::None,
+                                                "custom" => ProxyMode::Custom,
+                                                _ => ProxyMode::Env,
+                                            });
+                                        },
+                                        option { value: "env", "System Environment (HTTP_PROXY / HTTPS_PROXY / ALL_PROXY)" }
+                                        option { value: "none", "Direct Connection (No Proxy)" }
+                                        option { value: "custom", "Custom Host & Port" }
+                                    }
+                                }
+                                if proxy_mode() == ProxyMode::Custom {
+                                    div { class: "settings-field",
+                                        label { "Custom Proxy Address" }
+                                        input {
+                                            r#type: "text",
+                                            placeholder: "127.0.0.1:8080 or http://proxy.corp.internal:3128",
+                                            value: "{host_port}",
+                                            oninput: move |evt| host_port.set(evt.value()),
+                                        }
+                                        p { class: "hint", "Supports host:port or full url with optional basic authentication credentials." }
+                                    }
+                                }
+                            }
+                        },
 
-                h4 { "Client certificate" }
-                label { class: "checkbox-row",
-                    input {
-                        r#type: "checkbox",
-                        checked: cert_enabled(),
-                        onchange: move |evt| cert_enabled.set(evt.checked()),
-                    }
-                    " Enable client cert (PEM identity)"
-                }
-                input {
-                    r#type: "text",
-                    placeholder: "{data_root}/certs/client.pem",
-                    value: "{cert_path}",
-                    oninput: move |evt| cert_path.set(evt.value()),
-                }
-                input {
-                    r#type: "password",
-                    placeholder: "Passphrase (unused for PEM; TODO PKCS#12)",
-                    value: "{cert_pass}",
-                    oninput: move |evt| cert_pass.set(evt.value()),
-                }
-                p { class: "hint",
-                    "PEM cert+key wired when enabled. PKCS#12 / passphrase = TODO. Vault file: {data_root}/vault.json for {{{{vault:key}}}}."
-                }
+                        SettingsTab::Certificates => rsx! {
+                            div { class: "settings-card",
+                                div { class: "settings-card-head",
+                                    h4 { "Client Certificates (mTLS)" }
+                                    p { class: "hint", "Authenticate to corporate or protected endpoints using client-side certificates." }
+                                }
+                                label { class: "settings-toggle-row",
+                                    input {
+                                        r#type: "checkbox",
+                                        checked: cert_enabled(),
+                                        onchange: move |evt| cert_enabled.set(evt.checked()),
+                                    }
+                                    div { class: "toggle-meta",
+                                        span { class: "toggle-label", "Enable client certificate authentication" }
+                                        span { class: "toggle-desc", "Attach PEM identity certificate and private key to requests" }
+                                    }
+                                }
+                                div { class: "settings-field",
+                                    label { "PEM Certificate File Path" }
+                                    input {
+                                        r#type: "text",
+                                        placeholder: "{data_root}/certs/client.pem",
+                                        value: "{cert_path}",
+                                        oninput: move |evt| cert_path.set(evt.value()),
+                                    }
+                                }
+                                div { class: "settings-field",
+                                    label { "Certificate Passphrase" }
+                                    input {
+                                        r#type: "password",
+                                        placeholder: "Passphrase (optional for unencrypted PEM)",
+                                        value: "{cert_pass}",
+                                        oninput: move |evt| cert_pass.set(evt.value()),
+                                    }
+                                }
+                                div { class: "settings-callout",
+                                    span { class: "callout-icon", "💡" }
+                                    p { class: "hint",
+                                        "PEM cert + key bundled in a single file is automatically wired when enabled. For encrypted secrets and tokens, use the local Vault ({data_root}/vault.json) via {{{{vault:key}}}}."
+                                    }
+                                }
+                            }
+                        },
 
-                h4 { "Git cloud sync" }
-                label { class: "checkbox-row",
-                    input {
-                        r#type: "checkbox",
-                        checked: cloud_enabled(),
-                        onchange: move |evt| cloud_enabled.set(evt.checked()),
-                    }
-                    " Enable git cloud (Save → commit; Sync → pull+push)"
-                }
-                p { class: "hint",
-                    "Environments = branches env/<name>. Save commits locally; Sync beside env shares with team. No auto-pull. Secrets / vault / cookies / history stay local."
-                }
-                label { class: "settings-row",
-                    span { "Remote URL" }
-                    input {
-                        r#type: "text",
-                        placeholder: "{DEFAULT_CLOUD_REMOTE}",
-                        value: "{cloud_remote}",
-                        oninput: move |evt| cloud_remote.set(evt.value()),
-                    }
-                }
-                label { class: "settings-row",
-                    span { "Clone path (empty = default)" }
-                    input {
-                        r#type: "text",
-                        placeholder: "{default_clone_hint}",
-                        value: "{cloud_clone}",
-                        oninput: move |evt| cloud_clone.set(evt.value()),
-                    }
-                }
-                label { class: "settings-row",
-                    span { "Commit message override (empty = auto)" }
-                    input {
-                        r#type: "text",
-                        placeholder: "2026-10-17T16:03:00Z A login.request.json …",
-                        value: "{cloud_commit_msg}",
-                        oninput: move |evt| cloud_commit_msg.set(evt.value()),
-                    }
-                }
-                p { class: "hint",
-                    "Also: Sync beside env (primary), or Cloud → Clone / Pull / Push / Status. Auth: `gh auth login` or SSH agent."
-                }
-                if !cloud_last_branch.is_empty() || !cloud_last_status.is_empty() {
-                    p { class: "hint",
-                        "Branch: {cloud_last_branch} · {cloud_last_status}"
+                        SettingsTab::CloudSync => rsx! {
+                            div { class: "settings-card",
+                                div { class: "settings-card-head",
+                                    h4 { "Git Cloud Sync" }
+                                    p { class: "hint", "Sync collections and environment definitions with your team via a remote Git repository." }
+                                }
+                                label { class: "settings-toggle-row",
+                                    input {
+                                        r#type: "checkbox",
+                                        checked: cloud_enabled(),
+                                        onchange: move |evt| cloud_enabled.set(evt.checked()),
+                                    }
+                                    div { class: "toggle-meta",
+                                        span { class: "toggle-label", "Enable Git Cloud Synchronization" }
+                                        span { class: "toggle-desc", "Saving commits changes locally; Sync button in top bar pulls and pushes to team branch" }
+                                    }
+                                }
+                                div { class: "settings-field",
+                                    label { "Remote Git Repository URL" }
+                                    input {
+                                        r#type: "text",
+                                        placeholder: "{DEFAULT_CLOUD_REMOTE}",
+                                        value: "{cloud_remote}",
+                                        oninput: move |evt| cloud_remote.set(evt.value()),
+                                    }
+                                    p { class: "hint", "Default repository or your team's Git/GitHub workspace repository." }
+                                }
+                                div { class: "settings-field",
+                                    label { "Local Clone Directory Path" }
+                                    input {
+                                        r#type: "text",
+                                        placeholder: "{default_clone_hint}",
+                                        value: "{cloud_clone}",
+                                        oninput: move |evt| cloud_clone.set(evt.value()),
+                                    }
+                                    p { class: "hint", "Leave blank to use default application cloud directory." }
+                                }
+                                div { class: "settings-field",
+                                    label { "Commit Message Override" }
+                                    input {
+                                        r#type: "text",
+                                        placeholder: "Auto-generated timestamp commit message (leave empty)",
+                                        value: "{cloud_commit_msg}",
+                                        oninput: move |evt| cloud_commit_msg.set(evt.value()),
+                                    }
+                                }
+                                if !cloud_last_branch.is_empty() || !cloud_last_status.is_empty() {
+                                    div { class: "settings-callout",
+                                        span { class: "callout-icon", "🌿" }
+                                        p { class: "hint",
+                                            "Current sync branch: {cloud_last_branch} · Status: {cloud_last_status}"
+                                        }
+                                    }
+                                }
+                            }
+                        },
                     }
                 }
             }
+
             div { class: "settings-page-actions",
                 button {
                     class: "btn btn-ghost",
@@ -436,6 +623,7 @@ pub fn SettingsPanel(
                                 reduce_motion: reduce_motion(),
                                 show_status_bar: show_status(),
                                 default_response_tab: default_resp_tab(),
+                                layout: workbench_layout(),
                                 splash_min_ms: splash_ms(),
                                 history_collapsed,
                             }
@@ -450,7 +638,7 @@ pub fn SettingsPanel(
                             },
                         }));
                     },
-                    "Save"
+                    "Save Changes"
                 }
             }
         }

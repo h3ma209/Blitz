@@ -1374,15 +1374,30 @@ pub(crate) fn AuthEditor(
             button {
                 class: "btn btn-ghost",
                 onclick: {
-                    let mut a = auth.clone();
+                    let a = auth.clone();
                     move |_| {
-                        match fetch_oauth2_token(&mut a.oauth2) {
-                            Ok(()) => on_change.call(a.clone()),
-                            Err(e) => {
-                                a.oauth2.access_token = format!("ERROR: {e}");
-                                on_change.call(a.clone());
+                        let a = a.clone();
+                        spawn(async move {
+                            let (tx, rx) = tokio::sync::oneshot::channel();
+                            let mut oauth2_cfg = a.oauth2.clone();
+                            std::thread::spawn(move || {
+                                let res = fetch_oauth2_token(&mut oauth2_cfg);
+                                let _ = tx.send((res, oauth2_cfg));
+                            });
+                            if let Ok((res, updated_oauth2)) = rx.await {
+                                let mut next_auth = a.clone();
+                                match res {
+                                    Ok(()) => {
+                                        next_auth.oauth2 = updated_oauth2;
+                                        on_change.call(next_auth);
+                                    }
+                                    Err(e) => {
+                                        next_auth.oauth2.access_token = format!("ERROR: {e}");
+                                        on_change.call(next_auth);
+                                    }
+                                }
                             }
-                        }
+                        });
                     }
                 },
                 "Get New Access Token"
@@ -1398,8 +1413,11 @@ pub(crate) fn AuthEditor(
                     let preview = match origin.auth.auth_type {
                         AuthType::Bearer => {
                             let t = &origin.auth.token;
-                            if t.len() > 8 {
-                                format!("{}…{}", &t[..4], &t[t.len().saturating_sub(4)..])
+                            let char_count = t.chars().count();
+                            if char_count > 8 {
+                                let head: String = t.chars().take(4).collect();
+                                let tail: String = t.chars().skip(char_count.saturating_sub(4)).collect();
+                                format!("{head}…{tail}")
                             } else if !t.is_empty() {
                                 "••••••••".into()
                             } else {

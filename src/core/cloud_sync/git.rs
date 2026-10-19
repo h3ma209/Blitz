@@ -47,7 +47,9 @@ fn run_git(cwd: &Path, args: &[&str]) -> Result<String, CloudGitError> {
                 CloudGitError::Io(e)
             }
         })?;
-    let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    let stdout = String::from_utf8_lossy(&output.stdout)
+        .trim_end_matches(['\r', '\n'])
+        .to_string();
     let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
     if !output.status.success() {
         let msg = if stderr.is_empty() {
@@ -765,9 +767,9 @@ pub fn get_team_activity(cwd: &Path, limit_commits: usize) -> Result<TeamActivit
     let mut uncommitted_changes = Vec::new();
     if let Ok(status_out) = run_git(cwd, &["status", "--porcelain"]) {
         for line in status_out.lines() {
-            if line.len() >= 3 {
-                let status_code = line[..2].trim().to_string();
-                let path = line[3..].trim().to_string();
+            if let (Some(code_part), Some(path_part)) = (line.get(..2), line.get(3..)) {
+                let status_code = code_part.trim().to_string();
+                let path = path_part.trim().to_string();
                 if !path.is_empty() {
                     uncommitted_changes.push(ChangedFile {
                         path,

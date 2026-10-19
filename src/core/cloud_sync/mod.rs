@@ -129,7 +129,7 @@ pub fn sync_on_save(
         };
     }
 
-    let branch = branch_name_for_env(active_env_name);
+    let branch = "main".to_string();
     if let Err(e) = checkout_env_branch(&clone, &branch) {
         let msg = format!("cloud sync checkout: {e}");
         settings.cloud_sync.last_status = msg.clone();

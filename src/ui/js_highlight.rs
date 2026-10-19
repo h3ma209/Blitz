@@ -91,16 +91,23 @@ fn highlight_js_fragment(text: &str) -> String {
             while j < rb.len() {
                 let ch = rb[j];
                 if ch == b'\\' {
-                    j += 2;
+                    j += 1;
+                    if let Some(escaped) = rest[j..].chars().next() {
+                        j += escaped.len_utf8();
+                    }
                     continue;
                 }
                 if ch == quote {
                     j += 1;
                     break;
                 }
-                j += 1;
+                if let Some(c) = rest[j..].chars().next() {
+                    j += c.len_utf8();
+                } else {
+                    j += 1;
+                }
             }
-            let end = i + j;
+            let end = (i + j).min(text.len());
             html.push_str("<span class=\"js-string\">");
             html.push_str(&escape_html(&text[i..end]));
             html.push_str("</span>");
@@ -162,9 +169,10 @@ fn highlight_js_fragment(text: &str) -> String {
             i += j;
             continue;
         }
-        // Punctuation / whitespace
-        html.push_str(&escape_html(&text[i..i + 1]));
-        i += 1;
+        // Punctuation / whitespace / non-ASCII UTF-8 character
+        let ch_len = rest.chars().next().map(|c| c.len_utf8()).unwrap_or(1);
+        html.push_str(&escape_html(&text[i..i + ch_len]));
+        i += ch_len;
     }
     html
 }
@@ -182,16 +190,21 @@ pub fn render_js_var_mirror_html(text: &str, vars: Option<&VariableContext>) -> 
             html.push_str(&highlight_js_fragment(&text[cursor..span.start]));
         }
         let token = &text[span.start..span.end];
-        let unresolved = vars
-            .map(|v| v.inspect_var(&span.raw).is_unresolved())
-            .unwrap_or(false);
-        let class = if unresolved {
-            "var-token unresolved"
-        } else {
-            "var-token"
+        let (class, title) = match vars {
+            Some(v) => {
+                let info = v.inspect_var(&span.raw);
+                if info.is_unresolved() {
+                    ("var-token unresolved", format!("{}: (unresolved)", span.raw))
+                } else {
+                    ("var-token", format!("{}: {} ({})", span.raw, info.value, info.scope.label()))
+                }
+            }
+            None => ("var-token", span.raw.clone()),
         };
         html.push_str("<span class=\"");
         html.push_str(class);
+        html.push_str("\" title=\"");
+        html.push_str(&escape_html(&title));
         html.push_str("\">");
         html.push_str(&escape_html(token));
         html.push_str("</span>");
@@ -230,5 +243,13 @@ mod tests {
         let html = render_js_var_mirror_html("blitz.test(\"t\", () => {{baseUrl}});", Some(&ctx));
         assert!(html.contains("js-pm") || html.contains("blitz"));
         assert!(html.contains("var-token"));
+    }
+
+    #[test]
+    fn js_highlight_handles_unicode_and_trailing_backslash() {
+        let html = highlight_js_fragment("const café = “🔥”; \"unclosed\\");
+        assert!(html.contains("café") || html.contains("🔥"));
+        let html2 = highlight_js_fragment("\"\\é");
+        assert!(html2.contains("js-string"));
     }
 }

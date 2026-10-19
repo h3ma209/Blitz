@@ -221,18 +221,21 @@ pub fn MultilineCodeField(
             value: "{value}",
             placeholder: "{placeholder}",
             rows: "{rows_attr}",
+            spellcheck: "false",
+            autocomplete: "off",
+            autocorrect: "off",
+            autocapitalize: "off",
             oninput: {
-                let value = value.clone();
                 let vars = vars.clone();
-                let field_id = field_id.clone();
                 move |evt: Event<FormData>| {
-                    on_change.call(evt.value());
-                    let value = value.clone();
+                    let raw_val = evt.value();
+                    let new_val = crate::core::sandbox::normalize_smart_quotes(&raw_val);
+                    on_change.call(new_val.clone());
                     let vars = vars.clone();
                     let field_id = field_id();
                     spawn(async move {
                         refresh_editor_menus(
-                            &value,
+                            &new_val,
                             vars.as_ref(),
                             js_completions,
                             &field_id,
@@ -385,6 +388,70 @@ pub fn MultilineCodeField(
                         }
                         _ => {}
                     }
+                }
+
+                if evt.key() == Key::Tab {
+                    evt.prevent_default();
+                    let shift = evt.modifiers().shift();
+                    let fallback = value_for_fallback.clone();
+                    let on_change = on_change.clone();
+                    let id = field_id();
+                    spawn(async move {
+                        let (text, start, end) = match read_textarea_state_by_id(&id).await {
+                            Some(state) => state,
+                            None => {
+                                let len = fallback.len();
+                                (fallback, len, len)
+                            }
+                        };
+                        let start = crate::core::snap_to_char_boundary(&text, start);
+                        let end = crate::core::snap_to_char_boundary(&text, end);
+                        if start == end && !shift {
+                            let mut new_text = String::with_capacity(text.len() + 2);
+                            new_text.push_str(&text[..start]);
+                            new_text.push_str("  ");
+                            new_text.push_str(&text[end..]);
+                            let new_caret = start + 2;
+                            on_change.call(new_text);
+                            restore_field_caret(&id, new_caret).await;
+                        } else {
+                            // Multi-line indent or Shift+Tab dedent
+                            let sel_start = start.min(end);
+                            let sel_end = start.max(end);
+                            let line_start = text[..sel_start].rfind('\n').map(|p| p + 1).unwrap_or(0);
+                            let line_end = text[sel_end..].find('\n').map(|p| sel_end + p).unwrap_or(text.len());
+                            let block = &text[line_start..line_end];
+                            let lines: Vec<&str> = block.split('\n').collect();
+                            let mut out_lines = Vec::with_capacity(lines.len());
+                            for l in lines {
+                                if shift {
+                                    if let Some(stripped) = l.strip_prefix("  ") {
+                                        out_lines.push(stripped.to_string());
+                                    } else if let Some(stripped) = l.strip_prefix(' ') {
+                                        out_lines.push(stripped.to_string());
+                                    } else if let Some(stripped) = l.strip_prefix('\t') {
+                                        out_lines.push(stripped.to_string());
+                                    } else {
+                                        out_lines.push(l.to_string());
+                                    }
+                                } else {
+                                    let mut indented = String::with_capacity(l.len() + 2);
+                                    indented.push_str("  ");
+                                    indented.push_str(l);
+                                    out_lines.push(indented);
+                                }
+                            }
+                            let joined = out_lines.join("\n");
+                            let mut new_text = String::with_capacity(text.len() + joined.len());
+                            new_text.push_str(&text[..line_start]);
+                            new_text.push_str(&joined);
+                            new_text.push_str(&text[line_end..]);
+                            let new_caret = line_start + joined.len();
+                            on_change.call(new_text);
+                            restore_field_caret(&id, new_caret).await;
+                        }
+                    });
+                    return;
                 }
 
                 let line = is_toggle_line_comment_shortcut(&evt);
@@ -540,6 +607,58 @@ async fn sync_code_mirror_scroll(textarea_id: &str) {
     let _ = document::eval(&script).await;
 }
 
+async fn read_textarea_caret_anchor(element_id: &str) -> Option<(usize, f64, f64)> {
+    let script = format!(
+        r#"
+        const el = document.getElementById({id});
+        if (!el) return null;
+        const rect = el.getBoundingClientRect();
+        const host = el.closest('.var-hover-host, .code-editor-host');
+        const hr = host ? host.getBoundingClientRect() : rect;
+        const val = el.value || '';
+        const caretU16 = el.selectionStart ?? 0;
+        const sub = val.slice(0, caretU16);
+        const byteLen = new TextEncoder().encode(sub).length;
+
+        // Calculate line number and column position for caret
+        const lines = sub.split('\n');
+        const lineIdx = lines.length - 1;
+        const curLineText = lines[lineIdx];
+
+        // Read computed styling
+        const style = getComputedStyle(el);
+        const padTop = parseFloat(style.paddingTop) || 8;
+        const padLeft = parseFloat(style.paddingLeft) || 12;
+        const fontSize = parseFloat(style.fontSize) || 14;
+        const lineHeight = parseFloat(style.lineHeight) || (fontSize * 1.5);
+
+        // Approximate character width from font
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+        ctx.font = (style.fontStyle || 'normal') + ' ' + (style.fontWeight || '400') + ' ' + fontSize + 'px ' + (style.fontFamily || 'monospace');
+        const textWidth = ctx.measureText(curLineText).width;
+
+        // Top position directly below the current line
+        const lineTop = padTop + (lineIdx * lineHeight) - (el.scrollTop || 0);
+        const lineBottom = lineTop + lineHeight + 2;
+
+        const leftPos = Math.max(8, padLeft + textWidth - (el.scrollLeft || 0));
+        // Keep within reasonable host bounds
+        const maxLeft = Math.max(16, (hr.width || 400) - 240);
+        const clampedLeft = Math.min(leftPos, maxLeft);
+
+        return [byteLen, clampedLeft, lineBottom];
+        "#,
+        id = serde_json::to_string(element_id).unwrap_or_else(|_| "\"\"".into())
+    );
+    let v = document::eval(&script).await.ok()?;
+    let arr = v.as_array()?;
+    let idx = arr.first()?.as_u64()? as usize;
+    let left = arr.get(1)?.as_f64().or_else(|| arr.get(1)?.as_u64().map(|n| n as f64))?;
+    let top = arr.get(2)?.as_f64().or_else(|| arr.get(2)?.as_u64().map(|n| n as f64))?;
+    Some((idx, left, top))
+}
+
 async fn refresh_editor_menus(
     value: &str,
     vars: Option<&VariableContext>,
@@ -548,7 +667,7 @@ async fn refresh_editor_menus(
     mut var_menu: Signal<Option<VarSuggestMenu>>,
     mut js_menu: Signal<Option<JsSuggestMenu>>,
 ) {
-    if let Some((caret, left, top)) = read_field_caret_anchor(field_id).await {
+    if let Some((caret, left, top)) = read_textarea_caret_anchor(field_id).await {
         if let Some(v) = vars {
             if var_insert_context(value, caret).is_some() {
                 var_menu.set(VarSuggestMenu::refresh(value, caret, v, left, top));

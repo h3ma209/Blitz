@@ -125,6 +125,8 @@ pub struct SendOptions<'a> {
     pub inherited_post: Vec<&'a str>,
     /// Extra sandbox bridge: iteration data JSON object string.
     pub iteration_data_json: Option<&'a str>,
+    /// Current 0-based iteration index for `pm.info.iteration`.
+    pub iteration: usize,
     /// Mutable execution hints from sandbox (`setNextRequest` / `skipRequest`).
     pub execution: Option<&'a mut ExecutionHints>,
     /// Cooperative cancel: set to true to abort (best-effort during blocking HTTP).
@@ -779,7 +781,7 @@ pub fn send_request_with_options(
             .to_string(),
         request_name: draft.name.clone(),
         event_name: "prerequest".into(),
-        iteration: 0,
+        iteration: opts.iteration as u32,
     };
 
     let mut header_upserts: Vec<(String, String)> = Vec::new();
@@ -888,28 +890,13 @@ pub fn send_request_with_options(
         }
     }
 
-    // 3. Auth inject (except Digest)
-    inject_auth(&mut resolved, &mut log);
-
-    // 3a. Postman Runtime system headers (Accept, UA, Cache-Control, …)
-    inject_postman_system_headers(&mut resolved, &mut log);
-
-    // 3b. Cookies
+    // 3. Build URL with params & prepare body before signing auth (SigV4/OAuth1/Hawk/EdgeGrid)
     let url = build_url(&resolved)?;
     ensure_absolute_http_url(&url, &draft.url)?;
-    let (host, path) = parse_host_path(&url);
-    if let Some(jar) = opts.cookie_jar.as_deref() {
-        if let Some(cookie_hdr) = jar.header_for(&host, &path) {
-            if !has_header(&resolved, "Cookie") {
-                resolved
-                    .headers
-                    .push(KeyValue::new("Cookie", cookie_hdr));
-                log.push("cookies: jar header attached".into());
-            }
-        }
-    }
+    resolved.url = url.clone();
+    resolved.params.clear();
 
-    // 3c. Raw JSON: strip // comments (Hakki scratchpads) + Content-Type
+    // 3a. Raw JSON: strip // comments (Hakki scratchpads) + Content-Type
     if let Err(e) = prepare_raw_body_for_send(&mut resolved, &mut log) {
         log.push(format!("body: {e}"));
     }
@@ -941,7 +928,9 @@ pub fn send_request_with_options(
                     .headers
                     .push(KeyValue::new("Content-Type", "application/json"));
             }
-            body_bytes = Some(payload.to_string().into_bytes());
+            let payload_str = payload.to_string();
+            resolved.body = payload_str.clone();
+            body_bytes = Some(payload_str.into_bytes());
             if matches!(resolved.method, HttpMethod::Get) {
                 resolved.method = HttpMethod::Post;
             }
@@ -956,6 +945,7 @@ pub fn send_request_with_options(
                         "application/x-www-form-urlencoded",
                     ));
                 }
+                resolved.body = encoded.clone();
                 body_bytes = Some(encoded.into_bytes());
                 log.push("body: urlencoded".into());
             }
@@ -985,6 +975,25 @@ pub fn send_request_with_options(
                         log.push(format!("body: binary read failed {}: {e}", resolved_path.display()));
                     }
                 }
+            }
+        }
+    }
+
+    // 4a. Auth inject (except Digest) — signs resolved.url (with query) and prepared resolved.body
+    inject_auth(&mut resolved, &mut log);
+
+    // 4b. Postman Runtime system headers (Accept, UA, Cache-Control, …)
+    inject_postman_system_headers(&mut resolved, &mut log);
+
+    // 4c. Cookies
+    let (host, path) = parse_host_path(&url);
+    if let Some(jar) = opts.cookie_jar.as_deref() {
+        if let Some(cookie_hdr) = jar.header_for(&host, &path) {
+            if !has_header(&resolved, "Cookie") {
+                resolved
+                    .headers
+                    .push(KeyValue::new("Cookie", cookie_hdr));
+                log.push("cookies: jar header attached".into());
             }
         }
     }

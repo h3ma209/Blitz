@@ -141,7 +141,23 @@ pub fn RunnerPanel(
                                             if r.passed { "PASS" } else { "FAIL" }
                                         }
                                     }
-                                    td { "{r.method}" }
+                                    td {
+                                        {
+                                            let meth_cls = match r.method.to_uppercase().as_str() {
+                                                "GET" => "get",
+                                                "POST" => "post",
+                                                "PUT" => "put",
+                                                "PATCH" => "patch",
+                                                "DELETE" => "delete",
+                                                "HEAD" => "head",
+                                                "OPTIONS" => "options",
+                                                _ => "get",
+                                            };
+                                            rsx! {
+                                                span { class: "method-badge method-{meth_cls}", "{r.method}" }
+                                            }
+                                        }
+                                    }
                                     td { "{r.name}" }
                                     td {
                                         if let Some(s) = r.status {

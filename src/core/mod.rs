@@ -96,7 +96,7 @@ pub use cloud_sync::{
 };
 pub use settings::{
     AccentIntensity, AppSettings, ClientCertSettings, CloudSyncSettings, DefaultResponseTab,
-    ProxyMode, ProxySettings, RequestSettings, UiDensity, UiSettings, UiTheme,
+    ProxyMode, ProxySettings, RequestSettings, UiDensity, UiSettings, UiTheme, WorkbenchLayout,
     DEFAULT_CLOUD_REMOTE,
 };
 pub use variables::{

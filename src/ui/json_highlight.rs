@@ -31,14 +31,21 @@ pub fn highlight_json_fragment(text: &str) -> String {
             let mut j = 1usize;
             while j < rb.len() {
                 if rb[j] == b'\\' {
-                    j += 2;
+                    j += 1;
+                    if let Some(escaped) = rest[j..].chars().next() {
+                        j += escaped.len_utf8();
+                    }
                     continue;
                 }
                 if rb[j] == b'"' {
                     j += 1;
                     break;
                 }
-                j += 1;
+                if let Some(c) = rest[j..].chars().next() {
+                    j += c.len_utf8();
+                } else {
+                    j += 1;
+                }
             }
             let end = i + j.min(rb.len());
             let str_val = &text[i..end];
@@ -99,9 +106,10 @@ pub fn highlight_json_fragment(text: &str) -> String {
             continue;
         }
 
-        // Other character (whitespace, formatting)
-        html.push_str(&escape_html(&text[i..i + 1]));
-        i += 1;
+        // Other character (whitespace, formatting, or non-ASCII UTF-8)
+        let ch_len = rest.chars().next().map(|c| c.len_utf8()).unwrap_or(1);
+        html.push_str(&escape_html(&text[i..i + ch_len]));
+        i += ch_len;
     }
     html
 }
@@ -115,16 +123,21 @@ pub fn render_json_var_mirror_html(text: &str, vars: Option<&VariableContext>) -
             html.push_str(&highlight_json_fragment(&text[cursor..span.start]));
         }
         let token = &text[span.start..span.end];
-        let unresolved = vars
-            .map(|v| v.inspect_var(&span.raw).is_unresolved())
-            .unwrap_or(false);
-        let class = if unresolved {
-            "var-token unresolved"
-        } else {
-            "var-token"
+        let (class, title) = match vars {
+            Some(v) => {
+                let info = v.inspect_var(&span.raw);
+                if info.is_unresolved() {
+                    ("var-token unresolved", format!("{}: (unresolved)", span.raw))
+                } else {
+                    ("var-token", format!("{}: {} ({})", span.raw, info.value, info.scope.label()))
+                }
+            }
+            None => ("var-token", span.raw.clone()),
         };
         html.push_str("<span class=\"");
         html.push_str(class);
+        html.push_str("\" title=\"");
+        html.push_str(&escape_html(&title));
         html.push_str("\">");
         html.push_str(&escape_html(token));
         html.push_str("</span>");
@@ -263,5 +276,12 @@ mod tests {
         assert!(should_highlight_json(r#"{"a":1}"#, &headers));
         assert!(!should_highlight_json("not json", &[("Content-Type".into(), "text/plain".into())]));
         assert!(should_highlight_json(r#"[1,2]"#, &[]));
+    }
+
+    #[test]
+    fn highlight_json_fragment_handles_unicode_outside_quotes() {
+        let html = highlight_json_fragment("{ “key”: \"val\\é\", // 🔥\n \"unclosed\\");
+        assert!(html.contains("json-punct"));
+        assert!(html.contains("🔥"));
     }
 }

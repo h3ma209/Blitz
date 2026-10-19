@@ -47,10 +47,12 @@ fn looks_like_gzip(bytes: &[u8]) -> bool {
     bytes.len() >= 2 && bytes[0] == 0x1f && bytes[1] == 0x8b
 }
 
+const MAX_DECOMPRESSED_BYTES: u64 = 64 * 1024 * 1024;
+
 fn try_gzip(bytes: &[u8]) -> Option<Vec<u8>> {
-    let mut decoder = flate2::read::GzDecoder::new(bytes);
+    let decoder = flate2::read::GzDecoder::new(bytes);
     let mut out = Vec::new();
-    decoder.read_to_end(&mut out).ok()?;
+    decoder.take(MAX_DECOMPRESSED_BYTES).read_to_end(&mut out).ok()?;
     if out.is_empty() && !bytes.is_empty() {
         // Empty payload is valid gzip; keep it.
     }
@@ -60,22 +62,23 @@ fn try_gzip(bytes: &[u8]) -> Option<Vec<u8>> {
 fn try_deflate(bytes: &[u8]) -> Option<Vec<u8>> {
     // zlib-wrapped (common) then raw deflate
     {
-        let mut decoder = flate2::read::ZlibDecoder::new(bytes);
+        let decoder = flate2::read::ZlibDecoder::new(bytes);
         let mut out = Vec::new();
-        if decoder.read_to_end(&mut out).is_ok() {
+        if decoder.take(MAX_DECOMPRESSED_BYTES).read_to_end(&mut out).is_ok() {
             return Some(out);
         }
     }
-    let mut decoder = flate2::read::DeflateDecoder::new(bytes);
+    let decoder = flate2::read::DeflateDecoder::new(bytes);
     let mut out = Vec::new();
-    decoder.read_to_end(&mut out).ok()?;
+    decoder.take(MAX_DECOMPRESSED_BYTES).read_to_end(&mut out).ok()?;
     Some(out)
 }
 
 fn try_brotli(bytes: &[u8]) -> Option<Vec<u8>> {
     let mut out = Vec::new();
-    let mut cursor = std::io::Cursor::new(bytes);
-    brotli::BrotliDecompress(&mut cursor, &mut out).ok()?;
+    let cursor = std::io::Cursor::new(bytes);
+    let reader = brotli::Decompressor::new(cursor, 4096);
+    reader.take(MAX_DECOMPRESSED_BYTES).read_to_end(&mut out).ok()?;
     Some(out)
 }
 

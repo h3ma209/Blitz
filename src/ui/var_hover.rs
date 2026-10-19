@@ -15,7 +15,7 @@ use super::var_autocomplete::{
 use super::DismissBackdrop;
 
 /// Grace window so pointer can travel from token → popover without flicker.
-const DISMISS_GRACE_MS: u64 = 200;
+const DISMISS_GRACE_MS: u64 = 550;
 
 /// Edit applied from the hover popover.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -121,20 +121,18 @@ pub fn VarHoverInput(
                 value: "{value}",
                 placeholder: "{placeholder}",
                 oninput: {
-                    let value = value.clone();
                     let vars = vars.clone();
                     let input_id = input_id.clone();
                     move |evt| {
                         popover.set(None);
                         let val = evt.value();
-                        on_input.call(val);
-                        let value = value.clone();
+                        on_input.call(val.clone());
                         let vars = vars.clone();
                         let input_id = input_id.clone();
                         spawn(async move {
                             if let Some((caret, left, top)) = read_field_caret_anchor(&input_id).await {
-                                if var_insert_context(&value, caret).is_some() {
-                                    var_suggest.set(VarSuggestMenu::refresh(&value, caret, &vars, left, top));
+                                if var_insert_context(&val, caret).is_some() {
+                                    var_suggest.set(VarSuggestMenu::refresh(&val, caret, &vars, left, top));
                                 } else {
                                     var_suggest.set(None);
                                 }
@@ -283,7 +281,7 @@ pub fn VarHoverInput(
                                         &value, &vars, idx, left, top, popover, draft, dismiss_gen,
                                     );
                                 } else if popover().is_some() {
-                                    // Left the {{var}} token while still on the input.
+                                    // Pointer moved off token to other text: give generous grace window
                                     schedule_dismiss(popover, dismiss_gen, editing, over_popover);
                                 }
                             }
@@ -491,7 +489,9 @@ async fn read_caret_and_anchor(input_id: &str) -> Option<(usize, f64, f64)> {
         const rect = el.getBoundingClientRect();
         const host = el.closest('.var-hover-host');
         const hr = host ? host.getBoundingClientRect() : rect;
-        return [el.selectionStart ?? 0, 8, rect.bottom - hr.top + 4];
+        const caretChars = el.selectionStart ?? 0;
+        const byteIdx = new TextEncoder().encode((el.value || '').slice(0, caretChars)).length;
+        return [byteIdx, 8, rect.bottom - hr.top + 4];
         "#,
         id = serde_json::to_string(input_id).unwrap_or_else(|_| "\"\"".into())
     );
@@ -518,9 +518,10 @@ async fn read_hover_index_and_anchor(input_id: &str, client_x: f64) -> Option<(u
             if (ctx.measureText(text.slice(0, mid)).width <= x) lo = mid;
             else hi = mid - 1;
         }}
+        const byteIdx = new TextEncoder().encode(text.slice(0, lo)).length;
         const host = el.closest('.var-hover-host');
         const hr = host ? host.getBoundingClientRect() : rect;
-        return [lo, Math.max(8, {client_x} - hr.left - 40), rect.bottom - hr.top + 4];
+        return [byteIdx, Math.max(8, {client_x} - hr.left - 40), rect.bottom - hr.top + 4];
         "#,
         id = serde_json::to_string(input_id).unwrap_or_else(|_| "\"\"".into()),
         client_x = client_x

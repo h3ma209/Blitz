@@ -96,9 +96,28 @@ fn run_collection_cli(args: &[String]) -> i32 {
     let drafts = flatten_requests(&col);
     eprintln!("running {} request(s) from {}", drafts.len(), col.name);
     let mut failed = 0usize;
+    let mut jar = super::cookies::CookieJar::default();
+    let mut inherited_pre = Vec::new();
+    if !col.pre_request_script.is_empty() {
+        inherited_pre.push(col.pre_request_script.as_str());
+    }
+    let mut inherited_post = Vec::new();
+    if !col.test_script.is_empty() {
+        inherited_post.push(col.test_script.as_str());
+    }
     for (idx, draft) in drafts.iter().enumerate() {
         eprint!("[{}/{}] {} {} … ", idx + 1, drafts.len(), draft.method, draft.name);
-        match send_request_with_options(draft, &mut ctx, SendOptions::default()) {
+        match send_request_with_options(
+            draft,
+            &mut ctx,
+            SendOptions {
+                collection_auth: Some(&col.auth),
+                cookie_jar: Some(&mut jar),
+                inherited_pre: inherited_pre.clone(),
+                inherited_post: inherited_post.clone(),
+                ..Default::default()
+            },
+        ) {
             Ok(view) => {
                 let tests_fail = view.test_results.iter().filter(|t| !t.passed).count();
                 if view.error.is_some() || view.status >= 400 || tests_fail > 0 {

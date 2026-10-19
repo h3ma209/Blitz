@@ -36,6 +36,7 @@ pub fn ResponseViewer(
     let mut search_query = use_signal(String::new);
     let mut search_open = use_signal(|| false);
     let mut copied_body = use_signal(|| false);
+    let render_mode = use_signal(|| true);
 
     rsx! {
         section { class: "response-pane",
@@ -293,7 +294,6 @@ pub fn ResponseViewer(
                         }
                     },
                     RespTab::Visualize => {
-                        let render_mode = use_signal(|| true);
                         rsx! {
                             div { class: "visualizer-pane",
                                 if resp.visualizer_html.is_empty() {
@@ -401,9 +401,14 @@ fn html_escape(s: &str) -> String {
 
 fn count_matches(text: &str, query: &str) -> usize {
     if query.is_empty() {
-        0
-    } else {
-        text.to_lowercase().match_indices(&query.to_lowercase()).count()
+        return 0;
+    }
+    match regex::RegexBuilder::new(&regex::escape(query))
+        .case_insensitive(true)
+        .build()
+    {
+        Ok(re) => re.find_iter(text).count(),
+        Err(_) => 0,
     }
 }
 
@@ -411,18 +416,36 @@ fn highlight_search_matches(text: &str, query: &str) -> String {
     if query.is_empty() {
         return html_escape(text);
     }
-    let lower_text = text.to_lowercase();
-    let lower_query = query.to_lowercase();
-    let mut result = String::new();
+    let Ok(re) = regex::RegexBuilder::new(&regex::escape(query))
+        .case_insensitive(true)
+        .build()
+    else {
+        return html_escape(text);
+    };
+    let mut result = String::with_capacity(text.len() + 64);
     let mut last_idx = 0;
 
-    for (idx, _) in lower_text.match_indices(&lower_query) {
-        result.push_str(&html_escape(&text[last_idx..idx]));
+    for m in re.find_iter(text) {
+        result.push_str(&html_escape(&text[last_idx..m.start()]));
         result.push_str("<mark class=\"search-match\">");
-        result.push_str(&html_escape(&text[idx..idx + query.len()]));
+        result.push_str(&html_escape(m.as_str()));
         result.push_str("</mark>");
-        last_idx = idx + query.len();
+        last_idx = m.end();
     }
     result.push_str(&html_escape(&text[last_idx..]));
     result
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn highlight_search_matches_handles_unicode_case_folding() {
+        // 'İ' (2 bytes) lowercases to 'i\u{307}' (3 bytes) in to_lowercase()
+        let text = "İstanbul and API key";
+        let out = highlight_search_matches(text, "api");
+        assert!(out.contains("<mark class=\"search-match\">API</mark>"));
+        assert_eq!(count_matches(text, "api"), 1);
+    }
 }

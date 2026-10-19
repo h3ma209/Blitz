@@ -52,6 +52,7 @@ pub fn run_performance(
     let stop_at = Instant::now() + duration;
     let reqs = Arc::new(reqs);
     let ctx = Arc::new(ctx.clone());
+    let col_auth = Arc::new(collection.auth.clone());
 
     let mut handles = Vec::new();
     for _ in 0..vus {
@@ -62,6 +63,7 @@ pub fn run_performance(
         let lat_min = Arc::clone(&lat_min);
         let reqs = Arc::clone(&reqs);
         let ctx = Arc::clone(&ctx);
+        let col_auth = Arc::clone(&col_auth);
         handles.push(std::thread::spawn(move || {
             let mut i = 0usize;
             let mut jar = CookieJar::default();
@@ -74,6 +76,7 @@ pub fn run_performance(
                     draft,
                     &mut local_ctx,
                     SendOptions {
+                        collection_auth: Some(&col_auth),
                         cookie_jar: Some(&mut jar),
                         ..Default::default()
                     },

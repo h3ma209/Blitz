@@ -134,9 +134,10 @@ async fn subscribe_async(
 }
 
 fn truncate(s: &str, n: usize) -> String {
-    if s.len() <= n {
+    if s.chars().count() <= n {
         s.to_string()
     } else {
-        format!("{}…", &s[..n])
+        let prefix: String = s.chars().take(n).collect();
+        format!("{prefix}…")
     }
 }

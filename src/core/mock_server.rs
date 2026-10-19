@@ -143,6 +143,7 @@ pub fn start_mock(routes: Vec<MockRoute>, port: u16) -> Result<MockHandle, Strin
 }
 
 fn handle_conn(stream: &mut TcpStream, routes: &Arc<Mutex<Vec<MockRoute>>>) -> std::io::Result<()> {
+    let _ = stream.set_read_timeout(Some(std::time::Duration::from_secs(5)));
     let mut buf = [0u8; 8192];
     let n = stream.read(&mut buf)?;
     let req = String::from_utf8_lossy(&buf[..n]);
@@ -160,7 +161,7 @@ fn handle_conn(stream: &mut TcpStream, routes: &Arc<Mutex<Vec<MockRoute>>>) -> s
         })
         .collect();
 
-    let routes = routes.lock().unwrap();
+    let routes = routes.lock().unwrap_or_else(|e| e.into_inner());
     let found = routes.iter().find(|r| {
         if !r.method.as_str().eq_ignore_ascii_case(method) || !paths_match(&r.path, path) {
             return false;

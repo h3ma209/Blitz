@@ -19,9 +19,9 @@ use crate::core::{
     remint_pasted_item, request_tab_display_name, snapshot_tree_item, trash_collection,
     ws_connect_session, AppSettings,
     CaptureProxyHandle, Collection, CollectionItem, ConsoleLine,
-    Cookie, CookieJar, EnvVar, Environment, Folder, HistoryEntry, KeyValue, MockHandle, PerfReport,
+    Cookie, CookieJar, EnvVar, Environment, Folder, HistoryEntry, HttpMethod, KeyValue, MockHandle, PerfReport,
     RequestDraft, RequestProtocol, ResponseView, SavedExample, UiSettings, UiTheme, VarResolveScope,
-    VariableContext, VaultStore, WsSession, DEFAULT_CLOUD_REMOTE, HISTORY_MAX,
+    VariableContext, VaultStore, WorkbenchLayout, WsSession, DEFAULT_CLOUD_REMOTE, HISTORY_MAX,
     resolve_ancestor_auth,
 };
 use crate::runtime::{
@@ -821,11 +821,13 @@ pub fn Workbench() -> Element {
             console_lines.set(lines);
             console_open.set(true);
 
-            // Persist script scope mutations → Environment / Collection + VariableContext.
+            // Persist script scope mutations → Environment / Collection + VariableContext + Vault.
             let env_keys = new_ctx.environment.len();
             let mut v = new_ctx;
-            let vault = vars().vault.clone();
-            v.vault = vault;
+            // Persist vault to vault.json if changed by script
+            if let Ok(store) = JsonStore::open_default() {
+                let _ = v.vault.save(store.root());
+            }
 
             if let Some(id) = active_env_id() {
                 let mut envs = environments();
@@ -912,7 +914,7 @@ pub fn Workbench() -> Element {
                         } else {
                             response.set(None);
                         }
-                        persist();
+                        persist_local();
                     }
                 }
             }
@@ -1440,6 +1442,38 @@ pub fn Workbench() -> Element {
                         evt.prevent_default();
                         console_open.set(!console_open());
                     }
+                    Key::Character(c) if meta && (c == "+" || c == "=") => {
+                        evt.prevent_default();
+                        let mut s = app_settings();
+                        let new_ui = UiSettings::clamp_font_size(s.ui.ui_font_size_px.saturating_add(1));
+                        let new_editor = UiSettings::clamp_font_size(s.ui.editor_font_size_px.saturating_add(1));
+                        s.ui.ui_font_size_px = new_ui;
+                        s.ui.editor_font_size_px = new_editor;
+                        app_settings.set(s);
+                        persist_local();
+                        status_msg.set(format!("UI scale: {new_ui}px"));
+                    }
+                    Key::Character(c) if meta && (c == "-" || c == "_") => {
+                        evt.prevent_default();
+                        let mut s = app_settings();
+                        let new_ui = UiSettings::clamp_font_size(s.ui.ui_font_size_px.saturating_sub(1));
+                        let new_editor = UiSettings::clamp_font_size(s.ui.editor_font_size_px.saturating_sub(1));
+                        s.ui.ui_font_size_px = new_ui;
+                        s.ui.editor_font_size_px = new_editor;
+                        app_settings.set(s);
+                        persist_local();
+                        status_msg.set(format!("UI scale: {new_ui}px"));
+                    }
+                    Key::Character(c) if meta && c == "0" => {
+                        evt.prevent_default();
+                        let mut s = app_settings();
+                        let d = UiSettings::default();
+                        s.ui.ui_font_size_px = d.ui_font_size_px;
+                        s.ui.editor_font_size_px = d.editor_font_size_px;
+                        app_settings.set(s);
+                        persist_local();
+                        status_msg.set(format!("UI scale reset: {}px", d.ui_font_size_px));
+                    }
                     _ => {}
                 }
             },
@@ -1458,7 +1492,7 @@ pub fn Workbench() -> Element {
             header { class: "{top_bar_class}",
                 span {
                     class: "brand",
-                    title: "⚡ Blitz · ⌘↵ Send/Cancel · ⌘S Save · ⌘T New · ⌘⇧P Palette",
+                    title: "⚡ Blitz · ⌘↵ Send/Cancel · ⌘S Save · ⌘T New · ⌘⇧P Palette · ⌘+/- Zoom",
                     img {
                         class: "brand-logo",
                         src: "{crate::brand::LOGO_SRC.as_str()}",
@@ -2425,6 +2459,27 @@ pub fn Workbench() -> Element {
                         },
                     }
                     button {
+                        class: "top-icon",
+                        title: match app_settings().ui.layout {
+                            WorkbenchLayout::Column => "Switch to side-by-side layout (Row)",
+                            WorkbenchLayout::Row => "Switch to stacked layout (Column)",
+                        },
+                        aria_label: "Toggle workbench layout",
+                        onclick: move |_| {
+                            let mut s = app_settings();
+                            s.ui.layout = s.ui.layout.toggle();
+                            app_settings.set(s);
+                            persist();
+                        },
+                        span {
+                            class: match app_settings().ui.layout {
+                                WorkbenchLayout::Column => "action-icon action-icon-split-row",
+                                WorkbenchLayout::Row => "action-icon action-icon-split-col",
+                            },
+                            aria_hidden: "true",
+                        }
+                    }
+                    button {
                         class: if show_settings() {
                             "top-icon top-icon-on"
                         } else {
@@ -2926,6 +2981,9 @@ pub fn Workbench() -> Element {
                                 on_change: move |rows: Vec<(String, String)>| {
                                     let mut v = vars();
                                     v.vault.entries = rows_to_map(rows);
+                                    if let Ok(store) = JsonStore::open_default() {
+                                        let _ = v.vault.save(store.root());
+                                    }
                                     vars.set(v);
                                 },
                             }
@@ -3453,79 +3511,88 @@ pub fn Workbench() -> Element {
                     }
                 } else {
                 div { class: "tab-strip",
-                    input {
-                        class: "tab-name",
-                        value: "{draft().name}",
-                        oninput: move |evt| {
-                            let mut d = draft();
-                            d.name = evt.value();
-                            draft.set(d);
-                        },
+                    div { class: "tab-strip-fixed",
+                        input {
+                            class: "tab-name",
+                            value: "{draft().name}",
+                            oninput: move |evt| {
+                                let mut d = draft();
+                                d.name = evt.value();
+                                draft.set(d);
+                            },
+                        }
+                        button {
+                            class: "btn btn-save",
+                            title: "Save request (⌘S)",
+                            onclick: move |_| do_save(()),
+                            span { class: "action-icon action-icon-save", "aria-hidden": "true" }
+                            span { "Save" }
+                        }
                     }
-                    button {
-                        class: "btn btn-ghost",
-                        title: "Save (⌘S)",
-                        onclick: move |_| do_save(()),
-                        "Save"
-                    }
-                    for t in open_tabs() {
-                        {
-                            let tid = t.id;
-                            let tname = request_tab_display_name(&collections(), tid);
-                            let active = draft().id == tid;
-                            rsx! {
-                                div {
-                                    class: if active { "tab active" } else { "tab" },
-                                    role: "button",
-                                    tabindex: "0",
-                                    onclick: move |_| {
-                                        let mut tabs = open_tabs();
-                                        let cur = draft();
-                                        if let Some(slot) = tabs.iter_mut().find(|x| x.id == cur.id) {
-                                            *slot = cur;
-                                        }
-                                        if let Some(found) = tabs.iter().find(|x| x.id == tid).cloned() {
-                                            draft.set(found.clone());
-                                            active_request_id.set(Some(tid));
-                                            editing_collection_id.set(None);
-                                            if let Some((col_id, _)) = find_request_across(&collections(), tid) {
-                                                active_collection_id.set(Some(col_id));
-                                                if let Some(col) = collections().iter().find(|c| c.id == col_id) {
-                                                    let mut v = vars();
-                                                    v.collection = col.variables_map();
-                                                    vars.set(v);
+                    div { class: "tab-strip-scrollable",
+                        for t in open_tabs() {
+                            {
+                                let tid = t.id;
+                                let tname = request_tab_display_name(&collections(), tid);
+                                let active = draft().id == tid;
+                                rsx! {
+                                    div {
+                                        class: if active { "tab active" } else { "tab" },
+                                        role: "button",
+                                        tabindex: "0",
+                                        onclick: move |_| {
+                                            let mut tabs = open_tabs();
+                                            let cur = draft();
+                                            if let Some(slot) = tabs.iter_mut().find(|x| x.id == cur.id) {
+                                                *slot = cur;
+                                            }
+                                            if let Some(found) = tabs.iter().find(|x| x.id == tid).cloned() {
+                                                draft.set(found.clone());
+                                                active_request_id.set(Some(tid));
+                                                editing_collection_id.set(None);
+                                                if let Some((col_id, _)) = find_request_across(&collections(), tid) {
+                                                    active_collection_id.set(Some(col_id));
+                                                    if let Some(col) = collections().iter().find(|c| c.id == col_id) {
+                                                        let mut v = vars();
+                                                        v.collection = col.variables_map();
+                                                        vars.set(v);
+                                                    }
+                                                }
+                                                // Restore response from cache
+                                                let resp_map = responses();
+                                                if let Some(cached) = resp_map.get(&tid).cloned() {
+                                                    response.set(Some(cached));
+                                                } else {
+                                                    response.set(None);
                                                 }
                                             }
-                                            // Restore response from cache
-                                            let resp_map = responses();
-                                            if let Some(cached) = resp_map.get(&tid).cloned() {
-                                                response.set(Some(cached));
-                                            } else {
-                                                response.set(None);
-                                            }
-                                        }
-                                        open_tabs.set(tabs);
-                                    },
-                                    span { class: "tab-label", "{tname}" }
-                                    button {
-                                        class: "tab-close",
-                                        r#type: "button",
-                                        title: "Close tab",
-                                        onclick: move |evt| {
-                                            evt.stop_propagation();
-                                            do_close_tab(tid);
+                                            open_tabs.set(tabs);
                                         },
-                                        "×"
+                                        span {
+                                            class: "tab-method method-{method_class(t.method)}",
+                                            "{t.method.as_str()}"
+                                        }
+                                        span { class: "tab-label", "{tname}" }
+                                        button {
+                                            class: "tab-close",
+                                            r#type: "button",
+                                            title: "Close tab",
+                                            onclick: move |evt| {
+                                                evt.stop_propagation();
+                                                do_close_tab(tid);
+                                            },
+                                            "×"
+                                        }
                                     }
                                 }
                             }
                         }
-                    }
-                    button {
-                        class: "tab",
-                        title: "New request tab (⌘T)",
-                        onclick: move |_| do_new_tab(()),
-                        "+"
+                        button {
+                            class: "tab tab-add",
+                            title: "New request tab (⌘T)",
+                            onclick: move |_| do_new_tab(()),
+                            "+"
+                        }
                     }
                 }
 
@@ -3567,16 +3634,19 @@ pub fn Workbench() -> Element {
                                 v.collection = updated_col.variables_map();
                                 vars.set(v);
                             }
-                            persist();
                         },
                         on_close: move |_| {
+                            persist();
                             editing_collection_id.set(None);
                         },
                     }
                 } else {
-                div { class: "workbench-split",
-                {
-                    let cols_snap = collections();
+                div {
+                    class: format!("workbench-split {}", app_settings().ui.layout.class_token()),
+                    div {
+                        class: "workbench-request-side",
+                        {
+                            let cols_snap = collections();
                     let cur_draft = draft();
                     let ancestor_origin = resolve_ancestor_auth(&cols_snap, cur_draft.id).map(|(_, o)| o);
                     rsx! {
@@ -3911,6 +3981,7 @@ pub fn Workbench() -> Element {
                 }
                     }
                 }
+                }
 
                 div {
                     class: if matches!(pane_drag(), Some(PaneDrag::Request { .. })) {
@@ -3929,7 +4000,9 @@ pub fn Workbench() -> Element {
                     },
                 }
 
-                ResponseViewer {
+                div {
+                    class: "workbench-response-side",
+                    ResponseViewer {
                     response: response(),
                     sending: sending(),
                     default_tab: app_settings().ui.default_response_tab,
@@ -3973,6 +4046,7 @@ pub fn Workbench() -> Element {
                             format!("auto-assert: added {added} assertion(s) — review in Tests tab, ⌘S to save")
                         });
                     },
+                }
                 }
                 }
                 }
@@ -4472,54 +4546,64 @@ fn rows_to_map(rows: Vec<(String, String)>) -> std::collections::HashMap<String,
 /// Editable flat key/value map (global / vault).
 #[component]
 fn MapVarEditor(rows: Vec<(String, String)>, on_change: EventHandler<Vec<(String, String)>>) -> Element {
+    let mut local_rows = use_signal(|| rows.clone());
+
+    // Sync from parent if row count or non-empty keys change externally
+    let incoming = rows.clone();
+    use_effect(move || {
+        let current = local_rows();
+        // Only overwrite local draft if external changed meaningfully (e.g. initial load or modal reset)
+        let incoming_map: std::collections::HashMap<_, _> = incoming.iter().cloned().collect();
+        let current_map: std::collections::HashMap<_, _> = current.iter().filter(|(k, _)| !k.is_empty()).cloned().collect();
+        if incoming_map != current_map && (current.is_empty() || incoming.len() != current.len()) {
+            local_rows.set(incoming.clone());
+        }
+    });
+
     rsx! {
         table { class: "kv-table",
             thead { tr { th { "Key" } th { "Value" } th { "" } } }
             tbody {
-                for (i, (key, val)) in rows.iter().enumerate() {
+                for (i, (key, val)) in local_rows().iter().enumerate() {
                     tr {
                         td {
                             input {
                                 value: "{key}",
-                                oninput: {
-                                    let rows = rows.clone();
-                                    move |evt: Event<FormData>| {
-                                        let mut next = rows.clone();
-                                        if let Some(r) = next.get_mut(i) {
-                                            r.0 = evt.value();
-                                        }
-                                        on_change.call(next);
+                                placeholder: "Key",
+                                oninput: move |evt: Event<FormData>| {
+                                    let mut next = local_rows();
+                                    if let Some(r) = next.get_mut(i) {
+                                        r.0 = evt.value();
                                     }
+                                    local_rows.set(next.clone());
+                                    on_change.call(next);
                                 }
                             }
                         }
                         td {
                             input {
                                 value: "{val}",
-                                oninput: {
-                                    let rows = rows.clone();
-                                    move |evt: Event<FormData>| {
-                                        let mut next = rows.clone();
-                                        if let Some(r) = next.get_mut(i) {
-                                            r.1 = evt.value();
-                                        }
-                                        on_change.call(next);
+                                placeholder: "Value",
+                                oninput: move |evt: Event<FormData>| {
+                                    let mut next = local_rows();
+                                    if let Some(r) = next.get_mut(i) {
+                                        r.1 = evt.value();
                                     }
+                                    local_rows.set(next.clone());
+                                    on_change.call(next);
                                 }
                             }
                         }
                         td {
                             button {
                                 class: "btn btn-ghost",
-                                onclick: {
-                                    let rows = rows.clone();
-                                    move |_| {
-                                        let mut next = rows.clone();
-                                        if i < next.len() {
-                                            next.remove(i);
-                                        }
-                                        on_change.call(next);
+                                onclick: move |_| {
+                                    let mut next = local_rows();
+                                    if i < next.len() {
+                                        next.remove(i);
                                     }
+                                    local_rows.set(next.clone());
+                                    on_change.call(next);
                                 },
                                 "×"
                             }
@@ -4531,15 +4615,13 @@ fn MapVarEditor(rows: Vec<(String, String)>, on_change: EventHandler<Vec<(String
         div { class: "kv-actions",
             button {
                 class: "btn btn-ghost",
-                onclick: {
-                    let rows = rows.clone();
-                    move |_| {
-                        let mut next = rows.clone();
-                        next.push((String::new(), String::new()));
-                        on_change.call(next);
-                    }
+                onclick: move |_| {
+                    let mut next = local_rows();
+                    next.push((String::new(), String::new()));
+                    local_rows.set(next.clone());
+                    on_change.call(next);
                 },
-                "Add row"
+                "+ Add row"
             }
         }
     }
@@ -4833,4 +4915,16 @@ fn count_direct_folders_in(items: &[crate::core::CollectionItem], parent_id: Uui
         }
     }
     None
+}
+
+fn method_class(m: HttpMethod) -> &'static str {
+    match m {
+        HttpMethod::Get => "get",
+        HttpMethod::Post => "post",
+        HttpMethod::Put => "put",
+        HttpMethod::Patch => "patch",
+        HttpMethod::Delete => "delete",
+        HttpMethod::Head => "head",
+        HttpMethod::Options => "options",
+    }
 }
