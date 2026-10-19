@@ -84,7 +84,8 @@
   <div class="absolute top-[850px] right-[-120px] w-[600px] h-[600px] rounded-full bg-[radial-gradient(circle,rgba(78,161,255,0.22)_0%,transparent_70%)] blur-[140px] pointer-events-none z-0"></div>
   <div class="absolute top-[2200px] left-[-100px] w-[500px] h-[500px] rounded-full bg-[radial-gradient(circle,rgba(192,132,252,0.18)_0%,transparent_70%)] blur-[140px] pointer-events-none z-0"></div>
   <div class="absolute top-[3600px] right-[-100px] w-[600px] h-[600px] rounded-full bg-[radial-gradient(circle,rgba(45,212,191,0.18)_0%,transparent_70%)] blur-[140px] pointer-events-none z-0"></div>
-  <div class="absolute inset-0 h-[4400px] bg-grid pointer-events-none z-0"></div>
+  <div class="absolute top-[5000px] left-1/2 -translate-x-1/2 w-[700px] h-[600px] rounded-full bg-[radial-gradient(circle,rgba(29,185,84,0.25)_0%,transparent_70%)] blur-[140px] pointer-events-none z-0"></div>
+  <div class="absolute inset-0 h-[5800px] bg-grid pointer-events-none z-0"></div>
 
   <!-- Floating Glass Navbar -->
   <header class="fixed top-5 inset-x-0 z-50 flex justify-center px-4">
@@ -97,6 +98,7 @@
 
       <div class="flex items-center gap-6 text-sm font-medium">
         <a href="#why-switch" class="text-spot-bright hover:text-white transition-colors">Why Switch?</a>
+        <a href="#git-cloud" class="text-spot-muted hover:text-white transition-colors">Git Cloud Sync</a>
         <a href="#features" class="text-spot-muted hover:text-white transition-colors">Features</a>
         <a href="#protocols" class="text-spot-muted hover:text-white transition-colors">Protocols</a>
         <a href="#cli-runner" class="text-spot-muted hover:text-white transition-colors">CLI &amp; CI</a>
@@ -120,7 +122,7 @@
     <!-- Pill Badge -->
     <div class="inline-flex items-center gap-2.5 px-4 py-1.5 rounded-full glass-capsule text-xs text-spot-muted mb-8">
       <span class="w-2 h-2 rounded-full bg-spot-bright shadow-[0_0_8px_#1ed760] animate-pulse"></span>
-      <span>Local-First • No Forced Cloud • Native Rust 1.83+</span>
+      <span>Local-First • Any Git Repo as Cloud • Native Rust 1.83+</span>
     </div>
 
     <!-- Hero Title -->
@@ -359,6 +361,114 @@
     </section>
 
     <!-- ================================================================= -->
+    <!-- SECTION: HOW BLITZ CLOUD WORKS (DEEP DIVE ON GIT REPO AS CLOUD) -->
+    <!-- ================================================================= -->
+    <section id="git-cloud" class="mt-36 text-center">
+      <span class="text-xs font-bold text-spot-bright tracking-widest uppercase block mb-3">DECENTRALIZED TEAM SYNC</span>
+      <h2 class="text-3xl sm:text-5xl font-extrabold tracking-tight mb-4">Your Cloud Is Any Git Repository</h2>
+      <p class="text-spot-muted max-w-2xl mx-auto text-base sm:text-lg mb-16">
+        No proprietary servers, no monthly per-seat subscription invoices. Blitz turns any Git repo—public, private, GitHub, GitLab, or self-hosted Gitea—into a seamless team cloud backend.
+      </p>
+
+      <!-- 3-Step Git Architecture Grid -->
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-6 text-left mb-12">
+        <div class="p-8 rounded-2xl glass glass-hover">
+          <div class="w-10 h-10 rounded-xl bg-spot-green/15 text-spot-bright flex items-center justify-center font-mono font-bold text-sm mb-6">01</div>
+          <h3 class="text-lg font-bold mb-3 tracking-tight">Plug In Any Git Remote</h3>
+          <p class="text-spot-muted text-sm leading-relaxed mb-4">
+            Point Blitz to any repo URL (HTTPS or SSH):
+          </p>
+          <div class="bg-black/50 p-2.5 rounded-lg border border-white/5 font-mono text-[11px] text-spot-bright break-all">
+            git@github.com:org/api-specs.git
+          </div>
+          <p class="text-spot-faint text-xs mt-3 leading-relaxed">
+            Blitz clones it locally under <code>{data_dir}/blitz/cloud/</code>. Works with private repos via your existing SSH keys or <code>gh auth login</code>.
+          </p>
+        </div>
+
+        <div class="p-8 rounded-2xl glass glass-hover">
+          <div class="w-10 h-10 rounded-xl bg-blue-500/15 text-blue-400 flex items-center justify-center font-mono font-bold text-sm mb-6">02</div>
+          <h3 class="text-lg font-bold mb-3 tracking-tight">Environments = Git Branches</h3>
+          <p class="text-spot-muted text-sm leading-relaxed mb-4">
+            Each environment you create maps directly to a dedicated branch:
+          </p>
+          <div class="bg-black/50 p-2.5 rounded-lg border border-white/5 font-mono text-[11px] text-blue-300">
+            env/development<br>
+            env/production<br>
+            env/staging-us-east
+          </div>
+          <p class="text-spot-faint text-xs mt-3 leading-relaxed">
+            Switching environments in the top bar checks out the corresponding Git branch and instantly reloads the workspace tree.
+          </p>
+        </div>
+
+        <div class="p-8 rounded-2xl glass glass-hover">
+          <div class="w-10 h-10 rounded-xl bg-purple-500/15 text-purple-400 flex items-center justify-center font-mono font-bold text-sm mb-6">03</div>
+          <h3 class="text-lg font-bold mb-3 tracking-tight">Save Local, Sync to Team</h3>
+          <p class="text-spot-muted text-sm leading-relaxed mb-4">
+            Two distinct actions give you full autonomy:
+          </p>
+          <div class="space-y-2 text-xs">
+            <div class="bg-black/50 p-2 rounded-lg border border-white/5 text-gray-300">
+              <strong class="text-spot-bright">Save (⌘S):</strong> Commits changes locally to your local git clone. Never pushes automatically.
+            </div>
+            <div class="bg-black/50 p-2 rounded-lg border border-white/5 text-gray-300">
+              <strong class="text-purple-400">Sync:</strong> Pulls with rebase, integrates peer updates, and pushes upstream without force-pushing.
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Deep Dive Details Callout -->
+      <div class="rounded-2xl glass p-8 text-left max-w-4xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-8 border border-white/10">
+        <div>
+          <div class="flex items-center gap-2 mb-3">
+            <span class="w-2.5 h-2.5 rounded-full bg-spot-bright"></span>
+            <h4 class="font-bold text-base">How Private Repos &amp; Team Members Work</h4>
+          </div>
+          <p class="text-spot-muted text-sm leading-relaxed mb-3">
+            Adding team members requires zero setup inside Blitz. You manage access exactly where you already do: <strong>in your Git provider</strong>.
+          </p>
+          <ul class="space-y-2 text-xs text-spot-muted">
+            <li class="flex items-start gap-2">
+              <span class="text-spot-bright">▸</span>
+              <span><strong>Invite via GitHub / GitLab / Bitbucket:</strong> Grant repository read or write access to your team member or contractors.</span>
+            </li>
+            <li class="flex items-start gap-2">
+              <span class="text-spot-bright">▸</span>
+              <span><strong>Native Authentication:</strong> Blitz uses system <code>git</code> under the hood. It automatically uses your existing SSH keys, Git credential helpers, or <code>gh</code> token.</span>
+            </li>
+            <li class="flex items-start gap-2">
+              <span class="text-spot-bright">▸</span>
+              <span><strong>Pull Requests &amp; Reviews:</strong> Since every collection and environment is clean JSON in a Git repo, teams can open PRs, conduct peer reviews, and review diffs.</span>
+            </li>
+          </ul>
+        </div>
+
+        <div>
+          <div class="flex items-center gap-2 mb-3">
+            <span class="w-2.5 h-2.5 rounded-full bg-amber-400"></span>
+            <h4 class="font-bold text-base">Zero Secret Leaks by Design</h4>
+          </div>
+          <p class="text-spot-muted text-sm leading-relaxed mb-3">
+            Cloud platforms frequently leak bearer tokens when shared across team workspaces. Blitz enforces strict isolation boundaries:
+          </p>
+          <div class="space-y-2 text-xs font-mono">
+            <div class="p-2 rounded bg-black/50 border border-white/5 text-emerald-300">
+              ✓ Synced: Collections, endpoints, scripts, schema, public variables.
+            </div>
+            <div class="p-2 rounded bg-black/50 border border-white/5 text-amber-300">
+              🔒 Redacted: Password values, private bearer tokens, secret:// refs.
+            </div>
+            <div class="p-2 rounded bg-black/50 border border-white/5 text-purple-300">
+              🛡 Machine Only: Cookies, request history, vault.json, OS Keychain keys.
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================================================================= -->
     <!-- SECTION: DEEP DIVE - MULTI PROTOCOL SUITE -->
     <!-- ================================================================= -->
     <section id="protocols" class="mt-36 text-center">
@@ -540,7 +650,7 @@
             <thead>
               <tr class="border-b border-white/10 text-spot-faint uppercase text-xs tracking-wider">
                 <th class="py-4 px-5 font-semibold">Capability</th>
-                <th class="py-4 px-5 font-bold text-spot-bright bg-spot-green/10 text-center"><span class="inline-flex items-center justify-center gap-1.5"><img src="logo-64.png" alt="Blitz" class="w-4 h-4 rounded"> Blitz</span></th>
+                <th class="py-4 px-5 font-bold text-spot-bright bg-spot-green/10 text-center">⚡ Blitz</th>
                 <th class="py-4 px-5 font-semibold text-center">Postman</th>
                 <th class="py-4 px-5 font-semibold text-center">Bruno</th>
                 <th class="py-4 px-5 font-semibold text-center">Insomnia</th>
@@ -684,6 +794,8 @@ make run</code></pre>
         <a href="https://github.com/h3ma209/Blitz/releases" target="_blank" rel="noopener" class="hover:text-spot-bright transition-colors">Releases</a>
         <span>•</span>
         <a href="#why-switch" class="hover:text-spot-bright transition-colors">Why Switch?</a>
+        <span>•</span>
+        <a href="#git-cloud" class="hover:text-spot-bright transition-colors">Git Cloud</a>
         <span>•</span>
         <a href="#features" class="hover:text-spot-bright transition-colors">Features</a>
       </div>
