@@ -4,8 +4,8 @@ use dioxus::prelude::*;
 use uuid::Uuid;
 
 use crate::core::{
-    collapsed_except_expanded, filter_tree_rows, flatten_collections_filtered, Collection,
-    HistoryEntry, HttpMethod, TreeRowKind,
+    collapsed_except_expanded, collapsible_tree_ids, filter_tree_rows,
+    flatten_collections_filtered, Collection, HistoryEntry, HttpMethod, TreeRowKind,
 };
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -91,9 +91,20 @@ pub fn Sidebar(
     let mut search = use_signal(String::new);
 
     let rows = {
-        let collapsed = collapsed_except_expanded(&collections, &expanded());
+        let query = search();
+        let query_active = !query.trim().is_empty();
+        // While searching, flatten the whole tree (expand every collapsible node)
+        // so requests nested in collapsed folders/collections are reachable.
+        // This only overrides the *local* fold set used for flattening; the user's
+        // real `expanded` signal is untouched, so folds restore when the search clears.
+        let expanded = if query_active {
+            collapsible_tree_ids(&collections)
+        } else {
+            expanded()
+        };
+        let collapsed = collapsed_except_expanded(&collections, &expanded);
         let flat = flatten_collections_filtered(&collections, &collapsed);
-        filter_tree_rows(flat, &search())
+        filter_tree_rows(flat, &query)
     };
     let empty = collections.is_empty();
 
@@ -183,7 +194,7 @@ pub fn Sidebar(
             input {
                 class: "sidebar-search",
                 r#type: "search",
-                placeholder: "Search collections…",
+                placeholder: "Search collections & requests…",
                 value: "{search}",
                 oninput: move |evt: Event<FormData>| search.set(evt.value()),
             }
@@ -203,7 +214,13 @@ pub fn Sidebar(
                             collection_id: Uuid::nil(),
                         }));
                     },
-                    p { "No collections yet." }
+                    p {
+                        if search().trim().is_empty() {
+                            "No collections yet."
+                        } else {
+                            "No requests match \"{search}\"."
+                        }
+                    }
                     button {
                         class: "btn btn-ghost",
                         onclick: move |_| on_event.call(SidebarEvent::new(

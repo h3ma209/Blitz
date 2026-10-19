@@ -274,6 +274,11 @@ pub struct TreeRow {
     pub depth: u8,
     /// Collection favorite flag (false for folders/requests).
     pub favorite: bool,
+    /// Lower-cased blob of every searchable string on this row (name + URL +
+    /// method + params + headers + body + scripts + …). Populated at flatten
+    /// time so the sidebar search box can match request *content*, not just
+    /// the request's display name.
+    pub search_text: String,
 }
 
 /// Sort collections: favorites first, then name; within a level: sort_key then folders first then name.
@@ -507,7 +512,10 @@ fn try_insert_under_items_at(
     Err(pending.expect("item"))
 }
 
-/// Filter tree rows whose name contains `query` (case-insensitive), keeping ancestors.
+/// Filter tree rows whose name or content contains `query` (case-insensitive),
+/// keeping ancestors. Requests match against their full draft (URL, method,
+/// params, headers, body, scripts, …) so the sidebar search box isn't limited
+/// to the request's display name.
 pub fn filter_tree_rows(rows: Vec<TreeRow>, query: &str) -> Vec<TreeRow> {
     let q = query.trim().to_ascii_lowercase();
     if q.is_empty() {
@@ -515,7 +523,7 @@ pub fn filter_tree_rows(rows: Vec<TreeRow>, query: &str) -> Vec<TreeRow> {
     }
     let match_ids: std::collections::HashSet<Uuid> = rows
         .iter()
-        .filter(|r| r.name.to_ascii_lowercase().contains(&q))
+        .filter(|r| r.search_text.contains(&q))
         .map(|r| r.id)
         .collect();
     // Keep matching rows + all ancestors
@@ -583,6 +591,7 @@ pub fn flatten_collections_filtered(
             name: col.name.clone(),
             depth: 0,
             favorite: col.favorite,
+            search_text: col.name.to_ascii_lowercase(),
         });
         if !collapsed.contains(&col.id) {
             flatten_items(&col.items, col.id, col.id, 1, collapsed, &mut out);
@@ -771,6 +780,7 @@ fn flatten_items(
                     name: folder.name.clone(),
                     depth,
                     favorite: false,
+                    search_text: folder.name.to_ascii_lowercase(),
                 });
                 if !collapsed.contains(&folder.id) {
                     flatten_items(
@@ -792,6 +802,7 @@ fn flatten_items(
                     name: req.name.clone(),
                     depth,
                     favorite: false,
+                    search_text: req.search_text(),
                 });
             }
         }

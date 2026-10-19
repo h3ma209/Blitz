@@ -14,6 +14,9 @@ use base64::Engine;
 pub const STYLES_CSS: &str = include_str!("../assets/styles.css");
 
 /// `data:` URI for the brand logo — no runtime filesystem lookup.
+/// Kept as part of the brand module's public API (web/other consumers may use it);
+/// the desktop UI renders the logo via the shared `.brand-logo` emoji mark instead.
+#[allow(dead_code)]
 pub static LOGO_SRC: LazyLock<String> = LazyLock::new(|| {
     format!(
         "data:image/png;base64,{}",

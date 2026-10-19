@@ -447,6 +447,56 @@ impl RequestDraft {
         }
         resolved
     }
+
+    /// Lower-cased blob of every string that makes this request identifiable
+    /// (name + URL + method + params + headers + body + scripts + …).
+    /// Used by the sidebar search box to match request *content*, not just the
+    /// request's display name.
+    pub fn search_text(&self) -> String {
+        let mut s = String::new();
+        s.push_str(&self.name.to_ascii_lowercase());
+        s.push(' ');
+        s.push_str(&self.url.to_ascii_lowercase());
+        s.push(' ');
+        s.push_str(self.method.as_str().to_ascii_lowercase().as_str());
+        s.push(' ');
+        for kv in &self.params {
+            s.push_str(&kv.key.to_ascii_lowercase());
+            s.push(' ');
+            s.push_str(&kv.value.to_ascii_lowercase());
+            s.push(' ');
+        }
+        for kv in &self.headers {
+            s.push_str(&kv.key.to_ascii_lowercase());
+            s.push(' ');
+            s.push_str(&kv.value.to_ascii_lowercase());
+            s.push(' ');
+        }
+        s.push_str(&self.body.to_ascii_lowercase());
+        s.push(' ');
+        s.push_str(&self.description.to_ascii_lowercase());
+        s.push(' ');
+        s.push_str(&self.pre_request_script.to_ascii_lowercase());
+        s.push(' ');
+        s.push_str(&self.test_script.to_ascii_lowercase());
+        s.push(' ');
+        s.push_str(&self.graphql_query.to_ascii_lowercase());
+        s.push(' ');
+        s.push_str(&self.graphql_variables.to_ascii_lowercase());
+        s.push(' ');
+        s.push_str(&self.ws_message.to_ascii_lowercase());
+        s.push(' ');
+        s.push_str(&self.grpc_method.to_ascii_lowercase());
+        s.push(' ');
+        s.push_str(&self.mqtt_topic.to_ascii_lowercase());
+        s.push(' ');
+        s.push_str(&self.mcp_command.to_ascii_lowercase());
+        s.push(' ');
+        s.push_str(&self.socketio_event.to_ascii_lowercase());
+        s.push(' ');
+        s.push_str(&self.graphql_ws_query.to_ascii_lowercase());
+        s
+    }
 }
 
 /// Test assertion result from `pm.test`.

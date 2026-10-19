@@ -3482,13 +3482,8 @@ pub fn Workbench() -> Element {
                         "startup-splash"
                     },
                     div { class: "startup-splash-inner",
-                        img {
-                            class: "startup-splash-logo",
-                            src: crate::brand::LOGO_SRC.as_str(),
-                            alt: "Blitz",
-                        }
+                        span { class: "brand-logo brand-logo-emoji brand-logo-splash", "⚡" }
                         div { class: "startup-splash-wordmark",
-                            span { class: "brand-lightning", "⚡" }
                             span { class: "brand-name", "Blitz" }
                         }
                         div { class: "startup-splash-dots", aria_hidden: "true",
@@ -3504,11 +3499,7 @@ pub fn Workbench() -> Element {
             if let Some(name) = env_switch_overlay() {
                 div { class: "env-switch-overlay",
                     div { class: "env-switch-card",
-                        img {
-                            class: "env-switch-logo",
-                            src: crate::brand::LOGO_SRC.as_str(),
-                            alt: "",
-                        }
+                        span { class: "brand-logo brand-logo-emoji brand-logo-env", "⚡" }
                         div { class: "loading-row",
                             Spinner { }
                             span { class: "loading-text", "Switching environment…" }
