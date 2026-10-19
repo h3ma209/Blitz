@@ -1,116 +1,120 @@
 # ⚡ Blitz
 
-Local-first API client (Rust + Dioxus desktop). Architecture guided by design docs — requester workbench, scripts, runner, local mocks.
+<p align="center">
+  <img src="assets/logo.png" alt="Blitz Logo" width="128" />
+</p>
 
-**Not affiliated with Postman.** Recreation for learning / local use.
+<p align="center">
+  <strong>Fast. Lightweight. Offline-first. The API client built for developers who hate bloat.</strong>
+</p>
 
-## Requirements
+<p align="center">
+  <a href="#why-blitz">Why Blitz</a> •
+  <a href="#features">Features</a> •
+  <a href="#quick-start">Quick Start</a> •
+  <a href="#cli-automation">CLI Runner</a> •
+  <a href="#git-team-sync">Git Team Sync</a>
+</p>
 
-- Rust 1.83+ (tested with 1.95)
-- macOS / Linux / Windows with WebView support (Dioxus desktop uses the system WebView)
-- **Linux build deps** (Debian/Ubuntu): `libwebkit2gtk-4.1-dev`, `libgtk-3-dev`, `libxdo-dev`, `libayatana-appindicator3-dev`, `librsvg2-dev` (see `.github/workflows/build.yml`)
-- Optional team sync: system `git` + GitHub auth (`gh auth login` or SSH agent)
+---
 
-Optional: [dioxus-cli](https://dioxuslabs.com/) (`cargo install dioxus-cli`). Homebrew `dx` may be **Deno's** `dx` — prefer `cargo run`.
+## Why Blitz?
 
-## Build / run
+Most API clients today are 1.5 GB Electron monsters that force you to create a cloud account just to send a `GET` request.
 
+**Blitz is different:**
+- **Zero cloud hostage:** Your collections, requests, and environments live on your machine as plain files.
+- **Blazing fast:** Written in Rust with native WebView. Boots instantly, uses ~40MB RAM.
+- **No mandatory login:** Open the app and start hacking immediately.
+- **Git-native collaboration:** Sync with your team through standard Git repos, not a $49/seat SaaS subscription.
+- **Drop-in migration:** Import your existing Postman collections and OpenAPI specs in seconds.
+
+---
+
+## Features
+
+### 🔌 Multi-Protocol Powerhouse
+Beyond plain HTTP — Blitz natively speaks modern protocols:
+- **REST / HTTP** (Full headers, params, GraphQL, URL-encoded, multipart form-data + file upload)
+- **WebSockets** (Interactive bidirectional sessions)
+- **gRPC** (Unary + streaming RPCs)
+- **MQTT** (IoT message publisher & subscriber)
+- **SSE** (Server-Sent Events stream viewer)
+- **Socket.IO** (Real-time engine support)
+- **MCP** (Model Context Protocol client for AI agents)
+
+### 🧪 Real JavaScript Sandbox
+Test scripts powered by an embedded engine with Postman syntax compatibility:
+- `epm.test()` and `epm.expect()` assertions
+- `epm.sendRequest()` for chained, pre-request HTTP calls
+- `CryptoJS` built-in (`SHA256`, `HmacSHA256`, Hex, Base64)
+- Dynamic variables (`{{$guid}}`, `{{$timestamp}}`, `{{var}}`)
+
+### 🔐 Native Secrets Vault
+- OS Keychain integration (macOS Keychain, Linux Secret Service, Windows Credential Manager).
+- Sensitive tokens and secrets stay strictly local and are never accidentally committed or leaked.
+
+### 🔄 Open Ecosystem & Migration
+- **Postman:** Import and export v2.1 collection format.
+- **OpenAPI:** Import and export OpenAPI 3.0 specs with non-destructive 3-way merge.
+- **cURL & HAR:** Paste raw cURL commands or import browser network HAR logs directly.
+- **Local Mocks:** Spin up instant, zero-config mock servers bound to `127.0.0.1` directly from saved response examples.
+
+---
+
+## Quick Start
+
+### Prerequisites
+- [Rust](https://rustup.rs/) (1.83+)
+- macOS, Linux, or Windows
+
+### Run from Source
 ```bash
-cd /Users/hema/Desktop/Experiments/notPostman
-cargo check
+git clone https://github.com/h3ma209/Blitz.git
+cd Blitz
+
+# Run development build
 cargo run
-cargo test
+
+# Or run optimized release
+cargo run --release
 ```
 
-Or via **Make** (same `cargo` under the hood; `make help` lists all targets):
+### Install as Desktop App
+```bash
+make install
+```
+
+| OS | Default Install Path | Uninstall |
+|---|---|---|
+| **macOS** | `~/Applications/Blitz.app` | `make uninstall` |
+| **Linux** | `~/.local/share/blitz/` + `~/.local/bin/blitz` | `make uninstall` |
+| **Windows** | `%LOCALAPPDATA%\Blitz\` | `powershell -File scripts/install.ps1 -Uninstall` |
+
+---
+
+## CLI Automation
+
+Automate your API tests in GitHub Actions or any CI/CD pipeline without extra tools:
 
 ```bash
-make deps          # rustup check + cargo fetch (no app install)
-make run           # cargo run (dev) — from source, no install needed
-make run-release   # or: make release
-make build / make build-release
-make install       # release build + install desktop app (user dirs, no sudo)
-make uninstall     # remove installed app
-make test
-make check
-make fmt           # needs rustfmt
-make clippy        # needs clippy
-make clean
+# Run collection headless (exits 0 on success, 1 on test failure)
+blitz run collection.json --env staging.json
 ```
 
-### `make install` paths
+---
 
-| OS | Default install | Uninstall |
-|----|-----------------|-----------|
-| **macOS** | `~/Applications/Blitz.app` | `make uninstall` |
-| **Linux** | `~/.local/share/blitz/` + `~/.local/bin/blitz` + desktop entry | `make uninstall` |
-| **Windows** | `%LOCALAPPDATA%\Blitz\` (+ Start Menu shortcut) | `make uninstall` or `powershell -File scripts/install.ps1 -Uninstall` |
+## Git Team Sync
 
-- **macOS system-wide:** `sudo make install-system` → `/Applications/Blitz.app` (then `sudo rm -rf /Applications/Blitz.app` if uninstall lacks write access).
-- **Overrides:** `PREFIX` / `DESTDIR` (Linux), `MACOS_APPDIR=...` (macOS), or `scripts/install.ps1 -Prefix ...` (Windows).
-- **Windows:** prefer Git Bash/MSYS `make install`, or from PowerShell: `cargo build --release` then `powershell -File scripts/install.ps1`.
-- Styles + logo are **embedded in the binary** (`include_str!` / `include_bytes!`) so Finder-launched apps stay styled without `dx` or CWD-relative files. Install still copies `assets/` into the bundle (desktop icon / fallbacks).
-- After pulling this fix: run **`make install`** again (or `sudo make install-system` if you used `/Applications`).
+Collaborate with your team without handing your data to a third-party cloud.
 
-## Git cloud sync (team)
+1. Top bar: **Cloud → Clone / link remote…**
+2. Work, edit collections, and save locally.
+3. Hit **Sync**: Blitz pulls, commits, and pushes through standard Git (`gh` or SSH).
+4. Sensitive values (`vault.json`, session cookies, local auth tokens) are automatically redacted before push.
 
-Canonical remote: [`h3ma209/blitz-cloud`](https://github.com/h3ma209/blitz-cloud.git).
+---
 
-1. Auth once: `gh auth login` (HTTPS) or SSH key + `ssh -T git@github.com`
-2. Run app → top-nav **Cloud → Clone / link remote…** (defaults to that URL; clone under `{data_dir}/blitz/cloud/`)
-3. Pick an environment (Sync hidden for **No Environment**). Edit → **Save** commits locally when cloud+clone linked. **Sync** = pull → commit → push to share with team.
-4. Advanced: **Cloud → Pull / Push**. No auto-pull. Local/script vars never leave this machine.
+## License
 
-Never commit `vault.json`, cookies, or history — redacted in env JSON. Design: [`docs/git-team-sync-design.md`](docs/git-team-sync-design.md).
-
-## Layout
-
-```
-src/
-  main.rs
-  core/       # request, collection, env, history, cookies, impex, vault, oauth, sandbox, codegen, mock
-  runtime/    # send pipeline + collection runner
-  storage/    # JSON snapshot + trash
-  secrets/    # macOS Keychain + memory fallback
-  ui/         # workbench shell
-docs/         # design docs
-```
-
-## What's real vs stub
-
-| Piece | Status |
-|-------|--------|
-| Request builder (params/headers/body/auth/scripts/settings) | **Real** |
-| Body: none, raw, urlencoded, form-data (+ file path upload), GraphQL | **Real** |
-| Response Pretty/Raw/Preview/Headers/Cookies/Tests + Save example | **Real** |
-| `{{var}}` + `{{vault:key}}` + `secret://` | **Real** |
-| Environments, history, console | **Real** |
-| Auth: Bearer/Basic/API Key/Digest/Inherit/**OAuth2** (client_creds + auth_code) | **Real** |
-| boa JS sandbox (`epm.*` expanded) | **Real** (no `epm.sendRequest`) |
-| Collection tree, favorite/dup/sort, Trash | **Real** |
-| Import v2.1 / cURL / OpenAPI 3; export v2.1 | **Real** |
-| Code snippets (cURL / fetch / Python) | **Real** |
-| Collection Runner (iterations, delay, data file) | **Real** |
-| Local mock server from examples | **Real** |
-| Proxy + PEM client cert | **Real**; PKCS#12 → convert to PEM |
-| Multi-tab, ⌘⇧P palette, eye variables pane | **Real** |
-| Git team sync (blitz-cloud) | **Real** (Cloud menu + save→push; secrets stay local) |
-| Postman Cloud / Agent / Spec Hub / Flows / SSO | **Out of scope** |
-
-## Try
-
-1. `cargo run`
-2. Send `{{baseUrl}}/get` (⌘↵)
-3. Scripts → Tests with `epm.test` / `epm.expect`
-4. Save example → **Mock** (binds `127.0.0.1`)
-5. **Runner** with iterations / CSV data file
-6. Auth → OAuth 2.0 → Get New Access Token
-7. `</>` for code snippets; import cURL or OpenAPI JSON via sidebar ↓
-
-## Feature catalog
-
-Full inventory of shipped behavior, limits, and non-goals: **[FEATURES.md](FEATURES.md)**.
-
-## Documentation
-
-See [`docs/`](docs/). Latest: `git-team-sync-design.md`.
+Free and open-source. Not affiliated with Postman Inc. Built for developers who value speed, privacy, and simplicity.

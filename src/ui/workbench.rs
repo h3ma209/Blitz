@@ -37,7 +37,7 @@ static WS_SESSION: Mutex<Option<WsSession>> = Mutex::new(None);
 static PROXY_HANDLE: Mutex<Option<CaptureProxyHandle>> = Mutex::new(None);
 use crate::storage::{AppSnapshot, JsonStore};
 use crate::ui::console_panel::ConsolePanel;
-use crate::ui::env_manager::{EnvManager, EnvManagerEvent};
+use crate::ui::env_manager::EnvManagerEvent;
 use crate::ui::env_selector::EnvSelector;
 use crate::ui::request_builder::{RequestBuilder, RequestVarEditEvent};
 use crate::ui::response_viewer::ResponseViewer;
@@ -143,6 +143,7 @@ pub fn Workbench() -> Element {
     let mut trash = use_signal(Vec::<Collection>::new);
     let mut open_tabs = use_signal(|| vec![RequestDraft::default()]);
     let mut show_vars = use_signal(|| false);
+    let mut vars_active_tab = use_signal(|| 0usize); // 0 = Environment, 1 = Variables Overview
     let mut show_palette = use_signal(|| false);
     let mut show_trash = use_signal(|| false);
     let mut show_snippets = use_signal(|| false);
@@ -2205,7 +2206,14 @@ pub fn Workbench() -> Element {
                     button {
                         class: if show_vars() { "top-icon top-icon-on" } else { "top-icon" },
                         title: "Variables (environment, collection, global, vault; local stays on this machine)",
-                        onclick: move |_| show_vars.set(!show_vars()),
+                        onclick: move |_| {
+                            if show_vars() && vars_active_tab() == 1 {
+                                show_vars.set(false);
+                            } else {
+                                vars_active_tab.set(1);
+                                show_vars.set(true);
+                            }
+                        },
                         "Vars"
                     }
                     button {
@@ -2329,8 +2337,9 @@ pub fn Workbench() -> Element {
                             }
                         },
                         on_manage: move |_| {
-                            show_env_manager.set(true);
+                            vars_active_tab.set(0);
                             editing_env_id.set(active_env_id());
+                            show_vars.set(true);
                         },
                     }
                     ThemeSelector {
@@ -2363,7 +2372,21 @@ pub fn Workbench() -> Element {
             if show_vars() {
                 div { class: "vars-page",
                     div { class: "vars-page-head",
-                        h2 { "Variables" }
+                        div { class: "vars-page-title-wrap",
+                            h2 { "Environments & Variables" }
+                            div { class: "vars-tabs",
+                                button {
+                                    class: if vars_active_tab() == 0 { "vars-tab active" } else { "vars-tab" },
+                                    onclick: move |_| vars_active_tab.set(0),
+                                    "Environments ({environments().len()})"
+                                }
+                                button {
+                                    class: if vars_active_tab() == 1 { "vars-tab active" } else { "vars-tab" },
+                                    onclick: move |_| vars_active_tab.set(1),
+                                    "Variables Overview"
+                                }
+                            }
+                        }
                         button {
                             class: "btn btn-ghost",
                             onclick: move |_| {
@@ -2373,7 +2396,272 @@ pub fn Workbench() -> Element {
                             "Done"
                         }
                     }
-                    div { class: "vars-page-inner",
+                    if vars_active_tab() == 0 {
+                        div { class: "vars-env-layout",
+                            // Left Column: Environments list
+                            div { class: "env-sidebar-col",
+                                div { class: "env-sidebar-header",
+                                    span { "Environments" }
+                                    button {
+                                        class: "btn-icon",
+                                        title: "Add environment",
+                                        onclick: move |_| {
+                                            let mut envs = environments();
+                                            let n = envs.len() + 1;
+                                            let mut env = Environment::new(format!("Environment {n}"));
+                                            env.values.push(EnvVar {
+                                                key: String::new(),
+                                                initial_value: String::new(),
+                                                current_value: String::new(),
+                                                enabled: true,
+                                            });
+                                            let id = env.id;
+                                            envs.push(env);
+                                            environments.set(envs);
+                                            active_env_id.set(Some(id));
+                                            editing_env_id.set(Some(id));
+                                        },
+                                        span { class: "action-icon action-icon-add", aria_hidden: "true" }
+                                    }
+                                }
+                                div { class: "env-sidebar-list",
+                                    for env in environments() {
+                                        {
+                                            let id = env.id;
+                                            let name = env.name.clone();
+                                            let is_editing = editing_env_id() == Some(id);
+                                            let is_active = active_env_id() == Some(id);
+                                            rsx! {
+                                                div {
+                                                    key: "{id}",
+                                                    class: if is_editing { "env-sidebar-item active" } else { "env-sidebar-item" },
+                                                    onclick: move |_| {
+                                                        editing_env_id.set(Some(id));
+                                                    },
+                                                    span { class: "env-name-text", "{name}" }
+                                                    if is_active {
+                                                        span { class: "env-active-indicator", "Active" }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+
+                            // Right Column: Environment Variable Table & Settings
+                            div { class: "env-editor-col",
+                                {
+                                    let envs = environments();
+                                    let cur_edit_id = editing_env_id()
+                                        .or_else(|| active_env_id())
+                                        .or_else(|| envs.first().map(|e| e.id));
+                                    match cur_edit_id.and_then(|id| envs.iter().find(|e| e.id == id).cloned()) {
+                                        Some(env) => {
+                                            let env_id = env.id;
+                                            let env_name = env.name.clone();
+                                            let is_active = active_env_id() == Some(env_id);
+                                            let values_len = env.values.len();
+                                            rsx! {
+                                                div { class: "env-editor-top",
+                                                    input {
+                                                        class: "env-editor-name",
+                                                        value: "{env_name}",
+                                                        title: "Click to rename environment",
+                                                        oninput: move |evt: Event<FormData>| {
+                                                            let mut envs = environments();
+                                                            if let Some(e) = envs.iter_mut().find(|e| e.id == env_id) {
+                                                                e.name = evt.value();
+                                                            }
+                                                            environments.set(envs);
+                                                        }
+                                                    }
+                                                    div { style: "display: flex; gap: 8px; align-items: center;",
+                                                        if !is_active {
+                                                            button {
+                                                                class: "btn btn-ghost",
+                                                                title: "Set as active environment",
+                                                                onclick: move |_| {
+                                                                    switch_to_env(Some(env_id));
+                                                                },
+                                                                "Set Active"
+                                                            }
+                                                        }
+                                                        button {
+                                                            class: "env-delete-btn",
+                                                            title: "Delete environment",
+                                                            onclick: move |_| {
+                                                                let mut envs = environments();
+                                                                envs.retain(|e| e.id != env_id);
+                                                                if active_env_id() == Some(env_id) {
+                                                                    active_env_id.set(envs.first().map(|e| e.id));
+                                                                }
+                                                                environments.set(envs.clone());
+                                                                let mut v = vars();
+                                                                sync_env_vars(&envs, active_env_id(), &mut v);
+                                                                vars.set(v);
+                                                            },
+                                                            "Delete"
+                                                        }
+                                                    }
+                                                }
+                                                p { class: "hint",
+                                                    "Variables configured here resolve in requests as {{{{variable_name}}}}. Current value overrides Initial value locally."
+                                                }
+                                                table { class: "kv-table",
+                                                    thead {
+                                                        tr {
+                                                            th { "Variable" }
+                                                            th { "Initial Value" }
+                                                            th { "Current Value" }
+                                                            th { style: "width: 40px;", "" }
+                                                        }
+                                                    }
+                                                    tbody {
+                                                        for i in 0..values_len {
+                                                            tr { key: "{env_id}-{i}",
+                                                                td {
+                                                                    input {
+                                                                        value: "{env.values.get(i).map(|r| r.key.clone()).unwrap_or_default()}",
+                                                                        placeholder: "Key",
+                                                                        oninput: {
+                                                                            let env_id = env_id;
+                                                                            let idx = i;
+                                                                            move |evt: Event<FormData>| {
+                                                                                let mut envs = environments();
+                                                                                if let Some(e) = envs.iter_mut().find(|e| e.id == env_id) {
+                                                                                    if let Some(r) = e.values.get_mut(idx) {
+                                                                                        r.key = evt.value();
+                                                                                    }
+                                                                                }
+                                                                                environments.set(envs);
+                                                                            }
+                                                                        }
+                                                                    }
+                                                                }
+                                                                td {
+                                                                    input {
+                                                                        value: "{env.values.get(i).map(|r| r.initial_value.clone()).unwrap_or_default()}",
+                                                                        placeholder: "Initial value (synced)",
+                                                                        oninput: {
+                                                                            let env_id = env_id;
+                                                                            let idx = i;
+                                                                            move |evt: Event<FormData>| {
+                                                                                let mut envs = environments();
+                                                                                if let Some(e) = envs.iter_mut().find(|e| e.id == env_id) {
+                                                                                    if let Some(r) = e.values.get_mut(idx) {
+                                                                                        r.initial_value = evt.value();
+                                                                                    }
+                                                                                }
+                                                                                environments.set(envs);
+                                                                            }
+                                                                        }
+                                                                    }
+                                                                }
+                                                                td {
+                                                                    input {
+                                                                        value: "{env.values.get(i).map(|r| r.current_value.clone()).unwrap_or_default()}",
+                                                                        placeholder: "Current value (active)",
+                                                                        oninput: {
+                                                                            let env_id = env_id;
+                                                                            let idx = i;
+                                                                            move |evt: Event<FormData>| {
+                                                                                let mut envs = environments();
+                                                                                if let Some(e) = envs.iter_mut().find(|e| e.id == env_id) {
+                                                                                    if let Some(r) = e.values.get_mut(idx) {
+                                                                                        r.current_value = evt.value();
+                                                                                    }
+                                                                                }
+                                                                                environments.set(envs);
+                                                                                if active_env_id() == Some(env_id) {
+                                                                                    let mut v = vars();
+                                                                                    sync_env_vars(&environments(), Some(env_id), &mut v);
+                                                                                    vars.set(v);
+                                                                                }
+                                                                            }
+                                                                        }
+                                                                    }
+                                                                }
+                                                                td {
+                                                                    button {
+                                                                        class: "btn btn-ghost",
+                                                                        title: "Remove row",
+                                                                        onclick: {
+                                                                            let env_id = env_id;
+                                                                            let idx = i;
+                                                                            move |_| {
+                                                                                let mut envs = environments();
+                                                                                if let Some(e) = envs.iter_mut().find(|e| e.id == env_id) {
+                                                                                    if idx < e.values.len() {
+                                                                                        e.values.remove(idx);
+                                                                                    }
+                                                                                }
+                                                                                environments.set(envs);
+                                                                                if active_env_id() == Some(env_id) {
+                                                                                    let mut v = vars();
+                                                                                    sync_env_vars(&environments(), Some(env_id), &mut v);
+                                                                                    vars.set(v);
+                                                                                }
+                                                                            }
+                                                                        },
+                                                                        "×"
+                                                                    }
+                                                                }
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                                div { class: "kv-actions", style: "margin-top: 10px;",
+                                                    button {
+                                                        class: "btn btn-ghost",
+                                                        onclick: move |_| {
+                                                            let mut envs = environments();
+                                                            if let Some(e) = envs.iter_mut().find(|e| e.id == env_id) {
+                                                                e.values.push(EnvVar {
+                                                                    key: String::new(),
+                                                                    initial_value: String::new(),
+                                                                    current_value: String::new(),
+                                                                    enabled: true,
+                                                                });
+                                                            }
+                                                            environments.set(envs);
+                                                        },
+                                                        "+ Add variable"
+                                                    }
+                                                }
+                                            }
+                                        }
+                                        None => rsx! {
+                                            div { style: "display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; gap: 12px;",
+                                                p { class: "hint", "No environment selected." }
+                                                button {
+                                                    class: "btn btn-ghost",
+                                                    onclick: move |_| {
+                                                        let mut envs = environments();
+                                                        let n = envs.len() + 1;
+                                                        let mut env = Environment::new(format!("Environment {n}"));
+                                                        env.values.push(EnvVar {
+                                                            key: String::new(),
+                                                            initial_value: String::new(),
+                                                            current_value: String::new(),
+                                                            enabled: true,
+                                                        });
+                                                        let id = env.id;
+                                                        envs.push(env);
+                                                        environments.set(envs);
+                                                        active_env_id.set(Some(id));
+                                                        editing_env_id.set(Some(id));
+                                                    },
+                                                    "Create an environment"
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    } else {
+                        div { class: "vars-page-inner",
                         p { class: "hint",
                             "Resolve order: local → environment → collection → global. Vault via {{{{vault:key}}}}."
                         }
@@ -2385,8 +2673,7 @@ pub fn Workbench() -> Element {
                                 button {
                                     class: "btn btn-ghost",
                                     onclick: move |_| {
-                                        show_vars.set(false);
-                                        show_env_manager.set(true);
+                                        vars_active_tab.set(0);
                                         editing_env_id.set(active_env_id());
                                     },
                                     "Manage…"
@@ -2585,6 +2872,7 @@ pub fn Workbench() -> Element {
                                 },
                                 "Done"
                             }
+                        }
                         }
                     }
                 }
@@ -2985,16 +3273,6 @@ pub fn Workbench() -> Element {
             }
 
             if !show_settings() {
-            if show_env_manager() {
-                div { class: "env-manager-overlay",
-                    EnvManager {
-                        environments: environments(),
-                        active_id: active_env_id(),
-                        editing_id: editing_env_id(),
-                        on_event: on_env_manager,
-                    }
-                }
-            } else {
                 div { class: "sidebar-slot",
                     Sidebar {
                         key: "{fold_epoch()}",
@@ -3022,7 +3300,6 @@ pub fn Workbench() -> Element {
                         },
                     }
                 }
-            }
             }
 
             main {
