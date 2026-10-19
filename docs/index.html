@@ -602,27 +602,42 @@ pm.test("Token returned in valid schema", () => {
         Interact with genuine Blitz workflow modules below. Experience how encrypted OS vaults, 1-click test assertions, visual Git conflict resolution, and multi-protocol streaming come together natively.
       </p>
 
-      <!-- Module Selector Buttons -->
-      <div class="flex flex-wrap items-center justify-center gap-2 sm:gap-3 mb-10 max-w-5xl mx-auto">
+      <!-- Interactive Tab Bar with Clear Click affordance -->
+      <div class="mb-4 flex items-center justify-center gap-2 text-xs font-mono text-spot-bright">
+        <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-spot-green/10 border border-spot-green/30 animate-bounce">
+          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M15.042 21.672L13.684 16.6m0 0l-2.51 2.225.569-9.47 5.227 7.917-3.286-.672zm-7.518-.267A8.25 8.25 0 1120.25 10.5M8.288 14.212A5.25 5.25 0 1117.25 10.5" />
+          </svg>
+          <span>Click any tab below to switch the live interactive UI:</span>
+        </span>
+      </div>
+
+      <!-- Module Selector Buttons (Pillbox Nav) -->
+      <div class="inline-flex flex-wrap items-center justify-center p-1.5 rounded-2xl bg-black/60 border border-white/10 shadow-2xl backdrop-blur-xl gap-1.5 sm:gap-2 mb-10 max-w-5xl mx-auto">
         <button onclick="switchGalleryTab('vault')" id="gallery-tab-vault"
-          class="gallery-nav-btn flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-semibold transition-all glass bg-spot-green/20 text-spot-bright border-spot-green/40 shadow-lg">
-          <span>🔐</span> Vault &amp; OS Keychain
+          class="gallery-nav-btn group flex items-center gap-2.5 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-semibold transition-all duration-200 cursor-pointer bg-spot-bright text-spot-black font-bold shadow-[0_4px_20px_rgba(30,215,96,0.4)] scale-[1.02]">
+          <span class="text-base group-hover:scale-110 transition-transform">🔐</span>
+          <span>Vault &amp; OS Keychain</span>
         </button>
         <button onclick="switchGalleryTab('autoassert')" id="gallery-tab-autoassert"
-          class="gallery-nav-btn flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-semibold transition-all glass text-spot-muted hover:text-white">
-          <span>⚡</span> 1-Click Auto-Assert
+          class="gallery-nav-btn group flex items-center gap-2.5 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-semibold transition-all duration-200 cursor-pointer text-spot-muted hover:text-white hover:bg-white/10 border border-transparent hover:border-white/10">
+          <span class="text-base group-hover:scale-110 transition-transform">⚡</span>
+          <span>1-Click Auto-Assert</span>
         </button>
         <button onclick="switchGalleryTab('conflict')" id="gallery-tab-conflict"
-          class="gallery-nav-btn flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-semibold transition-all glass text-spot-muted hover:text-white">
-          <span>⚔️</span> Git Conflict Resolver
+          class="gallery-nav-btn group flex items-center gap-2.5 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-semibold transition-all duration-200 cursor-pointer text-spot-muted hover:text-white hover:bg-white/10 border border-transparent hover:border-white/10">
+          <span class="text-base group-hover:scale-110 transition-transform">⚔️</span>
+          <span>Git Conflict Resolver</span>
         </button>
         <button onclick="switchGalleryTab('proxy')" id="gallery-tab-proxy"
-          class="gallery-nav-btn flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-semibold transition-all glass text-spot-muted hover:text-white">
-          <span>🛰️</span> Traffic Proxy &amp; Mock
+          class="gallery-nav-btn group flex items-center gap-2.5 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-semibold transition-all duration-200 cursor-pointer text-spot-muted hover:text-white hover:bg-white/10 border border-transparent hover:border-white/10">
+          <span class="text-base group-hover:scale-110 transition-transform">🛰️</span>
+          <span>Traffic Proxy &amp; Mock</span>
         </button>
         <button onclick="switchGalleryTab('protocols')" id="gallery-tab-protocols"
-          class="gallery-nav-btn flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-semibold transition-all glass text-spot-muted hover:text-white">
-          <span>📡</span> Multi-Protocol Suite
+          class="gallery-nav-btn group flex items-center gap-2.5 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-semibold transition-all duration-200 cursor-pointer text-spot-muted hover:text-white hover:bg-white/10 border border-transparent hover:border-white/10">
+          <span class="text-base group-hover:scale-110 transition-transform">📡</span>
+          <span>Multi-Protocol Suite</span>
         </button>
       </div>
 
@@ -2342,11 +2357,11 @@ make run</code></pre>
         const pane = document.getElementById(`gallery-pane-${k}`);
         if (btn && pane) {
           if (k === key) {
-            btn.className = 'gallery-nav-btn flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-semibold transition-all glass bg-spot-green/20 text-spot-bright border-spot-green/40 shadow-lg';
+            btn.className = 'gallery-nav-btn group flex items-center gap-2.5 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-semibold transition-all duration-200 cursor-pointer bg-spot-bright text-spot-black font-bold shadow-[0_4px_20px_rgba(30,215,96,0.4)] scale-[1.02]';
             pane.classList.remove('hidden');
             pane.classList.add('block');
           } else {
-            btn.className = 'gallery-nav-btn flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-semibold transition-all glass text-spot-muted hover:text-white';
+            btn.className = 'gallery-nav-btn group flex items-center gap-2.5 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-semibold transition-all duration-200 cursor-pointer text-spot-muted hover:text-white hover:bg-white/10 border border-transparent hover:border-white/10';
             pane.classList.remove('block');
             pane.classList.add('hidden');
           }
