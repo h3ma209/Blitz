@@ -12,6 +12,7 @@ pub mod collection;
 pub mod console;
 pub mod cookies;
 pub mod digest;
+pub mod doc_gen;
 pub mod environment;
 pub mod history;
 pub mod impex;
@@ -30,7 +31,7 @@ pub mod vault;
 pub use capture_proxy::{
     interceptor_limits_blurb, start_capture_proxy, CaptureProxyHandle, CapturedRequest,
 };
-pub use codegen::{generate_snippet, snippet_languages};
+pub use codegen::{generate_snippet, generate_snippet_resolved, snippet_languages};
 pub use collection::{
     add_folder_under, add_request_under, ancestor_ids_for_request, collapsed_except_expanded,
     collapsible_tree_ids, delete_needs_confirmation, demo_collections, duplicate_across,
@@ -44,6 +45,7 @@ pub use collection::{
 pub use console::{push_console, ConsoleLevel, ConsoleLine, CONSOLE_MAX};
 pub use cookies::{Cookie, CookieJar};
 pub use digest::{build_digest_authorization, digest_uri, DigestChallenge};
+pub use doc_gen::generate_static_doc_html;
 pub use environment::{
     demo_environments, ensure_default_environments, export_environment_json, find_environment,
     find_environment_by_name, import_environment_json, import_environment_texts, EnvVar,
@@ -53,7 +55,7 @@ pub use history::{push_history, HistoryEntry, HISTORY_MAX};
 pub use impex::{
     bundled_postman_collections, export_collection_v21, export_openapi3, export_request_item,
     import_collection_v21, import_curl, import_har, import_openapi3, import_postman_export_texts,
-    import_request_item, limitations_blurb, ImpexError,
+    import_request_item, limitations_blurb, reconcile_openapi3_collection, ImpexError,
 };
 pub use mock_server::{
     draft_mock_path, routes_from_collections, save_example_to_request, start_mock, MockHandle,

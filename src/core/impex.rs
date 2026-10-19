@@ -821,6 +821,44 @@ pub fn import_openapi3(text: &str) -> Result<Collection, ImpexError> {
     Ok(col)
 }
 
+/// Smart non-destructive OpenAPI 3 reconciliation.
+/// Merges new endpoints from an updated OpenAPI spec into an existing collection,
+/// preserving user tests, pre-request scripts, auth settings, and custom headers.
+/// Returns (number of new endpoints added, number of existing preserved).
+pub fn reconcile_openapi3_collection(
+    existing: &mut Collection,
+    new_spec_text: &str,
+) -> Result<(usize, usize), ImpexError> {
+    let fresh = import_openapi3(new_spec_text)?;
+    let mut added = 0;
+    let mut preserved = 0;
+
+    for item in fresh.items {
+        if let CollectionItem::Request(new_req) = item {
+            // Match existing by Method + URL Path
+            let found = existing.items.iter_mut().find_map(|it| match it {
+                CollectionItem::Request(r) if r.method == new_req.method && r.url == new_req.url => {
+                    Some(r)
+                }
+                _ => None,
+            });
+
+            if let Some(existing_req) = found {
+                preserved += 1;
+                // Preserve scripts, auth, and mock headers, but update description if empty
+                if existing_req.description.is_empty() && !new_req.description.is_empty() {
+                    existing_req.description = new_req.description;
+                }
+            } else {
+                existing.add_request(new_req);
+                added += 1;
+            }
+        }
+    }
+
+    Ok((added, preserved))
+}
+
 /// Import HAR 1.2 log → collection (one request per entry).
 pub fn import_har(text: &str) -> Result<Collection, ImpexError> {
     let root: Value =
@@ -1058,5 +1096,41 @@ mod tests {
         assert_eq!(map.get("basic_auth_020j").map(String::as_str), Some("Basic abc"));
         assert_eq!(map.get("basic_auth_14fb").map(String::as_str), Some("Basic def"));
         assert!(!map.contains_key("skip_me"));
+    }
+
+    #[test]
+    fn test_reconcile_openapi3_preserves_custom_tests() {
+        let mut col = Collection::new("API");
+        let mut req = RequestDraft::default();
+        req.name = "GET /users".into();
+        req.method = HttpMethod::Get;
+        req.url = "https://api.com/users".into();
+        req.test_script = "pm.test('status is 200', () => {});".into();
+        col.items.push(CollectionItem::Request(req));
+
+        let updated_spec = r#"{
+            "openapi": "3.0.0",
+            "info": { "title": "API", "version": "1.0" },
+            "servers": [{ "url": "https://api.com" }],
+            "paths": {
+                "/users": {
+                    "get": { "description": "Returns user list" }
+                },
+                "/orders": {
+                    "post": { "description": "Create order" }
+                }
+            }
+        }"#;
+
+        let (added, preserved) = reconcile_openapi3_collection(&mut col, updated_spec).unwrap();
+        assert_eq!(added, 1, "should add /orders");
+        assert_eq!(preserved, 1, "should preserve /users");
+
+        // Verify custom test script was not wiped
+        let user_req = col.items.iter().find_map(|it| match it {
+            CollectionItem::Request(r) if r.url == "https://api.com/users" => Some(r),
+            _ => None,
+        }).expect("users endpoint must exist");
+        assert_eq!(user_req.test_script, "pm.test('status is 200', () => {});");
     }
 }

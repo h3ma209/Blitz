@@ -6,23 +6,61 @@ use super::request::{AuthType, BodyMode, RequestDraft};
 pub fn snippet_languages() -> &'static [&'static str] {
     &[
         "cURL",
+        "Rust (reqwest)",
+        "TypeScript (axios)",
         "JavaScript fetch",
-        "Python requests",
-        "Java OkHttp",
+        "Python (httpx)",
+        "Python (requests)",
         "Go net/http",
+        "Java OkHttp",
         "C# HttpClient",
     ]
 }
 
 pub fn generate_snippet(lang: &str, draft: &RequestDraft) -> String {
+    generate_snippet_resolved(lang, draft, None)
+}
+
+pub fn generate_snippet_resolved(
+    lang: &str,
+    draft: &RequestDraft,
+    ctx: Option<&super::variables::VariableContext>,
+) -> String {
+    let resolved_draft = if let Some(c) = ctx {
+        resolve_draft_variables(draft, c)
+    } else {
+        draft.clone()
+    };
+
     match lang {
-        "JavaScript fetch" => js_fetch(draft),
-        "Python requests" => python_requests(draft),
-        "Java OkHttp" => java_okhttp(draft),
-        "Go net/http" => go_nethttp(draft),
-        "C# HttpClient" => csharp_httpclient(draft),
-        _ => curl(draft),
+        "Rust (reqwest)" => rust_reqwest(&resolved_draft),
+        "TypeScript (axios)" => typescript_axios(&resolved_draft),
+        "Python (httpx)" => python_httpx(&resolved_draft),
+        "JavaScript fetch" => js_fetch(&resolved_draft),
+        "Python (requests)" | "Python requests" => python_requests(&resolved_draft),
+        "Java OkHttp" => java_okhttp(&resolved_draft),
+        "Go net/http" => go_nethttp(&resolved_draft),
+        "C# HttpClient" => csharp_httpclient(&resolved_draft),
+        _ => curl(&resolved_draft),
     }
+}
+
+fn resolve_draft_variables(
+    draft: &RequestDraft,
+    ctx: &super::variables::VariableContext,
+) -> RequestDraft {
+    let mut d = draft.clone();
+    d.url = ctx.resolve_string(&d.url);
+    d.body = ctx.resolve_string(&d.body);
+    for h in &mut d.headers {
+        h.key = ctx.resolve_string(&h.key);
+        h.value = ctx.resolve_string(&h.value);
+    }
+    for p in &mut d.params {
+        p.key = ctx.resolve_string(&p.key);
+        p.value = ctx.resolve_string(&p.value);
+    }
+    d
 }
 
 fn enabled_headers(draft: &RequestDraft) -> Vec<(&str, &str)> {
@@ -286,6 +324,122 @@ fn python_requests(draft: &RequestDraft) -> String {
     }
 }
 
+fn rust_reqwest(draft: &RequestDraft) -> String {
+    let mut hdrs = String::new();
+    for (k, v) in enabled_headers(draft) {
+        hdrs.push_str(&format!(
+            "        .header(\"{k}\", \"{}\")\n",
+            v.replace('"', "\\\"")
+        ));
+    }
+    if let Some((k, v)) = auth_header(draft) {
+        hdrs.push_str(&format!(
+            "        .header(\"{k}\", \"{}\")\n",
+            v.replace('"', "\\\"")
+        ));
+    }
+    let body = body_payload(draft)
+        .map(|b| {
+            format!(
+                "        .body({})\n",
+                serde_json::to_string(&b).unwrap_or_else(|_| "\"\"".into())
+            )
+        })
+        .unwrap_or_default();
+    let method = match draft.method {
+        crate::core::request::HttpMethod::Post => "post",
+        crate::core::request::HttpMethod::Put => "put",
+        crate::core::request::HttpMethod::Delete => "delete",
+        crate::core::request::HttpMethod::Patch => "patch",
+        crate::core::request::HttpMethod::Head => "head",
+        _ => "get",
+    };
+    format!(
+        "// Cargo.toml: reqwest = {{ version = \"0.12\", features = [\"json\"] }}, tokio = {{ version = \"1\", features = [\"full\"] }}\n\
+#[tokio::main]\n\
+async fn main() -> Result<(), Box<dyn std::error::Error>> {{\n    \
+let client = reqwest::Client::new();\n    \
+let resp = client.{method}(\"{url}\")\n\
+{hdrs}{body}\
+        .send()\n\
+        .await?;\n    \
+println!(\"Status: {{}}\", resp.status());\n    \
+let body = resp.text().await?;\n    \
+println!(\"{{body}}\");\n    \
+Ok(())\n\
+}}",
+        url = url_with_params(draft),
+    )
+}
+
+fn typescript_axios(draft: &RequestDraft) -> String {
+    let mut headers = String::from("{\n");
+    for (k, v) in enabled_headers(draft) {
+        headers.push_str(&format!("    \"{k}\": \"{}\",\n", v.replace('"', "\\\"")));
+    }
+    if let Some((k, v)) = auth_header(draft) {
+        headers.push_str(&format!("    \"{k}\": \"{}\",\n", v.replace('"', "\\\"")));
+    }
+    headers.push_str("  }");
+    let data_prop = body_payload(draft)
+        .map(|b| format!(",\n  data: {}", serde_json::to_string(&b).unwrap_or_default()))
+        .unwrap_or_default();
+    format!(
+        "import axios from 'axios';\n\n\
+const config = {{\n  \
+method: '{method}',\n  \
+url: '{url}',\n  \
+headers: {headers}{data_prop}\n\
+}};\n\n\
+axios.request(config)\n  \
+.then((response) => {{\n    \
+console.log(response.status, response.data);\n  \
+}})\n  \
+.catch((error) => {{\n    \
+console.error(error);\n  \
+}});\n",
+        method = draft.method.as_str().to_lowercase(),
+        url = url_with_params(draft),
+    )
+}
+
+fn python_httpx(draft: &RequestDraft) -> String {
+    let mut headers = String::from("{\n");
+    for (k, v) in enabled_headers(draft) {
+        headers.push_str(&format!("    \"{k}\": \"{}\",\n", v.replace('"', "\\\"")));
+    }
+    if let Some((k, v)) = auth_header(draft) {
+        headers.push_str(&format!("    \"{k}\": \"{}\",\n", v.replace('"', "\\\"")));
+    }
+    headers.push_str("  }");
+    let url = url_with_params(draft);
+    let method = draft.method.as_str().to_lowercase();
+    match body_payload(draft) {
+        Some(b) if draft.body_mode == BodyMode::Raw || draft.body_mode == BodyMode::Graphql => {
+            format!(
+                "import asyncio\nimport httpx\n\n\
+async def main():\n    \
+headers = {headers}\n    \
+content = {data}\n    \
+async with httpx.AsyncClient() as client:\n        \
+resp = await client.{method}(\"{url}\", headers=headers, content=content)\n        \
+print(resp.status_code, resp.text)\n\n\
+asyncio.run(main())\n",
+                data = serde_json::to_string(&b).unwrap_or_default()
+            )
+        }
+        _ => format!(
+            "import asyncio\nimport httpx\n\n\
+async def main():\n    \
+headers = {headers}\n    \
+async with httpx.AsyncClient() as client:\n        \
+resp = await client.{method}(\"{url}\", headers=headers)\n        \
+print(resp.status_code, resp.text)\n\n\
+asyncio.run(main())\n"
+        ),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -296,5 +450,32 @@ mod tests {
         let s = curl(&d);
         assert!(s.contains("GET"));
         assert!(s.contains("curl"));
+    }
+
+    #[test]
+    fn test_new_snippets_and_resolution() {
+        let mut d = RequestDraft::default();
+        d.url = "https://api.example.com/{{resource}}".into();
+        d.headers.push(crate::core::request::KeyValue {
+            key: "X-Key".into(),
+            value: "{{api_key}}".into(),
+            enabled: true,
+        });
+
+        let mut vars = crate::core::variables::VariableContext::default();
+        vars.local.insert("resource".into(), "users".into());
+        vars.local.insert("api_key".into(), "secret123".into());
+
+        let rust_code = generate_snippet_resolved("Rust (reqwest)", &d, Some(&vars));
+        assert!(rust_code.contains("https://api.example.com/users"));
+        assert!(rust_code.contains("secret123"));
+        assert!(rust_code.contains("reqwest::Client"));
+
+        let ts_code = generate_snippet_resolved("TypeScript (axios)", &d, Some(&vars));
+        assert!(ts_code.contains("axios.request"));
+        assert!(ts_code.contains("https://api.example.com/users"));
+
+        let py_code = generate_snippet_resolved("Python (httpx)", &d, Some(&vars));
+        assert!(py_code.contains("httpx.AsyncClient"));
     }
 }

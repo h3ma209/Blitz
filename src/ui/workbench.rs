@@ -7,6 +7,7 @@ use crate::core::{
     clone_or_ensure, delete_needs_confirmation, duplicate_across, ensure_default_environments,
     export_collection_v21, flatten_collections, insert_item_under,
     export_environment_json, find_environment, find_request_across, generate_snippet,
+    generate_snippet_resolved, generate_static_doc_html,
     graphql_ws_subscribe, grpc_reflection_list, grpc_unary, import_collection_v21, import_curl,
     import_environment_texts, import_har, import_openapi3, interceptor_limits_blurb,
     limitations_blurb, link_folder, mcp_call_tool, mcp_list_tools, mqtt_publish, mqtt_subscribe_once,
@@ -144,6 +145,7 @@ pub fn Workbench() -> Element {
     let mut show_trash = use_signal(|| false);
     let mut show_snippets = use_signal(|| false);
     let mut snippet_lang = use_signal(|| "cURL".to_string());
+    let mut snippet_resolve_vars = use_signal(|| true);
     let mut mock_port = use_signal(|| None::<u16>);
     let mut ws_connected = use_signal(|| false);
     let mut protocol_log = use_signal(Vec::<String>::new);
@@ -1563,6 +1565,27 @@ pub fn Workbench() -> Element {
                                 class: "menu-item",
                                 onclick: move |_| {
                                     file_menu_open.set(false);
+                                    let cols = collections();
+                                    let col = active_collection_id()
+                                        .and_then(|id| cols.iter().find(|c| c.id == id))
+                                        .or_else(|| cols.first());
+                                    match col {
+                                        Some(c) => {
+                                            let html = generate_static_doc_html(c);
+                                            impex_modal.set(Some(ImpexModal::Export {
+                                                name: format!("{}_docs.html", c.name.to_lowercase().replace(' ', "_")),
+                                                text: html,
+                                            }));
+                                        }
+                                        None => status_msg.set("no collection to export docs".into()),
+                                    }
+                                },
+                                "Export Static HTML Docs…"
+                            }
+                            button {
+                                class: "menu-item",
+                                onclick: move |_| {
+                                    file_menu_open.set(false);
                                     is_loading.set(true);
                                     spawn(async move {
                                         let picked = rfd::FileDialog::new()
@@ -2630,21 +2653,64 @@ pub fn Workbench() -> Element {
             }
 
             if show_snippets() {
-                ModalShell {
-                    title: "Code snippet".to_string(),
-                    on_close: move |_| show_snippets.set(false),
-                    div { class: "modal-body",
-                        select {
-                            value: "{snippet_lang()}",
-                            onchange: move |evt| snippet_lang.set(evt.value()),
-                            for lang in snippet_languages() {
-                                option { value: "{lang}", "{lang}" }
+                {
+                    let code_content = if snippet_resolve_vars() {
+                        let v = vars();
+                        generate_snippet_resolved(&snippet_lang(), &draft(), Some(&v))
+                    } else {
+                        generate_snippet_resolved(&snippet_lang(), &draft(), None)
+                    };
+                    let code_for_copy = code_content.clone();
+
+                    rsx! {
+                        ModalShell {
+                            title: "Generate Code Snippet".to_string(),
+                            on_close: move |_| show_snippets.set(false),
+                            div { class: "modal-body",
+                                div { style: "display: flex; gap: 12px; align-items: center; margin-bottom: 12px; justify-content: space-between;",
+                                    div { style: "display: flex; gap: 8px; align-items: center;",
+                                        span { class: "hint", "Language:" }
+                                        select {
+                                            value: "{snippet_lang()}",
+                                            onchange: move |evt| snippet_lang.set(evt.value()),
+                                            for lang in snippet_languages() {
+                                                option { value: "{lang}", "{lang}" }
+                                            }
+                                        }
+                                    }
+                                    label { style: "display: flex; gap: 6px; align-items: center; cursor: pointer; font-size: 12px;",
+                                        input {
+                                            r#type: "checkbox",
+                                            checked: "{snippet_resolve_vars()}",
+                                            onchange: move |evt| snippet_resolve_vars.set(evt.checked()),
+                                        }
+                                        span { "Resolve Variables" }
+                                    }
+                                }
+                                pre {
+                                    class: "response-body",
+                                    style: "max-height: 380px; overflow-y: auto; user-select: text;",
+                                    "{code_content}"
+                                }
+                            }
+                            div { class: "modal-actions",
+                                button {
+                                    class: "btn btn-primary",
+                                    onclick: move |_| {
+                                        let c = code_for_copy.clone();
+                                        let script = format!(
+                                            "navigator.clipboard.writeText({});",
+                                            serde_json::to_string(&c).unwrap_or_else(|_| "\"\"".into())
+                                        );
+                                        spawn(async move {
+                                            let _ = document::eval(&script).await;
+                                        });
+                                    },
+                                    "Copy to Clipboard"
+                                }
+                                button { class: "btn btn-ghost", onclick: move |_| show_snippets.set(false), "Close" }
                             }
                         }
-                        pre { class: "response-body", "{generate_snippet(&snippet_lang(), &draft())}" }
-                    }
-                    div { class: "modal-actions",
-                        button { class: "btn btn-ghost", onclick: move |_| show_snippets.set(false), "Close" }
                     }
                 }
             }

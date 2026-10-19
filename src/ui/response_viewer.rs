@@ -70,9 +70,9 @@ pub fn ResponseViewer(
                         }
                         button {
                             class: "btn btn-ghost",
-                            title: "Save as example",
+                            title: "Save response as mock route example (served by local Mock Server)",
                             onclick: move |_| on_save_example.call(()),
-                            "Save example"
+                            "⚡ Save to Mock"
                         }
                     }
                 }

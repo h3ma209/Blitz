@@ -581,6 +581,38 @@ pub fn open_in_file_manager(path: &Path) -> Result<(), CloudGitError> {
     Ok(())
 }
 
+/// Detects if there are active unmerged Git conflicts in the workspace.
+/// Returns list of conflicting file paths relative to `cwd`.
+pub fn detect_git_conflicts(cwd: &Path) -> Result<Vec<String>, CloudGitError> {
+    let out = run_git(cwd, &["status", "--porcelain"])?;
+    let mut conflicts = Vec::new();
+    for line in out.lines() {
+        let trimmed = line.trim_start();
+        if trimmed.starts_with("UU ")
+            || trimmed.starts_with("AA ")
+            || trimmed.starts_with("UD ")
+            || trimmed.starts_with("DU ")
+        {
+            if let Some(path) = line.get(3..) {
+                conflicts.push(path.trim().to_string());
+            }
+        }
+    }
+    Ok(conflicts)
+}
+
+/// Resolves conflicting files by choosing either `--ours` or `--theirs` and staging the result.
+pub fn resolve_git_conflicts(cwd: &Path, paths: &[String], keep_local: bool) -> Result<(), CloudGitError> {
+    let flag = if keep_local { "--ours" } else { "--theirs" };
+    for path in paths {
+        let _ = run_git(cwd, &["checkout", flag, path]);
+        let _ = run_git(cwd, &["add", path]);
+    }
+    // Complete the rebase or commit if applicable
+    let _ = run_git(cwd, &["rebase", "--continue"]);
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
