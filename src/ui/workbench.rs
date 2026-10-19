@@ -187,6 +187,7 @@ pub fn Workbench() -> Element {
     let mut console_h = use_signal(|| app_settings().ui.console_height_px as f64);
     // Loading state for async operations (import, etc.)
     let mut is_loading = use_signal(|| false);
+    let mut team_syncing = use_signal(|| false);
     let mut pending_delete = use_signal(|| None::<PendingDelete>);
     let mut tree_clipboard = use_signal(|| None::<TreeClipboard>);
 
@@ -2061,40 +2062,44 @@ pub fn Workbench() -> Element {
                                         status_msg.set("cloud: cannot open store".into());
                                         return;
                                     };
-                                    let mut settings = app_settings();
-                                    settings.cloud_sync.enabled = true;
-                                    match pull_workspace(
-                                        store.root(),
-                                        &mut settings,
-                                        &environments(),
-                                    ) {
-                                        Ok((cols, envs, r)) => {
-                                            app_settings.set(settings);
-                                            if !cols.is_empty() {
-                                                collections.set(cols);
-                                                fold_epoch.set(fold_epoch() + 1);
+                                    is_loading.set(true);
+                                    spawn(async move {
+                                        let mut settings = app_settings();
+                                        settings.cloud_sync.enabled = true;
+                                        match pull_workspace(
+                                            store.root(),
+                                            &mut settings,
+                                            &environments(),
+                                        ) {
+                                            Ok((cols, envs, r)) => {
+                                                app_settings.set(settings);
+                                                if !cols.is_empty() {
+                                                    collections.set(cols);
+                                                    fold_epoch.set(fold_epoch() + 1);
+                                                }
+                                                if !envs.is_empty() {
+                                                    let mut v = vars();
+                                                    sync_env_vars(&envs, active_env_id(), &mut v);
+                                                    vars.set(v);
+                                                    environments.set(envs);
+                                                }
+                                                status_msg.set(r.message);
+                                                persist_local();
                                             }
-                                            if !envs.is_empty() {
-                                                let mut v = vars();
-                                                sync_env_vars(&envs, active_env_id(), &mut v);
-                                                vars.set(v);
-                                                environments.set(envs);
+                                            Err(e) => {
+                                                let conflicts = detect_git_conflicts(store.root()).unwrap_or_default();
+                                                if !conflicts.is_empty() {
+                                                    conflict_state.set(Some(ConflictState { files: conflicts, selected_idx: 0 }));
+                                                    active_request_id.set(None);
+                                                    editing_collection_id.set(None);
+                                                    status_msg.set("⚔️ Merge conflicts detected — opened in main section".into());
+                                                } else {
+                                                    status_msg.set(format!("pull: {e}"));
+                                                }
                                             }
-                                            status_msg.set(r.message);
-                                            persist_local();
                                         }
-                                        Err(e) => {
-                                            let conflicts = detect_git_conflicts(store.root()).unwrap_or_default();
-                                            if !conflicts.is_empty() {
-                                                conflict_state.set(Some(ConflictState { files: conflicts, selected_idx: 0 }));
-                                                active_request_id.set(None);
-                                                editing_collection_id.set(None);
-                                                status_msg.set("⚔️ Merge conflicts detected — opened in main section".into());
-                                            } else {
-                                                status_msg.set(format!("pull: {e}"));
-                                            }
-                                        }
-                                    }
+                                        is_loading.set(false);
+                                    });
                                 },
                                 "Pull"
                             }
@@ -2106,29 +2111,33 @@ pub fn Workbench() -> Element {
                                         status_msg.set("cloud: cannot open store".into());
                                         return;
                                     };
-                                    let mut settings = app_settings();
-                                    settings.cloud_sync.enabled = true;
-                                    if settings.cloud_sync.remote_url.trim().is_empty() {
-                                        settings.cloud_sync.remote_url =
-                                            DEFAULT_CLOUD_REMOTE.to_string();
-                                    }
-                                    let active_environment =
-                                        find_environment(&environments(), active_env_id())
-                                            .map(|e| e.name.clone())
-                                            .unwrap_or_else(|| "No Environment".into());
-                                    let commit = settings.cloud_sync.commit_message.clone();
-                                    let r = push_workspace(
-                                        store.root(),
-                                        &mut settings,
-                                        &collections(),
-                                        &environments(),
-                                        &active_environment,
-                                        Some(commit.as_str()),
-                                        &vars(),
-                                    );
-                                    app_settings.set(settings);
-                                    status_msg.set(r.message);
-                                    persist_local();
+                                    is_loading.set(true);
+                                    spawn(async move {
+                                        let mut settings = app_settings();
+                                        settings.cloud_sync.enabled = true;
+                                        if settings.cloud_sync.remote_url.trim().is_empty() {
+                                            settings.cloud_sync.remote_url =
+                                                DEFAULT_CLOUD_REMOTE.to_string();
+                                        }
+                                        let active_environment =
+                                            find_environment(&environments(), active_env_id())
+                                                .map(|e| e.name.clone())
+                                                .unwrap_or_else(|| "No Environment".into());
+                                        let commit = settings.cloud_sync.commit_message.clone();
+                                        let r = push_workspace(
+                                            store.root(),
+                                            &mut settings,
+                                            &collections(),
+                                            &environments(),
+                                            &active_environment,
+                                            Some(commit.as_str()),
+                                            &vars(),
+                                        );
+                                        app_settings.set(settings);
+                                        status_msg.set(r.message);
+                                        persist_local();
+                                        is_loading.set(false);
+                                    });
                                 },
                                 "Push"
                             }
@@ -2157,16 +2166,20 @@ pub fn Workbench() -> Element {
                                         status_msg.set("team: cannot open store".into());
                                         return;
                                     };
-                                    let mut settings = app_settings();
-                                    if settings.cloud_sync.remote_url.trim().is_empty() {
-                                        settings.cloud_sync.remote_url = DEFAULT_CLOUD_REMOTE.to_string();
-                                    }
-                                    let _ = clone_or_ensure(store.root(), &mut settings);
-                                    let clone_path = settings.cloud_sync.resolved_clone_path(store.root());
-                                    if let Ok(act) = get_team_activity(&clone_path, 30) {
-                                        team_activity.set(act);
-                                    }
                                     show_team.set(true);
+                                    team_syncing.set(true);
+                                    spawn(async move {
+                                        let mut settings = app_settings();
+                                        if settings.cloud_sync.remote_url.trim().is_empty() {
+                                            settings.cloud_sync.remote_url = DEFAULT_CLOUD_REMOTE.to_string();
+                                        }
+                                        let _ = clone_or_ensure(store.root(), &mut settings);
+                                        let clone_path = settings.cloud_sync.resolved_clone_path(store.root());
+                                        if let Ok(act) = get_team_activity(&clone_path, 30) {
+                                            team_activity.set(act);
+                                        }
+                                        team_syncing.set(false);
+                                    });
                                 },
                                 "Team activity…"
                             }
@@ -4105,76 +4118,98 @@ pub fn Workbench() -> Element {
             if show_team() {
                 TeamModal {
                     activity: team_activity(),
+                    is_syncing: team_syncing(),
                     on_close: move |_| show_team.set(false),
                     on_refresh: move |_| {
-                        let Ok(store) = JsonStore::open_default() else { return; };
-                        let settings = app_settings();
-                        let clone_path = settings.cloud_sync.resolved_clone_path(store.root());
-                        if let Ok(act) = get_team_activity(&clone_path, 30) {
-                            team_activity.set(act);
-                            status_msg.set("team: refreshed activity".into());
-                        }
+                        team_syncing.set(true);
+                        spawn(async move {
+                            let Ok(store) = JsonStore::open_default() else {
+                                team_syncing.set(false);
+                                return;
+                            };
+                            let settings = app_settings();
+                            let clone_path = settings.cloud_sync.resolved_clone_path(store.root());
+                            if let Ok(act) = get_team_activity(&clone_path, 30) {
+                                team_activity.set(act);
+                                status_msg.set("team: refreshed activity".into());
+                            }
+                            team_syncing.set(false);
+                        });
                     },
                     on_pull: move |_| {
-                        let Ok(store) = JsonStore::open_default() else { return; };
-                        let mut settings = app_settings();
-                        match pull_workspace(store.root(), &mut settings, &environments()) {
-                            Ok((cols, envs, r)) => {
-                                app_settings.set(settings.clone());
-                                if !cols.is_empty() {
-                                    collections.set(cols);
-                                    fold_epoch.set(fold_epoch() + 1);
+                        team_syncing.set(true);
+                        spawn(async move {
+                            let Ok(store) = JsonStore::open_default() else {
+                                team_syncing.set(false);
+                                return;
+                            };
+                            let mut settings = app_settings();
+                            match pull_workspace(store.root(), &mut settings, &environments()) {
+                                Ok((cols, envs, r)) => {
+                                    app_settings.set(settings.clone());
+                                    if !cols.is_empty() {
+                                        collections.set(cols);
+                                        fold_epoch.set(fold_epoch() + 1);
+                                    }
+                                    if !envs.is_empty() {
+                                        let mut v = vars();
+                                        sync_env_vars(&envs, active_env_id(), &mut v);
+                                        vars.set(v);
+                                        environments.set(envs);
+                                    }
+                                    let clone_path = settings.cloud_sync.resolved_clone_path(store.root());
+                                    if let Ok(act) = get_team_activity(&clone_path, 30) {
+                                        team_activity.set(act);
+                                    }
+                                    status_msg.set(r.message);
+                                    persist_local();
                                 }
-                                if !envs.is_empty() {
-                                    let mut v = vars();
-                                    sync_env_vars(&envs, active_env_id(), &mut v);
-                                    vars.set(v);
-                                    environments.set(envs);
+                                Err(e) => {
+                                    let conflicts = detect_git_conflicts(store.root()).unwrap_or_default();
+                                    if !conflicts.is_empty() {
+                                        show_team.set(false);
+                                        conflict_state.set(Some(ConflictState { files: conflicts, selected_idx: 0 }));
+                                        active_request_id.set(None);
+                                        editing_collection_id.set(None);
+                                        status_msg.set("⚔️ Merge conflicts detected — opened in main section".into());
+                                    } else {
+                                        status_msg.set(format!("pull: {e}"));
+                                    }
                                 }
-                                let clone_path = settings.cloud_sync.resolved_clone_path(store.root());
-                                if let Ok(act) = get_team_activity(&clone_path, 30) {
-                                    team_activity.set(act);
-                                }
-                                status_msg.set(r.message);
-                                persist_local();
                             }
-                            Err(e) => {
-                                let conflicts = detect_git_conflicts(store.root()).unwrap_or_default();
-                                if !conflicts.is_empty() {
-                                    show_team.set(false);
-                                    conflict_state.set(Some(ConflictState { files: conflicts, selected_idx: 0 }));
-                                    active_request_id.set(None);
-                                    editing_collection_id.set(None);
-                                    status_msg.set("⚔️ Merge conflicts detected — opened in main section".into());
-                                } else {
-                                    status_msg.set(format!("pull: {e}"));
-                                }
-                            }
-                        }
+                            team_syncing.set(false);
+                        });
                     },
                     on_push: move |_| {
-                        let Ok(store) = JsonStore::open_default() else { return; };
-                        let mut settings = app_settings();
-                        let active_env_name = find_environment(&environments(), active_env_id())
-                            .map(|e| e.name.clone())
-                            .unwrap_or_else(|| "No Environment".into());
-                        let commit = settings.cloud_sync.commit_message.clone();
-                        let r = push_workspace(
-                            store.root(),
-                            &mut settings,
-                            &collections(),
-                            &environments(),
-                            &active_env_name,
-                            Some(commit.as_str()),
-                            &vars(),
-                        );
-                        app_settings.set(settings.clone());
-                        let clone_path = settings.cloud_sync.resolved_clone_path(store.root());
-                        if let Ok(act) = get_team_activity(&clone_path, 30) {
-                            team_activity.set(act);
-                        }
-                        status_msg.set(r.message);
-                        persist_local();
+                        team_syncing.set(true);
+                        spawn(async move {
+                            let Ok(store) = JsonStore::open_default() else {
+                                team_syncing.set(false);
+                                return;
+                            };
+                            let mut settings = app_settings();
+                            let active_env_name = find_environment(&environments(), active_env_id())
+                                .map(|e| e.name.clone())
+                                .unwrap_or_else(|| "No Environment".into());
+                            let commit = settings.cloud_sync.commit_message.clone();
+                            let r = push_workspace(
+                                store.root(),
+                                &mut settings,
+                                &collections(),
+                                &environments(),
+                                &active_env_name,
+                                Some(commit.as_str()),
+                                &vars(),
+                            );
+                            app_settings.set(settings.clone());
+                            let clone_path = settings.cloud_sync.resolved_clone_path(store.root());
+                            if let Ok(act) = get_team_activity(&clone_path, 30) {
+                                team_activity.set(act);
+                            }
+                            status_msg.set(r.message);
+                            persist_local();
+                            team_syncing.set(false);
+                        });
                     },
                 }
             }

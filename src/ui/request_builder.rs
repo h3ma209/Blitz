@@ -145,7 +145,14 @@ pub fn RequestBuilder(
                     class: if sending { "btn btn-ghost btn-cancel" } else { "btn btn-send" },
                     title: if sending { "Cancel in-flight request" } else { "Send request (⌘↵)" },
                     onclick: move |_| on_send.call(()),
-                    if sending { "Cancel" } else if draft.protocol == RequestProtocol::Grpc { "Invoke" } else { "Send" }
+                    if sending {
+                        span { class: "loading-spinner-cancel" }
+                        span { "Cancel" }
+                    } else if draft.protocol == RequestProtocol::Grpc {
+                        "Invoke"
+                    } else {
+                        "Send"
+                    }
                 }
             }
         }

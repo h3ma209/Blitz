@@ -3,6 +3,7 @@
 
 use dioxus::prelude::*;
 use crate::core::TeamActivity;
+use crate::ui::loading::{SkeletonBars, Spinner};
 use super::ModalShell;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -15,6 +16,7 @@ pub enum TeamTab {
 #[component]
 pub fn TeamModal(
     activity: TeamActivity,
+    #[props(default)] is_syncing: bool,
     on_close: EventHandler<()>,
     on_refresh: EventHandler<()>,
     on_pull: EventHandler<()>,
@@ -46,23 +48,35 @@ pub fn TeamModal(
                     div { class: "team-actions-group",
                         button {
                             class: "btn btn-ghost btn-sm",
+                            disabled: is_syncing,
                             title: "Refresh team activity from Git",
                             onclick: move |_| on_refresh.call(()),
-                            "↻ Refresh"
+                            if is_syncing {
+                                Spinner { class: "spinner-sm".to_string() }
+                                span { style: "margin-left: 6px;", "Syncing…" }
+                            } else {
+                                "↻ Refresh"
+                            }
                         }
                         button {
                             class: "btn btn-ghost btn-sm",
+                            disabled: is_syncing,
                             title: "Pull latest team changes (git pull --rebase)",
                             onclick: move |_| on_pull.call(()),
                             "↓ Pull"
                         }
                         button {
                             class: "btn btn-send btn-sm",
+                            disabled: is_syncing,
                             title: "Push local changes to team (git push)",
                             onclick: move |_| on_push.call(()),
                             "↑ Push"
                         }
                     }
+                }
+
+                if is_syncing {
+                    div { class: "sync-progress-bar" }
                 }
 
                 // Subnav Tabs
@@ -89,9 +103,18 @@ pub fn TeamModal(
                     match active_tab() {
                         TeamTab::RecentChanges => rsx! {
                             if activity.recent_commits.is_empty() {
-                                div { class: "team-empty",
-                                    p { "No recent commits found in this repository branch." }
-                                    p { class: "hint", "Commits and team history will appear here once saved or synced." }
+                                if is_syncing {
+                                    div { class: "team-loading-state",
+                                        style: "display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; padding: 48px 16px;",
+                                        Spinner { class: "spinner-lg".to_string() }
+                                        p { class: "hint", "Fetching team commits from Git Cloud…" }
+                                        SkeletonBars { n: 5 }
+                                    }
+                                } else {
+                                    div { class: "team-empty",
+                                        p { "No recent commits found in this repository branch." }
+                                        p { class: "hint", "Commits and team history will appear here once saved or synced." }
+                                    }
                                 }
                             } else {
                                 div { class: "team-commits-split",
@@ -194,9 +217,18 @@ pub fn TeamModal(
                         },
                         TeamTab::Members => rsx! {
                             if activity.members.is_empty() {
-                                div { class: "team-empty",
-                                    p { "No contributors discovered in git log yet." }
-                                    p { class: "hint", "Authors will appear here automatically as commits are authored in this repository." }
+                                if is_syncing {
+                                    div { class: "team-loading-state",
+                                        style: "display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; padding: 48px 16px;",
+                                        Spinner { class: "spinner-lg".to_string() }
+                                        p { class: "hint", "Parsing contributors from Git history…" }
+                                        SkeletonBars { n: 4 }
+                                    }
+                                } else {
+                                    div { class: "team-empty",
+                                        p { "No contributors discovered in git log yet." }
+                                        p { class: "hint", "Authors will appear here automatically as commits are authored in this repository." }
+                                    }
                                 }
                             } else {
                                 div { class: "team-members-grid",

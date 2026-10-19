@@ -5,7 +5,7 @@ use crate::core::{AuthConfig, Collection, KeyValue, VariableContext};
 use crate::runtime::{run_collection_with_config, RunnerConfig, RunnerReport};
 use crate::ui::request_builder::{AuthEditor, ScriptsEditor};
 use crate::ui::CommentableTextarea;
-use crate::ui::loading::Spinner;
+use crate::ui::loading::{SkeletonBars, Spinner};
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum CollectionEditorTab {
@@ -25,6 +25,7 @@ pub fn CollectionEditor(
     on_close: EventHandler<()>,
 ) -> Element {
     let mut tab = use_signal(|| CollectionEditorTab::Overview);
+    let mut exporting_docs = use_signal(|| false);
 
     // Runs tab runner state
     let mut runner_iterations = use_signal(|| 1usize);
@@ -141,32 +142,44 @@ pub fn CollectionEditor(
                                 button {
                                     class: "btn btn-primary",
                                     style: "white-space: nowrap; margin-left: 16px;",
+                                    disabled: exporting_docs(),
                                     onclick: {
                                         let collection = collection.clone();
                                         move |_| {
-                                            let html = crate::core::generate_static_doc_html(&collection);
-                                            let safe_name = collection.name.to_lowercase().replace(' ', "-");
-                                            let script = format!(
-                                                r#"
-                                                const blob = new Blob([{}], {{ type: 'text/html' }});
-                                                const url = URL.createObjectURL(blob);
-                                                const a = document.createElement('a');
-                                                a.href = url;
-                                                a.download = '{}-docs.html';
-                                                document.body.appendChild(a);
-                                                a.click();
-                                                document.body.removeChild(a);
-                                                URL.revokeObjectURL(url);
-                                                "#,
-                                                serde_json::to_string(&html).unwrap_or_else(|_| "\"\"".into()),
-                                                safe_name
-                                            );
+                                            if exporting_docs() {
+                                                return;
+                                            }
+                                            exporting_docs.set(true);
+                                            let collection = collection.clone();
                                             spawn(async move {
+                                                let html = crate::core::generate_static_doc_html(&collection);
+                                                let safe_name = collection.name.to_lowercase().replace(' ', "-");
+                                                let script = format!(
+                                                    r#"
+                                                    const blob = new Blob([{}], {{ type: 'text/html' }});
+                                                    const url = URL.createObjectURL(blob);
+                                                    const a = document.createElement('a');
+                                                    a.href = url;
+                                                    a.download = '{}-docs.html';
+                                                    document.body.appendChild(a);
+                                                    a.click();
+                                                    document.body.removeChild(a);
+                                                    URL.revokeObjectURL(url);
+                                                    "#,
+                                                    serde_json::to_string(&html).unwrap_or_else(|_| "\"\"".into()),
+                                                    safe_name
+                                                );
                                                 let _ = document::eval(&script).await;
+                                                exporting_docs.set(false);
                                             });
                                         }
                                     },
-                                    "Export HTML Docs"
+                                    if exporting_docs() {
+                                        Spinner { class: "spinner-sm".to_string() }
+                                        span { style: "margin-left: 6px;", "Exporting…" }
+                                    } else {
+                                        "Export HTML Docs"
+                                    }
                                 }
                             }
                         }
@@ -415,7 +428,12 @@ pub fn CollectionEditor(
                                             });
                                         }
                                     },
-                                    if runner_running() { "Running…" } else { "Run Collection" }
+                                    if runner_running() {
+                                        Spinner { class: "spinner-sm".to_string() }
+                                        span { style: "margin-left: 6px;", "Running…" }
+                                    } else {
+                                        "Run Collection"
+                                    }
                                 }
                             }
 
@@ -424,6 +442,7 @@ pub fn CollectionEditor(
                                     Spinner {}
                                     span { class: "loading-text", "Executing requests and scripts across collection…" }
                                 }
+                                SkeletonBars { n: 4 }
                             }
 
                             if let Some(rep) = runner_report() {
