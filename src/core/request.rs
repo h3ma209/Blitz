@@ -556,3 +556,94 @@ impl ResponseView {
         }
     }
 }
+
+/// Split URL at '?' into base URL and parsed KeyValue query parameters.
+pub fn extract_url_query_params(url: &str) -> (String, Vec<KeyValue>) {
+    if let Some((base, query)) = url.split_once('?') {
+        let mut params = Vec::new();
+        for part in query.split('&') {
+            if part.is_empty() {
+                continue;
+            }
+            if let Some((k, v)) = part.split_once('=') {
+                params.push(KeyValue {
+                    key: k.to_string(),
+                    value: v.to_string(),
+                    enabled: true,
+                });
+            } else {
+                params.push(KeyValue {
+                    key: part.to_string(),
+                    value: String::new(),
+                    enabled: true,
+                });
+            }
+        }
+        (base.to_string(), params)
+    } else {
+        (url.to_string(), Vec::new())
+    }
+}
+
+/// Rebuild URL with enabled KeyValue query parameters.
+pub fn build_url_with_params(base_url: &str, params: &[KeyValue]) -> String {
+    let clean_base = if let Some((base, _)) = base_url.split_once('?') {
+        base
+    } else {
+        base_url
+    };
+    let enabled_parts: Vec<String> = params
+        .iter()
+        .filter(|p| p.enabled && (!p.key.is_empty() || !p.value.is_empty()))
+        .map(|p| {
+            if p.value.is_empty() {
+                p.key.clone()
+            } else {
+                format!("{}={}", p.key, p.value)
+            }
+        })
+        .collect();
+
+    if enabled_parts.is_empty() {
+        clean_base.to_string()
+    } else {
+        format!("{}?{}", clean_base, enabled_parts.join("&"))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_extract_and_build_query_params() {
+        let url = "https://api.example.com/v1/users?role=admin&active=true&empty";
+        let (base, params) = extract_url_query_params(url);
+        assert_eq!(base, "https://api.example.com/v1/users");
+        assert_eq!(params.len(), 3);
+        assert_eq!(params[0].key, "role");
+        assert_eq!(params[0].value, "admin");
+        assert_eq!(params[1].key, "active");
+        assert_eq!(params[1].value, "true");
+        assert_eq!(params[2].key, "empty");
+        assert_eq!(params[2].value, "");
+
+        let rebuilt = build_url_with_params(&base, &params);
+        assert_eq!(rebuilt, url);
+
+        // Test with disabled param
+        let mut modified = params.clone();
+        modified[1].enabled = false;
+        let rebuilt2 = build_url_with_params(&base, &modified);
+        assert_eq!(rebuilt2, "https://api.example.com/v1/users?role=admin&empty");
+    }
+
+    #[test]
+    fn test_extract_url_without_query() {
+        let url = "https://api.example.com/v1/users";
+        let (base, params) = extract_url_query_params(url);
+        assert_eq!(base, url);
+        assert!(params.is_empty());
+        assert_eq!(build_url_with_params(&base, &params), url);
+    }
+}

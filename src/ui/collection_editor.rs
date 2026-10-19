@@ -132,6 +132,43 @@ pub fn CollectionEditor(
                                     span { "{collection.variables.len()} defined" }
                                 }
                             }
+
+                            div { class: "col-doc-export-card", style: "margin-top: 16px; padding: 14px 16px; background: var(--bg-surface-elevated); border: var(--glass-border); border-radius: var(--radius-md); display: flex; justify-content: space-between; align-items: center;",
+                                div {
+                                    h4 { style: "margin: 0 0 4px; font-size: 13px; font-weight: 600;", "🌐 Zero-Cloud Interactive Documentation" }
+                                    p { class: "hint", style: "margin: 0;", "Export standalone, single-file HTML documentation with interactive cURL, Python, TS, and Rust code samples. Zero Postman cloud required." }
+                                }
+                                button {
+                                    class: "btn btn-primary",
+                                    style: "white-space: nowrap; margin-left: 16px;",
+                                    onclick: {
+                                        let collection = collection.clone();
+                                        move |_| {
+                                            let html = crate::core::generate_static_doc_html(&collection);
+                                            let safe_name = collection.name.to_lowercase().replace(' ', "-");
+                                            let script = format!(
+                                                r#"
+                                                const blob = new Blob([{}], {{ type: 'text/html' }});
+                                                const url = URL.createObjectURL(blob);
+                                                const a = document.createElement('a');
+                                                a.href = url;
+                                                a.download = '{}-docs.html';
+                                                document.body.appendChild(a);
+                                                a.click();
+                                                document.body.removeChild(a);
+                                                URL.revokeObjectURL(url);
+                                                "#,
+                                                serde_json::to_string(&html).unwrap_or_else(|_| "\"\"".into()),
+                                                safe_name
+                                            );
+                                            spawn(async move {
+                                                let _ = document::eval(&script).await;
+                                            });
+                                        }
+                                    },
+                                    "Export HTML Docs"
+                                }
+                            }
                         }
                     },
                     CollectionEditorTab::Authorization => rsx! {
@@ -344,7 +381,7 @@ pub fn CollectionEditor(
                                     disabled: runner_running(),
                                     onclick: {
                                         let col = collection.clone();
-                                        let mut vars = vars.clone();
+                                        let vars = vars.clone();
                                         move |_| {
                                             if runner_running() {
                                                 return;

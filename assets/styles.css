@@ -4260,3 +4260,35 @@ html:has(.app-shell.theme-high-contrast) body {
   color: var(--text-secondary);
 }
 
+.response-search-bar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 4px 10px;
+  background: var(--bg-surface-elevated);
+  border-bottom: var(--glass-border);
+}
+
+.response-search-input {
+  flex: 1;
+  max-width: 260px;
+  padding: 4px 8px;
+  background: var(--bg-surface);
+  border: var(--glass-border);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font-size: var(--fs-caption);
+  outline: none;
+}
+
+.response-search-input:focus {
+  border-color: var(--accent);
+}
+
+mark.search-match {
+  background: rgba(250, 204, 21, 0.4);
+  color: #fff;
+  border-radius: 2px;
+  padding: 0 1px;
+}
+

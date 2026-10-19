@@ -614,6 +614,13 @@ pub fn resolve_git_conflicts(cwd: &Path, paths: &[String], keep_local: bool) -> 
     Ok(())
 }
 
+/// Retrieve the conflicting versions (:2: local / ours, :3: remote / theirs) from git index.
+pub fn get_conflict_file_versions(cwd: &Path, file_path: &str) -> (String, String) {
+    let ours = run_git(cwd, &["show", &format!(":2:{file_path}")]).unwrap_or_default();
+    let theirs = run_git(cwd, &["show", &format!(":3:{file_path}")]).unwrap_or_default();
+    (ours, theirs)
+}
+
 /// Team member contributor summary from git log.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct TeamMember {

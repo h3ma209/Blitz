@@ -46,9 +46,9 @@ use crate::ui::settings_panel::{SettingsEvent, SettingsPanel};
 use crate::ui::theme_selector::ThemeSelector;
 use crate::ui::sidebar::{Sidebar, SidebarAction, SidebarEvent};
 use crate::ui::CommentableTextarea;
-use crate::ui::{CollectionEditor, DismissBackdrop, ModalShell, TeamModal};
+use crate::ui::{CollectionEditor, ConflictResolver, ConflictState, DismissBackdrop, ModalShell, TeamModal};
 use crate::ui::loading::Spinner;
-use crate::core::{get_team_activity, TeamActivity};
+use crate::core::{detect_git_conflicts, get_team_activity, TeamActivity};
 
 /// Vertical pane drag state — handled on `.workbench`, never as bare `.app-shell` grid children.
 #[derive(Clone, Copy, PartialEq)]
@@ -171,6 +171,8 @@ pub fn Workbench() -> Element {
     let mut col_vars_open_id = use_signal(|| None::<Uuid>);
     // Active collection being edited in the main workspace view
     let mut editing_collection_id = use_signal(|| None::<Uuid>);
+    // Active merge conflict state displayed in main section
+    let mut conflict_state = use_signal(|| None::<ConflictState>);
     // Sidebar resize drag: (start client X, start width px).
     let mut sidebar_drag = use_signal(|| None::<(f64, f64)>);
     // Live sidebar width during drag — kept out of `app_settings` so the
@@ -1196,6 +1198,36 @@ pub fn Workbench() -> Element {
                     None => status_msg.set("no collection to export".into()),
                 }
             }
+            SidebarAction::ExportStaticDoc => {
+                let cols = collections();
+                let col = evt
+                    .collection_id
+                    .and_then(|id| cols.iter().find(|c| c.id == id))
+                    .or_else(|| cols.first());
+                if let Some(c) = col {
+                    let html = generate_static_doc_html(c);
+                    let safe_name = c.name.to_lowercase().replace(' ', "-");
+                    let script = format!(
+                        r#"
+                        const blob = new Blob([{}], {{ type: 'text/html' }});
+                        const url = URL.createObjectURL(blob);
+                        const a = document.createElement('a');
+                        a.href = url;
+                        a.download = '{}-docs.html';
+                        document.body.appendChild(a);
+                        a.click();
+                        document.body.removeChild(a);
+                        URL.revokeObjectURL(url);
+                        "#,
+                        serde_json::to_string(&html).unwrap_or_else(|_| "\"\"".into()),
+                        safe_name
+                    );
+                    spawn(async move {
+                        let _ = document::eval(&script).await;
+                    });
+                    status_msg.set(format!("exported static docs for '{}'", c.name));
+                }
+            }
             SidebarAction::ToggleHistoryCollapse => {
                 let mut s = app_settings();
                 s.ui.history_collapsed = !s.ui.history_collapsed;
@@ -2051,7 +2083,17 @@ pub fn Workbench() -> Element {
                                             status_msg.set(r.message);
                                             persist_local();
                                         }
-                                        Err(e) => status_msg.set(format!("pull: {e}")),
+                                        Err(e) => {
+                                            let conflicts = detect_git_conflicts(store.root()).unwrap_or_default();
+                                            if !conflicts.is_empty() {
+                                                conflict_state.set(Some(ConflictState { files: conflicts, selected_idx: 0 }));
+                                                active_request_id.set(None);
+                                                editing_collection_id.set(None);
+                                                status_msg.set("⚔️ Merge conflicts detected — opened in main section".into());
+                                            } else {
+                                                status_msg.set(format!("pull: {e}"));
+                                            }
+                                        }
                                     }
                                 },
                                 "Pull"
@@ -2185,6 +2227,18 @@ pub fn Workbench() -> Element {
                             if let Some(p) = proxy_port() {
                                 span { class: "live-chip live-proxy", title: "Capture proxy running", "Proxy :{p}" }
                             }
+                        }
+                    }
+                    if let Some(conf) = conflict_state() {
+                        button {
+                            class: "status-chip status-err",
+                            style: "cursor: pointer; margin-right: 4px; font-weight: 700;",
+                            title: "Click to resolve git merge conflicts in main section",
+                            onclick: move |_| {
+                                active_request_id.set(None);
+                                editing_collection_id.set(None);
+                            },
+                            "⚔️ {conf.files.len()} Conflicts"
                         }
                     }
                     button {
@@ -3462,7 +3516,29 @@ pub fn Workbench() -> Element {
                     }
                 }
 
-                if let Some(col) = editing_collection_id().and_then(|cid| collections().into_iter().find(|c| c.id == cid)) {
+                if let Some(conflict) = conflict_state() {
+                    ConflictResolver {
+                        root: std::path::PathBuf::from(data_root()),
+                        conflict,
+                        on_resolved: move |_| {
+                            let root = std::path::PathBuf::from(data_root());
+                            let remaining = detect_git_conflicts(&root).unwrap_or_default();
+                            if remaining.is_empty() {
+                                conflict_state.set(None);
+                                status_msg.set("Git conflicts resolved successfully".into());
+                                if let Ok(store) = JsonStore::open_default() {
+                                    if let Ok(snap) = store.load() {
+                                        collections.set(snap.collections);
+                                        environments.set(snap.environments);
+                                    }
+                                }
+                            } else {
+                                conflict_state.set(Some(ConflictState { files: remaining, selected_idx: 0 }));
+                            }
+                        },
+                        on_close: move |_| conflict_state.set(None),
+                    }
+                } else if let Some(col) = editing_collection_id().and_then(|cid| collections().into_iter().find(|c| c.id == cid)) {
                     CollectionEditor {
                         collection: col.clone(),
                         vars: vars(),
@@ -3503,6 +3579,7 @@ pub fn Workbench() -> Element {
                             },
                             on_change: move |d| draft.set(d),
                             on_send: move |_| do_send(()),
+                            on_open_code: move |_| show_snippets.set(true),
                             on_var_edit: move |evt: RequestVarEditEvent| {
                         match evt {
                             RequestVarEditEvent::Save {
@@ -4061,7 +4138,18 @@ pub fn Workbench() -> Element {
                                 status_msg.set(r.message);
                                 persist_local();
                             }
-                            Err(e) => status_msg.set(format!("pull: {e}")),
+                            Err(e) => {
+                                let conflicts = detect_git_conflicts(store.root()).unwrap_or_default();
+                                if !conflicts.is_empty() {
+                                    show_team.set(false);
+                                    conflict_state.set(Some(ConflictState { files: conflicts, selected_idx: 0 }));
+                                    active_request_id.set(None);
+                                    editing_collection_id.set(None);
+                                    status_msg.set("⚔️ Merge conflicts detected — opened in main section".into());
+                                } else {
+                                    status_msg.set(format!("pull: {e}"));
+                                }
+                            }
                         }
                     },
                     on_push: move |_| {

@@ -3,6 +3,7 @@
 mod code_editor;
 mod collection_editor;
 mod comment_toggle;
+mod conflict_resolver;
 mod console_panel;
 mod dismiss_backdrop;
 mod env_manager;
@@ -27,6 +28,7 @@ mod workbench;
 pub(crate) use team_modal::TeamModal;
 
 pub(crate) use collection_editor::CollectionEditor;
+pub(crate) use conflict_resolver::{ConflictResolver, ConflictState};
 pub(crate) use dismiss_backdrop::DismissBackdrop;
 pub(crate) use modal_shell::ModalShell;
 

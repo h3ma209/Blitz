@@ -36,6 +36,7 @@ pub fn RequestBuilder(
     vars: VariableContext,
     #[props(default)] data_root: String,
     on_var_edit: EventHandler<VarEditEvent>,
+    #[props(default)] on_open_code: EventHandler<()>,
 ) -> Element {
     let mut tab = use_signal(|| BuilderTab::Params);
 
@@ -102,12 +103,42 @@ pub fn RequestBuilder(
                 on_input: {
                     let draft = draft.clone();
                     move |url: String| {
+                        let trimmed = url.trim();
+                        // Smart cURL Paste detection
+                        if trimmed.starts_with("curl ")
+                            || trimmed.starts_with("curl\n")
+                            || trimmed.starts_with("curl\r\n")
+                        {
+                            if let Ok(mut imported) = crate::core::impex::import_curl(trimmed) {
+                                imported.id = draft.id;
+                                imported.name = draft.name.clone();
+                                on_change.call(imported);
+                                return;
+                            }
+                        }
+
                         let mut d = draft.clone();
+                        // Bi-directional URL -> Params sync
+                        if url.contains('?') {
+                            let (_, params) = crate::core::extract_url_query_params(&url);
+                            d.params = params;
+                        } else if !d.params.is_empty() && !url.ends_with('?') {
+                            d.params.clear();
+                        }
                         d.url = url;
                         on_change.call(d);
                     }
                 },
                 on_var_edit: on_var_edit.clone(),
+            }
+            if draft.protocol == RequestProtocol::Http {
+                button {
+                    class: "btn btn-ghost",
+                    style: "font-family: var(--mono); font-weight: 700; padding: 0 10px;",
+                    title: "Generate Code Snippet (cURL, Python, TS, Rust…)",
+                    onclick: move |_| on_open_code.call(()),
+                    "</>"
+                }
             }
             if draft.protocol == RequestProtocol::Http || draft.protocol == RequestProtocol::Grpc {
                 button {
@@ -161,6 +192,7 @@ pub fn RequestBuilder(
                             move |rows| {
                                 let mut d = draft.clone();
                                 d.params = rows;
+                                d.url = crate::core::build_url_with_params(&d.url, &d.params);
                                 on_change.call(d);
                             }
                         }

@@ -32,6 +32,9 @@ pub fn ResponseViewer(
     on_save_example: EventHandler<()>,
 ) -> Element {
     let mut tab = use_signal(|| resp_tab_from_default(default_tab));
+    let mut search_query = use_signal(String::new);
+    let mut search_open = use_signal(|| false);
+    let mut copied_body = use_signal(|| false);
 
     rsx! {
         section { class: "response-pane",
@@ -70,9 +73,67 @@ pub fn ResponseViewer(
                         }
                         button {
                             class: "btn btn-ghost",
+                            title: "Copy response body to clipboard",
+                            onclick: {
+                                let body = resp.body.clone();
+                                move |_| {
+                                    let script = format!(
+                                        "navigator.clipboard.writeText({});",
+                                        serde_json::to_string(&body).unwrap_or_else(|_| "\"\"".into())
+                                    );
+                                    spawn(async move {
+                                        let _ = document::eval(&script).await;
+                                    });
+                                    copied_body.set(true);
+                                }
+                            },
+                            if copied_body() { "✓ Copied" } else { "📋 Copy" }
+                        }
+                        button {
+                            class: if search_open() { "btn btn-ghost active" } else { "btn btn-ghost" },
+                            title: "Find in response (⌘F)",
+                            onclick: move |_| search_open.set(!search_open()),
+                            "🔍 Find"
+                        }
+                        button {
+                            class: "btn btn-ghost",
                             title: "Save response as mock route example (served by local Mock Server)",
                             onclick: move |_| on_save_example.call(()),
                             "⚡ Save to Mock"
+                        }
+                    }
+                }
+
+                if search_open() {
+                    div { class: "response-search-bar",
+                        input {
+                            class: "response-search-input",
+                            placeholder: "Search response body…",
+                            value: "{search_query()}",
+                            oninput: move |evt: Event<FormData>| search_query.set(evt.value()),
+                        }
+                        if !search_query().is_empty() {
+                            {
+                                let count = count_matches(&resp.body, &search_query());
+                                let text = if count == 0 {
+                                    "No matches".to_string()
+                                } else if count == 1 {
+                                    "1 match".to_string()
+                                } else {
+                                    format!("{count} matches")
+                                };
+                                rsx! { span { class: "hint", "{text}" } }
+                            }
+                        }
+                        button {
+                            class: "btn btn-ghost",
+                            style: "padding: 0 6px;",
+                            title: "Close search",
+                            onclick: move |_| {
+                                search_query.set(String::new());
+                                search_open.set(false);
+                            },
+                            "✕"
                         }
                     }
                 }
@@ -99,7 +160,16 @@ pub fn ResponseViewer(
                 match tab() {
                     RespTab::Pretty => {
                         let pretty = pretty_body(&resp.body);
-                        if should_highlight_json(&resp.body, &resp.headers) {
+                        let query = search_query();
+                        if !query.is_empty() {
+                            let highlighted = highlight_search_matches(&pretty, &query);
+                            rsx! {
+                                pre {
+                                    class: "response-body",
+                                    dangerous_inner_html: "{highlighted}",
+                                }
+                            }
+                        } else if should_highlight_json(&resp.body, &resp.headers) {
                             let html = render_json_highlight_html(&pretty);
                             rsx! {
                                 pre {
@@ -113,12 +183,25 @@ pub fn ResponseViewer(
                             }
                         }
                     },
-                    RespTab::Raw => rsx! {
-                        pre { class: "response-body",
-                            if resp.body.is_empty() && resp.error.is_none() {
-                                "(empty body)"
-                            } else {
-                                "{resp.body}"
+                    RespTab::Raw => {
+                        let query = search_query();
+                        if !query.is_empty() {
+                            let highlighted = highlight_search_matches(&resp.body, &query);
+                            rsx! {
+                                pre {
+                                    class: "response-body",
+                                    dangerous_inner_html: "{highlighted}",
+                                }
+                            }
+                        } else {
+                            rsx! {
+                                pre { class: "response-body",
+                                    if resp.body.is_empty() && resp.error.is_none() {
+                                        "(empty body)"
+                                    } else {
+                                        "{resp.body}"
+                                    }
+                                }
                             }
                         }
                     },
@@ -299,4 +382,40 @@ fn pretty_body(body: &str) -> String {
 fn looks_like_html(body: &str) -> bool {
     let t = body.trim_start().to_ascii_lowercase();
     t.starts_with("<!doctype html") || t.starts_with("<html") || t.contains("<body")
+}
+
+fn html_escape(s: &str) -> String {
+    s.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
+        .replace('\'', "&#39;")
+}
+
+fn count_matches(text: &str, query: &str) -> usize {
+    if query.is_empty() {
+        0
+    } else {
+        text.to_lowercase().match_indices(&query.to_lowercase()).count()
+    }
+}
+
+fn highlight_search_matches(text: &str, query: &str) -> String {
+    if query.is_empty() {
+        return html_escape(text);
+    }
+    let lower_text = text.to_lowercase();
+    let lower_query = query.to_lowercase();
+    let mut result = String::new();
+    let mut last_idx = 0;
+
+    for (idx, _) in lower_text.match_indices(&lower_query) {
+        result.push_str(&html_escape(&text[last_idx..idx]));
+        result.push_str("<mark class=\"search-match\">");
+        result.push_str(&html_escape(&text[idx..idx + query.len()]));
+        result.push_str("</mark>");
+        last_idx = idx + query.len();
+    }
+    result.push_str(&html_escape(&text[last_idx..]));
+    result
 }

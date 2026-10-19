@@ -38,6 +38,7 @@ pub enum SidebarAction {
     SaveHistoryToCollection,
     ImportCollection,
     ExportCollection,
+    ExportStaticDoc,
     ToggleHistoryCollapse,
 }
 
@@ -943,6 +944,17 @@ pub fn Sidebar(
                                                     ctx_menu.set(None);
                                                     on_event.call(SidebarEvent::new(
                                                         SidebarAction::ExportCollection,
+                                                        Some(mid),
+                                                        Some(mcol),
+                                                    ));
+                                                },
+                                            }
+                                            CtxMenuItem {
+                                                label: "Export Static HTML Docs",
+                                                onclick: move |_| {
+                                                    ctx_menu.set(None);
+                                                    on_event.call(SidebarEvent::new(
+                                                        SidebarAction::ExportStaticDoc,
                                                         Some(mid),
                                                         Some(mcol),
                                                     ));

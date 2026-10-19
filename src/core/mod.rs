@@ -74,9 +74,9 @@ pub use protocols::{
     WsSessionEvent,
 };
 pub use request::{
-    AuthConfig, AuthExtra, AuthType, BodyMode, FormDataField, HttpMethod, KeyValue, OAuth2Config,
-    OAuth2Grant, RequestDraft, RequestProtocol, ResponseView, SavedExample, TestResult,
-    TimingBreakdown,
+    build_url_with_params, extract_url_query_params, AuthConfig, AuthExtra, AuthType, BodyMode,
+    FormDataField, HttpMethod, KeyValue, OAuth2Config, OAuth2Grant, RequestDraft, RequestProtocol,
+    ResponseView, SavedExample, TestResult, TimingBreakdown,
 };
 pub use sandbox::{
     apply_request_header_upserts, body_mode_label, run_js_sandbox, run_js_sandbox_ex,
@@ -85,9 +85,10 @@ pub use sandbox::{
 pub use scripts::{run_script, run_script_ex, run_script_helpers, ScriptRunOutcome};
 pub use cloud_sync::{
     apply_sync_to_snapshot, branch_name_for_env, clone_or_ensure, detect_git_conflicts,
-    get_team_activity, git_available, link_folder, open_in_file_manager, pull_workspace,
-    push_workspace, refresh_status, resolve_git_conflicts, status_summary, switch_env_branch,
-    sync_environment, sync_on_save, ChangedFile, SyncResult, TeamActivity, TeamCommit, TeamMember,
+    get_conflict_file_versions, get_team_activity, git_available, link_folder,
+    open_in_file_manager, pull_workspace, push_workspace, refresh_status, resolve_git_conflicts,
+    status_summary, switch_env_branch, sync_environment, sync_on_save, ChangedFile, SyncResult,
+    TeamActivity, TeamCommit, TeamMember,
 };
 pub use settings::{
     AccentIntensity, AppSettings, ClientCertSettings, CloudSyncSettings, DefaultResponseTab,
