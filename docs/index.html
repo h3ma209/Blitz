@@ -3,8 +3,8 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>⚡ Blitz — Local-First, Blazing Fast API Client in Rust</title>
-  <meta name="description" content="Blitz is an ultra-fast, local-first API client built with Rust and Dioxus. Experience instant response rendering, rich glassmorphic interface, Git-based cloud sync, and full privacy.">
+  <title>⚡ Blitz — Why Developers Are Leaving Postman, Bruno & Insomnia</title>
+  <meta name="description" content="Blitz is the local-first, zero-bloat API workbench in Rust. Instant sub-150ms start, ~35MB RAM, native OS keychain, genuine Git-branch sync, and multi-protocol power without mandatory cloud logins.">
   <link rel="icon" type="image/png" href="logo-64.png">
 
   <!-- Google Fonts: Inter & JetBrains Mono -->
@@ -34,9 +34,6 @@
               bright: '#1ed760',
               dim: '#169c46',
             }
-          },
-          animation: {
-            'pulse-slow': 'pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite',
           }
         }
       }
@@ -85,7 +82,8 @@
   <!-- Ambient lighting backgrounds -->
   <div class="absolute top-[-140px] left-1/2 -translate-x-1/2 w-[700px] h-[600px] rounded-full bg-[radial-gradient(circle,rgba(29,185,84,0.38)_0%,rgba(30,215,96,0.04)_70%,transparent_100%)] blur-[140px] pointer-events-none z-0"></div>
   <div class="absolute top-[850px] right-[-120px] w-[600px] h-[600px] rounded-full bg-[radial-gradient(circle,rgba(78,161,255,0.22)_0%,transparent_70%)] blur-[140px] pointer-events-none z-0"></div>
-  <div class="absolute inset-0 h-[1400px] bg-grid pointer-events-none z-0"></div>
+  <div class="absolute top-[2200px] left-[-100px] w-[500px] h-[500px] rounded-full bg-[radial-gradient(circle,rgba(192,132,252,0.18)_0%,transparent_70%)] blur-[140px] pointer-events-none z-0"></div>
+  <div class="absolute inset-0 h-[2800px] bg-grid pointer-events-none z-0"></div>
 
   <!-- Floating Glass Navbar -->
   <header class="fixed top-5 inset-x-0 z-50 flex justify-center px-4">
@@ -97,8 +95,9 @@
       </div>
 
       <div class="flex items-center gap-6 text-sm font-medium">
+        <a href="#why-switch" class="text-spot-bright hover:text-white transition-colors">Why Switch?</a>
         <a href="#features" class="text-spot-muted hover:text-white transition-colors">Features</a>
-        <a href="#architecture" class="text-spot-muted hover:text-white transition-colors">Compare</a>
+        <a href="#benchmarks" class="text-spot-muted hover:text-white transition-colors">Comparison</a>
         <a href="#install" class="text-spot-muted hover:text-white transition-colors">Install</a>
         <a href="https://github.com/h3ma209/Blitz" target="_blank" rel="noopener" class="flex items-center gap-1.5 text-spot-muted hover:text-white transition-colors">
           <svg class="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
@@ -118,7 +117,7 @@
     <!-- Pill Badge -->
     <div class="inline-flex items-center gap-2.5 px-4 py-1.5 rounded-full glass-capsule text-xs text-spot-muted mb-8">
       <span class="w-2 h-2 rounded-full bg-spot-bright shadow-[0_0_8px_#1ed760] animate-pulse"></span>
-      <span>Local-first • Zero tracking • Native Rust Engine</span>
+      <span>Local-First • No Forced Cloud • Native Rust 1.83+</span>
     </div>
 
     <!-- Hero Title -->
@@ -128,8 +127,8 @@
     </h1>
 
     <!-- Hero Subtitle -->
-    <p class="text-base sm:text-xl text-spot-muted max-w-2xl mx-auto leading-relaxed mb-10">
-      Say goodbye to sluggish, bloated Electron API clients. Blitz delivers near-instant launch times, a Spotify-inspired glass stage, offline execution, and seamless Git-based cloud sync.
+    <p class="text-base sm:text-xl text-spot-muted max-w-3xl mx-auto leading-relaxed mb-10">
+      Fed up with Postman holding your collections hostage behind forced cloud accounts, or bloated Electron apps eating 1GB of RAM? Blitz is the native, zero-cloud API client built for developers who demand instant boot times, privacy, and full Git workflow control.
     </p>
 
     <!-- Call to Actions -->
@@ -138,13 +137,11 @@
         <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3"/>
         </svg>
-        Install Blitz
+        Install Free & Open Source
       </a>
-      <a href="https://github.com/h3ma209/Blitz" target="_blank" rel="noopener" class="w-full sm:w-auto inline-flex items-center justify-center gap-2 bg-white/5 hover:bg-white/10 text-white border border-white/10 hover:border-white/20 font-semibold text-base px-8 py-3.5 rounded-full backdrop-blur-md transition-all hover:-translate-y-0.5">
-        <svg class="w-5 h-5 text-yellow-400" fill="currentColor" viewBox="0 0 24 24">
-          <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
-        </svg>
-        Star on GitHub
+      <a href="#why-switch" class="w-full sm:w-auto inline-flex items-center justify-center gap-2 bg-white/5 hover:bg-white/10 text-white border border-white/10 hover:border-white/20 font-semibold text-base px-8 py-3.5 rounded-full backdrop-blur-md transition-all hover:-translate-y-0.5">
+        <span>Why Switch from Postman?</span>
+        <svg class="w-4 h-4 text-spot-muted" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5"/></svg>
       </a>
     </div>
 
@@ -162,7 +159,7 @@
           <span>Blitz — Requester Workbench</span>
         </div>
         <div>
-          <span class="text-[11px] font-mono text-spot-bright bg-white/5 border border-white/10 px-2.5 py-0.5 rounded">Production ▾</span>
+          <span class="text-[11px] font-mono text-spot-bright bg-white/5 border border-white/10 px-2.5 py-0.5 rounded">Production (Git Synced) ▾</span>
         </div>
       </div>
 
@@ -261,12 +258,111 @@
       </div>
     </div>
 
-    <!-- Features Section -->
-    <section id="features" class="mt-32 text-center">
+    <!-- ================================================================= -->
+    <!-- SECTION: WHY SWITCH (THE PAIN POINTS SOLVED) -->
+    <!-- ================================================================= -->
+    <section id="why-switch" class="mt-36 text-center">
+      <span class="text-xs font-bold text-spot-bright tracking-widest uppercase block mb-3">HONEST COMPARISON</span>
+      <h2 class="text-3xl sm:text-5xl font-extrabold tracking-tight mb-4">Why Engineers Are Migrating to Blitz</h2>
+      <p class="text-spot-muted max-w-2xl mx-auto text-base sm:text-lg mb-16">
+        Here is how Blitz directly fixes the daily frustrations of Postman, Bruno, and Insomnia.
+      </p>
+
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-8 text-left">
+        <!-- Postman Switcher Card -->
+        <div class="p-8 rounded-2xl glass border-t-2 border-t-red-500/80 glass-hover flex flex-col justify-between">
+          <div>
+            <div class="flex items-center justify-between mb-4">
+              <span class="text-xs font-bold uppercase tracking-wider text-red-400">Switching from Postman</span>
+              <span class="text-xs bg-red-500/10 text-red-400 px-2 py-0.5 rounded font-mono">No Hostage Cloud</span>
+            </div>
+            <h3 class="text-xl font-bold mb-4">Escape Forced Logins &amp; Cloud Lock-in</h3>
+            <ul class="space-y-3 text-sm text-spot-muted leading-relaxed">
+              <li class="flex items-start gap-2">
+                <span class="text-red-400 font-bold">✗</span>
+                <span>Postman forces accounts and uploads your sensitive internal APIs to third-party servers.</span>
+              </li>
+              <li class="flex items-start gap-2">
+                <span class="text-spot-bright font-bold">✓</span>
+                <span><strong>Blitz is 100% offline-first.</strong> Zero tracking, no login prompts, and complete import support for Postman v2.1 collections.</span>
+              </li>
+              <li class="flex items-start gap-2">
+                <span class="text-spot-bright font-bold">✓</span>
+                <span>Uses <strong>~35MB RAM</strong> versus Postman's 800MB–1.5GB background hogging.</span>
+              </li>
+            </ul>
+          </div>
+          <div class="mt-6 pt-4 border-t border-white/5 text-xs text-spot-bright font-medium">
+            Migrate in 10 seconds via File → Import Collection
+          </div>
+        </div>
+
+        <!-- Bruno Switcher Card -->
+        <div class="p-8 rounded-2xl glass border-t-2 border-t-amber-500/80 glass-hover flex flex-col justify-between">
+          <div>
+            <div class="flex items-center justify-between mb-4">
+              <span class="text-xs font-bold uppercase tracking-wider text-amber-400">Switching from Bruno</span>
+              <span class="text-xs bg-amber-500/10 text-amber-400 px-2 py-0.5 rounded font-mono">Full Native Power</span>
+            </div>
+            <h3 class="text-xl font-bold mb-4">True Native Binary, Beyond Bru Files</h3>
+            <ul class="space-y-3 text-sm text-spot-muted leading-relaxed">
+              <li class="flex items-start gap-2">
+                <span class="text-amber-400 font-bold">✗</span>
+                <span>Bruno is still an Electron app with sluggish UI rendering on large payloads.</span>
+              </li>
+              <li class="flex items-start gap-2">
+                <span class="text-spot-bright font-bold">✓</span>
+                <span><strong>Blitz is native Rust + Dioxus.</strong> Sub-millisecond syntax highlighting, timeline waterfall, and instant JSON folding.</span>
+              </li>
+              <li class="flex items-start gap-2">
+                <span class="text-spot-bright font-bold">✓</span>
+                <span><strong>Native OS Keychain</strong> integration with <code>{{vault:key}}</code> and automatic redaction before Git sync.</span>
+              </li>
+            </ul>
+          </div>
+          <div class="mt-6 pt-4 border-t border-white/5 text-xs text-spot-bright font-medium">
+            No proprietary .bru lock-in; standard OpenAPI/cURL import
+          </div>
+        </div>
+
+        <!-- Insomnia Switcher Card -->
+        <div class="p-8 rounded-2xl glass border-t-2 border-t-purple-500/80 glass-hover flex flex-col justify-between">
+          <div>
+            <div class="flex items-center justify-between mb-4">
+              <span class="text-xs font-bold uppercase tracking-wider text-purple-400">Switching from Insomnia</span>
+              <span class="text-xs bg-purple-500/10 text-purple-400 px-2 py-0.5 rounded font-mono">No Subscription Paywalls</span>
+            </div>
+            <h3 class="text-xl font-bold mb-4">All Protocols Free Forever</h3>
+            <ul class="space-y-3 text-sm text-spot-muted leading-relaxed">
+              <li class="flex items-start gap-2">
+                <span class="text-purple-400 font-bold">✗</span>
+                <span>Insomnia locked local storage behind paywalls and limited team collaboration tiers.</span>
+              </li>
+              <li class="flex items-start gap-2">
+                <span class="text-spot-bright font-bold">✓</span>
+                <span><strong>Git-based team sync is free forever.</strong> Use GitHub, GitLab, or private self-hosted Git repositories.</span>
+              </li>
+              <li class="flex items-start gap-2">
+                <span class="text-spot-bright font-bold">✓</span>
+                <span>Out-of-the-box support for <strong>8 protocols</strong>: HTTP, WebSocket, SSE, Socket.IO, gRPC, MQTT, MCP, and GraphQL-WS.</span>
+              </li>
+            </ul>
+          </div>
+          <div class="mt-6 pt-4 border-t border-white/5 text-xs text-spot-bright font-medium">
+            Full enterprise team sync without enterprise billing
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================================================================= -->
+    <!-- SECTION: DETAILED POWER FEATURES -->
+    <!-- ================================================================= -->
+    <section id="features" class="mt-36 text-center">
       <span class="text-xs font-bold text-spot-bright tracking-widest uppercase block mb-3">ENGINEERED FOR DEVELOPERS</span>
-      <h2 class="text-3xl sm:text-5xl font-extrabold tracking-tight mb-4">Built Different. Born Fast.</h2>
+      <h2 class="text-3xl sm:text-5xl font-extrabold tracking-tight mb-4">Real Capabilities. Zero Fluff.</h2>
       <p class="text-spot-muted max-w-xl mx-auto text-base sm:text-lg mb-16">
-        No account walls. No mandatory cloud. Just clean, hyper-responsive local developer tooling.
+        Everything you expect from an industry-standard API workbench, built to run cleanly on your workstation.
       </p>
 
       <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 text-left">
@@ -277,7 +373,7 @@
           </div>
           <h3 class="text-xl font-bold mb-3 tracking-tight">Pure Native Rust Core</h3>
           <p class="text-spot-muted text-sm leading-relaxed">
-            Instantaneous boot time and minimal RAM usage. Never endure another spinning wheel just to make a quick HTTP call.
+            Instantaneous boot time (&lt;150ms) and minimal RAM usage. Never endure another spinning wheel just to test a single endpoint.
           </p>
         </div>
 
@@ -286,9 +382,9 @@
           <div class="w-12 h-12 rounded-xl bg-purple-500/15 text-purple-400 flex items-center justify-center mb-6">
             <svg class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
           </div>
-          <h3 class="text-xl font-bold mb-3 tracking-tight">Local-First & Private</h3>
+          <h3 class="text-xl font-bold mb-3 tracking-tight">Vault &amp; macOS Keychain</h3>
           <p class="text-spot-muted text-sm leading-relaxed">
-            Your payloads, tokens, and requests stay on your machine. Secrets are safeguarded in your OS Keychain and encrypted stores.
+            Store tokens securely with <code>{{vault:key}}</code> and <code>secret://</code> URLs. Sensitive variables are automatically redacted before team sync.
           </p>
         </div>
 
@@ -297,9 +393,9 @@
           <div class="w-12 h-12 rounded-xl bg-blue-500/15 text-blue-400 flex items-center justify-center mb-6">
             <svg class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="18" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><path d="M13 6h3a2 2 0 0 1 2 2v7"/><line x1="6" y1="9" x2="6" y2="21"/></svg>
           </div>
-          <h3 class="text-xl font-bold mb-3 tracking-tight">Git-Powered Team Sync</h3>
+          <h3 class="text-xl font-bold mb-3 tracking-tight">Genuine Git Team Sync</h3>
           <p class="text-spot-muted text-sm leading-relaxed">
-            Share collections and environments via your own Git repository. Enjoy full audit trails, PR reviews, and true version control.
+            Sync environments and collections with your team using Git branches (<code>env/&lt;slug&gt;</code>). Full PR reviews, merge histories, and conflict resolution.
           </p>
         </div>
 
@@ -308,9 +404,9 @@
           <div class="w-12 h-12 rounded-xl bg-orange-500/15 text-orange-400 flex items-center justify-center mb-6">
             <svg class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
           </div>
-          <h3 class="text-xl font-bold mb-3 tracking-tight">Pre & Post JavaScript Sandbox</h3>
+          <h3 class="text-xl font-bold mb-3 tracking-tight">Embedded JS Sandbox</h3>
           <p class="text-spot-muted text-sm leading-relaxed">
-            Boa-engine JavaScript execution for assertion scripts. Use <code>epm.test</code>, dynamic variable chaining, and automated tests.
+            In-engine Boa JavaScript execution for pre-request scripts and post-response tests. Full support for <code>epm.test</code>, assertions, and CryptoJS signing.
           </p>
         </div>
 
@@ -319,9 +415,9 @@
           <div class="w-12 h-12 rounded-xl bg-teal-500/15 text-teal-400 flex items-center justify-center mb-6">
             <svg class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>
           </div>
-          <h3 class="text-xl font-bold mb-3 tracking-tight">Multi-Protocol Engine</h3>
+          <h3 class="text-xl font-bold mb-3 tracking-tight">8 Protocols in One App</h3>
           <p class="text-spot-muted text-sm leading-relaxed">
-            First-class support for REST, GraphQL, WebSockets, Server-Sent Events, gRPC stubs, and MQTT topics in one uniform interface.
+            REST, GraphQL, WebSockets, Server-Sent Events, Socket.IO, gRPC unary stubs, MQTT broker channels, and AI Model Context Protocol (MCP).
           </p>
         </div>
 
@@ -330,54 +426,92 @@
           <div class="w-12 h-12 rounded-xl bg-amber-500/15 text-amber-400 flex items-center justify-center mb-6">
             <svg class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
           </div>
-          <h3 class="text-xl font-bold mb-3 tracking-tight">Built-in Mock Server & Runner</h3>
+          <h3 class="text-xl font-bold mb-3 tracking-tight">Local Mock Server &amp; Runner</h3>
           <p class="text-spot-muted text-sm leading-relaxed">
-            Instantly spin up a mock server on <code>127.0.0.1</code> from your saved examples, or batch run collection test suites with CSV/JSON feeds.
+            Spin up a mock HTTP server on <code>127.0.0.1</code> from saved request examples, or execute collection batches with CSV/JSON iteration feeds.
           </p>
         </div>
       </div>
     </section>
 
-    <!-- Comparison Table -->
-    <section id="architecture" class="mt-32 text-center">
-      <span class="text-xs font-bold text-spot-bright tracking-widest uppercase block mb-3">BENCHMARKS & COMPARISON</span>
-      <h2 class="text-3xl sm:text-5xl font-extrabold tracking-tight mb-16">Why Developers Switch to Blitz</h2>
+    <!-- ================================================================= -->
+    <!-- SECTION: DETAILED COMPARISON TABLE -->
+    <!-- ================================================================= -->
+    <section id="benchmarks" class="mt-36 text-center">
+      <span class="text-xs font-bold text-spot-bright tracking-widest uppercase block mb-3">TECHNICAL BREAKDOWN</span>
+      <h2 class="text-3xl sm:text-5xl font-extrabold tracking-tight mb-6">The Head-to-Head Comparison</h2>
+      <p class="text-spot-muted max-w-xl mx-auto text-base sm:text-lg mb-16">
+        See how Blitz measures up against other desktop API clients in the ecosystem.
+      </p>
 
-      <div class="rounded-2xl glass overflow-hidden text-left max-w-4xl mx-auto">
+      <div class="rounded-2xl glass overflow-hidden text-left max-w-5xl mx-auto">
         <div class="overflow-x-auto">
           <table class="w-full text-sm">
             <thead>
               <tr class="border-b border-white/10 text-spot-faint uppercase text-xs tracking-wider">
-                <th class="py-4 px-6 font-semibold">Feature</th>
-                <th class="py-4 px-6 font-bold text-spot-bright bg-spot-green/10">⚡ Blitz</th>
-                <th class="py-4 px-6 font-semibold">Heavy Electron Tools</th>
+                <th class="py-4 px-5 font-semibold">Capability</th>
+                <th class="py-4 px-5 font-bold text-spot-bright bg-spot-green/10 text-center">⚡ Blitz</th>
+                <th class="py-4 px-5 font-semibold text-center">Postman</th>
+                <th class="py-4 px-5 font-semibold text-center">Bruno</th>
+                <th class="py-4 px-5 font-semibold text-center">Insomnia</th>
               </tr>
             </thead>
             <tbody class="divide-y divide-white/5 font-medium">
               <tr>
-                <td class="py-4 px-6 text-spot-muted">Startup Latency</td>
-                <td class="py-4 px-6 text-spot-bright font-semibold bg-spot-green/5">&lt; 150 ms (Instant)</td>
-                <td class="py-4 px-6 text-red-400">4,000 - 8,000 ms</td>
+                <td class="py-4 px-5 text-spot-muted">Runtime Architecture</td>
+                <td class="py-4 px-5 text-spot-bright font-semibold bg-spot-green/5 text-center">Pure Native Rust</td>
+                <td class="py-4 px-5 text-red-400 text-center">Electron (Node.js)</td>
+                <td class="py-4 px-5 text-amber-400 text-center">Electron (Node.js)</td>
+                <td class="py-4 px-5 text-red-400 text-center">Electron (Node.js)</td>
               </tr>
               <tr>
-                <td class="py-4 px-6 text-spot-muted">Idle RAM Footprint</td>
-                <td class="py-4 px-6 text-spot-bright font-semibold bg-spot-green/5">~35 MB RAM</td>
-                <td class="py-4 px-6 text-red-400">600 MB - 1.2 GB RAM</td>
+                <td class="py-4 px-5 text-spot-muted">App Startup Latency</td>
+                <td class="py-4 px-5 text-spot-bright font-semibold bg-spot-green/5 text-center">&lt; 150 ms</td>
+                <td class="py-4 px-5 text-red-400 text-center">4,000 - 8,000 ms</td>
+                <td class="py-4 px-5 text-amber-400 text-center">1,500 - 3,000 ms</td>
+                <td class="py-4 px-5 text-red-400 text-center">3,000 - 6,000 ms</td>
               </tr>
               <tr>
-                <td class="py-4 px-6 text-spot-muted">Mandatory Cloud Account</td>
-                <td class="py-4 px-6 text-spot-bright font-semibold bg-spot-green/5">Never (Zero login required)</td>
-                <td class="py-4 px-6 text-red-400">Forced Cloud Login</td>
+                <td class="py-4 px-5 text-spot-muted">Idle RAM Consumption</td>
+                <td class="py-4 px-5 text-spot-bright font-semibold bg-spot-green/5 text-center">~35 MB</td>
+                <td class="py-4 px-5 text-red-400 text-center">750 MB - 1.5 GB</td>
+                <td class="py-4 px-5 text-amber-400 text-center">250 MB - 450 MB</td>
+                <td class="py-4 px-5 text-red-400 text-center">500 MB - 1.1 GB</td>
               </tr>
               <tr>
-                <td class="py-4 px-6 text-spot-muted">Team Collaboration</td>
-                <td class="py-4 px-6 text-spot-bright font-semibold bg-spot-green/5">Direct Git Repo Sync</td>
-                <td class="py-4 px-6 text-spot-faint">Proprietary Cloud Sync</td>
+                <td class="py-4 px-5 text-spot-muted">Mandatory Cloud Account</td>
+                <td class="py-4 px-5 text-spot-bright font-semibold bg-spot-green/5 text-center">Never (100% Offline)</td>
+                <td class="py-4 px-5 text-red-400 text-center">Yes (Forced Login)</td>
+                <td class="py-4 px-5 text-spot-bright text-center">No</td>
+                <td class="py-4 px-5 text-red-400 text-center">Yes (Forced Login)</td>
               </tr>
               <tr>
-                <td class="py-4 px-6 text-spot-muted">Key & Token Storage</td>
-                <td class="py-4 px-6 text-spot-bright font-semibold bg-spot-green/5">OS Keychain + Local Encrypted</td>
-                <td class="py-4 px-6 text-spot-faint">Cloud Workspace Sync</td>
+                <td class="py-4 px-5 text-spot-muted">Team Collaboration</td>
+                <td class="py-4 px-5 text-spot-bright font-semibold bg-spot-green/5 text-center">Direct Git Branch Sync</td>
+                <td class="py-4 px-5 text-red-400 text-center">Proprietary Cloud</td>
+                <td class="py-4 px-5 text-spot-bright text-center">Git Directory</td>
+                <td class="py-4 px-5 text-red-400 text-center">Proprietary Cloud</td>
+              </tr>
+              <tr>
+                <td class="py-4 px-5 text-spot-muted">Protocols Supported</td>
+                <td class="py-4 px-5 text-spot-bright font-semibold bg-spot-green/5 text-center">8 Protocols</td>
+                <td class="py-4 px-5 text-spot-muted text-center">HTTP, WS, gRPC</td>
+                <td class="py-4 px-5 text-spot-muted text-center">HTTP, GraphQL</td>
+                <td class="py-4 px-5 text-spot-muted text-center">HTTP, WS, gRPC</td>
+              </tr>
+              <tr>
+                <td class="py-4 px-5 text-spot-muted">Secrets Vault &amp; Keychain</td>
+                <td class="py-4 px-5 text-spot-bright font-semibold bg-spot-green/5 text-center">Native OS Keychain</td>
+                <td class="py-4 px-5 text-red-400 text-center">Synced to Cloud</td>
+                <td class="py-4 px-5 text-spot-muted text-center">.env files</td>
+                <td class="py-4 px-5 text-red-400 text-center">Synced to Cloud</td>
+              </tr>
+              <tr>
+                <td class="py-4 px-5 text-spot-muted">Postman v2.1 Import</td>
+                <td class="py-4 px-5 text-spot-bright font-semibold bg-spot-green/5 text-center">Seamless 1-Click</td>
+                <td class="py-4 px-5 text-spot-muted text-center">Native</td>
+                <td class="py-4 px-5 text-spot-muted text-center">Partial Conversion</td>
+                <td class="py-4 px-5 text-spot-muted text-center">Partial Conversion</td>
               </tr>
             </tbody>
           </table>
@@ -385,12 +519,14 @@
       </div>
     </section>
 
-    <!-- Installation Section -->
-    <section id="install" class="mt-32 text-center">
+    <!-- ================================================================= -->
+    <!-- SECTION: INSTALLATION -->
+    <!-- ================================================================= -->
+    <section id="install" class="mt-36 text-center">
       <span class="text-xs font-bold text-spot-bright tracking-widest uppercase block mb-3">GETTING STARTED</span>
-      <h2 class="text-3xl sm:text-5xl font-extrabold tracking-tight mb-4">Install Blitz in Seconds</h2>
+      <h2 class="text-3xl sm:text-5xl font-extrabold tracking-tight mb-4">Ready to Run Lightning Fast?</h2>
       <p class="text-spot-muted max-w-xl mx-auto text-base sm:text-lg mb-16">
-        Cross-platform native binaries for macOS, Linux, and Windows.
+        Install the native desktop binary on macOS, Linux, or Windows.
       </p>
 
       <div class="grid grid-cols-1 md:grid-cols-12 gap-6 text-left max-w-4xl mx-auto">
@@ -443,19 +579,21 @@ make run</code></pre>
   </main>
 
   <!-- Footer -->
-  <footer class="mt-32 border-t border-white/5 bg-[#080808] py-12 px-4 text-center relative z-10">
+  <footer class="mt-36 border-t border-white/5 bg-[#080808] py-14 px-4 text-center relative z-10">
     <div class="max-w-md mx-auto">
       <div class="flex items-center justify-center gap-2 mb-3">
         <img src="logo.png" alt="Blitz" class="w-6 h-6">
         <span class="font-bold text-base">Blitz</span>
       </div>
-      <p class="text-xs text-spot-faint mb-6">
-        Engineered with Rust, Dioxus, and high standards for developer autonomy. Independent open-source project.
+      <p class="text-xs text-spot-faint mb-6 leading-relaxed">
+        Engineered with Rust, Dioxus, and high standards for developer autonomy. Independent open-source project. Not affiliated with Postman or any commercial entity.
       </p>
       <div class="flex items-center justify-center gap-6 text-xs text-spot-muted">
         <a href="https://github.com/h3ma209/Blitz" target="_blank" rel="noopener" class="hover:text-spot-bright transition-colors">GitHub Repository</a>
         <span>•</span>
         <a href="https://github.com/h3ma209/Blitz/releases" target="_blank" rel="noopener" class="hover:text-spot-bright transition-colors">Releases</a>
+        <span>•</span>
+        <a href="#why-switch" class="hover:text-spot-bright transition-colors">Why Switch?</a>
         <span>•</span>
         <a href="#features" class="hover:text-spot-bright transition-colors">Features</a>
       </div>
