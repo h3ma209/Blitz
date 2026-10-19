@@ -2993,6 +2993,14 @@ pub fn Workbench() -> Element {
                                         if let Some(found) = tabs.iter().find(|x| x.id == tid).cloned() {
                                             draft.set(found.clone());
                                             active_request_id.set(Some(tid));
+                                            if let Some((col_id, _)) = find_request_across(&collections(), tid) {
+                                                active_collection_id.set(Some(col_id));
+                                                if let Some(col) = collections().iter().find(|c| c.id == col_id) {
+                                                    let mut v = vars();
+                                                    v.collection = col.variables_map();
+                                                    vars.set(v);
+                                                }
+                                            }
                                             // Restore response from cache
                                             let resp_map = responses();
                                             if let Some(cached) = resp_map.get(&tid).cloned() {

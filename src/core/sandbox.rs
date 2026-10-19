@@ -511,9 +511,12 @@ var pm = {{
     }}
   }}
 }};
+var epm = pm;
+pm.expect = __expect;
 epm.expect = __expect;
-// Coerce epm.request.url in string contexts (boa may not use Object string wrapper)
-epm.request.toString = function() {{ return String(__np.requestUrl || ""); }};
+// Coerce request.url in string contexts (boa may not use Object string wrapper)
+pm.request.toString = function() {{ return String(__np.requestUrl || ""); }};
+epm.request.toString = pm.request.toString;
 "#
     );
 

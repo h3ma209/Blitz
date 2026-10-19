@@ -202,15 +202,45 @@ pub fn ResponseViewer(
                             }
                         }
                     },
-                    RespTab::Visualize => rsx! {
-                        div { class: "visualizer-pane",
-                            if resp.visualizer_html.is_empty() {
-                                p { class: "hint",
-                                    "No visualizer output. In Tests: epm.visualizer.set(\"<h1>{{{{title}}}}</h1>\", {{title:\"hi\"}}) — or return HTML body."
+                    RespTab::Visualize => {
+                        let render_mode = use_signal(|| true);
+                        rsx! {
+                            div { class: "visualizer-pane",
+                                if resp.visualizer_html.is_empty() {
+                                    p { class: "hint",
+                                        "No visualizer output. In Tests: pm.visualizer.set(\"<h1>{{{{title}}}}</h1>\", {{title:\"Hello\"}}) — or return HTML body."
+                                    }
+                                } else {
+                                    div { class: "visualizer-toolbar", style: "display: flex; gap: 8px; margin-bottom: 8px; align-items: center;",
+                                        button {
+                                            class: if render_mode() { "btn-ghost active" } else { "btn-ghost" },
+                                            style: "padding: 2px 8px; font-size: 11px; border-radius: 4px; border: 1px solid rgba(255,255,255,0.1);",
+                                            onclick: {
+                                                let mut rm = render_mode;
+                                                move |_| rm.set(true)
+                                            },
+                                            "Rendered View"
+                                        }
+                                        button {
+                                            class: if !render_mode() { "btn-ghost active" } else { "btn-ghost" },
+                                            style: "padding: 2px 8px; font-size: 11px; border-radius: 4px; border: 1px solid rgba(255,255,255,0.1);",
+                                            onclick: {
+                                                let mut rm = render_mode;
+                                                move |_| rm.set(false)
+                                            },
+                                            "Source HTML"
+                                        }
+                                    }
+                                    if render_mode() {
+                                        div {
+                                            class: "visualizer-rendered",
+                                            style: "background: #fff; color: #111; padding: 16px; border-radius: 6px; overflow: auto; min-height: 200px;",
+                                            dangerous_inner_html: "{resp.visualizer_html}",
+                                        }
+                                    } else {
+                                        pre { class: "response-body", "{resp.visualizer_html}" }
+                                    }
                                 }
-                            } else {
-                                p { class: "hint", "Visualizer HTML (source — desktop has no iframe sandbox):" }
-                                pre { class: "response-body", "{resp.visualizer_html}" }
                             }
                         }
                     },

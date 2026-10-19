@@ -103,6 +103,7 @@
         <a href="#protocols" class="text-spot-muted hover:text-white transition-colors">Protocols</a>
         <a href="#cli-runner" class="text-spot-muted hover:text-white transition-colors">CLI &amp; CI</a>
         <a href="#benchmarks" class="text-spot-muted hover:text-white transition-colors">Comparison</a>
+        <a href="#inspector" class="text-spot-bright hover:text-white transition-colors">Inspector</a>
         <a href="#install" class="text-spot-muted hover:text-white transition-colors">Install</a>
         <a href="https://github.com/h3ma209/Blitz" target="_blank" rel="noopener" class="flex items-center gap-1.5 text-spot-muted hover:text-white transition-colors">
           <svg class="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
@@ -807,6 +808,58 @@
     </section>
 
     <!-- ================================================================= -->
+    <!-- SECTION: IN-BROWSER COLLECTION INSPECTOR (100% CLIENT-SIDE) -->
+    <!-- ================================================================= -->
+    <section id="inspector" class="mt-36 text-center">
+      <span class="text-xs font-bold text-spot-bright tracking-widest uppercase block mb-3">100% PRIVATE CLIENT-SIDE DEMO</span>
+      <h2 class="text-3xl sm:text-5xl font-extrabold tracking-tight mb-4">Inspect Any Postman Collection Right Now</h2>
+      <p class="text-spot-muted max-w-2xl mx-auto text-base sm:text-lg mb-12">
+        Curious how cleanly Blitz handles nested folders, environments, and variables? Drag and drop any <code class="text-spot-bright font-mono text-sm">.json</code> file below.
+        <span class="text-white block mt-1 font-semibold">Zero data leaves your browser. Parsing runs entirely on your local CPU.</span>
+      </p>
+
+      <div class="max-w-4xl mx-auto text-left">
+        <!-- Dropzone Box -->
+        <div id="drop-zone" class="rounded-2xl border-2 border-dashed border-white/20 hover:border-spot-bright/60 bg-white/[0.02] p-8 sm:p-12 transition-all cursor-pointer text-center relative group">
+          <input type="file" id="collection-file-input" accept=".json,application/json" class="absolute inset-0 opacity-0 cursor-pointer z-10">
+          <div class="w-16 h-16 rounded-2xl bg-spot-green/10 text-spot-bright flex items-center justify-center mx-auto mb-4 group-hover:scale-110 transition-transform">
+            <svg class="w-8 h-8" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/>
+            </svg>
+          </div>
+          <h3 class="text-lg font-bold text-white mb-2">Drop your Postman v2.1 Collection or Environment JSON</h3>
+          <p class="text-sm text-spot-muted max-w-md mx-auto mb-4">Click to browse your hard drive or drag files here to test instant native parsing speed.</p>
+          <div class="flex items-center justify-center gap-2">
+            <span class="text-[11px] font-mono bg-white/10 text-spot-muted px-2.5 py-1 rounded-full">v2.1.0 schema</span>
+            <span class="text-[11px] font-mono bg-white/10 text-spot-muted px-2.5 py-1 rounded-full">Postman Environment</span>
+            <span class="text-[11px] font-mono bg-spot-green/20 text-spot-bright px-2.5 py-1 rounded-full">Client-Side Only</span>
+          </div>
+        </div>
+
+        <!-- Preview Container -->
+        <div id="inspector-preview" class="hidden mt-8 rounded-2xl glass p-6 sm:p-8 animate-fade-in">
+          <div class="flex flex-wrap items-center justify-between gap-4 pb-6 border-b border-white/10 mb-6">
+            <div>
+              <div class="flex items-center gap-3">
+                <span id="parsed-type-badge" class="text-xs font-mono px-2 py-0.5 rounded font-bold uppercase bg-spot-bright/20 text-spot-bright">COLLECTION</span>
+                <h4 id="parsed-title" class="text-xl font-extrabold text-white">Parsed File</h4>
+              </div>
+              <p id="parsed-meta" class="text-xs text-spot-muted mt-1 font-mono">0 requests • 0 folders</p>
+            </div>
+            <button onclick="resetInspector()" class="text-xs text-spot-muted hover:text-white px-3 py-1.5 rounded-lg border border-white/10 hover:border-white/30 transition-colors">
+              Inspect Another File
+            </button>
+          </div>
+
+          <!-- Tree View -->
+          <div id="parsed-tree" class="space-y-2 font-mono text-xs max-h-96 overflow-y-auto pr-2">
+            <!-- Populated via JavaScript -->
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================================================================= -->
     <!-- SECTION: INSTALLATION -->
     <!-- ================================================================= -->
     <section id="install" class="mt-36 text-center">
@@ -1028,6 +1081,145 @@ make run</code></pre>
         toggleShortcutsModal();
       }
     });
+
+    // In-Browser Collection Inspector Logic
+    const fileInput = document.getElementById('collection-file-input');
+    const dropZone = document.getElementById('drop-zone');
+    const previewContainer = document.getElementById('inspector-preview');
+    const parsedTypeBadge = document.getElementById('parsed-type-badge');
+    const parsedTitle = document.getElementById('parsed-title');
+    const parsedMeta = document.getElementById('parsed-meta');
+    const parsedTree = document.getElementById('parsed-tree');
+
+    if (fileInput) {
+      fileInput.addEventListener('change', (e) => {
+        if (e.target.files && e.target.files[0]) {
+          parseDroppedFile(e.target.files[0]);
+        }
+      });
+    }
+
+    function parseDroppedFile(file) {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        try {
+          const json = JSON.parse(e.target.result);
+          renderParsedCollection(json, file.name);
+        } catch (err) {
+          alert('Could not parse JSON: ' + err.message);
+        }
+      };
+      reader.readAsText(file);
+    }
+
+    function resetInspector() {
+      previewContainer.classList.add('hidden');
+      dropZone.classList.remove('hidden');
+      if (fileInput) fileInput.value = '';
+    }
+
+    function renderParsedCollection(data, filename) {
+      dropZone.classList.add('hidden');
+      previewContainer.classList.remove('hidden');
+      parsedTree.innerHTML = '';
+
+      const isEnv = Array.isArray(data.values) && (data._postman_variable_scope || data.name);
+      if (isEnv) {
+        parsedTypeBadge.innerText = 'ENVIRONMENT';
+        parsedTypeBadge.className = 'text-xs font-mono px-2 py-0.5 rounded font-bold uppercase bg-blue-500/20 text-blue-400';
+        parsedTitle.innerText = data.name || filename;
+        const total = data.values.length;
+        parsedMeta.innerText = `${total} variables defined`;
+
+        data.values.forEach(v => {
+          const row = document.createElement('div');
+          row.className = 'flex items-center justify-between p-2 rounded-lg bg-black/40 border border-white/5';
+          row.innerHTML = `
+            <div class="flex items-center gap-2">
+              <span class="text-spot-bright font-bold">${escapeHtml(v.key)}</span>
+              <span class="text-[10px] text-spot-faint uppercase font-sans">${v.type || 'default'}</span>
+            </div>
+            <div class="text-spot-muted truncate max-w-xs sm:max-w-md font-mono">${escapeHtml(v.value || '')}</div>
+          `;
+          parsedTree.appendChild(row);
+        });
+        return;
+      }
+
+      parsedTypeBadge.innerText = 'COLLECTION';
+      parsedTypeBadge.className = 'text-xs font-mono px-2 py-0.5 rounded font-bold uppercase bg-spot-bright/20 text-spot-bright';
+      parsedTitle.innerText = (data.info && data.info.name) || filename;
+
+      let reqCount = 0;
+      let folderCount = 0;
+
+      function renderItems(items, container, depth = 0) {
+        if (!Array.isArray(items)) return;
+        items.forEach(item => {
+          if (item.item && Array.isArray(item.item)) {
+            folderCount++;
+            const folderDiv = document.createElement('div');
+            folderDiv.className = 'space-y-1';
+            folderDiv.style.marginLeft = `${depth * 16}px`;
+
+            const folderHeader = document.createElement('div');
+            folderHeader.className = 'flex items-center gap-2 text-white font-semibold py-1 px-2 rounded hover:bg-white/5 cursor-default';
+            folderHeader.innerHTML = `
+              <svg class="w-3.5 h-3.5 text-spot-bright shrink-0" fill="currentColor" viewBox="0 0 24 24"><path d="M10 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z"/></svg>
+              <span>${escapeHtml(item.name || 'Folder')}</span>
+              <span class="text-[10px] text-spot-faint">(${item.item.length})</span>
+            `;
+            folderDiv.appendChild(folderHeader);
+
+            const subContainer = document.createElement('div');
+            subContainer.className = 'space-y-1';
+            renderItems(item.item, subContainer, depth + 1);
+            folderDiv.appendChild(subContainer);
+            container.appendChild(folderDiv);
+          } else if (item.request) {
+            reqCount++;
+            const req = item.request;
+            const method = (typeof req === 'string' ? 'GET' : req.method || 'GET').toUpperCase();
+            let url = '';
+            if (typeof req === 'string') url = req;
+            else if (typeof req.url === 'string') url = req.url;
+            else if (req.url && req.url.raw) url = req.url.raw;
+
+            const methodColors = {
+              GET: 'text-spot-bright bg-spot-green/15',
+              POST: 'text-yellow-400 bg-yellow-400/15',
+              PUT: 'text-blue-400 bg-blue-400/15',
+              DELETE: 'text-red-400 bg-red-400/15',
+              PATCH: 'text-purple-400 bg-purple-400/15'
+            };
+            const badgeCls = methodColors[method] || 'text-white bg-white/10';
+
+            const reqRow = document.createElement('div');
+            reqRow.className = 'flex items-center gap-3 p-2 rounded-lg bg-black/40 hover:bg-black/60 border border-white/5 transition-colors';
+            reqRow.style.marginLeft = `${depth * 16}px`;
+            reqRow.innerHTML = `
+              <span class="px-1.5 py-0.5 rounded text-[10px] font-bold shrink-0 ${badgeCls}">${method}</span>
+              <span class="font-bold text-gray-200 truncate shrink-0 max-w-[140px] sm:max-w-[200px]">${escapeHtml(item.name || 'Request')}</span>
+              <span class="text-spot-faint truncate text-[11px]">${escapeHtml(url)}</span>
+            `;
+            container.appendChild(reqRow);
+          }
+        });
+      }
+
+      renderItems(data.item, parsedTree, 0);
+      parsedMeta.innerText = `${reqCount} endpoints • ${folderCount} folders parsed natively`;
+    }
+
+    function escapeHtml(str) {
+      if (!str) return '';
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+    }
   </script>
 </body>
 </html>

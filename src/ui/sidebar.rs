@@ -6,8 +6,9 @@ use super::DismissBackdrop;
 use uuid::Uuid;
 
 use crate::core::{
-    collapsible_tree_ids, collapsed_except_expanded, filter_tree_rows, flatten_collections_filtered,
-    paste_target_parent_id, Collection, HistoryEntry, HttpMethod, TreeRowKind,
+    ancestor_ids_for_request, collapsible_tree_ids, collapsed_except_expanded, filter_tree_rows,
+    flatten_collections_filtered, paste_target_parent_id, Collection, HistoryEntry, HttpMethod,
+    TreeRowKind,
 };
 
 use super::sidebar_shortcuts::{
@@ -124,6 +125,41 @@ pub fn Sidebar(
         let flat = flatten_collections_filtered(&collections, &collapsed);
         filter_tree_rows(flat, &query)
     };
+    // Auto-track and reveal active request (expand ancestor folders/collections and scroll into view)
+    let collections_for_track = collections.clone();
+    use_effect(move || {
+        if let Some(req_id) = active_request_id {
+            let ancestors = ancestor_ids_for_request(&collections_for_track, req_id);
+            if !ancestors.is_empty() {
+                let mut set = expanded();
+                let mut changed = false;
+                for aid in ancestors {
+                    if set.insert(aid) {
+                        changed = true;
+                    }
+                }
+                if changed {
+                    expanded.set(set);
+                }
+            }
+            // Smoothly scroll active request row into view if needed
+            let script = format!(
+                r#"
+                setTimeout(() => {{
+                    const el = document.getElementById("tree-row-" + {id});
+                    if (el) {{
+                        el.scrollIntoView({{ behavior: 'smooth', block: 'nearest' }});
+                    }}
+                }}, 30);
+                "#,
+                id = serde_json::to_string(&req_id.to_string()).unwrap_or_else(|_| "\"\"".into())
+            );
+            spawn(async move {
+                let _ = document::eval(&script).await;
+            });
+        }
+    });
+
     let empty = collections.is_empty();
 
     rsx! {
@@ -374,6 +410,7 @@ pub fn Sidebar(
 
                             rsx! {
                                 div {
+                                    id: "tree-row-{row_id}",
                                     class: "{row_class}",
                                     style: "padding-left: {pad}px;",
                                     draggable: if !is_col { "true" } else { "false" },

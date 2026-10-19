@@ -734,6 +734,28 @@ pub fn item_contains_id(collections: &[Collection], folder_id: Uuid, needle: Uui
     false
 }
 
+/// Returns all ancestor IDs (collection ID and all containing folder IDs) for a given request.
+pub fn ancestor_ids_for_request(
+    collections: &[Collection],
+    request_id: Uuid,
+) -> Vec<Uuid> {
+    for col in collections {
+        let path = folder_path_to_request(col, request_id);
+        // If request was found under this collection:
+        // folder_path_to_request returns empty vec for root-level requests in collection too,
+        // so check if the request is actually in this collection.
+        if col.find_request(request_id).is_some() {
+            let mut ids = Vec::with_capacity(path.len() + 1);
+            ids.push(col.id);
+            for f in path {
+                ids.push(f.id);
+            }
+            return ids;
+        }
+    }
+    Vec::new()
+}
+
 /// Path of folders from collection root to a request (for script inheritance).
 pub fn folder_path_to_request(col: &Collection, request_id: Uuid) -> Vec<Folder> {
     let mut path = Vec::new();
@@ -1504,6 +1526,21 @@ mod tests {
         assert!(add_request_under(&mut cols, folder_id, req));
         let title = request_tab_display_name(&cols, req_id);
         assert_eq!(title, "My Req | Parent Folder");
+    }
+
+    #[test]
+    fn test_ancestor_ids_for_request() {
+        let mut cols = demo_collections();
+        let col_id = cols[0].id;
+        let folder = Folder::new("Folder A");
+        let folder_id = folder.id;
+        assert!(add_folder_under(&mut cols, col_id, folder));
+        let mut req = RequestDraft::default();
+        let req_id = req.id;
+        assert!(add_request_under(&mut cols, folder_id, req));
+
+        let ancestors = ancestor_ids_for_request(&cols, req_id);
+        assert_eq!(ancestors, vec![col_id, folder_id]);
     }
 
     fn favorite_name_not_prefixed_in_tree_row() {

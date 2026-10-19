@@ -1019,8 +1019,29 @@ button.env-menu-row:hover,
   flex: 1 1 auto;
   min-height: 0;
   overflow-y: auto;
+  overflow-x: hidden;
   display: flex;
   flex-direction: column;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.16) transparent;
+}
+
+.sidebar-collections::-webkit-scrollbar {
+  width: 5px;
+}
+
+.sidebar-collections::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.sidebar-collections::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.12);
+  border-radius: 9999px;
+  transition: background var(--ease);
+}
+
+.sidebar-collections::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.28);
 }
 
 .sidebar-history {
@@ -1035,8 +1056,29 @@ button.env-menu-row:hover,
 
 .sidebar-history .history-list {
   overflow-y: auto;
+  overflow-x: hidden;
   min-height: 0;
   flex: 1 1 auto;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.16) transparent;
+}
+
+.sidebar-history .history-list::-webkit-scrollbar {
+  width: 5px;
+}
+
+.sidebar-history .history-list::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.sidebar-history .history-list::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.12);
+  border-radius: 9999px;
+  transition: background var(--ease);
+}
+
+.sidebar-history .history-list::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.28);
 }
 
 .sidebar-history-toggle {
