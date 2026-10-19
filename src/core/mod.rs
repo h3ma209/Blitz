@@ -91,8 +91,9 @@ pub use settings::{
 };
 pub use variables::{
     apply_collection_map, apply_collection_var_edit, apply_env_var_edit, apply_environment_map,
-    apply_var_insert, find_var_at, iter_var_spans, render_var_highlight_html, var_insert_context,
-    VarHoverInfo, VarResolveScope, VarSpan,
-    VariableContext, VariableScope, VariableSuggestion,
+    apply_var_insert, char_index_to_byte_offset, find_var_at, iter_var_spans,
+    render_var_highlight_html, snap_to_char_boundary, utf16_offset_to_byte_offset,
+    var_insert_context, VarHoverInfo, VarResolveScope, VarSpan, VariableContext, VariableScope,
+    VariableSuggestion,
 };
 pub use vault::{resolve_vault_key, VaultStore, VAULT_ACCOUNT_ID};

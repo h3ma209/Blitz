@@ -98,7 +98,7 @@ pub fn VarSuggestDropdown(
     }
 }
 
-/// Read caret index and anchor position for a field by id (`input` or `textarea`).
+/// Read caret byte index and anchor position for a field by id (`input` or `textarea`).
 pub async fn read_field_caret_anchor(element_id: &str) -> Option<(usize, f64, f64)> {
     let script = format!(
         r#"
@@ -107,8 +107,12 @@ pub async fn read_field_caret_anchor(element_id: &str) -> Option<(usize, f64, f6
         const rect = el.getBoundingClientRect();
         const host = el.closest('.var-hover-host, .code-editor-host');
         const hr = host ? host.getBoundingClientRect() : rect;
-        const caret = el.selectionStart ?? 0;
-        return [caret, 8, rect.bottom - hr.top + 4];
+        const val = el.value || '';
+        const caretU16 = el.selectionStart ?? 0;
+        // Convert UTF-16 code units to UTF-8 byte offset for safe Rust string slicing
+        const sub = val.slice(0, caretU16);
+        const byteLen = new TextEncoder().encode(sub).length;
+        return [byteLen, 8, rect.bottom - hr.top + 4];
         "#,
         id = serde_json::to_string(element_id).unwrap_or_else(|_| "\"\"".into())
     );
@@ -117,18 +121,32 @@ pub async fn read_field_caret_anchor(element_id: &str) -> Option<(usize, f64, f6
 }
 
 /// Move caret after Rust state updated the controlled field value.
-pub async fn restore_field_caret(element_id: &str, caret: usize) {
+/// Accepts UTF-8 byte offset and maps it to UTF-16 code unit offset for `setSelectionRange`.
+pub async fn restore_field_caret(element_id: &str, byte_caret: usize) {
     let script = format!(
         r#"
         await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
         const el = document.getElementById({id});
         if (!el) return false;
         el.focus();
-        try {{ el.setSelectionRange({caret}, {caret}); }} catch (_) {{}}
+        try {{
+            const targetBytes = {byte_caret};
+            const val = el.value || '';
+            const enc = new TextEncoder();
+            let u16Pos = 0;
+            let currentBytes = 0;
+            for (const ch of val) {{
+                const chBytes = enc.encode(ch).length;
+                if (currentBytes + chBytes > targetBytes) break;
+                currentBytes += chBytes;
+                u16Pos += ch.length;
+            }}
+            el.setSelectionRange(u16Pos, u16Pos);
+        }} catch (_) {{}}
         return true;
         "#,
         id = serde_json::to_string(element_id).unwrap_or_else(|_| "\"\"".into()),
-        caret = caret
+        byte_caret = byte_caret
     );
     let _ = document::eval(&script).await;
 }

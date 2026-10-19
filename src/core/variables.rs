@@ -77,10 +77,42 @@ fn var_token_re() -> &'static Regex {
     RE.get_or_init(|| Regex::new(r"\{\{\s*([^}]+?)\s*\}\}").unwrap())
 }
 
+/// Clamp index within `[0, text.len()]` and snap downwards to nearest valid UTF-8 char boundary.
+pub fn snap_to_char_boundary(text: &str, mut index: usize) -> usize {
+    if index >= text.len() {
+        return text.len();
+    }
+    while index > 0 && !text.is_char_boundary(index) {
+        index -= 1;
+    }
+    index
+}
+
+/// Convert a character index (count of Unicode scalar values) into a UTF-8 byte offset.
+/// If `char_idx` exceeds character count, returns `text.len()`.
+pub fn char_index_to_byte_offset(text: &str, char_idx: usize) -> usize {
+    text.char_indices()
+        .nth(char_idx)
+        .map(|(byte_idx, _)| byte_idx)
+        .unwrap_or(text.len())
+}
+
+/// Convert a UTF-16 code unit offset (e.g. from DOM `selectionStart`) to UTF-8 byte offset.
+pub fn utf16_offset_to_byte_offset(text: &str, utf16_offset: usize) -> usize {
+    let mut u16_count = 0;
+    for (byte_idx, ch) in text.char_indices() {
+        if u16_count >= utf16_offset {
+            return byte_idx;
+        }
+        u16_count += ch.len_utf16();
+    }
+    text.len()
+}
+
 /// Find `{{name}}` / `{{vault:key}}` span containing byte `index`.
 /// Index may equal `end` (caret after closing `}}`).
 pub fn find_var_at(text: &str, index: usize) -> Option<VarSpan> {
-    let index = index.min(text.len());
+    let index = snap_to_char_boundary(text, index);
     for span in iter_var_spans(text) {
         if index >= span.start && index <= span.end {
             return Some(span);
@@ -90,8 +122,9 @@ pub fn find_var_at(text: &str, index: usize) -> Option<VarSpan> {
 }
 
 /// Caret is inside an incomplete `{{…}}` token → `(byte index of `{`, partial name)`.
+/// Safely handles UTF-8 character boundaries if caret is byte or char offset.
 pub fn var_insert_context(text: &str, caret: usize) -> Option<(usize, String)> {
-    let caret = caret.min(text.len());
+    let caret = snap_to_char_boundary(text, caret);
     let before = &text[..caret];
     let open = before.rfind("{{")?;
     let tail = &before[open + 2..];
@@ -103,6 +136,8 @@ pub fn var_insert_context(text: &str, caret: usize) -> Option<(usize, String)> {
 
 /// Replace incomplete `{{…}}` at `open` through `caret` with `{{insert_name}}`.
 pub fn apply_var_insert(text: &str, caret: usize, open: usize, insert_name: &str) -> (String, usize) {
+    let open = snap_to_char_boundary(text, open);
+    let caret = snap_to_char_boundary(text, caret.max(open));
     let token = format!("{{{{{}}}}}", insert_name.trim());
     let mut out = String::with_capacity(text.len() + token.len());
     out.push_str(&text[..open]);
@@ -608,5 +643,47 @@ mod tests {
         apply_collection_map(&mut col, &map);
         assert_eq!(col.variables_map().get("basic_auth_020j").unwrap(), "Basic yyy");
         assert_eq!(col.variables_map().get("token").unwrap(), "t1");
+    }
+
+    #[test]
+    fn unicode_char_boundary_safety_in_var_insert() {
+        // Test curly quotes `{“"}` where byte 3 falls inside the 3-byte character '“'
+        let text = "{“\"}";
+        // '“' occupies bytes 1..4. Byte 3 is inside '“'.
+        let ctx = var_insert_context(text, 3);
+        assert_eq!(ctx, None);
+
+        // Caret inside incomplete curly quote {{“foo
+        let text2 = "{{“foo";
+        // '“' is 3 bytes (bytes 2..5). Byte 3 or 4 are non-boundary indices.
+        let ctx2 = var_insert_context(text2, 3);
+        assert!(ctx2.is_some());
+        let (open, name) = ctx2.unwrap();
+        assert_eq!(open, 0);
+        assert_eq!(name, ""); // snap clamped to before '“'
+
+        let ctx3 = var_insert_context(text2, text2.len());
+        assert_eq!(ctx3, Some((0, "“foo".to_string())));
+
+        // Safe apply_var_insert with mid-char caret
+        let (out, new_caret) = apply_var_insert(text, 3, 0, "my_var");
+        assert_eq!(out, "{{my_var}}“\"}");
+        assert_eq!(new_caret, 10);
+
+        // Emoji 4-byte boundaries: {{🔥
+        let text_emoji = "{{🔥";
+        // 🔥 is bytes 2..6.
+        let ctx_emoji = var_insert_context(text_emoji, 4);
+        assert!(ctx_emoji.is_some());
+
+        // UTF-16 to byte offset conversion
+        let s = "a“b🔥c";
+        // 'a' = 1 byte (idx 0), '“' = 3 bytes (idx 1..4), 'b' = 1 byte (idx 4), '🔥' = 4 bytes / 2 UTF-16 units (idx 5..9), 'c' = 1 byte (idx 9)
+        assert_eq!(utf16_offset_to_byte_offset(s, 0), 0);
+        assert_eq!(utf16_offset_to_byte_offset(s, 1), 1); // before '“'
+        assert_eq!(utf16_offset_to_byte_offset(s, 2), 4); // after '“', before 'b'
+        assert_eq!(utf16_offset_to_byte_offset(s, 3), 5); // after 'b', before '🔥'
+        assert_eq!(utf16_offset_to_byte_offset(s, 5), 9); // after '🔥' (2 u16 units), before 'c'
+        assert_eq!(utf16_offset_to_byte_offset(s, 6), 10); // after 'c'
     }
 }

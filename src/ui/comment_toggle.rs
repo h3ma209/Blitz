@@ -4,9 +4,8 @@ use dioxus::prelude::*;
 
 /// Toggle `// ` line comments for the line range covering `[start, end)`.
 pub fn toggle_line_comments(text: &str, start: usize, end: usize) -> (String, usize, usize) {
-    let len = text.len();
-    let start = start.min(len);
-    let end = end.min(len);
+    let start = crate::core::snap_to_char_boundary(text, start);
+    let end = crate::core::snap_to_char_boundary(text, end);
     let (sel_start, sel_end) = if start <= end {
         (start, end)
     } else {
@@ -115,9 +114,8 @@ fn leading_whitespace(line: &str) -> &str {
 
 /// Toggle `/* … */` around `[start, end)`.
 pub fn toggle_block_comments(text: &str, start: usize, end: usize) -> (String, usize, usize) {
-    let len = text.len();
-    let start = start.min(len);
-    let end = end.min(len);
+    let start = crate::core::snap_to_char_boundary(text, start);
+    let end = crate::core::snap_to_char_boundary(text, end);
     let (sel_start, sel_end) = if start <= end {
         (start, end)
     } else {

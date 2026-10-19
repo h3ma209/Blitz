@@ -60,13 +60,14 @@ struct JsSuggestMenu {
 
 /// Word prefix before `caret` for JS identifier completion.
 fn js_complete_prefix(text: &str, caret: usize) -> Option<(usize, String)> {
-    let caret = caret.min(text.len());
+    let caret = crate::core::snap_to_char_boundary(text, caret);
     let before = &text[..caret];
     let mut start = caret;
     while start > 0 {
+        let prev = crate::core::snap_to_char_boundary(before, start - 1);
         let ch = before.as_bytes()[start - 1];
         if ch.is_ascii_alphanumeric() || ch == b'_' || ch == b'$' || ch == b'.' {
-            start -= 1;
+            start = prev;
         } else {
             break;
         }
@@ -92,6 +93,8 @@ fn js_suggestions(prefix: &str) -> Vec<(String, String)> {
 }
 
 fn apply_js_insert(text: &str, caret: usize, start: usize, snippet: &str) -> (String, usize) {
+    let start = crate::core::snap_to_char_boundary(text, start);
+    let caret = crate::core::snap_to_char_boundary(text, caret.max(start));
     let mut out = String::with_capacity(text.len() + snippet.len());
     out.push_str(&text[..start]);
     out.push_str(snippet);
@@ -502,7 +505,13 @@ async fn read_textarea_state_by_id(id: &str) -> Option<(String, usize, usize)> {
         r#"
         const el = document.getElementById({id});
         if (!el || el.tagName !== 'TEXTAREA') return null;
-        return [el.value, el.selectionStart ?? 0, el.selectionEnd ?? 0];
+        const val = el.value || '';
+        const enc = new TextEncoder();
+        const startU16 = el.selectionStart ?? 0;
+        const endU16 = el.selectionEnd ?? 0;
+        const startBytes = enc.encode(val.slice(0, startU16)).length;
+        const endBytes = enc.encode(val.slice(0, endU16)).length;
+        return [val, startBytes, endBytes];
         "#,
         id = serde_json::to_string(id).unwrap_or_else(|_| "\"\"".into())
     );
