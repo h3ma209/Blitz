@@ -6,8 +6,8 @@ use super::DismissBackdrop;
 use uuid::Uuid;
 
 use crate::core::{
-    collapsed_except_expanded, filter_tree_rows, flatten_collections_filtered, paste_target_parent_id,
-    Collection, HistoryEntry, HttpMethod, TreeRowKind,
+    collapsible_tree_ids, collapsed_except_expanded, filter_tree_rows, flatten_collections_filtered,
+    paste_target_parent_id, Collection, HistoryEntry, HttpMethod, TreeRowKind,
 };
 
 use super::sidebar_shortcuts::{

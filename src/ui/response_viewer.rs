@@ -2,7 +2,7 @@ use dioxus::prelude::*;
 
 use crate::core::{DefaultResponseTab, ResponseView};
 use super::json_highlight::{render_json_highlight_html, should_highlight_json};
-use super::loading::{LoadingOverlay, SkeletonBars, Spinner};
+use super::loading::{SkeletonBars, Spinner};
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum RespTab {

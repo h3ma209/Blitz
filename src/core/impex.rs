@@ -538,36 +538,9 @@ pub fn limitations_blurb() -> &'static str {
      HTTP requests, folders, bodies, scripts, collection vars."
 }
 
-/// Bundled Postman Collection v2.1 exports shipped under `exported-postman-jsons/`.
-/// Used as the default sidebar seed on first launch / empty snapshot.
+/// Default sidebar seed on first launch / empty snapshot (built-in demo collections).
 pub fn bundled_postman_collections() -> Vec<Collection> {
-    const FILES: &[(&str, &str)] = &[
-        (
-            "Hakki.postman_collection.json",
-            include_str!("../../exported-postman-jsons/Hakki.postman_collection.json"),
-        ),
-        (
-            "1.Initiate Envs.postman_collection.json",
-            include_str!(
-                "../../exported-postman-jsons/1.Initiate Envs.postman_collection.json"
-            ),
-        ),
-    ];
-    let mut out = Vec::with_capacity(FILES.len());
-    for (name, text) in FILES {
-        match import_collection_v21(text) {
-            Ok(col) => out.push(col),
-            Err(e) => {
-                // Soft-fail a single bad embed so the other samples still load.
-                eprintln!("bundled import failed ({name}): {e}");
-            }
-        }
-    }
-    if out.is_empty() {
-        // Fallback so the app never boots with an empty tree.
-        out = super::collection::demo_collections();
-    }
-    out
+    super::collection::demo_collections()
 }
 
 /// Import one or more Postman Collection v2.1 JSON documents (file contents).
