@@ -741,14 +741,73 @@
           </p>
         </div>
 
-        <!-- Feature 6 -->
-        <div class="p-8 rounded-2xl glass glass-hover">
+        <!-- Feature 6: Local Mock Server with Auto-Record -->
+        <div class="p-8 rounded-2xl glass glass-hover relative overflow-hidden group">
+          <div class="absolute top-4 right-4">
+            <span class="text-[10px] font-bold bg-amber-400/20 text-amber-400 px-2 py-0.5 rounded tracking-wide font-mono uppercase">UPDATED</span>
+          </div>
           <div class="w-12 h-12 rounded-xl bg-amber-500/15 text-amber-400 flex items-center justify-center mb-6">
             <svg class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
           </div>
-          <h3 class="text-xl font-bold mb-3 tracking-tight">Local Mock Server &amp; Runner</h3>
+          <h3 class="text-xl font-bold mb-3 tracking-tight">1-Click Live Mock Recorder</h3>
           <p class="text-spot-muted text-sm leading-relaxed">
-            Instantly spin up a mock server on <code>127.0.0.1</code> from your saved examples, or batch run collection test suites with CSV/JSON feeds.
+            Hit any live staging endpoint and click <code>⚡ Save to Mock</code> to instantly capture status, headers, and body into your local <code>127.0.0.1</code> mock router. $0 cloud fees, 100% offline.
+          </p>
+        </div>
+
+        <!-- Feature 7: Multi-Language Code Generator (NEW) -->
+        <div class="p-8 rounded-2xl glass glass-hover relative overflow-hidden group">
+          <div class="absolute top-4 right-4">
+            <span class="text-[10px] font-bold bg-spot-green/20 text-spot-bright px-2 py-0.5 rounded tracking-wide font-mono uppercase">NEW</span>
+          </div>
+          <div class="w-12 h-12 rounded-xl bg-spot-green/15 text-spot-bright flex items-center justify-center mb-6">
+            <svg class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
+          </div>
+          <h3 class="text-xl font-bold mb-3 tracking-tight">Multi-Language Code Drawer</h3>
+          <p class="text-spot-muted text-sm leading-relaxed">
+            Generate production-ready code with live variable substitution in <strong>Rust (reqwest)</strong>, <strong>TypeScript (axios)</strong>, <strong>Python (httpx/requests)</strong>, <strong>Go</strong>, and <strong>cURL</strong>.
+          </p>
+        </div>
+
+        <!-- Feature 8: Static HTML Documentation Exporter (NEW) -->
+        <div class="p-8 rounded-2xl glass glass-hover relative overflow-hidden group">
+          <div class="absolute top-4 right-4">
+            <span class="text-[10px] font-bold bg-spot-green/20 text-spot-bright px-2 py-0.5 rounded tracking-wide font-mono uppercase">NEW</span>
+          </div>
+          <div class="w-12 h-12 rounded-xl bg-pink-500/15 text-pink-400 flex items-center justify-center mb-6">
+            <svg class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+          </div>
+          <h3 class="text-xl font-bold mb-3 tracking-tight">Zero-Cloud Static Docs Exporter</h3>
+          <p class="text-spot-muted text-sm leading-relaxed">
+            Publish API docs without Postman's paid cloud hosting. Compiles any collection into a standalone, dark-themed HTML website with search and code tabs ready for GitHub Pages or S3.
+          </p>
+        </div>
+
+        <!-- Feature 9: Non-Destructive OpenAPI Reconciler (NEW) -->
+        <div class="p-8 rounded-2xl glass glass-hover relative overflow-hidden group">
+          <div class="absolute top-4 right-4">
+            <span class="text-[10px] font-bold bg-spot-green/20 text-spot-bright px-2 py-0.5 rounded tracking-wide font-mono uppercase">NEW</span>
+          </div>
+          <div class="w-12 h-12 rounded-xl bg-cyan-500/15 text-cyan-400 flex items-center justify-center mb-6">
+            <svg class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
+          </div>
+          <h3 class="text-xl font-bold mb-3 tracking-tight">Smart OpenAPI Reconciliation</h3>
+          <p class="text-spot-muted text-sm leading-relaxed">
+            Updated backend schema? Blitz discovers new endpoints and updates definitions without ever wiping your existing test assertions, pre-request scripts, or saved mock examples.
+          </p>
+        </div>
+
+        <!-- Feature 10: Git Conflict Detection & Resolution (NEW) -->
+        <div class="p-8 rounded-2xl glass glass-hover relative overflow-hidden group">
+          <div class="absolute top-4 right-4">
+            <span class="text-[10px] font-bold bg-spot-green/20 text-spot-bright px-2 py-0.5 rounded tracking-wide font-mono uppercase">NEW</span>
+          </div>
+          <div class="w-12 h-12 rounded-xl bg-emerald-500/15 text-emerald-400 flex items-center justify-center mb-6">
+            <svg class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="18" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><path d="M6 9v12"/><path d="M18 9a9 9 0 0 0-9 9"/></svg>
+          </div>
+          <h3 class="text-xl font-bold mb-3 tracking-tight">Git 3-Way Merge Defense</h3>
+          <p class="text-spot-muted text-sm leading-relaxed">
+            Eliminates Bruno's corrupted <code>.bru</code> file syndrome. Built-in conflict detection flags unmerged branches and allows clean 1-click resolution between local and remote state.
           </p>
         </div>
       </div>
@@ -832,6 +891,27 @@
                 <td class="py-4 px-5 text-spot-muted text-center">Native</td>
                 <td class="py-4 px-5 text-spot-muted text-center">Partial Conversion</td>
                 <td class="py-4 px-5 text-spot-muted text-center">Partial Conversion</td>
+              </tr>
+              <tr>
+                <td class="py-4 px-5 text-spot-muted">Static Docs Publishing</td>
+                <td class="py-4 px-5 text-spot-bright font-semibold bg-spot-green/5 text-center">1-Click Zero-Cloud HTML</td>
+                <td class="py-4 px-5 text-red-400 text-center">Paid Cloud Only ($$$)</td>
+                <td class="py-4 px-5 text-red-400 text-center">None</td>
+                <td class="py-4 px-5 text-red-400 text-center">None</td>
+              </tr>
+              <tr>
+                <td class="py-4 px-5 text-spot-muted">Live Mock Recording</td>
+                <td class="py-4 px-5 text-spot-bright font-semibold bg-spot-green/5 text-center">⚡ 1-Click Local (Offline)</td>
+                <td class="py-4 px-5 text-red-400 text-center">Cloud Hosted Only</td>
+                <td class="py-4 px-5 text-red-400 text-center">None</td>
+                <td class="py-4 px-5 text-spot-muted text-center">Basic Mock Plugin</td>
+              </tr>
+              <tr>
+                <td class="py-4 px-5 text-spot-muted">Code Generators</td>
+                <td class="py-4 px-5 text-spot-bright font-semibold bg-spot-green/5 text-center">Rust, TS, Python, Go, cURL</td>
+                <td class="py-4 px-5 text-spot-muted text-center">Legacy Snippets</td>
+                <td class="py-4 px-5 text-spot-muted text-center">Basic cURL / fetch</td>
+                <td class="py-4 px-5 text-spot-muted text-center">Basic Snippets</td>
               </tr>
             </tbody>
           </table>
