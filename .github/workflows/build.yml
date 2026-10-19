@@ -25,16 +25,16 @@ jobs:
         include:
           - os: ubuntu-latest
             label: Linux
-            binary: evil_postman
-            artifact: evil_postman-linux-x86_64
+            binary: blitz
+            artifact: blitz-linux-x86_64
           - os: macos-latest
             label: macOS
-            binary: evil_postman
-            artifact: evil_postman-macos-arm64
+            binary: blitz
+            artifact: blitz-macos-arm64
           - os: windows-latest
             label: Windows
-            binary: evil_postman.exe
-            artifact: evil_postman-windows-x86_64
+            binary: blitz.exe
+            artifact: blitz-windows-x86_64
 
     steps:
       - name: Checkout
@@ -107,7 +107,7 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           path: dist
-          pattern: evil_postman-*
+          pattern: blitz-*
           merge-multiple: true
 
       - name: Publish release

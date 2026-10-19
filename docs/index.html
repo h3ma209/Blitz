@@ -110,6 +110,9 @@
           </svg>
           GitHub
         </a>
+        <button onclick="toggleShortcutsModal()" class="text-xs font-mono text-spot-muted hover:text-spot-bright px-2.5 py-1 rounded-lg border border-white/10 hover:border-spot-bright/30 transition-all">
+          ⌘K
+        </button>
         <a href="#install" class="hidden sm:inline-flex items-center justify-center bg-spot-bright hover:bg-[#25e96d] text-spot-black font-semibold text-xs px-4 py-2 rounded-full transition-all shadow-[0_2px_14px_rgba(30,215,96,0.35)] hover:shadow-[0_4px_20px_rgba(30,215,96,0.45)]">
           Get Blitz
         </a>
@@ -813,6 +816,40 @@
         Install the native desktop binary on macOS, Linux, or Windows.
       </p>
 
+      <div class="max-w-4xl mx-auto mb-12">
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 text-left">
+          <!-- macOS Download Card -->
+          <a href="https://github.com/h3ma209/Blitz/releases" target="_blank" rel="noopener" class="p-6 rounded-2xl glass glass-hover block group border border-white/10 hover:border-spot-bright/50">
+            <div class="w-10 h-10 rounded-xl bg-spot-bright/15 text-spot-bright flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
+              <svg class="w-6 h-6" fill="currentColor" viewBox="0 0 24 24"><path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.81-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M15.97 3.5c.62-.75 1.04-1.8 1.01-2.85-.9.04-1.99.6-2.61 1.33-.56.64-1.05 1.71-1.02 2.76 1.01.08 2.04-.51 2.62-1.24z"/></svg>
+            </div>
+            <div class="text-xs font-mono text-spot-bright font-bold mb-1">macOS (Apple Silicon &amp; Intel)</div>
+            <div class="font-extrabold text-base text-white mb-2">Download for Mac</div>
+            <p class="text-xs text-spot-muted leading-relaxed">Native .app bundle with Keychain &amp; Dioxus WebKit integration.</p>
+          </a>
+
+          <!-- Linux Download Card -->
+          <a href="https://github.com/h3ma209/Blitz/releases" target="_blank" rel="noopener" class="p-6 rounded-2xl glass glass-hover block group border border-white/10 hover:border-blue-400/50">
+            <div class="w-10 h-10 rounded-xl bg-blue-500/15 text-blue-400 flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
+              <svg class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M14.25 9.75L16.5 12l-2.25 2.25m-4.5 0L7.5 12l2.25-2.25M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+            </div>
+            <div class="text-xs font-mono text-blue-400 font-bold mb-1">Linux (x86_64)</div>
+            <div class="font-extrabold text-base text-white mb-2">Download for Linux</div>
+            <p class="text-xs text-spot-muted leading-relaxed">Standalone binary &amp; tar.gz with desktop launcher integration.</p>
+          </a>
+
+          <!-- Windows Download Card -->
+          <a href="https://github.com/h3ma209/Blitz/releases" target="_blank" rel="noopener" class="p-6 rounded-2xl glass glass-hover block group border border-white/10 hover:border-purple-400/50">
+            <div class="w-10 h-10 rounded-xl bg-purple-500/15 text-purple-400 flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
+              <svg class="w-6 h-6" fill="currentColor" viewBox="0 0 24 24"><path d="M0 3.449L9.75 2.1v9.451H0m10.949-9.602L24 0v11.4H10.949M0 12.6h9.75v9.451L0 20.699M10.949 12.6H24V24l-12.901-1.799"/></svg>
+            </div>
+            <div class="text-xs font-mono text-purple-400 font-bold mb-1">Windows (x64)</div>
+            <div class="font-extrabold text-base text-white mb-2">Download for Windows</div>
+            <p class="text-xs text-spot-muted leading-relaxed">Native .exe with WebView2 runtime and PowerShell installer.</p>
+          </a>
+        </div>
+      </div>
+
       <div class="grid grid-cols-1 md:grid-cols-12 gap-6 text-left max-w-4xl mx-auto">
         <!-- Build Code Block -->
         <div class="md:col-span-7 rounded-2xl glass p-6">
@@ -825,7 +862,7 @@
 git clone https://github.com/h3ma209/Blitz.git
 cd Blitz
 
-<span class="text-spot-faint"># 2. Build & install user app</span>
+<span class="text-spot-faint"># 2. Build &amp; install user app</span>
 make install
 
 <span class="text-spot-faint"># 3. Or launch development build</span>
@@ -886,6 +923,70 @@ make run</code></pre>
     </div>
   </footer>
 
+  <!-- Keyboard Shortcuts Modal -->
+  <div id="shortcuts-modal" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md opacity-0 pointer-events-none transition-opacity duration-200">
+    <div class="w-full max-w-lg rounded-2xl glass-strong border border-white/10 p-6 shadow-2xl transform scale-95 transition-transform duration-200" id="shortcuts-dialog">
+      <div class="flex items-center justify-between pb-4 border-b border-white/5 mb-6">
+        <div class="flex items-center gap-2">
+          <span class="w-2.5 h-2.5 rounded-full bg-spot-bright"></span>
+          <span class="font-bold text-sm">Keyboard Shortcuts</span>
+        </div>
+        <button onclick="toggleShortcutsModal()" class="text-spot-muted hover:text-white text-lg font-mono">×</button>
+      </div>
+
+      <div class="space-y-3 font-mono text-xs">
+        <div class="flex items-center justify-between py-1.5 border-b border-white/5">
+          <span class="text-spot-muted font-sans text-xs">Send or Cancel Request</span>
+          <div class="flex gap-1">
+            <kbd class="px-2 py-1 rounded bg-white/10 border border-white/10 text-white font-bold">⌘/Ctrl</kbd>
+            <kbd class="px-2 py-1 rounded bg-white/10 border border-white/10 text-white font-bold">↵ Enter</kbd>
+          </div>
+        </div>
+        <div class="flex items-center justify-between py-1.5 border-b border-white/5">
+          <span class="text-spot-muted font-sans text-xs">New Request Tab</span>
+          <div class="flex gap-1">
+            <kbd class="px-2 py-1 rounded bg-white/10 border border-white/10 text-white font-bold">⌘/Ctrl</kbd>
+            <kbd class="px-2 py-1 rounded bg-white/10 border border-white/10 text-white font-bold">T</kbd>
+          </div>
+        </div>
+        <div class="flex items-center justify-between py-1.5 border-b border-white/5">
+          <span class="text-spot-muted font-sans text-xs">Close Current Tab</span>
+          <div class="flex gap-1">
+            <kbd class="px-2 py-1 rounded bg-white/10 border border-white/10 text-white font-bold">⌘/Ctrl</kbd>
+            <kbd class="px-2 py-1 rounded bg-white/10 border border-white/10 text-white font-bold">W</kbd>
+          </div>
+        </div>
+        <div class="flex items-center justify-between py-1.5 border-b border-white/5">
+          <span class="text-spot-muted font-sans text-xs">Command Palette</span>
+          <div class="flex gap-1">
+            <kbd class="px-2 py-1 rounded bg-white/10 border border-white/10 text-white font-bold">⌘/Ctrl</kbd>
+            <kbd class="px-2 py-1 rounded bg-white/10 border border-white/10 text-white font-bold">⇧ Shift</kbd>
+            <kbd class="px-2 py-1 rounded bg-white/10 border border-white/10 text-white font-bold">P</kbd>
+          </div>
+        </div>
+        <div class="flex items-center justify-between py-1.5 border-b border-white/5">
+          <span class="text-spot-muted font-sans text-xs">Toggle Console Log</span>
+          <div class="flex gap-1">
+            <kbd class="px-2 py-1 rounded bg-white/10 border border-white/10 text-white font-bold">⌘/Ctrl</kbd>
+            <kbd class="px-2 py-1 rounded bg-white/10 border border-white/10 text-white font-bold">⌥ Alt</kbd>
+            <kbd class="px-2 py-1 rounded bg-white/10 border border-white/10 text-white font-bold">C</kbd>
+          </div>
+        </div>
+        <div class="flex items-center justify-between py-1.5">
+          <span class="text-spot-muted font-sans text-xs">Toggle Line Comments</span>
+          <div class="flex gap-1">
+            <kbd class="px-2 py-1 rounded bg-white/10 border border-white/10 text-white font-bold">⌘/Ctrl</kbd>
+            <kbd class="px-2 py-1 rounded bg-white/10 border border-white/10 text-white font-bold">/</kbd>
+          </div>
+        </div>
+      </div>
+
+      <div class="mt-6 text-center">
+        <span class="text-[11px] text-spot-faint">Press <kbd class="px-1.5 py-0.5 rounded bg-white/10 text-white">Esc</kbd> or click outside to dismiss</span>
+      </div>
+    </div>
+  </div>
+
   <script>
     function copySnippet(btn) {
       const pre = btn.parentElement.querySelector('pre');
@@ -894,6 +995,39 @@ make run</code></pre>
       btn.innerHTML = `<svg class="w-4 h-4 text-spot-bright" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>`;
       setTimeout(() => btn.innerHTML = original, 2000);
     }
+
+    function toggleShortcutsModal() {
+      const modal = document.getElementById('shortcuts-modal');
+      const dialog = document.getElementById('shortcuts-dialog');
+      const isHidden = modal.classList.contains('pointer-events-none');
+      if (isHidden) {
+        modal.classList.remove('opacity-0', 'pointer-events-none');
+        dialog.classList.remove('scale-95');
+        dialog.classList.add('scale-100');
+      } else {
+        modal.classList.add('opacity-0', 'pointer-events-none');
+        dialog.classList.remove('scale-100');
+        dialog.classList.add('scale-95');
+      }
+    }
+
+    document.addEventListener('keydown', (e) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        toggleShortcutsModal();
+      } else if (e.key === 'Escape') {
+        const modal = document.getElementById('shortcuts-modal');
+        if (!modal.classList.contains('pointer-events-none')) {
+          toggleShortcutsModal();
+        }
+      }
+    });
+
+    document.getElementById('shortcuts-modal').addEventListener('click', (e) => {
+      if (e.target.id === 'shortcuts-modal') {
+        toggleShortcutsModal();
+      }
+    });
   </script>
 </body>
 </html>
