@@ -6,7 +6,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>⚡ Blitz — Local-First, Blazing Fast API Client in Rust</title>
   <meta name="description"
-    content="Blitz is the local-first, zero-bloat API workbench in Rust. Instant sub-150ms start, ~35MB RAM, native OS keychain, genuine Git-branch sync, CLI runner, and multi-protocol power without mandatory cloud logins.">
+    content="Blitz is the local-first, zero-bloat API workbench in Rust. Instant sub-150ms start, ~10MB CLI runner, native OS keychain, genuine Git-branch sync, and multi-protocol power without mandatory cloud logins.">
   <link rel="icon" type="image/png" href="logo-64.png">
 
   <!-- Google Fonts: Inter & JetBrains Mono -->
@@ -240,8 +240,8 @@
         <div class="text-xs text-spot-muted mt-1">Boot to Interactive</div>
       </div>
       <div class="p-4 rounded-xl glass text-center">
-        <div class="text-2xl sm:text-3xl font-extrabold text-spot-bright font-mono">~35 MB</div>
-        <div class="text-xs text-spot-muted mt-1">Idle RAM (vs 1.2GB)</div>
+        <div class="text-2xl sm:text-3xl font-extrabold text-spot-bright font-mono">~10 MB</div>
+        <div class="text-xs text-spot-muted mt-1">CLI Runner RAM (vs 800MB)</div>
       </div>
       <div class="p-4 rounded-xl glass text-center">
         <div class="text-2xl sm:text-3xl font-extrabold text-spot-bright font-mono">100%</div>
@@ -320,7 +320,7 @@
           </div>
 
           <div class="mt-auto pt-4 border-t border-white/5 text-[11px] text-spot-muted flex items-center justify-between">
-            <span>RAM: <strong class="text-spot-bright">34.2 MB</strong></span>
+            <span>Core: <strong class="text-spot-bright">Native Rust</strong></span>
             <span>Boot: <strong class="text-spot-bright">118ms</strong></span>
           </div>
         </div>
@@ -475,7 +475,7 @@ pm.test("Token returned in valid schema", () => {
   "scope": "api:read api:write",
   "blitz_stats": {
     "engine": "Native Rust",
-    "ram_consumed": "34.2 MB",
+    "cli_footprint": "10.2 MB",
     "cloud_telemetry": "None (0 bytes sent)"
   }
 }</code></pre>
@@ -516,7 +516,7 @@ pm.test("Token returned in valid schema", () => {
               </li>
               <li class="flex items-start gap-2">
                 <span class="text-spot-bright font-bold">✓</span>
-                <span>Uses <strong>~35MB RAM</strong> versus Postman's 800MB–1.5GB background hogging.</span>
+                <span>Sub-150ms startup with a <strong>~10MB CLI runner</strong> versus Postman's 800MB–1.5GB background hogging.</span>
               </li>
             </ul>
           </div>
@@ -1650,11 +1650,11 @@ pm.test("Response payload contains user_id", () => {
                 <td class="py-4 px-5 text-red-400 text-center">3,000 - 6,000 ms</td>
               </tr>
               <tr>
-                <td class="py-4 px-5 text-spot-muted">Idle RAM Consumption</td>
-                <td class="py-4 px-5 text-spot-bright font-semibold bg-spot-green/5 text-center">~35 MB</td>
-                <td class="py-4 px-5 text-red-400 text-center">750 MB - 1.5 GB</td>
-                <td class="py-4 px-5 text-amber-400 text-center">250 MB - 450 MB</td>
-                <td class="py-4 px-5 text-red-400 text-center">500 MB - 1.1 GB</td>
+                <td class="py-4 px-5 text-spot-muted">CLI Runner RAM</td>
+                <td class="py-4 px-5 text-spot-bright font-semibold bg-spot-green/5 text-center">~10 MB</td>
+                <td class="py-4 px-5 text-red-400 text-center">Newman (180 MB+)</td>
+                <td class="py-4 px-5 text-amber-400 text-center">Bru CLI (120 MB+)</td>
+                <td class="py-4 px-5 text-red-400 text-center">Inso (200 MB+)</td>
               </tr>
               <tr>
                 <td class="py-4 px-5 text-spot-muted">Mandatory Cloud Account</td>
@@ -2210,7 +2210,7 @@ make run</code></pre>
         resStatus: '200 OK',
         resTime: '12 ms',
         resSize: '418 B',
-        resBody: '{\n  "access_token": "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9...",\n  "token_type": "Bearer",\n  "expires_in": 3600,\n  "scope": "api:read api:write",\n  "blitz_stats": {\n    "engine": "Native Rust",\n    "ram_consumed": "34.2 MB",\n    "cloud_telemetry": "None (0 bytes sent)"\n  }\n}'
+        resBody: '{\n  "access_token": "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9...",\n  "token_type": "Bearer",\n  "expires_in": 3600,\n  "scope": "api:read api:write",\n  "blitz_stats": {\n    "engine": "Native Rust",\n    "cli_footprint": "10.2 MB",\n    "cloud_telemetry": "None (0 bytes sent)"\n  }\n}'
       },
       profile: {
         method: 'GET',

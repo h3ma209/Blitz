@@ -26,7 +26,7 @@ Most modern API clients have become bloated, memory-heavy cloud platforms that g
 
 Blitz is built from the ground up to be fast, private, and developer-friendly:
 
-- **Ultra-lightweight:** Starts in milliseconds and consumes under 40 MB of RAM (native OS WebView, no Chromium bloat).
+- **Ultra-lightweight:** Cold starts in ~120ms with a headless CLI runner that sits at ~10 MB RAM and a desktop GUI that uses native OS WebViews (no bundled Chromium or multi-process Electron bloat).
 - **Offline-First & Local:** Collections, environments, and mocks live as transparent JSON files directly in your repository.
 - **Zero Cloud Lock-in:** No forced logins, accounts, or telemetry. Your endpoints and tokens never leave your machine.
 - **Git-Native Team Sync:** Collaborate with your team using standard Git workflows (`git pull` / `git push`) instead of per-seat cloud subscriptions.
