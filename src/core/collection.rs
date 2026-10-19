@@ -1535,7 +1535,7 @@ mod tests {
         let folder = Folder::new("Folder A");
         let folder_id = folder.id;
         assert!(add_folder_under(&mut cols, col_id, folder));
-        let mut req = RequestDraft::default();
+        let req = RequestDraft::default();
         let req_id = req.id;
         assert!(add_request_under(&mut cols, folder_id, req));
 
@@ -1543,6 +1543,7 @@ mod tests {
         assert_eq!(ancestors, vec![col_id, folder_id]);
     }
 
+    #[test]
     fn favorite_name_not_prefixed_in_tree_row() {
         let mut cols = demo_collections();
         cols[0].favorite = true;

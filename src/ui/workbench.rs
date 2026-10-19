@@ -6,7 +6,7 @@ use crate::core::{
     apply_environment_map, apply_env_var_edit, branch_name_for_env, bundled_postman_collections,
     clone_or_ensure, delete_needs_confirmation, duplicate_across, ensure_default_environments,
     export_collection_v21, flatten_collections, insert_item_under,
-    export_environment_json, find_environment, find_request_across, generate_snippet,
+    export_environment_json, find_environment, find_request_across,
     generate_snippet_resolved, generate_static_doc_html,
     graphql_ws_subscribe, grpc_reflection_list, grpc_unary, import_collection_v21, import_curl,
     import_environment_texts, import_har, import_openapi3, interceptor_limits_blurb,

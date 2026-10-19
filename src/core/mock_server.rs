@@ -208,7 +208,7 @@ fn handle_conn(stream: &mut TcpStream, routes: &Arc<Mutex<Vec<MockRoute>>>) -> s
 }
 
 fn paths_match(template: &str, actual: &str) -> bool {
-    // Exact or ignore trailing slash; simple `:id` segment wildcard.
+    // Exact or ignore trailing slash; simple `:id` segment or `{{var}}` template wildcard.
     if template == actual {
         return true;
     }
@@ -217,7 +217,12 @@ fn paths_match(template: &str, actual: &str) -> bool {
     if t.len() != a.len() {
         return false;
     }
-    t.iter().zip(a.iter()).all(|(tp, ap)| tp.starts_with(':') || tp == ap)
+    t.iter().zip(a.iter()).all(|(tp, ap)| {
+        tp.starts_with(':')
+            || (tp.starts_with("{{") && tp.ends_with("}}"))
+            || *tp == "*"
+            || tp == ap
+    })
 }
 
 /// Attach example to a request by id across collections.
