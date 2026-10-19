@@ -1,6 +1,6 @@
 //! Script execution: boa JS sandbox (preferred) + legacy line helpers fallback.
 //!
-//! See `runtime/sandbox.rs` for supported `epm.*` surface.
+//! See `core/sandbox.rs` for supported `blitz.*` surface.
 
 use regex::Regex;
 use std::sync::OnceLock;
@@ -75,7 +75,7 @@ pub fn run_script_helpers(
     static SET_RE: OnceLock<Regex> = OnceLock::new();
     let set_re = SET_RE.get_or_init(|| {
         Regex::new(
-            r#"pm\.(environment|globals|variables)\.set\(\s*["']([^"']+)["']\s*,\s*["']([^"']*)["']\s*\)"#,
+            r#"(?:blitz|pm|epm)\.(environment|globals|variables)\.set\(\s*["']([^"']+)["']\s*,\s*["']([^"']*)["']\s*\)"#,
         )
         .unwrap()
     });
@@ -87,7 +87,7 @@ pub fn run_script_helpers(
 
     static TEST_RE: OnceLock<Regex> = OnceLock::new();
     let test_re = TEST_RE.get_or_init(|| {
-        Regex::new(r#"pm\.test\(\s*["']([^"']+)["']"#).unwrap()
+        Regex::new(r#"(?:blitz|pm|epm)\.test\(\s*["']([^"']+)["']"#).unwrap()
     });
 
     let mut applied = 0usize;
@@ -146,7 +146,7 @@ mod tests {
     fn js_sets_environment_var() {
         let mut ctx = VariableContext::default();
         let out = run_script(
-            r#"epm.environment.set("baseUrl", "http://localhost");"#,
+            r#"blitz.environment.set("baseUrl", "http://localhost");"#,
             "pre-request",
             &mut ctx,
             None,
@@ -165,7 +165,7 @@ mod tests {
 
         let mut ctx = VariableContext::default();
         let out = run_script(
-            r#"epm.environment.set("endpoint_rcell_auth", "http://x");"#,
+            r#"blitz.environment.set("endpoint_rcell_auth", "http://x");"#,
             "pre-request",
             &mut ctx,
             None,
@@ -191,7 +191,7 @@ mod tests {
     fn helpers_still_work() {
         let mut ctx = VariableContext::default();
         let out = run_script_helpers(
-            r#"epm.environment.set("baseUrl", "http://localhost");"#,
+            r#"blitz.environment.set("baseUrl", "http://localhost");"#,
             "pre-request",
             &mut ctx,
         );

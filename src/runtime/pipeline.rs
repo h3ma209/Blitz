@@ -192,7 +192,7 @@ fn send_builder_cancelable(
     blocking_http_cancelable(cancel, move || builder.send())
 }
 
-/// Filled by `epm.execution.*` in the sandbox.
+/// Filled by `blitz.execution.*` in the sandbox.
 #[derive(Debug, Clone, Default)]
 pub struct ExecutionHints {
     pub next_request: Option<String>,
@@ -712,7 +712,7 @@ fn method_from(m: HttpMethod) -> reqwest::Method {
 
 /// Full send pipeline (blocking — call from worker thread / spawn_blocking).
 ///
-/// Mutates `ctx` in place so `epm.environment` / `epm.collectionVariables` / globals
+/// Mutates `ctx` in place so `blitz.environment` / `blitz.collectionVariables` / globals
 /// side-effects from scripts are visible to the caller (Postman semantics).
 pub fn send_request(draft: &RequestDraft, ctx: &mut VariableContext) -> SendResult {
     send_request_with_options(draft, ctx, SendOptions::default())
@@ -864,7 +864,7 @@ pub fn send_request_with_options(
     let mut resolved = resolve_draft(draft, &ctx, secrets_ref);
     log.push("vars: resolved {{…}} / {{vault:…}}".into());
 
-    // 2a. Headers from epm.request.headers.upsert (pre-request scripts)
+    // 2a. Headers from blitz.request.headers.upsert (pre-request scripts)
     if !header_upserts.is_empty() {
         apply_request_header_upserts(&mut resolved, &header_upserts);
         log.push(format!(

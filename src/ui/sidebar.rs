@@ -598,6 +598,20 @@ pub fn Sidebar(
                                         if is_col {
                                             button {
                                                 class: "btn-icon",
+                                                title: "Edit collection (Overview, Auth, Scripts, Vars, Runs)",
+                                                aria_label: "Edit collection",
+                                                onclick: move |evt| {
+                                                    evt.stop_propagation();
+                                                    on_event.call(SidebarEvent::new(
+                                                        SidebarAction::SelectCollection,
+                                                        Some(row_id),
+                                                        Some(col_id),
+                                                    ));
+                                                },
+                                                span { class: "action-icon action-icon-sliders", aria_hidden: "true" }
+                                            }
+                                            button {
+                                                class: "btn-icon",
                                                 title: "Favorite",
                                                 aria_label: "Favorite",
                                                 onclick: move |evt| {
@@ -854,6 +868,17 @@ pub fn Sidebar(
                                 match mkind {
                                     TreeRowKind::Collection => {
                                         rsx! {
+                                            CtxMenuItem {
+                                                label: "Edit Collection",
+                                                onclick: move |_| {
+                                                    ctx_menu.set(None);
+                                                    on_event.call(SidebarEvent::new(
+                                                        SidebarAction::SelectCollection,
+                                                        Some(mid),
+                                                        Some(mcol),
+                                                    ));
+                                                },
+                                            }
                                             CtxMenuItem {
                                                 label: "New Request",
                                                 onclick: move |_| {

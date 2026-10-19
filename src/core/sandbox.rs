@@ -1,21 +1,21 @@
 //! Postman-style JS sandbox via `boa_engine`.
 //!
-//! Supported `epm.*` (subset of postman-sandbox / uvm — not full isolation):
-//! - Scopes: `epm.variables` / `environment` / `collectionVariables` / `globals`
+//! Supported `blitz.*` (also aliased as `pm.*` and `blitz.*`):
+//! - Scopes: `blitz.variables` / `environment` / `collectionVariables` / `globals`
 //!   — `.get` / `.set` / `.unset` / `.has` / `.toObject` / `.clear`
-//! - `epm.variables.replaceIn(str)` — `{{var}}` substitution
-//! - `epm.vault` — `.get` / `.set` / `.unset`
-//! - `epm.cookies` — `.get` / `.set` / `.clear`
-//! - `epm.request` — `.url` (string + `.getPath()`), `.method`, `.headers.get/upsert/add`,
+//! - `blitz.variables.replaceIn(str)` — `{{var}}` substitution
+//! - `blitz.vault` — `.get` / `.set` / `.unset`
+//! - `blitz.cookies` — `.get` / `.set` / `.clear`
+//! - `blitz.request` — `.url` (string + `.getPath()`), `.method`, `.headers.get/upsert/add/remove`,
 //!   `.body.mode` / `.body.raw`
-//! - `epm.response` — `.code` / `.status` / `.responseTime` / `.text()` / `.json()` /
+//! - `blitz.response` — `.code` / `.status` / `.responseTime` / `.text()` / `.json()` /
 //!   `.headers.get` / `.to.have.status` / `.to.have.jsonBody`
-//! - `epm.test` / `epm.expect` — equal/eql/include/be.ok/above/below/a(type)/
+//! - `blitz.test` / `blitz.expect` — equal/eql/include/be.ok/above/below/a(type)/
 //!   have.status/have.property (+ optional value) / not.*
-//! - `epm.sendRequest` — sync nested HTTP + callback
-//! - `epm.execution.setNextRequest` / `skipRequest`
-//! - `epm.info` — eventName / requestName / iteration stubs
-//! - `epm.visualizer.set` — simple `{{key}}` / `{{data}}`
+//! - `blitz.sendRequest` — sync nested HTTP + callback
+//! - `blitz.execution.setNextRequest` / `skipRequest`
+//! - `blitz.info` — eventName / requestName / iteration stubs
+//! - `blitz.visualizer.set` — simple `{{key}}` / `{{data}}`
 //! - `console.log/warn/error/info` → console panel
 //! - `CryptoJS.SHA256` / `HmacSHA256` (+ Hex / Base64) — host-backed subset
 //! - `require` — stub; `crypto-js` → CryptoJS; else empty object + warn
@@ -24,8 +24,8 @@
 
 use boa_engine::{js_string, Context, JsArgs, JsResult, JsValue, NativeFunction, Source};
 use hmac::{Hmac, Mac};
-use sha2::{Digest, Sha256};
 use serde_json::Value as JsonValue;
+use sha2::{Digest, Sha256};
 
 use crate::core::{TestResult, VariableContext};
 
@@ -37,22 +37,22 @@ pub struct SandboxOutcome {
     pub tests: Vec<TestResult>,
     pub error: Option<String>,
     pub execution: SandboxExecution,
-    /// HTML from `epm.visualizer.set(template, data)`.
+    /// HTML from `blitz.visualizer.set(template, data)`.
     pub visualizer_html: String,
-    /// Headers upserted via `epm.request.headers.upsert` / `.add` (pre-request).
+    /// Headers upserted via `blitz.request.headers.upsert` / `.add` (pre-request).
     pub request_header_upserts: Vec<(String, String)>,
-    /// Cookie map after script when `epm.cookies.set/clear` ran.
+    /// Cookie map after script when `blitz.cookies.set/clear` ran.
     pub cookies: Option<std::collections::HashMap<String, String>>,
 }
 
-/// Response snapshot injected into `epm.response`.
+/// Response snapshot injected into `blitz.response`.
 #[derive(Debug, Clone, Default)]
 pub struct SandboxResponse {
     pub status: u16,
     pub status_text: String,
     pub body: String,
     pub headers: Vec<(String, String)>,
-    /// Milliseconds (Postman `epm.response.responseTime`).
+    /// Milliseconds (Postman / blitz `response.responseTime`).
     pub response_time: u64,
 }
 
@@ -74,7 +74,7 @@ pub struct SandboxExtras {
     pub iteration: u32,
 }
 
-/// Execution control written by `epm.execution`.
+/// Execution control written by `blitz.execution`.
 #[derive(Debug, Clone, Default)]
 pub struct SandboxExecution {
     pub next_request: Option<String>,
@@ -107,7 +107,11 @@ pub fn run_js_sandbox_ex(
     let mut context = Context::default();
 
     for (name, arity, f) in [
-        ("__np_http", 1usize, np_http_native as fn(&JsValue, &[JsValue], &mut Context) -> JsResult<JsValue>),
+        (
+            "__np_http",
+            1usize,
+            np_http_native as fn(&JsValue, &[JsValue], &mut Context) -> JsResult<JsValue>,
+        ),
         ("__np_sha256_hex", 1, np_sha256_hex_native),
         ("__np_hmac_sha256_b64", 2, np_hmac_sha256_b64_native),
     ] {
@@ -511,12 +515,15 @@ var pm = {{
     }}
   }}
 }};
+var blitz = pm;
 var epm = pm;
 pm.expect = __expect;
-epm.expect = __expect;
+blitz.expect = __expect;
+blitz.expect = __expect;
 // Coerce request.url in string contexts (boa may not use Object string wrapper)
 pm.request.toString = function() {{ return String(__np.requestUrl || ""); }};
-epm.request.toString = pm.request.toString;
+blitz.request.toString = pm.request.toString;
+blitz.request.toString = pm.request.toString;
 "#
     );
 
@@ -530,21 +537,18 @@ epm.request.toString = pm.request.toString;
         }
         Err(e) => {
             out.error = Some(format!("{phase}: JS error: {e}"));
-            out.messages
-                .push(format!("{phase}: JS error: {e}"));
+            out.messages.push(format!("{phase}: JS error: {e}"));
         }
     }
 
-    out.messages
-        .push(format!("{phase}: JS sandbox done (tests={})", out.tests.len()));
+    out.messages.push(format!(
+        "{phase}: JS sandbox done (tests={})",
+        out.tests.len()
+    ));
     out
 }
 
-fn np_http_native(
-    _this: &JsValue,
-    args: &[JsValue],
-    context: &mut Context,
-) -> JsResult<JsValue> {
+fn np_http_native(_this: &JsValue, args: &[JsValue], context: &mut Context) -> JsResult<JsValue> {
     let spec = args
         .get_or_undefined(0)
         .to_string(context)?
@@ -588,7 +592,7 @@ fn np_hmac_sha256_b64_native(
     Ok(JsValue::from(js_string!(b64.as_str())))
 }
 
-/// Blocking nested HTTP for `epm.sendRequest` (JSON in / JSON out).
+/// Blocking nested HTTP for `blitz.sendRequest` (JSON in / JSON out).
 fn host_send_request(spec_json: &str) -> String {
     #[derive(serde::Deserialize)]
     struct Spec {
@@ -621,8 +625,8 @@ fn host_send_request(spec_json: &str) -> String {
         }
     };
 
-    let method = reqwest::Method::from_bytes(spec.method.as_bytes())
-        .unwrap_or(reqwest::Method::GET);
+    let method =
+        reqwest::Method::from_bytes(spec.method.as_bytes()).unwrap_or(reqwest::Method::GET);
     let mut builder = client.request(method, &spec.url);
     for (k, v) in &spec.headers {
         if !k.is_empty() {
@@ -636,11 +640,7 @@ fn host_send_request(spec_json: &str) -> String {
     match builder.send() {
         Ok(resp) => {
             let status = resp.status().as_u16();
-            let status_text = resp
-                .status()
-                .canonical_reason()
-                .unwrap_or("")
-                .to_string();
+            let status_text = resp.status().canonical_reason().unwrap_or("").to_string();
             let mut headers = Vec::new();
             for (k, v) in resp.headers().iter() {
                 if let Ok(val) = v.to_str() {
@@ -685,11 +685,7 @@ fn build_bridge_json(
 
     let resp = match response {
         Some(r) => {
-            let headers: Vec<_> = r
-                .headers
-                .iter()
-                .map(|(k, v)| json_arr(k, v))
-                .collect();
+            let headers: Vec<_> = r.headers.iter().map(|(k, v)| json_arr(k, v)).collect();
             serde_json::json!({
                 "status": r.status,
                 "statusText": r.status_text,
@@ -735,7 +731,10 @@ fn build_bridge_json(
 }
 
 fn json_arr(k: &str, v: &str) -> JsonValue {
-    JsonValue::Array(vec![JsonValue::String(k.into()), JsonValue::String(v.into())])
+    JsonValue::Array(vec![
+        JsonValue::String(k.into()),
+        JsonValue::String(v.into()),
+    ])
 }
 
 fn map_to_json(m: &std::collections::HashMap<String, String>) -> JsonValue {
@@ -748,8 +747,7 @@ fn map_to_json(m: &std::collections::HashMap<String, String>) -> JsonValue {
 
 fn apply_bridge(json_str: &str, ctx: &mut VariableContext, out: &mut SandboxOutcome, phase: &str) {
     let Ok(v) = serde_json::from_str::<JsonValue>(json_str) else {
-        out.messages
-            .push(format!("{phase}: bridge parse failed"));
+        out.messages.push(format!("{phase}: bridge parse failed"));
         return;
     };
 
@@ -846,7 +844,10 @@ fn apply_bridge(json_str: &str, ctx: &mut VariableContext, out: &mut SandboxOutc
         }
     }
 
-    if v.get("cookiesDirty").and_then(|b| b.as_bool()).unwrap_or(false) {
+    if v.get("cookiesDirty")
+        .and_then(|b| b.as_bool())
+        .unwrap_or(false)
+    {
         if let Some(cookies) = v.get("cookies").and_then(|c| c.as_object()) {
             out.cookies = Some(json_obj_to_map(cookies));
         } else {
@@ -855,7 +856,9 @@ fn apply_bridge(json_str: &str, ctx: &mut VariableContext, out: &mut SandboxOutc
     }
 }
 
-fn json_obj_to_map(m: &serde_json::Map<String, JsonValue>) -> std::collections::HashMap<String, String> {
+fn json_obj_to_map(
+    m: &serde_json::Map<String, JsonValue>,
+) -> std::collections::HashMap<String, String> {
     m.iter()
         .map(|(k, v)| {
             let s = match v {
@@ -868,7 +871,10 @@ fn json_obj_to_map(m: &serde_json::Map<String, JsonValue>) -> std::collections::
 }
 
 /// Apply script header upserts onto a draft (case-insensitive key replace).
-pub fn apply_request_header_upserts(draft: &mut crate::core::RequestDraft, upserts: &[(String, String)]) {
+pub fn apply_request_header_upserts(
+    draft: &mut crate::core::RequestDraft,
+    upserts: &[(String, String)],
+) {
     use crate::core::KeyValue;
     for (key, value) in upserts {
         if key.is_empty() {
@@ -883,7 +889,9 @@ pub fn apply_request_header_upserts(draft: &mut crate::core::RequestDraft, upser
             slot.value = value.clone();
             slot.enabled = true;
         } else {
-            draft.headers.push(KeyValue::new(key.clone(), value.clone()));
+            draft
+                .headers
+                .push(KeyValue::new(key.clone(), value.clone()));
         }
     }
 }
@@ -910,7 +918,7 @@ mod tests {
         let mut ctx = VariableContext::default();
         let out = run_js_sandbox(
             r#"
-            epm.environment.set("baseUrl", "http://localhost");
+            blitz.environment.set("baseUrl", "http://localhost");
             console.log("hi");
             console.warn("w");
             "#,
@@ -933,7 +941,7 @@ mod tests {
         let out = run_js_sandbox(
             r#"
             var saw = false;
-            epm.sendRequest("http://127.0.0.1:1/nope", function(err, res) {
+            blitz.sendRequest("http://127.0.0.1:1/nope", function(err, res) {
               saw = err !== null;
             });
             if (!saw) throw new Error("expected error callback");
@@ -957,11 +965,11 @@ mod tests {
         };
         let out = run_js_sandbox(
             r#"
-            epm.test("status 200", function () {
-              epm.expect(epm.response.code).to.equal(200);
+            blitz.test("status 200", function () {
+              blitz.expect(blitz.response.code).to.equal(200);
             });
-            epm.test("fail demo", function () {
-              epm.expect(1).to.equal(2);
+            blitz.test("fail demo", function () {
+              blitz.expect(1).to.equal(2);
             });
             "#,
             "tests",
@@ -985,11 +993,11 @@ mod tests {
         };
         let out = run_js_sandbox(
             r#"
-            epm.test("Barez", function () {
-                var jsonData = epm.response.json();
+            blitz.test("Barez", function () {
+                var jsonData = blitz.response.json();
                 var token = jsonData["data"]["token"];
-                epm.collectionVariables.set("token_hakki", token);
-                epm.environment.set("token_hakki", token);
+                blitz.collectionVariables.set("token_hakki", token);
+                blitz.environment.set("token_hakki", token);
             });
             "#,
             "tests",
@@ -1021,20 +1029,20 @@ mod tests {
         };
         let out = run_js_sandbox(
             r#"
-            epm.test("vendor", function () {
-              epm.response.to.have.status(201);
-              epm.response.to.have.jsonBody();
-              var res = epm.response.json();
-              epm.expect(res.data).to.have.property("api_secret");
-              epm.expect(res.data).to.have.property("key_prefix", "k");
-              epm.expect(res.data.n).to.be.above(3);
-              epm.expect(res.data.n).to.be.below(10);
-              epm.expect(res.data.api_secret).to.be.a("string");
-              epm.expect(res.arr).to.include(2);
-              epm.expect(epm.response.responseTime).to.be.above(0);
-              epm.expect(epm.response.headers.get("content-type")).to.include("json");
-              epm.expect(1).to.eql(1);
-              epm.expect("x").to.not.equal("y");
+            blitz.test("vendor", function () {
+              blitz.response.to.have.status(201);
+              blitz.response.to.have.jsonBody();
+              var res = blitz.response.json();
+              blitz.expect(res.data).to.have.property("api_secret");
+              blitz.expect(res.data).to.have.property("key_prefix", "k");
+              blitz.expect(res.data.n).to.be.above(3);
+              blitz.expect(res.data.n).to.be.below(10);
+              blitz.expect(res.data.api_secret).to.be.a("string");
+              blitz.expect(res.arr).to.include(2);
+              blitz.expect(blitz.response.responseTime).to.be.above(0);
+              blitz.expect(blitz.response.headers.get("content-type")).to.include("json");
+              blitz.expect(1).to.eql(1);
+              blitz.expect("x").to.not.equal("y");
             });
             "#,
             "tests",
@@ -1052,14 +1060,14 @@ mod tests {
         ctx.environment.insert("host".into(), "example.com".into());
         let out = run_js_sandbox(
             r#"
-            epm.variables.set("x", "1");
-            if (!epm.variables.has("x")) throw new Error("has");
-            if (!epm.environment.has("host")) throw new Error("env has");
-            var o = epm.environment.toObject();
+            blitz.variables.set("x", "1");
+            if (!blitz.variables.has("x")) throw new Error("has");
+            if (!blitz.environment.has("host")) throw new Error("env has");
+            var o = blitz.environment.toObject();
             if (o.host !== "example.com") throw new Error("toObject");
-            var s = epm.variables.replaceIn("https://{{host}}/{{x}}");
+            var s = blitz.variables.replaceIn("https://{{host}}/{{x}}");
             if (s !== "https://example.com/1") throw new Error("replaceIn " + s);
-            epm.globals.clear();
+            blitz.globals.clear();
             "#,
             "pre-request",
             &mut ctx,
@@ -1071,10 +1079,8 @@ mod tests {
     #[test]
     fn request_url_path_headers_upsert_crypto() {
         let mut ctx = VariableContext::default();
-        ctx.environment
-            .insert("api_secret".into(), "sekrit".into());
-        ctx.environment
-            .insert("key_prefix".into(), "pref_".into());
+        ctx.environment.insert("api_secret".into(), "sekrit".into());
+        ctx.environment.insert("key_prefix".into(), "pref_".into());
         let extras = SandboxExtras {
             request_url: "https://api.example.com/api/hakkiotp/v1/otp".into(),
             request_method: "POST".into(),
@@ -1088,22 +1094,22 @@ mod tests {
         ctx.environment.insert("phone".into(), "100".into());
         let out = run_js_sandbox_ex(
             r#"
-            const secret = epm.environment.get("api_secret");
-            const keyPrefix = epm.environment.get("key_prefix");
-            const method = epm.request.method.toUpperCase();
-            let path = epm.request.url.getPath();
+            const secret = blitz.environment.get("api_secret");
+            const keyPrefix = blitz.environment.get("key_prefix");
+            const method = blitz.request.method.toUpperCase();
+            let path = blitz.request.url.getPath();
             const timestamp = "2026-01-01T00:00:00.000Z";
             let body = "";
-            if (epm.request.body && epm.request.body.mode === "raw" && epm.request.body.raw) {
-                body = epm.variables.replaceIn(epm.request.body.raw);
+            if (blitz.request.body && blitz.request.body.mode === "raw" && blitz.request.body.raw) {
+                body = blitz.variables.replaceIn(blitz.request.body.raw);
             }
             const bodyHash = CryptoJS.SHA256(body).toString(CryptoJS.enc.Hex);
             const baseString = method + "\n" + path + "\n" + timestamp + "\n" + bodyHash;
             const signature = CryptoJS.HmacSHA256(baseString, secret).toString(CryptoJS.enc.Base64);
-            epm.request.headers.upsert({ key: "X-Api-Key", value: keyPrefix });
-            epm.request.headers.upsert({ key: "X-Api-Timestamp", value: timestamp });
-            epm.request.headers.upsert({ key: "X-Api-Signature", value: signature });
-            if (epm.info.eventName !== "prerequest") throw new Error("info");
+            blitz.request.headers.upsert({ key: "X-Api-Key", value: keyPrefix });
+            blitz.request.headers.upsert({ key: "X-Api-Timestamp", value: timestamp });
+            blitz.request.headers.upsert({ key: "X-Api-Signature", value: signature });
+            if (blitz.info.eventName !== "prerequest") throw new Error("info");
             if (path !== "/api/hakkiotp/v1/otp") throw new Error("path " + path);
             if (body !== '{"phone":"100"}') throw new Error("body " + body);
             if (!signature || signature.length < 10) throw new Error("sig");
@@ -1143,10 +1149,10 @@ mod tests {
         };
         let out = run_js_sandbox_ex(
             r#"
-            if (epm.cookies.get("a") !== "1") throw new Error("get");
-            epm.cookies.set("b", "2");
-            epm.cookies.clear();
-            epm.cookies.set("c", "3");
+            if (blitz.cookies.get("a") !== "1") throw new Error("get");
+            blitz.cookies.set("b", "2");
+            blitz.cookies.clear();
+            blitz.cookies.set("c", "3");
             "#,
             "pre-request",
             &mut ctx,
@@ -1154,9 +1160,30 @@ mod tests {
             &extras,
         );
         assert!(out.error.is_none(), "{:?}", out.error);
-        let cookies = out.cookies.expect("cookies dirty");
-        assert_eq!(cookies.get("c").map(String::as_str), Some("3"));
-        assert!(!cookies.contains_key("a"));
+        let c = out.cookies.expect("cookies");
+        assert_eq!(c.get("c").map(String::as_str), Some("3"));
+        assert!(!c.contains_key("a"));
+        assert!(!c.contains_key("b"));
+    }
+
+    #[test]
+    fn alias_parity_blitz_pm_epm() {
+        let mut ctx = VariableContext::default();
+        let out = run_js_sandbox(
+            r#"
+            blitz.environment.set("k1", "v1");
+            pm.environment.set("k2", "v2");
+            blitz.environment.set("k3", "v3");
+            if (blitz !== pm || pm !== epm) throw new Error("aliases not identical");
+            "#,
+            "pre-request",
+            &mut ctx,
+            None,
+        );
+        assert!(out.error.is_none(), "{:?}", out.error);
+        assert_eq!(ctx.environment.get("k1").map(String::as_str), Some("v1"));
+        assert_eq!(ctx.environment.get("k2").map(String::as_str), Some("v2"));
+        assert_eq!(ctx.environment.get("k3").map(String::as_str), Some("v3"));
     }
 
     #[test]

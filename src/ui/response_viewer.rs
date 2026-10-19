@@ -187,7 +187,7 @@ pub fn ResponseViewer(
                         div { class: "test-results",
                             if resp.test_results.is_empty() {
                                 p { class: "hint",
-                                    "No test results. Add epm.test(\"name\", function() {{ … }}) in Scripts."
+                                    "No test results. Add blitz.test(\"name\", function() {{ … }}) in Scripts."
                                 }
                             } else {
                                 for t in resp.test_results.iter() {

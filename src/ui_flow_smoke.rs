@@ -33,12 +33,12 @@ mod ui_flow_smoke {
         draft.url = "{{baseUrl}}/get".into();
         draft.params = vec![KeyValue::new("hello", "world")];
         draft.test_script = r#"
-            epm.test("status 200", function () {
-                epm.expect(epm.response.code).to.equal(200);
+            blitz.test("status 200", function () {
+                blitz.expect(blitz.response.code).to.equal(200);
             });
-            epm.test("has args", function () {
-                var j = epm.response.json();
-                epm.expect(j.args.hello).to.equal("world");
+            blitz.test("has args", function () {
+                var j = blitz.response.json();
+                blitz.expect(j.args.hello).to.equal("world");
             });
         "#
         .into();
@@ -263,10 +263,10 @@ mod ui_flow_smoke {
         test_draft.method = HttpMethod::Get;
         test_draft.url = format!("http://127.0.0.1:{port}/api/v1/user/42");
         test_draft.test_script = r#"
-            epm.test("user is blitz_user", function() {
-                var json = epm.response.json();
-                epm.expect(json.id).to.equal(42);
-                epm.expect(json.username).to.equal("blitz_user");
+            blitz.test("user is blitz_user", function() {
+                var json = blitz.response.json();
+                blitz.expect(json.id).to.equal(42);
+                blitz.expect(json.username).to.equal("blitz_user");
             });
         "#.into();
 
@@ -292,8 +292,8 @@ mod ui_flow_smoke {
         // Point to example mock
         r1.url = "http://127.0.0.1/ping".into();
         r1.pre_request_script = r#"
-            epm.environment.set("auth_token", "secret_jwt_xyz");
-            epm.collectionVariables.set("apiVersion", "v2");
+            blitz.environment.set("auth_token", "secret_jwt_xyz");
+            blitz.collectionVariables.set("apiVersion", "v2");
         "#.into();
         r1.examples.push(SavedExample {
             id: uuid::Uuid::new_v4(),
@@ -317,8 +317,8 @@ mod ui_flow_smoke {
             body: "data-ok".into(),
         });
         r2.test_script = r#"
-            epm.test("auth_token set by r1", function() {
-                epm.expect(epm.environment.get("auth_token")).to.equal("secret_jwt_xyz");
+            blitz.test("auth_token set by r1", function() {
+                blitz.expect(blitz.environment.get("auth_token")).to.equal("secret_jwt_xyz");
             });
         "#.into();
 
@@ -372,8 +372,8 @@ mod ui_flow_smoke {
         r.url = "https://petstore.example.com/api/pets".into();
         r.description = "User added important documentation notes".into();
         r.test_script = r#"
-            epm.test("pets is array", function() {
-                epm.expect(Array.isArray(epm.response.json())).to.be.true;
+            blitz.test("pets is array", function() {
+                blitz.expect(Array.isArray(blitz.response.json())).to.be.true;
             });
         "#.into();
         col.add_request(r);
@@ -568,7 +568,7 @@ mod ui_flow_smoke {
         a.name = "one".into();
         a.url = "https://postman-echo.com/get?n=1".into();
         a.test_script =
-            r#"epm.test("ok", function(){ epm.expect(epm.response.code).to.equal(200); });"#.into();
+            r#"blitz.test("ok", function(){ blitz.expect(blitz.response.code).to.equal(200); });"#.into();
         let mut b = RequestDraft::default();
         b.name = "two".into();
         b.url = "https://postman-echo.com/get?n=2".into();

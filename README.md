@@ -1,91 +1,118 @@
-# ⚡ Blitz
+# ⚡ Blitz: The API Manifesto
 
 <p align="center">
   <img src="assets/logo.png" alt="Blitz Logo" width="128" />
 </p>
 
 <p align="center">
-  <strong>Fast. Lightweight. Offline-first. The API client built for developers who hate bloat.</strong>
+  <strong>A spectre is haunting software engineering — the spectre of Cloud-Hostage API Tooling.</strong><br/>
+  <em>Workers of the terminal, unite! You have nothing to lose but your subscriptions.</em>
 </p>
 
 <p align="center">
-  <a href="#why-blitz">Why Blitz</a> •
-  <a href="#features">Features</a> •
-  <a href="#quick-start">Quick Start</a> •
-  <a href="#cli-automation">CLI Runner</a> •
-  <a href="#git-team-sync">Git Team Sync</a>
+  <a href="#i-bourgeois-and-proletarians-the-crisis-of-modern-tooling">The Crisis</a> •
+  <a href="#ii-the-ten-commandments-of-blitz">Ten Commandments</a> •
+  <a href="#iii-the-arsenal-features">The Arsenal</a> •
+  <a href="#iv-mobilization-quick-start">Mobilization</a> •
+  <a href="#v-ci-automation-for-the-people">CLI Automation</a> •
+  <a href="#vi-collective-ownership-git-sync">Git Team Sync</a>
 </p>
 
 ---
 
-## Why Blitz?
+## I. Bourgeois and Proletarians: The Crisis of Modern Tooling
 
-Most API clients today are 1.5 GB Electron monsters that force you to create a cloud account just to send a `GET` request.
+All the decaying powers of legacy SaaS have entered into an unholy alliance to tax your HTTP requests:
+- **1.5 GB Electron Goliaths** consuming your workstation's RAM just to send an unauthenticated `GET`.
+- **Mandatory Cloud Logins** holding your private endpoints, local environments, and team tokens hostage on remote servers.
+- **Paywalled Collaboration** charging \$49 per seat per month for features Git solved twenty-five years ago.
+- **Corporate Telemetry** snooping on every endpoint, payload, and query param you test.
 
-**Blitz is different:**
-- **Zero cloud hostage:** Your collections, requests, and environments live on your machine as plain files.
-- **Blazing fast:** Written in Rust with native WebView. Boots instantly, uses ~40MB RAM.
-- **No mandatory login:** Open the app and start hacking immediately.
-- **Git-native collaboration:** Sync with your team through standard Git repos, not a $49/seat SaaS subscription.
-- **Drop-in migration:** Import your existing Postman collections and OpenAPI specs in seconds.
-
----
-
-## Features
-
-### 🔌 Multi-Protocol Powerhouse
-Beyond plain HTTP — Blitz natively speaks modern protocols:
-- **REST / HTTP** (Full headers, params, GraphQL, URL-encoded, multipart form-data + file upload)
-- **WebSockets** (Interactive bidirectional sessions)
-- **gRPC** (Unary + streaming RPCs)
-- **MQTT** (IoT message publisher & subscriber)
-- **SSE** (Server-Sent Events stream viewer)
-- **Socket.IO** (Real-time engine support)
-- **MCP** (Model Context Protocol client for AI agents)
-
-### 🧪 Real JavaScript Sandbox
-Test scripts powered by an embedded engine with Postman syntax compatibility:
-- `epm.test()` and `epm.expect()` assertions
-- `epm.sendRequest()` for chained, pre-request HTTP calls
-- `CryptoJS` built-in (`SHA256`, `HmacSHA256`, Hex, Base64)
-- Dynamic variables (`{{$guid}}`, `{{$timestamp}}`, `{{var}}`)
-
-### 🔐 Native Secrets Vault
-- OS Keychain integration (macOS Keychain, Linux Secret Service, Windows Credential Manager).
-- Sensitive tokens and secrets stay strictly local and are never accidentally committed or leaked.
-
-### 🔄 Open Ecosystem & Migration
-- **Postman:** Import and export v2.1 collection format.
-- **OpenAPI:** Import and export OpenAPI 3.0 specs with non-destructive 3-way merge.
-- **cURL & HAR:** Paste raw cURL commands or import browser network HAR logs directly.
-- **Local Mocks:** Spin up instant, zero-config mock servers bound to `127.0.0.1` directly from saved response examples.
+**Blitz is the revolutionary alternative:**
+Fast. Native. Offline-first. Written in Rust. Your collections belong to you, stored as plain files under your sovereign control.
 
 ---
 
-## Quick Start
+## II. The Ten Commandments of Blitz
 
-### Prerequisites
-- [Rust](https://rustup.rs/) (1.83+)
+1. **Abolition of Cloud Captivity:** No cloud account shall ever be required to transmit a single byte.
+2. **Expropriation of Bloat:** Memory usage under 40 MB. Sub-second cold start. Native OS WebView instead of Chromium tyranny.
+3. **Sovereignty of Plain Files:** Collections, requests, environments, and runs remain transparent JSON files in your local repo.
+4. **Democratic Team Collaboration:** Sync team workspaces directly through Git repositories (`git pull` / `git push`), abolishing per-seat SaaS extortion.
+5. **Universal Protocol Liberation:** Equal rights for REST, WebSockets, gRPC, MQTT, SSE, Socket.IO, and MCP.
+6. **Inviolable Secrets:** Tokens reside strictly in your OS Keychain (macOS Keychain, Linux Secret Service, Windows Credential Manager). Zero leaks to public remotes.
+7. **Free Movement of Collections:** Seamless, lossless import and export of Postman v2.1 and OpenAPI 3.0 specs.
+8. **Power to the Workspace:** Deep, tabbed collection editing right in the main pane — Overview docs, inherited Authorization, Pre/Test Scripts, Variables, and Runs.
+9. **Headless Execution for All:** A zero-dependency CLI runner (`blitz run`) ready for any CI pipeline without proprietary tokens.
+10. **Seize the Means of Production:** 100% Free and Open Source for every engineer across all operating systems.
+
+---
+
+## III. The Arsenal (Features)
+
+### 🔌 Multi-Protocol Vanguard
+Break free from plain REST isolation. Blitz natively speaks the entire dialect of modern systems:
+- **REST / HTTP:** Query params, headers, GraphQL, form-urlencoded, multipart file uploads.
+- **WebSockets:** Live interactive bidirectional stream inspection.
+- **gRPC:** Unary RPCs and streaming client with protobuf decoding.
+- **MQTT:** Publish and subscribe to IoT brokers in real time.
+- **SSE (Server-Sent Events):** Real-time streaming event viewer.
+- **Socket.IO:** Native engine handshake and event listener.
+- **MCP (Model Context Protocol):** Direct connection to AI agent tooling and context servers.
+
+### 📑 Main-Pane Collection Command Center
+Edit entire collections without cramped sidebars or claustrophobic modals. Open any collection into the main workbench:
+- **Overview:** Project documentation with live statistics (requests, folders, variables).
+- **Authorization:** Collection-level Bearer, Basic, API Key, or OAuth2 inherited automatically by every child request.
+- **Scripts:** Collection Pre-request and Test scripts executing uniformly across all endpoints.
+- **Variables:** Full key-value dictionary with real-time resolution and persistence.
+- **Runs:** Integrated test runner with iterations, delays, live pass/fail diagnostics, and test metrics.
+
+### 🧪 Real JavaScript Testing Engine
+Compatible with standard Postman syntax without cloud surveillance:
+- `blitz.test()` and `blitz.expect()` assertions.
+- `blitz.sendRequest()` for chained, pre-request HTTP calls.
+- `CryptoJS` built-in (`SHA256`, `HmacSHA256`, `MD5`, Base64, Hex).
+- Dynamic variable expansion (`{{$guid}}`, `{{$timestamp}}`, `{{var}}`).
+
+### 🔐 OS Keychain Secret Vault
+Sensitive tokens, Bearer strings, and environment passwords belong in the worker's hardware, not plain text files:
+- macOS Keychain, Linux Secret Service, and Windows Credential Manager integration.
+- Sensitive environment values stay masked locally and are stripped before Git commits.
+
+### 🔄 Open Migration & Local Mocking
+- **Postman:** Import and export v2.1 collections with zero syntax loss.
+- **OpenAPI:** Import/export OpenAPI 3.0 with non-destructive 3-way schema merging.
+- **cURL & HAR:** Paste raw terminal cURL commands or drag browser HAR logs straight into the workbench.
+- **Local Mocks:** Instant zero-config HTTP mock servers bound to `127.0.0.1` based on your saved response examples.
+
+---
+
+## IV. Mobilization (Quick Start)
+
+### Requirements
+- [Rust Toolchain](https://rustup.rs/) (1.83+)
 - macOS, Linux, or Windows
 
 ### Run from Source
 ```bash
+# Clone the peoples' repository
 git clone https://github.com/h3ma209/Blitz.git
 cd Blitz
 
 # Run development build
 cargo run
 
-# Or run optimized release
+# Or launch high-performance release binary
 cargo run --release
 ```
 
-### Install as Desktop App
+### Install as Native Desktop App
 ```bash
 make install
 ```
 
-| OS | Default Install Path | Uninstall |
+| Operating System | Default Install Destination | Strike / Uninstall |
 |---|---|---|
 | **macOS** | `~/Applications/Blitz.app` | `make uninstall` |
 | **Linux** | `~/.local/share/blitz/` + `~/.local/bin/blitz` | `make uninstall` |
@@ -93,28 +120,30 @@ make install
 
 ---
 
-## CLI Automation
+## V. CI Automation for the People
 
-Automate your API tests in GitHub Actions or any CI/CD pipeline without extra tools:
+Automate your test suites without proprietary SaaS runners or cloud credits:
 
 ```bash
-# Run collection headless (exits 0 on success, 1 on test failure)
+# Execute collection headless in CI/CD (exits 0 on test pass, 1 on test failure)
 blitz run collection.json --env staging.json
 ```
 
 ---
 
-## Git Team Sync
+## VI. Collective Ownership: Git Team Sync
 
-Collaborate with your team without handing your data to a third-party cloud.
+Collaborate with comrades across repos without submitting to closed cloud monopolies:
 
-1. Top bar: **Cloud → Clone / link remote…**
-2. Work, edit collections, and save locally.
-3. Hit **Sync**: Blitz pulls, commits, and pushes through standard Git (`gh` or SSH).
-4. Sensitive values (`vault.json`, session cookies, local auth tokens) are automatically redacted before push.
+1. **Link Remote:** In the top toolbar, select **Team** or **Cloud → Link Git Remote…**
+2. **Work Autonomously:** Build requests, write tests, tweak environment parameters locally.
+3. **Commit & Push:** Click **Sync** — Blitz pulls, resolves changes, and pushes through standard Git (`gh` CLI or SSH keys).
+4. **Class Defense:** Passwords, tokens, and local session variables are automatically redacted from commits.
 
 ---
 
-## License
+## VII. Proclamation
 
-Free and open-source. Not affiliated with Postman Inc. Built for developers who value speed, privacy, and simplicity.
+*The API clients of the past have only interpreted the network in various ways; the point, however, is to liberate it.*
+
+Distributed under the MIT / Apache 2.0 open-source licenses. Not affiliated with, endorsed by, or indebted to Postman Inc.

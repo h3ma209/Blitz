@@ -46,7 +46,7 @@ use crate::ui::settings_panel::{SettingsEvent, SettingsPanel};
 use crate::ui::theme_selector::ThemeSelector;
 use crate::ui::sidebar::{Sidebar, SidebarAction, SidebarEvent};
 use crate::ui::CommentableTextarea;
-use crate::ui::{DismissBackdrop, ModalShell, TeamModal};
+use crate::ui::{CollectionEditor, DismissBackdrop, ModalShell, TeamModal};
 use crate::ui::loading::Spinner;
 use crate::core::{get_team_activity, TeamActivity};
 
@@ -169,6 +169,8 @@ pub fn Workbench() -> Element {
     let mut col_vars_all = use_signal(|| false);
     // Accordion expansion in "all" mode.
     let mut col_vars_open_id = use_signal(|| None::<Uuid>);
+    // Active collection being edited in the main workspace view
+    let mut editing_collection_id = use_signal(|| None::<Uuid>);
     // Sidebar resize drag: (start client X, start width px).
     let mut sidebar_drag = use_signal(|| None::<(f64, f64)>);
     // Live sidebar width during drag — kept out of `app_settings` so the
@@ -649,7 +651,7 @@ pub fn Workbench() -> Element {
 
         let mut ctx = vars();
         // Always sync collection vars from active collection (needed for
-        // epm.collectionVariables.get in Initiate Envs / SNB scripts).
+        // blitz.collectionVariables.get in Initiate Envs / SNB scripts).
         if let Some(col_id) = active_collection_id() {
             if let Some(col) = collections().iter().find(|c| c.id == col_id) {
                 ctx.collection = col.variables_map();
@@ -835,12 +837,12 @@ pub fn Workbench() -> Element {
                 push_console(
                     &mut lines,
                     ConsoleLine::error(
-                        "no active environment — epm.environment.set ignored (select Local/Development/Production first)",
+                        "no active environment — blitz.environment.set ignored (select Local/Development/Production first)",
                     ),
                 );
                 console_lines.set(lines);
                 status_msg.set(
-                    "no active environment — epm.environment.set ignored".into(),
+                    "no active environment — blitz.environment.set ignored".into(),
                 );
                 v.environment.clear();
             }
@@ -894,6 +896,7 @@ pub fn Workbench() -> Element {
                         draft.set(req.clone());
                         active_request_id.set(Some(id));
                         active_collection_id.set(Some(col_id));
+                        editing_collection_id.set(None);
                         if let Some(col) = collections().iter().find(|c| c.id == col_id) {
                             let mut v = vars();
                             v.collection = col.variables_map();
@@ -913,6 +916,7 @@ pub fn Workbench() -> Element {
             SidebarAction::SelectCollection => {
                 let col_id = evt.collection_id.or(evt.id);
                 active_collection_id.set(col_id);
+                editing_collection_id.set(col_id);
                 active_request_id.set(None);
                 if let Some(id) = col_id {
                     let cols = collections();
@@ -939,6 +943,7 @@ pub fn Workbench() -> Element {
                 cols.push(col);
                 collections.set(cols);
                 active_collection_id.set(Some(id));
+                editing_collection_id.set(Some(id));
                 active_request_id.set(None);
                 persist();
             }
@@ -2505,8 +2510,8 @@ pub fn Workbench() -> Element {
                                                         }
                                                     }
                                                 }
-                                                p { class: "hint",
-                                                    "Variables configured here resolve in requests as {{{{variable_name}}}}. Current value overrides Initial value locally."
+                                                p { class: "vars-section-desc", style: "margin-bottom: 8px;",
+                                                    "Environments let you switch between setups (e.g. Localhost, Staging, Production). Initial values are committed to Git for your team. Current values stay strictly local on this machine."
                                                 }
                                                 table { class: "kv-table",
                                                     thead {
@@ -2662,23 +2667,29 @@ pub fn Workbench() -> Element {
                         }
                     } else {
                         div { class: "vars-page-inner",
-                        p { class: "hint",
-                            "Resolve order: local → environment → collection → global. Vault via {{{{vault:key}}}}."
-                        }
-
-                        // —— Environment ——
-                        div { class: "vars-section",
-                            div { class: "vars-section-head",
-                                h4 { "Environment" }
-                                button {
-                                    class: "btn btn-ghost",
-                                    onclick: move |_| {
-                                        vars_active_tab.set(0);
-                                        editing_env_id.set(active_env_id());
-                                    },
-                                    "Manage…"
+                            div { class: "vars-scope-banner",
+                                div { class: "vars-scope-banner-title", "⚡ Variable System & Scopes" }
+                                p { class: "vars-scope-banner-text",
+                                    "Variables parameterize URLs, headers, auth, and bodies via {{name}}. Scopes resolve from highest priority: Local → Environment → Collection → Global. Hardware & device secrets resolve via {{vault:key}}."
                                 }
                             }
+
+                            // —— Environment ——
+                            div { class: "vars-section",
+                                div { class: "vars-section-head",
+                                    h4 { "Environment" }
+                                    button {
+                                        class: "btn btn-ghost",
+                                        onclick: move |_| {
+                                            vars_active_tab.set(0);
+                                            editing_env_id.set(active_env_id());
+                                        },
+                                        "Manage…"
+                                    }
+                                }
+                                p { class: "vars-section-desc",
+                                    "Target configurations (e.g. Localhost, Staging, Prod). Initial values sync to Git; current values stay local on this machine."
+                                }
                             {
                                 let envs = environments();
                                 let eid = active_env_id();
@@ -2791,6 +2802,9 @@ pub fn Workbench() -> Element {
                                     "All collections…"
                                 }
                             }
+                            p { class: "vars-section-desc",
+                                "Scoped to the active collection. Shared with your team and committed inside the collection file."
+                            }
                             {
                                 let cols = collections();
                                 let active_id = active_collection_id();
@@ -2821,6 +2835,9 @@ pub fn Workbench() -> Element {
                         // —— Global ——
                         div { class: "vars-section",
                             h4 { "Global" }
+                            p { class: "vars-section-desc",
+                                "Universal variables accessible across all workspaces, environments, and collections."
+                            }
                             MapVarEditor {
                                 rows: sorted_map_rows(&vars().global),
                                 on_change: move |rows: Vec<(String, String)>| {
@@ -2833,8 +2850,10 @@ pub fn Workbench() -> Element {
 
                         // —— Vault ——
                         div { class: "vars-section",
-                            h4 { "Vault" }
-                            p { class: "hint", "Stored in vault.json — use {{{{vault:key}}}}." }
+                            h4 { "Vault (Hardware & Local Secrets)" }
+                            p { class: "vars-section-desc",
+                                "Sensitive credentials (passwords, tokens, private keys) stored in vault.json or OS Keychain. NEVER committed to Git or pushed to remotes. Reference via {{vault:key}} or blitz.vault.get('key')."
+                            }
                             MapVarEditor {
                                 rows: sorted_map_rows(&vars().vault.entries),
                                 on_change: move |rows: Vec<(String, String)>| {
@@ -2847,8 +2866,10 @@ pub fn Workbench() -> Element {
 
                         // —— Local (read-only) ——
                         div { class: "vars-section",
-                            h4 { "Local" }
-                            p { class: "hint", "Script / request-local — machine only; never git synced." }
+                            h4 { "Local (Runtime)" }
+                            p { class: "vars-section-desc",
+                                "Ephemeral in-memory variables set during script execution via blitz.variables.set(). Discarded when request completes."
+                            }
                             {
                                 let local = sorted_map_rows(&vars().local);
                                 if local.is_empty() {
@@ -3133,7 +3154,7 @@ pub fn Workbench() -> Element {
                                             environments.set(envs);
                                         } else if !ctx.environment.is_empty() {
                                             status_msg.set(
-                                                "no active environment — epm.environment.set ignored"
+                                                "no active environment — blitz.environment.set ignored"
                                                     .into(),
                                             );
                                             ctx.environment.clear();
@@ -3399,6 +3420,7 @@ pub fn Workbench() -> Element {
                                         if let Some(found) = tabs.iter().find(|x| x.id == tid).cloned() {
                                             draft.set(found.clone());
                                             active_request_id.set(Some(tid));
+                                            editing_collection_id.set(None);
                                             if let Some((col_id, _)) = find_request_across(&collections(), tid) {
                                                 active_collection_id.set(Some(col_id));
                                                 if let Some(col) = collections().iter().find(|c| c.id == col_id) {
@@ -3440,6 +3462,29 @@ pub fn Workbench() -> Element {
                     }
                 }
 
+                if let Some(col) = editing_collection_id().and_then(|cid| collections().into_iter().find(|c| c.id == cid)) {
+                    CollectionEditor {
+                        collection: col.clone(),
+                        vars: vars(),
+                        active_env_id: active_env_id(),
+                        on_change: move |updated_col: Collection| {
+                            let mut cols = collections();
+                            if let Some(slot) = cols.iter_mut().find(|c| c.id == updated_col.id) {
+                                *slot = updated_col.clone();
+                            }
+                            collections.set(cols);
+                            if active_collection_id() == Some(updated_col.id) {
+                                let mut v = vars();
+                                v.collection = updated_col.variables_map();
+                                vars.set(v);
+                            }
+                            persist();
+                        },
+                        on_close: move |_| {
+                            editing_collection_id.set(None);
+                        },
+                    }
+                } else {
                 div { class: "workbench-split",
                 {
                     let cols_snap = collections();
@@ -3815,8 +3860,9 @@ pub fn Workbench() -> Element {
                             collections.set(cols);
                             persist();
                             status_msg.set("saved response as example".into());
-                        }
+                         }
                     },
+                }
                 }
                 }
 

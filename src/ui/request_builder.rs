@@ -1133,7 +1133,7 @@ fn ensure_trailing_form(rows: &mut Vec<FormDataField>) {
 }
 
 #[component]
-fn AuthEditor(
+pub(crate) fn AuthEditor(
     auth: AuthConfig,
     ancestor_origin: Option<crate::core::AncestorAuthOrigin>,
     on_edit_parent_auth: EventHandler<uuid::Uuid>,
@@ -1511,7 +1511,7 @@ fn AuthEditor(
                 }
             }
         }
-        p { class: "hint", "secret://… → keychain · {{{{vault:key}}}} → vault.json / keychain vault." }
+        p { class: "hint", "🔒 Security: Use {{{{vault:key}}}} to inject secrets from your local vault.json or OS Keychain without committing credentials to Git." }
     }
 }
 
@@ -1562,7 +1562,7 @@ fn append_script_snippet(existing: &str, snippet: &str) -> String {
 }
 
 #[component]
-fn ScriptsEditor(
+pub(crate) fn ScriptsEditor(
     pre: String,
     test: String,
     vars: VariableContext,
@@ -1570,13 +1570,13 @@ fn ScriptsEditor(
 ) -> Element {
     rsx! {
         p { class: "hint",
-            "Supported: epm.variables|environment|collectionVariables|globals (.get/set/unset/has/toObject/clear, replaceIn), vault, cookies (get/set/clear), request (url.getPath, method, headers.upsert, body), response (code/status/responseTime/json/text/headers, to.have.status/jsonBody), test/expect (equal/eql/include/ok/above/below/a/property/not), sendRequest, execution, info, visualizer, console.*, CryptoJS.SHA256/HmacSHA256. require: crypto-js only. No async tests / npm / uvm."
+            "Supported: blitz.variables|environment|collectionVariables|globals (.get/set/unset/has/toObject/clear, replaceIn), vault, cookies (get/set/clear), request (url.getPath, method, headers.upsert, body), response (code/status/responseTime/json/text/headers, to.have.status/jsonBody), test/expect (equal/eql/include/ok/above/below/a/property/not), sendRequest, execution, info, visualizer, console.*, CryptoJS.SHA256/HmacSHA256 (pm & epm aliases supported). require: crypto-js only. No async tests / npm / uvm."
         }
         label { "Pre-request" }
         ScriptCodeEditor {
             class: "body-editor".to_string(),
             value: pre.clone(),
-            placeholder: "epm.environment.set(\"baseUrl\", \"https://httpbin.org\");\nconsole.log(\"pre\");".to_string(),
+            placeholder: "blitz.environment.set(\"baseUrl\", \"https://httpbin.org\");\nconsole.log(\"pre\");".to_string(),
             vars: vars.clone(),
             on_change: {
                 let test = test.clone();
@@ -1596,7 +1596,7 @@ fn ScriptsEditor(
                             pre.clone(),
                             append_script_snippet(
                                 &test,
-                                "epm.test(\"Status 200\", function () {\n  epm.response.to.have.status(200);\n});\n",
+                                "blitz.test(\"Status 200\", function () {\n  blitz.response.to.have.status(200);\n});\n",
                             ),
                         ))
                     }
@@ -1614,7 +1614,7 @@ fn ScriptsEditor(
                             pre.clone(),
                             append_script_snippet(
                                 &test,
-                                "epm.test(\"Save token\", function () {\n  var t = epm.response.json().data.token;\n  epm.environment.set(\"token\", t);\n  epm.collectionVariables.set(\"token\", t);\n});\n",
+                                "blitz.test(\"Save token\", function () {\n  var t = blitz.response.json().data.token;\n  blitz.environment.set(\"token\", t);\n  blitz.collectionVariables.set(\"token\", t);\n});\n",
                             ),
                         ))
                     }
@@ -1632,18 +1632,36 @@ fn ScriptsEditor(
                             pre.clone(),
                             append_script_snippet(
                                 &test,
-                                "epm.test(\"JSON ok\", function () {\n  epm.response.to.have.jsonBody();\n  epm.expect(epm.response.json()).to.be.ok;\n});\n",
+                                "blitz.test(\"JSON ok\", function () {\n  blitz.response.to.have.jsonBody();\n  blitz.expect(blitz.response.json()).to.be.ok;\n});\n",
                             ),
                         ))
                     }
                 },
                 "JSON ok"
             }
+            button {
+                class: "btn btn-ghost",
+                r#type: "button",
+                onclick: {
+                    let pre = pre.clone();
+                    let test = test.clone();
+                    move |_| {
+                        on_change.call((
+                            pre.clone(),
+                            append_script_snippet(
+                                &test,
+                                "blitz.test(\"Response time < 200ms\", function () {\n  blitz.expect(blitz.response.responseTime).to.be.below(200);\n});\n",
+                            ),
+                        ))
+                    }
+                },
+                "< 200ms"
+            }
         }
         ScriptCodeEditor {
             class: "body-editor".to_string(),
             value: test.clone(),
-            placeholder: "epm.test(\"status ok\", function () {{\n  epm.expect(epm.response.code).to.equal(200);\n}});".to_string(),
+            placeholder: "blitz.test(\"status ok\", function () {{\n  blitz.expect(blitz.response.code).to.equal(200);\n}});".to_string(),
             vars: vars.clone(),
             on_change: {
                 let pre = pre.clone();

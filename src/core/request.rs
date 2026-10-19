@@ -529,7 +529,7 @@ pub struct ResponseView {
     /// Timing waterfall (approximated when fine-grained phases unavailable).
     #[serde(default)]
     pub timing: TimingBreakdown,
-    /// Visualizer HTML from `epm.visualizer.set` or HTML response body.
+    /// Visualizer HTML from `blitz.visualizer.set` or HTML response body.
     #[serde(default)]
     pub visualizer_html: String,
 }

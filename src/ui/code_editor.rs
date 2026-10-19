@@ -1,16 +1,14 @@
-//! Multiline code fields: syntax mirror, `{{` variable menu, Postman `epm.*` completions.
+//! Multiline code fields: syntax mirror, `{{` variable menu, Blitz `blitz.*` completions.
 
 use dioxus::prelude::*;
 
-use crate::core::{
-    apply_var_insert, var_insert_context, VariableContext, VariableSuggestion,
-};
+use crate::core::{apply_var_insert, var_insert_context, VariableContext, VariableSuggestion};
 
-use super::js_highlight::{render_js_var_mirror_html, render_var_mirror_html};
 use super::comment_toggle::{
     is_toggle_block_comment_shortcut, is_toggle_line_comment_shortcut, toggle_block_comments,
     toggle_line_comments,
 };
+use super::js_highlight::{render_js_var_mirror_html, render_var_mirror_html};
 use super::var_autocomplete::{
     read_field_caret_anchor, restore_field_caret, VarSuggestDropdown, VarSuggestMenu,
 };
@@ -24,30 +22,95 @@ pub enum EditorSyntax {
     Json,
 }
 
-/// Postman sandbox API snippets for script editor autocomplete.
-const PM_COMPLETIONS: &[(&str, &str)] = &[
-    ("epm.test", "epm.test(\"name\", function () {\n  \n});"),
-    ("epm.expect", "epm.expect("),
-    ("epm.environment.set", "epm.environment.set(\"key\", \"value\");"),
-    ("epm.environment.get", "epm.environment.get(\"key\");"),
-    ("epm.environment.unset", "epm.environment.unset(\"key\");"),
-    ("epm.collectionVariables.set", "epm.collectionVariables.set(\"key\", \"value\");"),
-    ("epm.collectionVariables.get", "epm.collectionVariables.get(\"key\");"),
-    ("epm.globals.set", "epm.globals.set(\"key\", \"value\");"),
-    ("epm.globals.get", "epm.globals.get(\"key\");"),
-    ("epm.variables.get", "epm.variables.get(\"key\");"),
-    ("epm.variables.set", "epm.variables.set(\"key\", \"value\");"),
-    ("epm.variables.replaceIn", "epm.variables.replaceIn(\"{{var}}\");"),
-    ("epm.vault.get", "epm.vault.get(\"key\");"),
-    ("epm.response.to.have.status", "epm.response.to.have.status(200);"),
-    ("epm.response.to.have.jsonBody", "epm.response.to.have.jsonBody();"),
-    ("epm.response.json", "epm.response.json()"),
-    ("epm.response.code", "epm.response.code"),
-    ("epm.request.headers.upsert", "epm.request.headers.upsert({ key: \"X\", value: \"v\" });"),
-    ("epm.sendRequest", "epm.sendRequest(url, function (err, res) {\n  \n});"),
-    ("epm.execution.setNextRequest", "epm.execution.setNextRequest(\"Request name\");"),
+/// Blitz sandbox API snippets & helpers for script editor autocomplete.
+const BLITZ_COMPLETIONS: &[(&str, &str)] = &[
+    // Helper Test Snippets
+    ("blitz.test: Status code 200", "blitz.test(\"Status is 200\", function () {\n  blitz.response.to.have.status(200);\n});"),
+    ("blitz.test: Response time < 200ms", "blitz.test(\"Response time < 200ms\", function () {\n  blitz.expect(blitz.response.responseTime).to.be.below(200);\n});"),
+    ("blitz.test: JSON property check", "blitz.test(\"Has JSON property\", function () {\n  var json = blitz.response.json();\n  blitz.expect(json).to.have.property(\"id\");\n});"),
+    ("blitz.test: JSON value check", "blitz.test(\"Check value\", function () {\n  var json = blitz.response.json();\n  blitz.expect(json.status).to.equal(\"success\");\n});"),
+    ("blitz.test: Content-Type header", "blitz.test(\"Content-Type is JSON\", function () {\n  blitz.expect(blitz.response.headers.get(\"content-type\")).to.include(\"application/json\");\n});"),
+    ("blitz.test: Generic test", "blitz.test(\"test name\", function () {\n  \n});"),
+
+    // Expect Assertions
+    ("blitz.expect", "blitz.expect("),
+    ("blitz.expect.to.equal", "blitz.expect(actual).to.equal(expected);"),
+    ("blitz.expect.to.eql", "blitz.expect(actual).to.eql(expected);"),
+    ("blitz.expect.to.include", "blitz.expect(actual).to.include(part);"),
+    ("blitz.expect.to.be.ok", "blitz.expect(actual).to.be.ok;"),
+    ("blitz.expect.to.be.above", "blitz.expect(actual).to.be.above(0);"),
+    ("blitz.expect.to.be.below", "blitz.expect(actual).to.be.below(200);"),
+    ("blitz.expect.to.be.a", "blitz.expect(actual).to.be.a(\"string\");"),
+    ("blitz.expect.to.have.property", "blitz.expect(actual).to.have.property(\"key\");"),
+    ("blitz.expect.to.not.equal", "blitz.expect(actual).to.not.equal(expected);"),
+
+    // Environment Variables
+    ("blitz.environment.set", "blitz.environment.set(\"key\", \"value\");"),
+    ("blitz.environment.get", "blitz.environment.get(\"key\");"),
+    ("blitz.environment.unset", "blitz.environment.unset(\"key\");"),
+    ("blitz.environment.has", "blitz.environment.has(\"key\");"),
+    ("blitz.environment.toObject", "blitz.environment.toObject();"),
+    ("blitz.environment.clear", "blitz.environment.clear();"),
+
+    // Collection Variables
+    ("blitz.collectionVariables.set", "blitz.collectionVariables.set(\"key\", \"value\");"),
+    ("blitz.collectionVariables.get", "blitz.collectionVariables.get(\"key\");"),
+    ("blitz.collectionVariables.unset", "blitz.collectionVariables.unset(\"key\");"),
+    ("blitz.collectionVariables.clear", "blitz.collectionVariables.clear();"),
+
+    // Global Variables
+    ("blitz.globals.set", "blitz.globals.set(\"key\", \"value\");"),
+    ("blitz.globals.get", "blitz.globals.get(\"key\");"),
+    ("blitz.globals.unset", "blitz.globals.unset(\"key\");"),
+    ("blitz.globals.clear", "blitz.globals.clear();"),
+
+    // Combined Variables
+    ("blitz.variables.get", "blitz.variables.get(\"key\");"),
+    ("blitz.variables.set", "blitz.variables.set(\"key\", \"value\");"),
+    ("blitz.variables.replaceIn", "blitz.variables.replaceIn(\"{{var}}\");"),
+
+    // Secrets / Vault
+    ("blitz.vault.get", "blitz.vault.get(\"key\");"),
+    ("blitz.vault.set", "blitz.vault.set(\"key\", \"value\");"),
+    ("blitz.vault.unset", "blitz.vault.unset(\"key\");"),
+
+    // Cookies
+    ("blitz.cookies.get", "blitz.cookies.get(\"key\");"),
+    ("blitz.cookies.set", "blitz.cookies.set(\"key\", \"value\");"),
+    ("blitz.cookies.clear", "blitz.cookies.clear();"),
+
+    // Response Helpers
+    ("blitz.response.to.have.status", "blitz.response.to.have.status(200);"),
+    ("blitz.response.to.have.jsonBody", "blitz.response.to.have.jsonBody();"),
+    ("blitz.response.json", "blitz.response.json()"),
+    ("blitz.response.text", "blitz.response.text()"),
+    ("blitz.response.code", "blitz.response.code"),
+    ("blitz.response.status", "blitz.response.status"),
+    ("blitz.response.responseTime", "blitz.response.responseTime"),
+    ("blitz.response.headers.get", "blitz.response.headers.get(\"content-type\")"),
+
+    // Request Helpers
+    ("blitz.request.headers.upsert", "blitz.request.headers.upsert({ key: \"Header-Key\", value: \"Header-Value\" });"),
+    ("blitz.request.headers.get", "blitz.request.headers.get(\"Header-Key\")"),
+    ("blitz.request.headers.remove", "blitz.request.headers.remove(\"Header-Key\");"),
+    ("blitz.request.url.getPath", "blitz.request.url.getPath()"),
+    ("blitz.request.method", "blitz.request.method"),
+    ("blitz.request.body.raw", "blitz.request.body.raw"),
+
+    // Execution & HTTP
+    ("blitz.sendRequest", "blitz.sendRequest(url, function (err, res) {\n  \n});"),
+    ("blitz.execution.setNextRequest", "blitz.execution.setNextRequest(\"Request name\");"),
+    ("blitz.execution.skipRequest", "blitz.execution.skipRequest();"),
+    ("blitz.visualizer.set", "blitz.visualizer.set(\"<div>{{data}}</div>\", data);"),
+    ("blitz.info.eventName", "blitz.info.eventName"),
+    ("blitz.info.requestName", "blitz.info.requestName"),
+
+    // Utilities & Console
     ("console.log", "console.log("),
+    ("console.warn", "console.warn("),
+    ("console.error", "console.error("),
     ("CryptoJS.SHA256", "CryptoJS.SHA256(\"text\").toString();"),
+    ("CryptoJS.HmacSHA256", "CryptoJS.HmacSHA256(\"message\", \"secret\").toString();"),
 ];
 
 #[derive(Debug, Clone, PartialEq)]
@@ -77,7 +140,7 @@ fn js_complete_prefix(text: &str, caret: usize) -> Option<(usize, String)> {
         return None;
     }
     let prefix = before[start..caret].to_string();
-    if prefix.len() < 2 && !prefix.starts_with("pm") {
+    if prefix.len() < 2 {
         return None;
     }
     Some((start, prefix))
@@ -85,11 +148,25 @@ fn js_complete_prefix(text: &str, caret: usize) -> Option<(usize, String)> {
 
 fn js_suggestions(prefix: &str) -> Vec<(String, String)> {
     let lower = prefix.to_lowercase();
-    PM_COMPLETIONS
+    // Normalize alias if user starts typing blitz. or pm.
+    let normalized = if let Some(rest) = lower.strip_prefix("blitz.") {
+        format!("blitz.{rest}")
+    } else if let Some(rest) = lower.strip_prefix("pm.") {
+        format!("blitz.{rest}")
+    } else if lower == "epm" || lower == "pm" {
+        "blitz".to_string()
+    } else {
+        lower.clone()
+    };
+
+    BLITZ_COMPLETIONS
         .iter()
-        .filter(|(label, _)| label.to_lowercase().starts_with(&lower))
+        .filter(|(label, _)| {
+            let l = label.to_lowercase();
+            l.starts_with(&lower) || l.starts_with(&normalized)
+        })
         .map(|(label, snippet)| (label.to_string(), snippet.to_string()))
-        .take(12)
+        .take(16)
         .collect()
 }
 
@@ -104,7 +181,7 @@ fn apply_js_insert(text: &str, caret: usize, start: usize, snippet: &str) -> (St
     (out, new_caret)
 }
 
-/// Multiline editor with optional JS highlighting, `{{` variables, and `epm.*` completions.
+/// Multiline editor with optional JS highlighting, `{{` variables, and `blitz.*` completions.
 #[component]
 pub fn MultilineCodeField(
     class: String,
@@ -122,7 +199,8 @@ pub fn MultilineCodeField(
     let mut var_menu = use_signal(|| None::<VarSuggestMenu>);
     let mut js_menu = use_signal(|| None::<JsSuggestMenu>);
 
-    let highlight = vars.is_some() || syntax == EditorSyntax::JavaScript || syntax == EditorSyntax::Json;
+    let highlight =
+        vars.is_some() || syntax == EditorSyntax::JavaScript || syntax == EditorSyntax::Json;
     let mirror_html = match (syntax, vars.as_ref()) {
         (EditorSyntax::JavaScript, v) => render_js_var_mirror_html(&value, v),
         (EditorSyntax::Json, v) => super::json_highlight::render_json_var_mirror_html(&value, v),
@@ -520,4 +598,3 @@ async fn read_textarea_state_by_id(id: &str) -> Option<(String, usize, usize)> {
     let end = arr.get(2)?.as_u64()? as usize;
     Some((value, start, end))
 }
-

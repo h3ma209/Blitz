@@ -141,7 +141,13 @@ fn highlight_js_fragment(text: &str) -> String {
             let word = &text[i..i + j];
             let class = if JS_KEYWORDS.contains(&word) {
                 "js-keyword"
-            } else if word == "pm" || word.starts_with("pm") {
+            } else if word == "blitz"
+                || word.starts_with("blitz")
+                || word == "pm"
+                || word.starts_with("pm")
+                || word == "epm"
+                || word.starts_with("epm")
+            {
                 "js-pm"
             } else if word == "console" || word == "CryptoJS" || word == "require" {
                 "js-builtin"
@@ -221,8 +227,8 @@ mod tests {
     #[test]
     fn js_var_mirror_preserves_tokens() {
         let ctx = VariableContext::demo();
-        let html = render_js_var_mirror_html("epm.test(\"t\", () => {{baseUrl}});", Some(&ctx));
-        assert!(html.contains("js-pm") || html.contains("pm"));
+        let html = render_js_var_mirror_html("blitz.test(\"t\", () => {{baseUrl}});", Some(&ctx));
+        assert!(html.contains("js-pm") || html.contains("blitz"));
         assert!(html.contains("var-token"));
     }
 }

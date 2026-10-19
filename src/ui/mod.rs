@@ -1,6 +1,7 @@
 //! Requester workbench shell (reports/02 product-docs UX mapping).
 
 mod code_editor;
+mod collection_editor;
 mod comment_toggle;
 mod console_panel;
 mod dismiss_backdrop;
@@ -25,6 +26,7 @@ mod workbench;
 
 pub(crate) use team_modal::TeamModal;
 
+pub(crate) use collection_editor::CollectionEditor;
 pub(crate) use dismiss_backdrop::DismissBackdrop;
 pub(crate) use modal_shell::ModalShell;
 
