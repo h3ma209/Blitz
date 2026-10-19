@@ -3952,6 +3952,27 @@ pub fn Workbench() -> Element {
                             status_msg.set("saved response as example".into());
                          }
                     },
+                    on_auto_assert: move |_| {
+                        let Some(view) = response() else { return; };
+                        if view.error.is_some() || view.status == 0 {
+                            status_msg.set("auto-assert: no successful response to learn from".into());
+                            return;
+                        }
+                        let suggested = crate::core::suggest_from_response(
+                            view.status,
+                            &view.headers,
+                            &view.body,
+                            view.elapsed_ms,
+                        );
+                        let mut d = draft();
+                        let added = crate::core::merge_assertions(&mut d.assertions, suggested);
+                        draft.set(d);
+                        status_msg.set(if added == 0 {
+                            "auto-assert: all assertions already present".into()
+                        } else {
+                            format!("auto-assert: added {added} assertion(s) — review in Tests tab, ⌘S to save")
+                        });
+                    },
                 }
                 }
                 }

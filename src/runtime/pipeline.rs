@@ -1158,6 +1158,10 @@ pub fn send_request_with_options(
             }
         }
     };
+    let assertion_script = crate::core::assertions_to_script(&draft.assertions);
+    if !assertion_script.is_empty() {
+        run_post(&assertion_script, "assertions");
+    }
     run_post(&draft.test_script, "tests");
     for (i, script) in opts.inherited_post.iter().enumerate() {
         run_post(script, &format!("tests/inherited-{i}"));

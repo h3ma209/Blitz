@@ -3,6 +3,7 @@
 
 #![allow(unused_imports)] // re-exports form public module surface
 
+pub mod assertions;
 pub mod assets;
 pub mod auth_extra;
 pub mod capture_proxy;
@@ -29,6 +30,9 @@ pub mod settings;
 pub mod variables;
 pub mod vault;
 
+pub use assertions::{
+    assertions_to_script, merge_assertions, suggest_from_response, Assertion, AssertionKind,
+};
 pub use assets::{
     copy_file_to_assets, ensure_assets_dir, resolve_asset_path, DEFAULT_ASSETS_DIR,
 };

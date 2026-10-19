@@ -16,6 +16,7 @@ pub enum BuilderTab {
     Headers,
     Body,
     Auth,
+    Tests,
     Scripts,
     Docs,
     Settings,
@@ -171,13 +172,21 @@ pub fn RequestBuilder(
         if draft.protocol == RequestProtocol::Http {
         div { class: "builder-tabs",
             for (label, t) in [
-                ("Params", BuilderTab::Params),
-                ("Headers", BuilderTab::Headers),
-                ("Body", BuilderTab::Body),
-                ("Auth", BuilderTab::Auth),
-                ("Scripts", BuilderTab::Scripts),
-                ("Docs", BuilderTab::Docs),
-                ("Settings", BuilderTab::Settings),
+                ("Params".to_string(), BuilderTab::Params),
+                ("Headers".to_string(), BuilderTab::Headers),
+                ("Body".to_string(), BuilderTab::Body),
+                ("Auth".to_string(), BuilderTab::Auth),
+                (
+                    if draft.assertions.is_empty() {
+                        "Tests".to_string()
+                    } else {
+                        format!("Tests ({})", draft.assertions.iter().filter(|a| a.enabled).count())
+                    },
+                    BuilderTab::Tests,
+                ),
+                ("Scripts".to_string(), BuilderTab::Scripts),
+                ("Docs".to_string(), BuilderTab::Docs),
+                ("Settings".to_string(), BuilderTab::Settings),
             ] {
                 button {
                     class: if tab() == t { "builder-tab active" } else { "builder-tab" },
@@ -258,6 +267,19 @@ pub fn RequestBuilder(
                             move |auth| {
                                 let mut d = draft.clone();
                                 d.auth = auth;
+                                on_change.call(d);
+                            }
+                        }
+                    }
+                },
+                BuilderTab::Tests => rsx! {
+                    super::AssertionsEditor {
+                        assertions: draft.assertions.clone(),
+                        on_change: {
+                            let draft = draft.clone();
+                            move |list| {
+                                let mut d = draft.clone();
+                                d.assertions = list;
                                 on_change.call(d);
                             }
                         }

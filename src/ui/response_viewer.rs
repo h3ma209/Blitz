@@ -30,6 +30,7 @@ pub fn ResponseViewer(
     sending: bool,
     #[props(default)] default_tab: DefaultResponseTab,
     on_save_example: EventHandler<()>,
+    #[props(default)] on_auto_assert: EventHandler<()>,
 ) -> Element {
     let mut tab = use_signal(|| resp_tab_from_default(default_tab));
     let mut search_query = use_signal(String::new);
@@ -94,6 +95,12 @@ pub fn ResponseViewer(
                             title: "Find in response (⌘F)",
                             onclick: move |_| search_open.set(!search_open()),
                             "🔍 Find"
+                        }
+                        button {
+                            class: "btn btn-ghost",
+                            title: "Generate Tests from this response: status, content-type, JSON fields, time ceiling. Review them in the Tests tab.",
+                            onclick: move |_| on_auto_assert.call(()),
+                            "✓ Auto-assert"
                         }
                         button {
                             class: "btn btn-ghost",

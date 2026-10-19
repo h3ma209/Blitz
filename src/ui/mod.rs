@@ -1,5 +1,6 @@
 //! Requester workbench shell (reports/02 product-docs UX mapping).
 
+mod assertions_editor;
 mod code_editor;
 mod collection_editor;
 mod comment_toggle;
@@ -25,6 +26,7 @@ mod team_modal;
 mod var_hover;
 mod workbench;
 
+pub(crate) use assertions_editor::AssertionsEditor;
 pub(crate) use team_modal::TeamModal;
 
 pub(crate) use collection_editor::CollectionEditor;

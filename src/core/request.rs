@@ -347,6 +347,9 @@ pub struct RequestDraft {
     /// Mock scenario: match example by name substring (optional).
     #[serde(default)]
     pub mock_match_name: String,
+    /// No-code response assertions (compiled to a test script at send time).
+    #[serde(default)]
+    pub assertions: Vec<super::assertions::Assertion>,
 }
 
 impl Default for RequestDraft {
@@ -388,6 +391,7 @@ impl Default for RequestDraft {
             graphql_ws_query: String::new(),
             mock_match_header: String::new(),
             mock_match_name: String::new(),
+            assertions: Vec::new(),
         }
     }
 }

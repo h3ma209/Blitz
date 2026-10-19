@@ -235,6 +235,12 @@ fn import_request(item: &Value) -> Result<RequestDraft, ImpexError> {
         }
     }
 
+    if let Some(arr) = item.pointer("/x-blitz/assertions") {
+        if let Ok(list) = serde_json::from_value::<Vec<super::assertions::Assertion>>(arr.clone()) {
+            draft.assertions = list;
+        }
+    }
+
     Ok(draft)
 }
 
@@ -571,7 +577,7 @@ fn export_request(r: &RequestDraft) -> Value {
         }));
     }
 
-    json!({
+    let mut item = json!({
         "id": r.id.to_string(),
         "_postman_id": r.id.to_string(),
         "name": r.name,
@@ -584,7 +590,14 @@ fn export_request(r: &RequestDraft) -> Value {
             "description": r.description,
         },
         "event": events,
-    })
+    });
+    // Blitz extension (ignored by Postman): no-code assertions survive Git sync.
+    if !r.assertions.is_empty() {
+        if let Ok(v) = serde_json::to_value(&r.assertions) {
+            item["x-blitz"] = json!({ "assertions": v });
+        }
+    }
+    item
 }
 
 /// Export a single request as a Postman v2.1 `item` object (for split tree files).
@@ -1132,5 +1145,26 @@ mod tests {
             _ => None,
         }).expect("users endpoint must exist");
         assert_eq!(user_req.test_script, "pm.test('status is 200', () => {});");
+    }
+
+    #[test]
+    fn assertions_roundtrip_through_request_item() {
+        use crate::core::{Assertion, AssertionKind};
+        let mut r = RequestDraft::default();
+        r.assertions = vec![
+            Assertion::new(AssertionKind::StatusEquals { code: 201 }),
+            Assertion::new(AssertionKind::JsonPathEquals {
+                path: "data.id".into(),
+                expected: "7".into(),
+            }),
+        ];
+        r.assertions[1].enabled = false;
+        let text = serde_json::to_string(&export_request_item(&r)).unwrap();
+        let back = import_request_item(&text).unwrap();
+        assert_eq!(back.assertions, r.assertions);
+
+        // No assertions => no extension key written (clean Postman output).
+        let plain = export_request_item(&RequestDraft::default());
+        assert!(plain.get("x-blitz").is_none());
     }
 }

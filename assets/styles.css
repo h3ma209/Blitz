@@ -4382,3 +4382,134 @@ mark.search-match {
   padding: 0 1px;
 }
 
+
+/* =========================================================================
+   VISUAL TEST BUILDER (Tests tab)
+   ========================================================================= */
+.assert-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin: var(--space-3) 0;
+}
+
+.assert-empty {
+  padding: var(--space-4);
+  border: 1px dashed rgba(255, 255, 255, 0.14);
+  border-radius: var(--radius);
+  text-align: center;
+}
+
+.assert-empty-title {
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 2px;
+}
+
+.assert-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 6px 10px;
+  background: rgba(255, 255, 255, 0.035);
+  border: var(--glass-border);
+  border-radius: var(--radius);
+  transition: background 120ms ease, opacity 120ms ease, border-color 120ms ease;
+  animation: fade-in 160ms ease-out;
+}
+
+.assert-row:hover {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.18);
+}
+
+.assert-row-off {
+  opacity: 0.5;
+}
+
+.assert-toggle {
+  flex-shrink: 0;
+  accent-color: var(--spot-green-bright);
+  cursor: pointer;
+}
+
+.assert-type {
+  flex-shrink: 0;
+  min-width: 150px;
+  font-size: var(--fs-caption);
+  font-weight: 600;
+  color: var(--spot-green-bright);
+  letter-spacing: 0.01em;
+}
+
+.assert-fields {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.assert-input {
+  flex: 1;
+  min-width: 0;
+  padding: 5px 8px;
+  background: rgba(0, 0, 0, 0.25);
+  border: var(--glass-border);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  font-size: var(--fs-body);
+  outline: none;
+}
+
+.assert-input:focus {
+  border-color: var(--accent);
+}
+
+.assert-input-num {
+  flex: 0 0 90px;
+}
+
+.assert-input-mono {
+  font-family: var(--mono);
+}
+
+.assert-sep {
+  flex-shrink: 0;
+  color: var(--text-dim);
+  font-size: var(--fs-caption);
+}
+
+.assert-remove {
+  flex-shrink: 0;
+  background: transparent;
+  border: none;
+  color: var(--text-dim);
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
+  transition: color 120ms ease, background 120ms ease;
+}
+
+.assert-remove:hover {
+  color: var(--err);
+  background: var(--err-soft);
+}
+
+.assert-add-row {
+  display: flex;
+}
+
+.assert-add-select {
+  padding: 7px 12px;
+  background: var(--accent-soft);
+  border: 1px dashed var(--spot-green-bright);
+  border-radius: var(--radius);
+  color: var(--spot-green-bright);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.assert-add-select:hover {
+  background: rgba(29, 185, 84, 0.22);
+}
