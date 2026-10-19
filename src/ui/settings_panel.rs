@@ -2,16 +2,15 @@ use dioxus::prelude::*;
 
 use crate::core::{
     AccentIntensity, AppSettings, ClientCertSettings, CloudSyncSettings, DefaultResponseTab,
-    ProxyMode, ProxySettings, UiDensity, UiSettings, DEFAULT_CLOUD_REMOTE,
+    ProxyMode, ProxySettings, UiDensity, UiSettings, UiTheme, DEFAULT_CLOUD_REMOTE,
 };
-use crate::ui::ModalShell;
-
 #[derive(Clone, PartialEq)]
 pub enum SettingsEvent {
     Close,
     Save(AppSettings),
 }
 
+/// Full-page settings editor (proxy, certs, appearance, cloud sync).
 #[component]
 pub fn SettingsPanel(
     settings: AppSettings,
@@ -31,6 +30,7 @@ pub fn SettingsPanel(
     let mut density = use_signal(|| settings.ui.density);
     let mut wrap_editor = use_signal(|| settings.ui.wrap_editor_text);
     let mut tab_size = use_signal(|| settings.ui.tab_size);
+    let mut theme = use_signal(|| settings.ui.theme);
     let mut accent = use_signal(|| settings.ui.accent_intensity);
     let mut reduce_motion = use_signal(|| settings.ui.reduce_motion);
     let mut show_status = use_signal(|| settings.ui.show_status_bar);
@@ -54,6 +54,12 @@ pub fn SettingsPanel(
         UiDensity::Comfortable => "comfortable",
         UiDensity::Compact => "compact",
     };
+    let theme_str = match theme() {
+        UiTheme::Spotify => "spotify",
+        UiTheme::Slate => "slate",
+        UiTheme::Light => "light",
+        UiTheme::HighContrast => "high_contrast",
+    };
     let accent_str = match accent() {
         AccentIntensity::Soft => "soft",
         AccentIntensity::Normal => "normal",
@@ -67,11 +73,19 @@ pub fn SettingsPanel(
     let tab_size_str = if tab_size() >= 4 { "4" } else { "2" };
 
     rsx! {
-        ModalShell {
-            title: "Settings".to_string(),
-            class: "settings-modal".to_string(),
-            on_close: move |_| on_event.call(SettingsEvent::Close),
-            div { class: "modal-body",
+        div { class: "settings-page",
+            div { class: "settings-page-head",
+                h3 { "Settings" }
+                button {
+                    class: "modal-close",
+                    r#type: "button",
+                    title: "Back to workbench",
+                    aria_label: "Close settings",
+                    onclick: move |_| on_event.call(SettingsEvent::Close),
+                    "✕"
+                }
+            }
+            div { class: "settings-page-body",
                 p { class: "hint", "Proxy, certificates, appearance, cloud sync. Data: {data_root}" }
 
                 h4 { "Appearance" }
@@ -144,6 +158,24 @@ pub fn SettingsPanel(
                                     console_h.set(UiSettings::clamp_console_height(v));
                                 }
                             },
+                        }
+                    }
+                    label { class: "settings-row",
+                        span { "Theme" }
+                        select {
+                            value: "{theme_str}",
+                            onchange: move |evt: Event<FormData>| {
+                                theme.set(match evt.value().as_str() {
+                                    "slate" => UiTheme::Slate,
+                                    "light" => UiTheme::Light,
+                                    "high_contrast" => UiTheme::HighContrast,
+                                    _ => UiTheme::Spotify,
+                                });
+                            },
+                            option { value: "spotify", "Spotify (default)" }
+                            option { value: "slate", "Dark slate" }
+                            option { value: "light", "Light" }
+                            option { value: "high_contrast", "High contrast" }
                         }
                     }
                     label { class: "settings-row",
@@ -256,6 +288,7 @@ pub fn SettingsPanel(
                             density.set(d.density);
                             wrap_editor.set(d.wrap_editor_text);
                             tab_size.set(d.tab_size);
+                            theme.set(d.theme);
                             accent.set(d.accent_intensity);
                             reduce_motion.set(d.reduce_motion);
                             show_status.set(d.show_status_bar);
@@ -362,7 +395,7 @@ pub fn SettingsPanel(
                     }
                 }
             }
-            div { class: "modal-actions",
+            div { class: "settings-page-actions",
                 button {
                     class: "btn btn-ghost",
                     onclick: move |_| on_event.call(SettingsEvent::Close),
@@ -398,6 +431,7 @@ pub fn SettingsPanel(
                                 density: density(),
                                 wrap_editor_text: wrap_editor(),
                                 tab_size: tab_size(),
+                                theme: theme(),
                                 accent_intensity: accent(),
                                 reduce_motion: reduce_motion(),
                                 show_status_bar: show_status(),

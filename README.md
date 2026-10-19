@@ -8,6 +8,7 @@ Local-first API client (Rust + Dioxus desktop). Architecture guided by design do
 
 - Rust 1.83+ (tested with 1.95)
 - macOS / Linux / Windows with WebView support (Dioxus desktop uses the system WebView)
+- **Linux build deps** (Debian/Ubuntu): `libwebkit2gtk-4.1-dev`, `libgtk-3-dev`, `libxdo-dev`, `libayatana-appindicator3-dev`, `librsvg2-dev` (see `.github/workflows/build.yml`)
 - Optional team sync: system `git` + GitHub auth (`gh auth login` or SSH agent)
 
 Optional: [dioxus-cli](https://dioxuslabs.com/) (`cargo install dioxus-cli`). Homebrew `dx` may be **Deno's** `dx` — prefer `cargo run`.
@@ -85,7 +86,7 @@ docs/         # design docs
 | `{{var}}` + `{{vault:key}}` + `secret://` | **Real** |
 | Environments, history, console | **Real** |
 | Auth: Bearer/Basic/API Key/Digest/Inherit/**OAuth2** (client_creds + auth_code) | **Real** |
-| boa JS sandbox (`pm.*` expanded) | **Real** (no `pm.sendRequest`) |
+| boa JS sandbox (`epm.*` expanded) | **Real** (no `epm.sendRequest`) |
 | Collection tree, favorite/dup/sort, Trash | **Real** |
 | Import v2.1 / cURL / OpenAPI 3; export v2.1 | **Real** |
 | Code snippets (cURL / fetch / Python) | **Real** |
@@ -100,7 +101,7 @@ docs/         # design docs
 
 1. `cargo run`
 2. Send `{{baseUrl}}/get` (⌘↵)
-3. Scripts → Tests with `pm.test` / `pm.expect`
+3. Scripts → Tests with `epm.test` / `epm.expect`
 4. Save example → **Mock** (binds `127.0.0.1`)
 5. **Runner** with iterations / CSV data file
 6. Auth → OAuth 2.0 → Get New Access Token

@@ -5,7 +5,7 @@ use crate::core::{
     OAuth2Grant, RequestDraft, RequestProtocol, RequestSettings, VariableContext,
 };
 use super::var_hover::{VarEditEvent, VarHoverInput};
-use super::CommentableTextarea;
+use super::{CommentableTextarea, ScriptCodeEditor};
 
 pub use super::var_hover::VarEditEvent as RequestVarEditEvent;
 
@@ -221,6 +221,7 @@ pub fn RequestBuilder(
                     ScriptsEditor {
                         pre: draft.pre_request_script.clone(),
                         test: draft.test_script.clone(),
+                        vars: vars.clone(),
                         on_change: {
                             let draft = draft.clone();
                             move |(pre, test)| {
@@ -863,6 +864,8 @@ fn BodyEditor(
             p { class: "hint", "Check File? and put a local path in Value to upload that file." }
             FormDataEditor {
                 rows: formdata.clone(),
+                vars: vars.clone(),
+                on_var_edit: on_var_edit.clone(),
                 on_change: {
                     let body = body.clone();
                     let binary_path = binary_path.clone();
@@ -936,6 +939,8 @@ fn BodyEditor(
 #[component]
 fn FormDataEditor(
     rows: Vec<FormDataField>,
+    vars: VariableContext,
+    on_var_edit: EventHandler<VarEditEvent>,
     on_change: EventHandler<Vec<FormDataField>>,
 ) -> Element {
     rsx! {
@@ -968,21 +973,28 @@ fn FormDataEditor(
                             }
                         }
                         td {
-                            input {
-                                r#type: "text",
-                                value: "{row.value}",
-                                placeholder: if row.is_file { "/path/to/file" } else { "value" },
-                                oninput: {
+                            VarHoverInput {
+                                class: "kv-var-input".to_string(),
+                                value: row.value.clone(),
+                                placeholder: if row.is_file {
+                                    String::from("/path/to/file")
+                                } else {
+                                    String::from("value")
+                                },
+                                input_id: format!("np-form-val-{i}"),
+                                vars: vars.clone(),
+                                on_input: {
                                     let rows = rows.clone();
-                                    move |evt: Event<FormData>| {
+                                    move |val: String| {
                                         let mut next = rows.clone();
                                         if let Some(r) = next.get_mut(i) {
-                                            r.value = evt.value();
+                                            r.value = val;
                                         }
                                         ensure_trailing_form(&mut next);
                                         on_change.call(next);
                                     }
-                                }
+                                },
+                                on_var_edit: on_var_edit.clone(),
                             }
                         }
                         td {
@@ -1398,17 +1410,19 @@ fn append_script_snippet(existing: &str, snippet: &str) -> String {
 fn ScriptsEditor(
     pre: String,
     test: String,
+    vars: VariableContext,
     on_change: EventHandler<(String, String)>,
 ) -> Element {
     rsx! {
         p { class: "hint",
-            "Supported: pm.variables|environment|collectionVariables|globals (.get/set/unset/has/toObject/clear, replaceIn), vault, cookies (get/set/clear), request (url.getPath, method, headers.upsert, body), response (code/status/responseTime/json/text/headers, to.have.status/jsonBody), test/expect (equal/eql/include/ok/above/below/a/property/not), sendRequest, execution, info, visualizer, console.*, CryptoJS.SHA256/HmacSHA256. require: crypto-js only. No async tests / npm / uvm."
+            "Supported: epm.variables|environment|collectionVariables|globals (.get/set/unset/has/toObject/clear, replaceIn), vault, cookies (get/set/clear), request (url.getPath, method, headers.upsert, body), response (code/status/responseTime/json/text/headers, to.have.status/jsonBody), test/expect (equal/eql/include/ok/above/below/a/property/not), sendRequest, execution, info, visualizer, console.*, CryptoJS.SHA256/HmacSHA256. require: crypto-js only. No async tests / npm / uvm."
         }
         label { "Pre-request" }
-        CommentableTextarea {
+        ScriptCodeEditor {
             class: "body-editor".to_string(),
             value: pre.clone(),
-            placeholder: "pm.environment.set(\"baseUrl\", \"https://httpbin.org\");\nconsole.log(\"pre\");".to_string(),
+            placeholder: "epm.environment.set(\"baseUrl\", \"https://httpbin.org\");\nconsole.log(\"pre\");".to_string(),
+            vars: vars.clone(),
             on_change: {
                 let test = test.clone();
                 move |text: String| on_change.call((text, test.clone()))
@@ -1427,7 +1441,7 @@ fn ScriptsEditor(
                             pre.clone(),
                             append_script_snippet(
                                 &test,
-                                "pm.test(\"Status 200\", function () {\n  pm.response.to.have.status(200);\n});\n",
+                                "epm.test(\"Status 200\", function () {\n  epm.response.to.have.status(200);\n});\n",
                             ),
                         ))
                     }
@@ -1445,7 +1459,7 @@ fn ScriptsEditor(
                             pre.clone(),
                             append_script_snippet(
                                 &test,
-                                "pm.test(\"Save token\", function () {\n  var t = pm.response.json().data.token;\n  pm.environment.set(\"token\", t);\n  pm.collectionVariables.set(\"token\", t);\n});\n",
+                                "epm.test(\"Save token\", function () {\n  var t = epm.response.json().data.token;\n  epm.environment.set(\"token\", t);\n  epm.collectionVariables.set(\"token\", t);\n});\n",
                             ),
                         ))
                     }
@@ -1463,7 +1477,7 @@ fn ScriptsEditor(
                             pre.clone(),
                             append_script_snippet(
                                 &test,
-                                "pm.test(\"JSON ok\", function () {\n  pm.response.to.have.jsonBody();\n  pm.expect(pm.response.json()).to.be.ok;\n});\n",
+                                "epm.test(\"JSON ok\", function () {\n  epm.response.to.have.jsonBody();\n  epm.expect(epm.response.json()).to.be.ok;\n});\n",
                             ),
                         ))
                     }
@@ -1471,10 +1485,11 @@ fn ScriptsEditor(
                 "JSON ok"
             }
         }
-        CommentableTextarea {
+        ScriptCodeEditor {
             class: "body-editor".to_string(),
             value: test.clone(),
-            placeholder: "pm.test(\"status ok\", function () {{\n  pm.expect(pm.response.code).to.equal(200);\n}});".to_string(),
+            placeholder: "epm.test(\"status ok\", function () {{\n  epm.expect(epm.response.code).to.equal(200);\n}});".to_string(),
+            vars: vars.clone(),
             on_change: {
                 let pre = pre.clone();
                 move |text: String| on_change.call((pre.clone(), text))

@@ -4,7 +4,8 @@ use uuid::Uuid;
 use crate::core::{
     add_folder_under, add_request_under, apply_collection_map, apply_collection_var_edit,
     apply_environment_map, apply_env_var_edit, branch_name_for_env, bundled_postman_collections,
-    clone_or_ensure, duplicate_across, ensure_default_environments, export_collection_v21,
+    clone_or_ensure, delete_needs_confirmation, duplicate_across, ensure_default_environments,
+    export_collection_v21, flatten_collections, insert_item_under,
     export_environment_json, find_environment, find_request_across, generate_snippet,
     graphql_ws_subscribe, grpc_reflection_list, grpc_unary, import_collection_v21, import_curl,
     import_environment_texts, import_har, import_openapi3, interceptor_limits_blurb,
@@ -14,9 +15,11 @@ use crate::core::{
     routes_from_collections, run_performance, save_example_to_request, save_request_to_collections,
     snippet_languages, socketio_session, sort_collections, split_mcp_args, sse_listen,
     start_capture_proxy, start_mock, switch_env_branch, sync_environment, sync_on_save,
-    trash_collection, ws_connect_session, AppSettings, CaptureProxyHandle, Collection, ConsoleLine,
+    remint_pasted_item, request_tab_display_name, snapshot_tree_item, trash_collection,
+    ws_connect_session, AppSettings,
+    CaptureProxyHandle, Collection, CollectionItem, ConsoleLine,
     Cookie, CookieJar, EnvVar, Environment, Folder, HistoryEntry, KeyValue, MockHandle, PerfReport,
-    RequestDraft, RequestProtocol, ResponseView, SavedExample, UiSettings, VarResolveScope,
+    RequestDraft, RequestProtocol, ResponseView, SavedExample, UiSettings, UiTheme, VarResolveScope,
     VariableContext, VaultStore, WsSession, DEFAULT_CLOUD_REMOTE, HISTORY_MAX,
 };
 use crate::runtime::{
@@ -38,9 +41,10 @@ use crate::ui::request_builder::{RequestBuilder, RequestVarEditEvent};
 use crate::ui::response_viewer::ResponseViewer;
 use crate::ui::runner_panel::{RunnerEvent, RunnerPanel};
 use crate::ui::settings_panel::{SettingsEvent, SettingsPanel};
+use crate::ui::theme_selector::ThemeSelector;
 use crate::ui::sidebar::{Sidebar, SidebarAction, SidebarEvent};
 use crate::ui::CommentableTextarea;
-use crate::ui::ModalShell;
+use crate::ui::{DismissBackdrop, ModalShell};
 use crate::ui::loading::Spinner;
 
 /// Vertical pane drag state — handled on `.workbench`, never as bare `.app-shell` grid children.
@@ -48,6 +52,52 @@ use crate::ui::loading::Spinner;
 enum PaneDrag {
     Request { start_y: f64, start_h: u32 },
     Console { start_y: f64, start_h: u32 },
+}
+
+/// Delete confirmation dialog payload for sidebar tree items.
+#[derive(Clone, PartialEq)]
+struct PendingDelete {
+    id: Uuid,
+    label: String,
+}
+
+/// In-app clipboard for collection tree cut/copy/paste (folder/request items).
+#[derive(Clone)]
+struct TreeClipboard {
+    item: CollectionItem,
+    cut_from: Option<Uuid>,
+}
+
+/// Remove a collection (to trash) or folder/request from the tree.
+fn execute_tree_delete(
+    id: Uuid,
+    collections: &mut Vec<Collection>,
+    trash: &mut Vec<Collection>,
+    active_collection_id: &mut Option<Uuid>,
+    active_request_id: &mut Option<Uuid>,
+    draft: &mut RequestDraft,
+) -> Option<String> {
+    if trash_collection(collections, trash, id) {
+        if *active_collection_id == Some(id) {
+            *active_collection_id = collections.first().map(|c| c.id);
+        }
+        Some("moved collection to Trash".into())
+    } else {
+        remove_across(collections, id);
+        if *active_request_id == Some(id) {
+            *active_request_id = None;
+            *draft = RequestDraft::default();
+        }
+        None
+    }
+}
+
+fn tree_item_label(collections: &[Collection], id: Uuid) -> String {
+    flatten_collections(collections)
+        .into_iter()
+        .find(|r| r.id == id)
+        .map(|r| r.name)
+        .unwrap_or_else(|| "item".into())
 }
 
 #[component]
@@ -126,6 +176,8 @@ pub fn Workbench() -> Element {
     let mut console_h = use_signal(|| app_settings().ui.console_height_px as f64);
     // Loading state for async operations (import, etc.)
     let mut is_loading = use_signal(|| false);
+    let mut pending_delete = use_signal(|| None::<PendingDelete>);
+    let mut tree_clipboard = use_signal(|| None::<TreeClipboard>);
 
     use_effect(move || {
         if loaded() {
@@ -590,7 +642,7 @@ pub fn Workbench() -> Element {
 
         let mut ctx = vars();
         // Always sync collection vars from active collection (needed for
-        // pm.collectionVariables.get in Initiate Envs / SNB scripts).
+        // epm.collectionVariables.get in Initiate Envs / SNB scripts).
         if let Some(col_id) = active_collection_id() {
             if let Some(col) = collections().iter().find(|c| c.id == col_id) {
                 ctx.collection = col.variables_map();
@@ -759,12 +811,12 @@ pub fn Workbench() -> Element {
                 push_console(
                     &mut lines,
                     ConsoleLine::error(
-                        "no active environment — pm.environment.set ignored (select Local/Development/Production first)",
+                        "no active environment — epm.environment.set ignored (select Local/Development/Production first)",
                     ),
                 );
                 console_lines.set(lines);
                 status_msg.set(
-                    "no active environment — pm.environment.set ignored".into(),
+                    "no active environment — epm.environment.set ignored".into(),
                 );
                 v.environment.clear();
             }
@@ -931,23 +983,89 @@ pub fn Workbench() -> Element {
             }
             SidebarAction::Delete => {
                 if let Some(id) = evt.id {
-                    let mut cols = collections();
-                    let mut tr = trash();
-                    if trash_collection(&mut cols, &mut tr, id) {
-                        trash.set(tr);
-                        if active_collection_id() == Some(id) {
-                            active_collection_id.set(cols.first().map(|c| c.id));
-                        }
-                        status_msg.set("moved collection to Trash".into());
+                    let cols = collections();
+                    if delete_needs_confirmation(&cols, id) {
+                        pending_delete.set(Some(PendingDelete {
+                            id,
+                            label: tree_item_label(&cols, id),
+                        }));
                     } else {
-                        remove_across(&mut cols, id);
-                        if active_request_id() == Some(id) {
-                            active_request_id.set(None);
-                            draft.set(RequestDraft::default());
+                        let mut cols = cols;
+                        let mut tr = trash();
+                        let mut col_id = active_collection_id();
+                        let mut req_id = active_request_id();
+                        let mut d = draft();
+                        if let Some(msg) = execute_tree_delete(
+                            id,
+                            &mut cols,
+                            &mut tr,
+                            &mut col_id,
+                            &mut req_id,
+                            &mut d,
+                        ) {
+                            status_msg.set(msg);
                         }
+                        trash.set(tr);
+                        collections.set(cols);
+                        active_collection_id.set(col_id);
+                        active_request_id.set(req_id);
+                        draft.set(d);
+                        persist();
                     }
-                    collections.set(cols);
-                    persist();
+                }
+            }
+            SidebarAction::Copy => {
+                if let Some(id) = evt.id {
+                    if let Some(item) = snapshot_tree_item(&collections(), id) {
+                        tree_clipboard.set(Some(TreeClipboard {
+                            item,
+                            cut_from: None,
+                        }));
+                        status_msg.set("copied to collection clipboard".into());
+                    } else {
+                        status_msg.set("copy: select a folder or request".into());
+                    }
+                }
+            }
+            SidebarAction::Cut => {
+                if let Some(id) = evt.id {
+                    if let Some(item) = snapshot_tree_item(&collections(), id) {
+                        tree_clipboard.set(Some(TreeClipboard {
+                            item,
+                            cut_from: Some(id),
+                        }));
+                        status_msg.set("cut — paste to move".into());
+                    } else {
+                        status_msg.set("cut: select a folder or request".into());
+                    }
+                }
+            }
+            SidebarAction::Paste => {
+                if let Some(parent_id) = evt.id {
+                    if let Some(clip) = tree_clipboard() {
+                        let mut cols = collections();
+                        if let Some(cut_id) = clip.cut_from {
+                            remove_across(&mut cols, cut_id);
+                            if active_request_id() == Some(cut_id) {
+                                active_request_id.set(None);
+                                draft.set(RequestDraft::default());
+                            }
+                        }
+                        let mut item = clip.item.clone();
+                        remint_pasted_item(&mut item);
+                        if insert_item_under(&mut cols, parent_id, item) {
+                            collections.set(cols);
+                            if clip.cut_from.is_some() {
+                                tree_clipboard.set(None);
+                            }
+                            status_msg.set("pasted".into());
+                            persist();
+                        } else {
+                            status_msg.set("paste failed — invalid target".into());
+                        }
+                    } else {
+                        status_msg.set("nothing to paste".into());
+                    }
                 }
             }
             SidebarAction::Duplicate => {
@@ -1148,14 +1266,45 @@ pub fn Workbench() -> Element {
         live_request_h, live_console_h
     );
     let appearance_tokens = ui.shell_class_tokens();
-    let shell_class = if sidebar_drag().is_some() {
-        format!("app-shell sidebar-resizing {appearance_tokens}")
-    } else {
-        format!("app-shell {appearance_tokens}")
+    let shell_class = {
+        let base = if sidebar_drag().is_some() {
+            format!("app-shell sidebar-resizing {appearance_tokens}")
+        } else {
+            format!("app-shell {appearance_tokens}")
+        };
+        if show_settings() {
+            format!("{base} settings-open")
+        } else {
+            base
+        }
     };
     let workbench_class = match pane_drag() {
         Some(PaneDrag::Request { .. } | PaneDrag::Console { .. }) => "workbench pane-resizing-v",
         None => "workbench",
+    };
+    let top_nav_menus_open =
+        file_menu_open() || tools_menu_open() || cloud_menu_open();
+    let top_bar_class = if top_nav_menus_open {
+        "top-bar top-bar-elevated"
+    } else {
+        "top-bar"
+    };
+
+    let on_settings_event = move |evt: SettingsEvent| match evt {
+        SettingsEvent::Close => show_settings.set(false),
+        SettingsEvent::Save(s) => {
+            let enabling_cloud = s.cloud_sync.enabled;
+            app_settings.set(s);
+            if enabling_cloud {
+                let mut envs = environments();
+                if ensure_default_environments(&mut envs) {
+                    environments.set(envs);
+                }
+            }
+            show_settings.set(false);
+            persist();
+            status_msg.set("settings saved".into());
+        }
     };
 
     rsx! {
@@ -1233,7 +1382,18 @@ pub fn Workbench() -> Element {
                 }
             },
 
-            header { class: "top-bar",
+            if top_nav_menus_open {
+                DismissBackdrop {
+                    z_index: 35,
+                    on_dismiss: move |_| {
+                        file_menu_open.set(false);
+                        tools_menu_open.set(false);
+                        cloud_menu_open.set(false);
+                    },
+                }
+            }
+
+            header { class: "{top_bar_class}",
                 span {
                     class: "brand",
                     title: "⚡ Blitz · ⌘↵ Send/Cancel · ⌘S Save · ⌘T New · ⌘⇧P Palette",
@@ -1897,6 +2057,7 @@ pub fn Workbench() -> Element {
                                 class: "menu-item",
                                 onclick: move |_| {
                                     cloud_menu_open.set(false);
+                                    show_env_manager.set(false);
                                     show_settings.set(true);
                                 },
                                 "Cloud settings…"
@@ -2082,11 +2243,29 @@ pub fn Workbench() -> Element {
                             editing_env_id.set(active_env_id());
                         },
                     }
+                    ThemeSelector {
+                        theme: app_settings().ui.theme,
+                        on_change: move |t: UiTheme| {
+                            let mut s = app_settings();
+                            s.ui.theme = t;
+                            s.ui = s.ui.clamped();
+                            app_settings.set(s);
+                            persist();
+                        },
+                    }
                     button {
-                        class: "top-icon",
-                        title: "Settings",
-                        onclick: move |_| show_settings.set(true),
-                        "⚙"
+                        class: if show_settings() {
+                            "top-icon top-icon-on"
+                        } else {
+                            "top-icon"
+                        },
+                        title: "Settings & preferences",
+                        aria_label: "Settings",
+                        onclick: move |_| {
+                            show_env_manager.set(false);
+                            show_settings.set(!show_settings());
+                        },
+                        span { class: "action-icon action-icon-sliders", aria_hidden: "true" }
                     }
                 }
             }
@@ -2336,7 +2515,66 @@ pub fn Workbench() -> Element {
                         button { class: "btn btn-ghost", onclick: move |_| { do_new_tab(()); show_palette.set(false); }, "New request" }
                         button { class: "btn btn-ghost", onclick: move |_| { show_runner.set(true); show_palette.set(false); }, "Runner" }
                         button { class: "btn btn-ghost", onclick: move |_| { console_open.set(true); show_palette.set(false); }, "Console" }
-                        button { class: "btn btn-ghost", onclick: move |_| { show_settings.set(true); show_palette.set(false); }, "Settings" }
+                        button {
+                            class: "btn btn-ghost",
+                            onclick: move |_| {
+                                show_env_manager.set(false);
+                                show_settings.set(true);
+                                show_palette.set(false);
+                            },
+                            "Settings"
+                        }
+                    }
+                }
+            }
+
+            if let Some(del) = pending_delete() {
+                {
+                    let del_id = del.id;
+                    let del_label = del.label.clone();
+                    rsx! {
+                        ModalShell {
+                            title: "Delete item?".to_string(),
+                            on_close: move |_| pending_delete.set(None),
+                            div { class: "modal-body",
+                                p { "Delete “{del_label}”? This cannot be undone." }
+                            }
+                            div { class: "modal-actions",
+                                button {
+                                    class: "btn btn-ghost",
+                                    onclick: move |_| pending_delete.set(None),
+                                    "Cancel"
+                                }
+                                button {
+                                    class: "btn btn-ghost danger",
+                                    onclick: move |_| {
+                                        pending_delete.set(None);
+                                        let mut cols = collections();
+                                        let mut tr = trash();
+                                        let mut col_id = active_collection_id();
+                                        let mut req_id = active_request_id();
+                                        let mut d = draft();
+                                        if let Some(msg) = execute_tree_delete(
+                                            del_id,
+                                            &mut cols,
+                                            &mut tr,
+                                            &mut col_id,
+                                            &mut req_id,
+                                            &mut d,
+                                        ) {
+                                            status_msg.set(msg);
+                                        }
+                                        trash.set(tr);
+                                        collections.set(cols);
+                                        active_collection_id.set(col_id);
+                                        active_request_id.set(req_id);
+                                        draft.set(d);
+                                        persist();
+                                    },
+                                    "Delete"
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -2407,29 +2645,6 @@ pub fn Workbench() -> Element {
                 }
             }
 
-            if show_settings() {
-                SettingsPanel {
-                    settings: app_settings(),
-                    data_root: data_root(),
-                    on_event: move |evt| match evt {
-                        SettingsEvent::Close => show_settings.set(false),
-                        SettingsEvent::Save(s) => {
-                            let enabling_cloud = s.cloud_sync.enabled;
-                            app_settings.set(s);
-                            if enabling_cloud {
-                                let mut envs = environments();
-                                if ensure_default_environments(&mut envs) {
-                                    environments.set(envs);
-                                }
-                            }
-                            show_settings.set(false);
-                            persist();
-                            status_msg.set("settings saved".into());
-                        }
-                    },
-                }
-            }
-
             if show_runner() {
                 RunnerPanel {
                     collections: collections(),
@@ -2497,7 +2712,7 @@ pub fn Workbench() -> Element {
                                             environments.set(envs);
                                         } else if !ctx.environment.is_empty() {
                                             status_msg.set(
-                                                "no active environment — pm.environment.set ignored"
+                                                "no active environment — epm.environment.set ignored"
                                                     .into(),
                                             );
                                             ctx.environment.clear();
@@ -2636,6 +2851,7 @@ pub fn Workbench() -> Element {
                 }
             }
 
+            if !show_settings() {
             if show_env_manager() {
                 div { class: "env-manager-overlay",
                     EnvManager {
@@ -2674,11 +2890,19 @@ pub fn Workbench() -> Element {
                     }
                 }
             }
+            }
 
             main {
-                class: "{workbench_class}",
+                class: if show_settings() {
+                    "workbench workbench-settings"
+                } else {
+                    workbench_class
+                },
                 style: "{workbench_style}",
                 onmousemove: move |evt| {
+                    if show_settings() {
+                        return;
+                    }
                     let Some(drag) = pane_drag() else {
                         return;
                     };
@@ -2702,6 +2926,9 @@ pub fn Workbench() -> Element {
                     }
                 },
                 onmouseup: move |_| {
+                    if show_settings() {
+                        return;
+                    }
                     if pane_drag().is_some() {
                         pane_drag.set(None);
                         let mut s = app_settings();
@@ -2712,11 +2939,21 @@ pub fn Workbench() -> Element {
                     }
                 },
                 onmouseleave: move |_| {
+                    if show_settings() {
+                        return;
+                    }
                     if pane_drag().is_some() {
                         pane_drag.set(None);
                         persist();
                     }
                 },
+                if show_settings() {
+                    SettingsPanel {
+                        settings: app_settings(),
+                        data_root: data_root(),
+                        on_event: on_settings_event,
+                    }
+                } else {
                 div { class: "tab-strip",
                     input {
                         class: "tab-name",
@@ -2736,7 +2973,7 @@ pub fn Workbench() -> Element {
                     for t in open_tabs() {
                         {
                             let tid = t.id;
-                            let tname = t.name.clone();
+                            let tname = request_tab_display_name(&collections(), tid);
                             let active = draft().id == tid;
                             rsx! {
                                 div {
@@ -3182,6 +3419,7 @@ pub fn Workbench() -> Element {
                             "{status_msg}"
                         }
                     }
+                }
                 }
             }
 

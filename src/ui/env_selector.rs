@@ -2,6 +2,7 @@ use dioxus::prelude::*;
 use uuid::Uuid;
 
 use crate::core::Environment;
+use super::DismissBackdrop;
 
 #[component]
 pub fn EnvSelector(
@@ -47,17 +48,18 @@ pub fn EnvSelector(
             button {
                 class: "btn-icon",
                 title: "Manage environments",
+                aria_label: "Manage environments",
                 onclick: move |_| {
                     menu_open.set(false);
                     on_manage.call(());
                 },
-                "⚙"
+                span { class: "action-icon action-icon-edit", aria_hidden: "true" }
             }
 
             if menu_open() {
-                div {
-                    class: "env-menu-backdrop",
-                    onclick: move |_| menu_open.set(false),
+                DismissBackdrop {
+                    z_index: 900,
+                    on_dismiss: move |_| menu_open.set(false),
                 }
                 div { class: "env-menu",
                     button {

@@ -54,11 +54,11 @@ pub struct ClientCertSettings {
 }
 
 fn default_ui_font_size_px() -> u32 {
-    13
+    15
 }
 
 fn default_editor_font_size_px() -> u32 {
-    14
+    16
 }
 
 fn default_sidebar_width_px() -> u32 {
@@ -100,6 +100,53 @@ pub enum UiDensity {
     #[default]
     Comfortable,
     Compact,
+}
+
+/// Workbench color theme (class token on `.app-shell`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum UiTheme {
+    /// Dark glass + Spotify green accent (default).
+    #[default]
+    Spotify,
+    /// Cool dark slate + blue accent.
+    Slate,
+    /// Light surfaces + green accent.
+    Light,
+    /// High-contrast dark (accessibility).
+    HighContrast,
+}
+
+impl UiTheme {
+    /// CSS class on `.app-shell` (e.g. `theme-spotify`).
+    pub fn class_token(self) -> &'static str {
+        match self {
+            Self::Spotify => "theme-spotify",
+            Self::Slate => "theme-slate",
+            Self::Light => "theme-light",
+            Self::HighContrast => "theme-high-contrast",
+        }
+    }
+
+    /// Human label for Settings dropdown.
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Spotify => "Spotify (default)",
+            Self::Slate => "Dark slate",
+            Self::Light => "Light",
+            Self::HighContrast => "High contrast",
+        }
+    }
+
+    /// All themes in Settings display order.
+    pub fn all() -> &'static [UiTheme] {
+        &[
+            Self::Spotify,
+            Self::Slate,
+            Self::Light,
+            Self::HighContrast,
+        ]
+    }
 }
 
 /// Accent soft-fill strength (Spotify green stays; only intensity scales).
@@ -149,6 +196,9 @@ pub struct UiSettings {
     /// CSS `tab-size` on editors (2 or 4).
     #[serde(default = "default_tab_size")]
     pub tab_size: u32,
+    /// Color theme class on `.app-shell`.
+    #[serde(default)]
+    pub theme: UiTheme,
     /// Accent soft-fill intensity class on `.app-shell`.
     #[serde(default)]
     pub accent_intensity: AccentIntensity,
@@ -180,6 +230,7 @@ impl Default for UiSettings {
             density: UiDensity::default(),
             wrap_editor_text: default_wrap_editor_text(),
             tab_size: default_tab_size(),
+            theme: UiTheme::default(),
             accent_intensity: AccentIntensity::default(),
             reduce_motion: false,
             show_status_bar: default_show_status_bar(),
@@ -253,6 +304,7 @@ impl UiSettings {
         } else {
             "editor-nowrap"
         };
+        let theme = self.theme.class_token();
         let accent = match self.accent_intensity {
             AccentIntensity::Soft => "accent-soft",
             AccentIntensity::Normal => "accent-normal",
@@ -263,7 +315,7 @@ impl UiSettings {
         } else {
             ""
         };
-        format!("{density} {wrap} {accent} {motion}")
+        format!("{theme} {density} {wrap} {accent} {motion}")
             .split_whitespace()
             .collect::<Vec<_>>()
             .join(" ")
@@ -367,8 +419,9 @@ mod tests {
     #[test]
     fn ui_defaults_and_clamp() {
         let ui = UiSettings::default();
-        assert_eq!(ui.ui_font_size_px, 13);
-        assert_eq!(ui.editor_font_size_px, 14);
+        assert_eq!(ui.ui_font_size_px, 15);
+        assert_eq!(ui.editor_font_size_px, 16);
+        assert_eq!(ui.theme, UiTheme::Spotify);
         assert_eq!(ui.sidebar_width_px, 268);
         assert_eq!(ui.request_pane_height_px, 220);
         assert_eq!(ui.console_height_px, 148);
@@ -395,6 +448,7 @@ mod tests {
         assert_eq!(UiSettings::clamp_tab_size(8), 4);
         assert_eq!(UiSettings::clamp_splash_min_ms(9_999), 2_000);
         let tokens = ui.shell_class_tokens();
+        assert!(tokens.contains("theme-spotify"));
         assert!(tokens.contains("density-comfortable"));
         assert!(tokens.contains("editor-wrap"));
         assert!(tokens.contains("accent-normal"));

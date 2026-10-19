@@ -89,6 +89,29 @@ pub fn find_var_at(text: &str, index: usize) -> Option<VarSpan> {
     None
 }
 
+/// Caret is inside an incomplete `{{…}}` token → `(byte index of `{`, partial name)`.
+pub fn var_insert_context(text: &str, caret: usize) -> Option<(usize, String)> {
+    let caret = caret.min(text.len());
+    let before = &text[..caret];
+    let open = before.rfind("{{")?;
+    let tail = &before[open + 2..];
+    if tail.contains("}}") {
+        return None;
+    }
+    Some((open, tail.trim_start().to_string()))
+}
+
+/// Replace incomplete `{{…}}` at `open` through `caret` with `{{insert_name}}`.
+pub fn apply_var_insert(text: &str, caret: usize, open: usize, insert_name: &str) -> (String, usize) {
+    let token = format!("{{{{{}}}}}", insert_name.trim());
+    let mut out = String::with_capacity(text.len() + token.len());
+    out.push_str(&text[..open]);
+    out.push_str(&token);
+    out.push_str(&text[caret..]);
+    let new_caret = open + token.len();
+    (out, new_caret)
+}
+
 /// All non-empty `{{…}}` spans in `text` (left → right).
 pub fn iter_var_spans(text: &str) -> impl Iterator<Item = VarSpan> + '_ {
     var_token_re().captures_iter(text).filter_map(|caps| {
@@ -167,7 +190,68 @@ pub struct VariableContext {
     pub vault: VaultStore,
 }
 
+/// One row in the `{{` variable insertion dropdown.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct VariableSuggestion {
+    /// Display name (vault keys omit the `vault:` prefix in the label).
+    pub label: String,
+    /// Inner token inserted inside `{{…}}` (e.g. `vault:api_key`).
+    pub insert: String,
+    pub scope: VarResolveScope,
+}
+
 impl VariableContext {
+    /// Suggestions for variable insertion UI, filtered by partial name after `{{`.
+    ///
+    /// @param filter Partial variable name (case-insensitive prefix match); empty shows all.
+    /// @returns Sorted list: environment, collection, global, local, then vault keys.
+    pub fn insert_suggestions(&self, filter: &str) -> Vec<VariableSuggestion> {
+        let needle = filter.trim().to_lowercase();
+        let mut out: Vec<VariableSuggestion> = Vec::new();
+
+        let mut push_scope = |scope: VarResolveScope, map: &HashMap<String, String>| {
+            for key in map.keys() {
+                if key.is_empty() {
+                    continue;
+                }
+                if !needle.is_empty() && !key.to_lowercase().starts_with(&needle) {
+                    continue;
+                }
+                out.push(VariableSuggestion {
+                    label: key.clone(),
+                    insert: key.clone(),
+                    scope,
+                });
+            }
+        };
+
+        push_scope(VarResolveScope::Environment, &self.environment);
+        push_scope(VarResolveScope::Collection, &self.collection);
+        push_scope(VarResolveScope::Global, &self.global);
+        push_scope(VarResolveScope::Local, &self.local);
+
+        for key in self.vault.entries.keys() {
+            if key.is_empty() {
+                continue;
+            }
+            let insert = format!("vault:{key}");
+            if !needle.is_empty()
+                && !key.to_lowercase().starts_with(&needle)
+                && !insert.to_lowercase().starts_with(&needle)
+            {
+                continue;
+            }
+            out.push(VariableSuggestion {
+                label: format!("vault:{key}"),
+                insert,
+                scope: VarResolveScope::Vault,
+            });
+        }
+
+        out.sort_by(|a, b| a.label.to_lowercase().cmp(&b.label.to_lowercase()));
+        out
+    }
+
     pub fn demo() -> Self {
         let mut ctx = Self::default();
         ctx.environment
@@ -316,7 +400,7 @@ pub fn apply_env_var_edit(env: &mut Environment, key: &str, value: &str) {
 /// Write a full environment scope map (from scripts) onto [`Environment::values`].
 ///
 /// - Keys present → upsert current (and create if missing)
-/// - Enabled keys missing from map → removed (`pm.environment.unset` / `.clear`)
+/// - Enabled keys missing from map → removed (`epm.environment.unset` / `.clear`)
 /// - Disabled rows are preserved even if absent from the map
 pub fn apply_environment_map(env: &mut Environment, map: &HashMap<String, String>) {
     for (k, v) in map {

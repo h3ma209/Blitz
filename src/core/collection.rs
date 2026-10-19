@@ -999,6 +999,96 @@ pub fn find_request_across(
     None
 }
 
+/// Tab / chrome label: `request name | parent folder name` (parent = direct folder or collection root).
+pub fn request_tab_display_name(collections: &[Collection], request_id: Uuid) -> String {
+    let rows = flatten_collections(collections);
+    let Some(req) = rows.iter().find(|r| r.id == request_id) else {
+        return find_request_across(collections, request_id)
+            .map(|(_, d)| d.name.clone())
+            .unwrap_or_else(|| "Request".into());
+    };
+    let parent_label = req
+        .parent_id
+        .and_then(|pid| rows.iter().find(|r| r.id == pid).map(|r| r.name.clone()));
+    match parent_label {
+        Some(parent) => format!("{} | {}", req.name, parent),
+        None => req.name.clone(),
+    }
+}
+
+/// Whether deleting `id` should show a confirmation dialog (empty folders skip confirm).
+pub fn delete_needs_confirmation(collections: &[Collection], id: Uuid) -> bool {
+    if collections.iter().any(|c| c.id == id) {
+        return true;
+    }
+    if let Some(count) = folder_child_count(collections, id) {
+        return count > 0;
+    }
+    find_request_across(collections, id).is_some()
+}
+
+/// Number of direct children under a folder, if `folder_id` is a folder.
+pub fn folder_child_count(collections: &[Collection], folder_id: Uuid) -> Option<usize> {
+    for col in collections {
+        if let Some(items) = find_folder_items(&col.items, folder_id) {
+            return Some(items.len());
+        }
+    }
+    None
+}
+
+/// Deep-clone a folder or request with fresh ids (for cut/copy/paste).
+pub fn snapshot_tree_item(collections: &[Collection], id: Uuid) -> Option<CollectionItem> {
+    for col in collections {
+        if let Some(item) = find_item_in_items(&col.items, id) {
+            let mut copy = item.clone();
+            remint_item_ids(&mut copy);
+            return Some(copy);
+        }
+    }
+    None
+}
+
+/// Assign fresh ids before inserting a clipboard duplicate (safe for repeated paste).
+pub fn remint_pasted_item(item: &mut CollectionItem) -> Uuid {
+    remint_item_ids(item)
+}
+
+/// Insert a tree item under a collection or folder parent. Returns false if parent missing.
+pub fn insert_item_under(
+    collections: &mut [Collection],
+    parent_id: Uuid,
+    item: CollectionItem,
+) -> bool {
+    try_insert_item_under(collections, parent_id, item).is_ok()
+}
+
+/// Parent collection/folder id to insert clipboard items under for the given tree row.
+pub fn paste_target_parent_id(collections: &[Collection], item_id: Uuid) -> Option<Uuid> {
+    if collections.iter().any(|c| c.id == item_id) {
+        return Some(item_id);
+    }
+    let rows = flatten_collections(collections);
+    rows.iter().find(|r| r.id == item_id).and_then(|r| match r.kind {
+        TreeRowKind::Collection | TreeRowKind::Folder => Some(r.id),
+        TreeRowKind::Request { .. } => r.parent_id,
+    })
+}
+
+fn find_item_in_items(items: &[CollectionItem], id: Uuid) -> Option<&CollectionItem> {
+    for item in items {
+        if item.id() == id {
+            return Some(item);
+        }
+        if let CollectionItem::Folder(f) = item {
+            if let Some(found) = find_item_in_items(&f.items, id) {
+                return Some(found);
+            }
+        }
+    }
+    None
+}
+
 /// Update existing request by id, or append to `collection_id` root if not found.
 /// Returns the collection id that owns the request after the write.
 pub fn save_request_to_collections(
@@ -1378,6 +1468,44 @@ mod tests {
     }
 
     #[test]
+    fn delete_confirmation_rules() {
+        let mut cols = demo_collections();
+        let empty_folder = Folder::new("Empty");
+        let empty_id = empty_folder.id;
+        let col_id = cols[0].id;
+        assert!(add_folder_under(&mut cols, col_id, empty_folder));
+        assert!(!delete_needs_confirmation(&cols, empty_id));
+
+        let mut nested = Folder::new("Has child");
+        let nested_id = nested.id;
+        nested.add_request(RequestDraft::default());
+        assert!(add_folder_under(&mut cols, col_id, nested));
+        assert!(delete_needs_confirmation(&cols, nested_id));
+
+        let req_id = flatten_collections(&cols)
+            .into_iter()
+            .find(|r| matches!(r.kind, TreeRowKind::Request { .. }))
+            .unwrap()
+            .id;
+        assert!(delete_needs_confirmation(&cols, req_id));
+        assert!(delete_needs_confirmation(&cols, col_id));
+    }
+
+    #[test]
+    fn request_tab_title_includes_parent() {
+        let mut cols = demo_collections();
+        let col_id = cols[0].id;
+        let folder = Folder::new("Parent Folder");
+        let folder_id = folder.id;
+        assert!(add_folder_under(&mut cols, col_id, folder));
+        let mut req = RequestDraft::default();
+        req.name = "My Req".into();
+        let req_id = req.id;
+        assert!(add_request_under(&mut cols, folder_id, req));
+        let title = request_tab_display_name(&cols, req_id);
+        assert_eq!(title, "My Req | Parent Folder");
+    }
+
     fn favorite_name_not_prefixed_in_tree_row() {
         let mut cols = demo_collections();
         cols[0].favorite = true;

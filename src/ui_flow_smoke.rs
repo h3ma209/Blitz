@@ -33,12 +33,12 @@ mod ui_flow_smoke {
         draft.url = "{{baseUrl}}/get".into();
         draft.params = vec![KeyValue::new("hello", "world")];
         draft.test_script = r#"
-            pm.test("status 200", function () {
-                pm.expect(pm.response.code).to.equal(200);
+            epm.test("status 200", function () {
+                epm.expect(epm.response.code).to.equal(200);
             });
-            pm.test("has args", function () {
-                var j = pm.response.json();
-                pm.expect(j.args.hello).to.equal("world");
+            epm.test("has args", function () {
+                var j = epm.response.json();
+                epm.expect(j.args.hello).to.equal("world");
             });
         "#
         .into();
@@ -240,7 +240,7 @@ mod ui_flow_smoke {
         a.name = "one".into();
         a.url = "https://postman-echo.com/get?n=1".into();
         a.test_script =
-            r#"pm.test("ok", function(){ pm.expect(pm.response.code).to.equal(200); });"#.into();
+            r#"epm.test("ok", function(){ epm.expect(epm.response.code).to.equal(200); });"#.into();
         let mut b = RequestDraft::default();
         b.name = "two".into();
         b.url = "https://postman-echo.com/get?n=2".into();

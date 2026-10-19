@@ -38,8 +38,9 @@ pub fn EnvManager(
                     button {
                         class: "btn-icon",
                         title: "New environment",
+                        aria_label: "New environment",
                         onclick: move |_| on_event.call(EnvManagerEvent::Create),
-                        "+"
+                        span { class: "action-icon action-icon-add", aria_hidden: "true" }
                     }
                     button {
                         class: "modal-close",

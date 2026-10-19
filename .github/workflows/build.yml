@@ -1,0 +1,119 @@
+# Cross-platform release builds for the Dioxus desktop app (wry/WebView).
+name: Build and Release
+
+on:
+  push:
+    branches: [main, master]
+    tags: [v*]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
+jobs:
+  build:
+    name: ${{ matrix.label }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            label: Linux
+            binary: evil_postman
+            artifact: evil_postman-linux-x86_64
+          - os: macos-latest
+            label: macOS
+            binary: evil_postman
+            artifact: evil_postman-macos-arm64
+          - os: windows-latest
+            label: Windows
+            binary: evil_postman.exe
+            artifact: evil_postman-windows-x86_64
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo registry and build
+        uses: swatinem/rust-cache@v2
+
+      # wry (Dioxus desktop): GTK + WebKit; muda/tray-icon also link libxdo (Copy/Paste menu shortcuts).
+      - name: Install Linux system dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential \
+            libwebkit2gtk-4.1-dev \
+            libgtk-3-dev \
+            libxdo-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            patchelf
+
+      - name: cargo build --release
+        run: cargo build --release --locked
+
+      - name: cargo test
+        run: cargo test --release --locked
+
+      - name: Stage and archive (Unix)
+        if: runner.os != 'Windows'
+        run: |
+          mkdir -p dist
+          cp "target/release/${{ matrix.binary }}" "dist/${{ matrix.binary }}"
+          tar -czf "dist/${{ matrix.artifact }}.tar.gz" -C dist "${{ matrix.binary }}"
+
+      - name: Stage and archive (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path dist | Out-Null
+          Copy-Item "target\release\${{ matrix.binary }}" "dist\${{ matrix.binary }}"
+          Compress-Archive -Path "dist\${{ matrix.binary }}" -DestinationPath "dist\${{ matrix.artifact }}.zip" -Force
+
+      - name: Upload artifact (Unix)
+        if: runner.os != 'Windows'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: dist/${{ matrix.artifact }}.tar.gz
+
+      - name: Upload artifact (Windows)
+        if: runner.os == 'Windows'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: dist/${{ matrix.artifact }}.zip
+
+  release:
+    name: GitHub Release
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          pattern: evil_postman-*
+          merge-multiple: true
+
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
+          generate_release_notes: true
+          draft: false
+          prerelease: ${{ contains(github.ref_name, '-') }}
