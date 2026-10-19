@@ -32,11 +32,11 @@ pub use capture_proxy::{
 };
 pub use codegen::{generate_snippet, snippet_languages};
 pub use collection::{
-    add_folder_under, add_request_under, collapsed_except_expanded, collapsible_tree_ids,
-    delete_needs_confirmation, demo_collections, duplicate_across, filter_tree_rows,
-    find_request_across, flatten_collections, flatten_collections_filtered, folder_child_count,
-    folder_path_to_request, insert_item_under, item_contains_id, move_item_to, paste_target_parent_id,
-    remint_pasted_item, request_tab_display_name, snapshot_tree_item,
+    add_folder_under, add_request_under, ancestor_ids_for_request, collapsed_except_expanded,
+    collapsible_tree_ids, delete_needs_confirmation, demo_collections, duplicate_across,
+    filter_tree_rows, find_request_across, flatten_collections, flatten_collections_filtered,
+    folder_child_count, folder_path_to_request, insert_item_under, item_contains_id, move_item_to,
+    paste_target_parent_id, remint_pasted_item, request_tab_display_name, snapshot_tree_item,
     purge_from_trash, remove_across, rename_across, reorder_before, reorder_within_parent,
     restore_from_trash, save_request_to_collections, sort_collections, trash_collection,
     Collection, CollectionItem, Folder, TreeRow, TreeRowKind,
@@ -51,9 +51,9 @@ pub use environment::{
 };
 pub use history::{push_history, HistoryEntry, HISTORY_MAX};
 pub use impex::{
-    bundled_postman_collections, export_collection_v21, export_request_item, import_collection_v21,
-    import_curl, import_har, import_openapi3, import_postman_export_texts, import_request_item,
-    limitations_blurb, ImpexError,
+    bundled_postman_collections, export_collection_v21, export_openapi3, export_request_item,
+    import_collection_v21, import_curl, import_har, import_openapi3, import_postman_export_texts,
+    import_request_item, limitations_blurb, ImpexError,
 };
 pub use mock_server::{
     draft_mock_path, routes_from_collections, save_example_to_request, start_mock, MockHandle,

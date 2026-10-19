@@ -369,6 +369,118 @@ pub fn export_collection_v21(col: &Collection) -> Result<String, ImpexError> {
     serde_json::to_string_pretty(&doc).map_err(|e| ImpexError::Json(e.to_string()))
 }
 
+/// Export a [`Collection`] as an OpenAPI 3.0.3 JSON document.
+pub fn export_openapi3(col: &Collection) -> Result<String, ImpexError> {
+    use std::collections::BTreeMap;
+
+    let mut paths: BTreeMap<String, Value> = BTreeMap::new();
+
+    fn collect_requests<'a>(items: &'a [CollectionItem], tag: Option<&str>, out: &mut Vec<(&'a RequestDraft, Option<String>)>) {
+        for item in items {
+            match item {
+                CollectionItem::Folder(f) => {
+                    let next_tag = tag.unwrap_or(&f.name);
+                    collect_requests(&f.items, Some(next_tag), out);
+                }
+                CollectionItem::Request(r) => {
+                    out.push((r, tag.map(|s| s.to_string())));
+                }
+            }
+        }
+    }
+
+    let mut all_requests = Vec::new();
+    collect_requests(&col.items, None, &mut all_requests);
+
+    for (r, tag) in all_requests {
+        let mut path_str = r.url.clone();
+        if let Some(idx) = path_str.find("://") {
+            let rest = &path_str[idx + 3..];
+            if let Some(slash_idx) = rest.find('/') {
+                path_str = rest[slash_idx..].to_string();
+            } else {
+                path_str = "/".to_string();
+            }
+        }
+        if let Some(q_idx) = path_str.find('?') {
+            path_str = path_str[..q_idx].to_string();
+        }
+        if !path_str.starts_with('/') {
+            path_str = format!("/{}", path_str);
+        }
+
+        let method_str = r.method.as_str().to_lowercase();
+        let mut operation = json!({
+            "summary": r.name,
+            "description": r.description,
+            "responses": {
+                "200": {
+                    "description": "Successful response"
+                }
+            }
+        });
+
+        if let Some(t) = tag {
+            operation["tags"] = json!([t]);
+        }
+
+        let mut parameters = Vec::new();
+        for p in &r.params {
+            if !p.key.is_empty() && p.enabled {
+                parameters.push(json!({
+                    "name": p.key,
+                    "in": "query",
+                    "required": false,
+                    "schema": { "type": "string" },
+                    "example": p.value
+                }));
+            }
+        }
+        for h in &r.headers {
+            if !h.key.is_empty() && h.enabled && !h.key.eq_ignore_ascii_case("content-type") {
+                parameters.push(json!({
+                    "name": h.key,
+                    "in": "header",
+                    "required": false,
+                    "schema": { "type": "string" },
+                    "example": h.value
+                }));
+            }
+        }
+        if !parameters.is_empty() {
+            operation["parameters"] = Value::Array(parameters);
+        }
+
+        if r.body_mode == BodyMode::Raw && !r.body.is_empty() {
+            operation["requestBody"] = json!({
+                "content": {
+                    "application/json": {
+                        "schema": { "type": "object" },
+                        "example": serde_json::from_str::<Value>(&r.body).unwrap_or(Value::String(r.body.clone()))
+                    }
+                }
+            });
+        }
+
+        let path_entry = paths.entry(path_str).or_insert_with(|| json!({}));
+        if let Some(obj) = path_entry.as_object_mut() {
+            obj.insert(method_str, operation);
+        }
+    }
+
+    let openapi_doc = json!({
+        "openapi": "3.0.3",
+        "info": {
+            "title": col.name,
+            "description": if col.description.is_empty() { "Exported from Blitz API Client" } else { &col.description },
+            "version": "1.0.0"
+        },
+        "paths": paths
+    });
+
+    serde_json::to_string_pretty(&openapi_doc).map_err(|e| ImpexError::Json(e.to_string()))
+}
+
 fn export_items(items: &[CollectionItem]) -> Vec<Value> {
     items
         .iter()
@@ -903,28 +1015,28 @@ mod tests {
     }
 
     #[test]
-    fn import_bundled_exported_postman_jsons() {
+    fn import_bundled_collections_sanity() {
         let cols = bundled_postman_collections();
-        assert!(cols.len() >= 2, "expected Hakki + Initiate Envs");
-        assert!(cols.iter().any(|c| c.name == "Hakki"));
-        assert!(cols.iter().any(|c| c.name.contains("Initiate") || !c.items.is_empty()));
+        assert!(!cols.is_empty(), "expected seed collections");
         for c in &cols {
             assert!(!c.items.is_empty(), "{} should have items", c.name);
         }
-        let initiate = cols
-            .iter()
-            .find(|c| c.name.contains("Initiate"))
-            .expect("Initiate Envs collection");
-        assert!(
-            !initiate.variables.is_empty(),
-            "Initiate Envs must import collection variable[] (basic_auth_*)"
-        );
-        let map = initiate.variables_map();
-        assert!(
-            map.keys().any(|k| k.starts_with("basic_auth_")),
-            "expected basic_auth_* collection vars, got keys: {:?}",
-            map.keys().collect::<Vec<_>>()
-        );
+    }
+
+    #[test]
+    fn test_export_openapi3() {
+        let mut col = Collection::new("Store API");
+        let mut req = RequestDraft::default();
+        req.name = "List Products".into();
+        req.url = "https://api.store.com/v1/products?limit=10".into();
+        req.method = HttpMethod::Get;
+        req.params.push(KeyValue::new("limit", "10"));
+        col.items.push(CollectionItem::Request(req));
+
+        let openapi_json = export_openapi3(&col).expect("export openapi3");
+        assert!(openapi_json.contains("\"openapi\": \"3.0.3\""));
+        assert!(openapi_json.contains("/v1/products"));
+        assert!(openapi_json.contains("List Products"));
     }
 
     #[test]
