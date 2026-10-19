@@ -320,6 +320,11 @@ body {
   -webkit-backdrop-filter: var(--glass-blur);
   border-right: var(--glass-border);
   box-shadow: var(--glass-shine);
+  isolation: isolate;
+  transform: translateZ(0);
+  -webkit-transform: translateZ(0);
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
 }
 
 .sidebar-slot .sidebar {
@@ -1106,12 +1111,34 @@ button.env-menu-row:hover,
   overflow-x: hidden;
   display: flex;
   flex-direction: column;
-  scrollbar-width: thin;
-  scrollbar-color: rgba(255, 255, 255, 0.16) transparent;
+  -webkit-overflow-scrolling: touch;
+  contain: content;
+  transform: translateZ(0);
+  -webkit-transform: translateZ(0);
+  will-change: scroll-position;
+  overscroll-behavior: contain;
+}
+
+@supports not selector(::-webkit-scrollbar) {
+  .sidebar-collections {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(255, 255, 255, 0.16) transparent;
+  }
 }
 
 .sidebar-collections::-webkit-scrollbar {
-  width: 5px;
+  width: 6px;
+  height: 6px;
+}
+
+.sidebar-collections::-webkit-scrollbar-button {
+  display: none;
+  width: 0;
+  height: 0;
+}
+
+.sidebar-collections::-webkit-scrollbar-corner {
+  background: transparent;
 }
 
 .sidebar-collections::-webkit-scrollbar-track {
@@ -1119,13 +1146,13 @@ button.env-menu-row:hover,
 }
 
 .sidebar-collections::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.14);
   border-radius: 9999px;
   transition: background var(--ease);
 }
 
 .sidebar-collections::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.28);
+  background: rgba(255, 255, 255, 0.32);
 }
 
 .sidebar-history {
@@ -1143,12 +1170,34 @@ button.env-menu-row:hover,
   overflow-x: hidden;
   min-height: 0;
   flex: 1 1 auto;
-  scrollbar-width: thin;
-  scrollbar-color: rgba(255, 255, 255, 0.16) transparent;
+  -webkit-overflow-scrolling: touch;
+  contain: content;
+  transform: translateZ(0);
+  -webkit-transform: translateZ(0);
+  will-change: scroll-position;
+  overscroll-behavior: contain;
+}
+
+@supports not selector(::-webkit-scrollbar) {
+  .sidebar-history .history-list {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(255, 255, 255, 0.16) transparent;
+  }
 }
 
 .sidebar-history .history-list::-webkit-scrollbar {
-  width: 5px;
+  width: 6px;
+  height: 6px;
+}
+
+.sidebar-history .history-list::-webkit-scrollbar-button {
+  display: none;
+  width: 0;
+  height: 0;
+}
+
+.sidebar-history .history-list::-webkit-scrollbar-corner {
+  background: transparent;
 }
 
 .sidebar-history .history-list::-webkit-scrollbar-track {
@@ -1156,13 +1205,13 @@ button.env-menu-row:hover,
 }
 
 .sidebar-history .history-list::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.14);
   border-radius: 9999px;
   transition: background var(--ease);
 }
 
 .sidebar-history .history-list::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.28);
+  background: rgba(255, 255, 255, 0.32);
 }
 
 .sidebar-history-toggle {
@@ -1315,7 +1364,8 @@ button.env-menu-row:hover,
   min-height: 32px;
   padding-right: 4px;
   border: 1px solid transparent;
-  transition: all 120ms ease;
+  transition: background 120ms ease, border-color 120ms ease;
+  contain: layout style;
 }
 
 .tree-row:hover {
@@ -1964,12 +2014,27 @@ button.env-menu-row:hover,
   min-width: 0;
   overflow-x: auto;
   overflow-y: hidden;
-  scrollbar-width: thin;
-  scrollbar-color: rgba(255, 255, 255, 0.16) transparent;
+}
+
+@supports not selector(::-webkit-scrollbar) {
+  .tab-strip-scrollable {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(255, 255, 255, 0.16) transparent;
+  }
 }
 
 .tab-strip-scrollable::-webkit-scrollbar {
   height: 4px;
+}
+
+.tab-strip-scrollable::-webkit-scrollbar-button {
+  display: none;
+  width: 0;
+  height: 0;
+}
+
+.tab-strip-scrollable::-webkit-scrollbar-corner {
+  background: transparent;
 }
 
 .tab-strip-scrollable::-webkit-scrollbar-track {
@@ -3765,14 +3830,26 @@ textarea:focus {
 .visualizer-pane { padding: var(--space-2); }
 
 /* —— Scrollbars (dark stage) —— */
-* {
-  scrollbar-width: thin;
-  scrollbar-color: rgba(29, 185, 84, 0.45) transparent;
+@supports not selector(::-webkit-scrollbar) {
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(29, 185, 84, 0.45) transparent;
+  }
 }
 
 *::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+  width: 7px;
+  height: 7px;
+}
+
+*::-webkit-scrollbar-button {
+  display: none;
+  width: 0;
+  height: 0;
+}
+
+*::-webkit-scrollbar-corner {
+  background: transparent;
 }
 
 *::-webkit-scrollbar-track {
@@ -3780,7 +3857,7 @@ textarea:focus {
 }
 
 *::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.15);
+  background: rgba(255, 255, 255, 0.16);
   border-radius: var(--radius-pill);
 }
 
