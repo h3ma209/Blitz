@@ -3,8 +3,8 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>⚡ Blitz — Why Developers Are Leaving Postman, Bruno & Insomnia</title>
-  <meta name="description" content="Blitz is the local-first, zero-bloat API workbench in Rust. Instant sub-150ms start, ~35MB RAM, native OS keychain, genuine Git-branch sync, and multi-protocol power without mandatory cloud logins.">
+  <title>⚡ Blitz — Local-First, Blazing Fast API Client in Rust</title>
+  <meta name="description" content="Blitz is the local-first, zero-bloat API workbench in Rust. Instant sub-150ms start, ~35MB RAM, native OS keychain, genuine Git-branch sync, CLI runner, and multi-protocol power without mandatory cloud logins.">
   <link rel="icon" type="image/png" href="logo-64.png">
 
   <!-- Google Fonts: Inter & JetBrains Mono -->
@@ -83,7 +83,8 @@
   <div class="absolute top-[-140px] left-1/2 -translate-x-1/2 w-[700px] h-[600px] rounded-full bg-[radial-gradient(circle,rgba(29,185,84,0.38)_0%,rgba(30,215,96,0.04)_70%,transparent_100%)] blur-[140px] pointer-events-none z-0"></div>
   <div class="absolute top-[850px] right-[-120px] w-[600px] h-[600px] rounded-full bg-[radial-gradient(circle,rgba(78,161,255,0.22)_0%,transparent_70%)] blur-[140px] pointer-events-none z-0"></div>
   <div class="absolute top-[2200px] left-[-100px] w-[500px] h-[500px] rounded-full bg-[radial-gradient(circle,rgba(192,132,252,0.18)_0%,transparent_70%)] blur-[140px] pointer-events-none z-0"></div>
-  <div class="absolute inset-0 h-[2800px] bg-grid pointer-events-none z-0"></div>
+  <div class="absolute top-[3600px] right-[-100px] w-[600px] h-[600px] rounded-full bg-[radial-gradient(circle,rgba(45,212,191,0.18)_0%,transparent_70%)] blur-[140px] pointer-events-none z-0"></div>
+  <div class="absolute inset-0 h-[4400px] bg-grid pointer-events-none z-0"></div>
 
   <!-- Floating Glass Navbar -->
   <header class="fixed top-5 inset-x-0 z-50 flex justify-center px-4">
@@ -97,6 +98,8 @@
       <div class="flex items-center gap-6 text-sm font-medium">
         <a href="#why-switch" class="text-spot-bright hover:text-white transition-colors">Why Switch?</a>
         <a href="#features" class="text-spot-muted hover:text-white transition-colors">Features</a>
+        <a href="#protocols" class="text-spot-muted hover:text-white transition-colors">Protocols</a>
+        <a href="#cli-runner" class="text-spot-muted hover:text-white transition-colors">CLI &amp; CI</a>
         <a href="#benchmarks" class="text-spot-muted hover:text-white transition-colors">Comparison</a>
         <a href="#install" class="text-spot-muted hover:text-white transition-colors">Install</a>
         <a href="https://github.com/h3ma209/Blitz" target="_blank" rel="noopener" class="flex items-center gap-1.5 text-spot-muted hover:text-white transition-colors">
@@ -137,7 +140,7 @@
         <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3"/>
         </svg>
-        Install Free & Open Source
+        Install Free &amp; Open Source
       </a>
       <a href="#why-switch" class="w-full sm:w-auto inline-flex items-center justify-center gap-2 bg-white/5 hover:bg-white/10 text-white border border-white/10 hover:border-white/20 font-semibold text-base px-8 py-3.5 rounded-full backdrop-blur-md transition-all hover:-translate-y-0.5">
         <span>Why Switch from Postman?</span>
@@ -356,6 +359,93 @@
     </section>
 
     <!-- ================================================================= -->
+    <!-- SECTION: DEEP DIVE - MULTI PROTOCOL SUITE -->
+    <!-- ================================================================= -->
+    <section id="protocols" class="mt-36 text-center">
+      <span class="text-xs font-bold text-spot-bright tracking-widest uppercase block mb-3">MULTI-PROTOCOL ENGINE</span>
+      <h2 class="text-3xl sm:text-5xl font-extrabold tracking-tight mb-4">One Unified Interface. 8 Modern Protocols.</h2>
+      <p class="text-spot-muted max-w-2xl mx-auto text-base sm:text-lg mb-16">
+        Stop switching between five different niche tools. Blitz supports every protocol in your distributed architecture with equal speed.
+      </p>
+
+      <div class="grid grid-cols-2 md:grid-cols-4 gap-4 text-left">
+        <div class="p-5 rounded-xl glass glass-hover">
+          <div class="text-xs font-mono font-bold text-blue-400 mb-1">REST &amp; HTTP/1.1+2</div>
+          <div class="text-sm font-semibold mb-2">Automated Decompression</div>
+          <p class="text-xs text-spot-muted leading-relaxed">Brotli, Gzip, Deflate, multipart form-data, and chunked transfer decoding.</p>
+        </div>
+        <div class="p-5 rounded-xl glass glass-hover">
+          <div class="text-xs font-mono font-bold text-pink-400 mb-1">GraphQL &amp; GraphQL-WS</div>
+          <div class="text-sm font-semibold mb-2">Query &amp; Subscription</div>
+          <p class="text-xs text-spot-muted leading-relaxed">Syntax highlighted query editor, variable interpolation, and live subscription streams.</p>
+        </div>
+        <div class="p-5 rounded-xl glass glass-hover">
+          <div class="text-xs font-mono font-bold text-purple-400 mb-1">WebSockets</div>
+          <div class="text-sm font-semibold mb-2">tokio-tungstenite Core</div>
+          <p class="text-xs text-spot-muted leading-relaxed">Bi-directional frame stream, heartbeat handling, and real-time inspector.</p>
+        </div>
+        <div class="p-5 rounded-xl glass glass-hover">
+          <div class="text-xs font-mono font-bold text-emerald-400 mb-1">Server-Sent Events</div>
+          <div class="text-sm font-semibold mb-2">Live Event Stream</div>
+          <p class="text-xs text-spot-muted leading-relaxed">Listen to text/event-stream feeds with custom ID tracking and reconnect stubs.</p>
+        </div>
+        <div class="p-5 rounded-xl glass glass-hover">
+          <div class="text-xs font-mono font-bold text-amber-400 mb-1">Socket.IO v4</div>
+          <div class="text-sm font-semibold mb-2">Event Emitter &amp; Listener</div>
+          <p class="text-xs text-spot-muted leading-relaxed">Connect to modern Socket.IO clusters, send custom payloads, and capture responses.</p>
+        </div>
+        <div class="p-5 rounded-xl glass glass-hover">
+          <div class="text-xs font-mono font-bold text-orange-400 mb-1">gRPC Unary</div>
+          <div class="text-sm font-semibold mb-2">JSON-to-Protobuf Stubs</div>
+          <p class="text-xs text-spot-muted leading-relaxed">Fast unary gRPC invocation with structured payloads and metadata reflection.</p>
+        </div>
+        <div class="p-5 rounded-xl glass glass-hover">
+          <div class="text-xs font-mono font-bold text-teal-400 mb-1">MQTT v3.1.1 / 5.0</div>
+          <div class="text-sm font-semibold mb-2">Publish &amp; Subscribe</div>
+          <p class="text-xs text-spot-muted leading-relaxed">Powered by rumqttc for embedded IoT device testing and topic debugging.</p>
+        </div>
+        <div class="p-5 rounded-xl glass glass-hover">
+          <div class="text-xs font-mono font-bold text-yellow-300 mb-1">Model Context Protocol</div>
+          <div class="text-sm font-semibold mb-2">AI Agent Tool Testing</div>
+          <p class="text-xs text-spot-muted leading-relaxed">Inspect and invoke MCP tools via STDIO JSON-RPC for Claude and LLM agent tooling.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================================================================= -->
+    <!-- SECTION: CLI & CI/CD AUTOMATION -->
+    <!-- ================================================================= -->
+    <section id="cli-runner" class="mt-36 text-center">
+      <span class="text-xs font-bold text-spot-bright tracking-widest uppercase block mb-3">DEVSECOPS &amp; AUTOMATION</span>
+      <h2 class="text-3xl sm:text-5xl font-extrabold tracking-tight mb-4">Built-in CLI Runner. Zero NPM Dependencies.</h2>
+      <p class="text-spot-muted max-w-2xl mx-auto text-base sm:text-lg mb-12">
+        Never install <code>newman</code> or heavyweight Node packages again. Blitz ships with its own single-binary CLI runner for GitHub Actions, GitLab CI, and local terminal workflows.
+      </p>
+
+      <div class="rounded-2xl glass p-8 text-left max-w-3xl mx-auto">
+        <div class="flex items-center justify-between mb-4 border-b border-white/5 pb-3">
+          <div class="flex items-center gap-2">
+            <span class="text-xs font-mono text-spot-bright font-bold">Terminal</span>
+            <span class="text-xs text-spot-faint">— blitz run</span>
+          </div>
+          <span class="text-xs text-spot-muted font-mono">Exit Code: 0 (PASS)</span>
+        </div>
+        <div class="font-mono text-xs leading-relaxed text-gray-300 bg-black/60 p-4 rounded-xl border border-white/5 overflow-x-auto">
+          <div class="text-spot-muted mb-2"><span class="text-spot-bright">$</span> blitz run api-tests.json --env staging.json</div>
+          <div class="text-spot-bright">⚡ Blitz Collection Runner v1.0</div>
+          <div class="text-spot-faint">Loaded collection: Authentication &amp; Billing API (14 requests)</div>
+          <div class="text-spot-faint">Active environment: Staging Cluster (US-East)</div>
+          <div class="my-2 border-t border-white/5"></div>
+          <div><span class="text-spot-bright font-bold">✓ PASS</span> POST /oauth/v2/token [200 OK, 12ms]</div>
+          <div><span class="text-spot-bright font-bold">✓ PASS</span> GET  /user/billing [200 OK, 28ms]</div>
+          <div><span class="text-spot-bright font-bold">✓ PASS</span> POST /v1/charges [201 CREATED, 44ms]</div>
+          <div class="my-2 border-t border-white/5"></div>
+          <div class="text-spot-bright font-bold">Summary: 14/14 tests passed (0 failures) • Duration: 142ms total</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================================================================= -->
     <!-- SECTION: DETAILED POWER FEATURES -->
     <!-- ================================================================= -->
     <section id="features" class="mt-36 text-center">
@@ -415,9 +505,9 @@
           <div class="w-12 h-12 rounded-xl bg-teal-500/15 text-teal-400 flex items-center justify-center mb-6">
             <svg class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>
           </div>
-          <h3 class="text-xl font-bold mb-3 tracking-tight">8 Protocols in One App</h3>
+          <h3 class="text-xl font-bold mb-3 tracking-tight">Enterprise Auth Suite</h3>
           <p class="text-spot-muted text-sm leading-relaxed">
-            REST, GraphQL, WebSockets, Server-Sent Events, Socket.IO, gRPC unary stubs, MQTT broker channels, and AI Model Context Protocol (MCP).
+            OAuth 2.0 (with loopback redirect token refresh), OAuth 1.0a, AWS SigV4, Akamai EdgeGrid, Hawk, Digest MD5, and Basic/Bearer.
           </p>
         </div>
 
@@ -428,7 +518,7 @@
           </div>
           <h3 class="text-xl font-bold mb-3 tracking-tight">Local Mock Server &amp; Runner</h3>
           <p class="text-spot-muted text-sm leading-relaxed">
-            Spin up a mock HTTP server on <code>127.0.0.1</code> from saved request examples, or execute collection batches with CSV/JSON iteration feeds.
+            Instantly spin up a mock server on <code>127.0.0.1</code> from your saved examples, or batch run collection test suites with CSV/JSON feeds.
           </p>
         </div>
       </div>
