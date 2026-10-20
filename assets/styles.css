@@ -5211,3 +5211,115 @@ mark.search-match {
 .assert-add-select:hover {
   background: rgba(29, 185, 84, 0.22);
 }
+
+/* =====================================================================
+   RESPONSIVE DESIGN & UX / UI LAYOUT ADJUSTMENTS
+   Fluid layout breakpoints, compact screens, and modular typography
+   ===================================================================== */
+
+/* Mobile / Small Tablet screens (< 768px) */
+@media screen and (max-width: 768px) {
+  :root {
+    --fs-base: 13px;
+    --fs-editor: 13px;
+    --bar-h: 46px;
+    --sidebar-w: 220px;
+  }
+
+  .top-bar {
+    padding: 0 8px;
+    gap: 6px;
+  }
+
+  .top-link span:not(.top-caret) {
+    display: none;
+  }
+
+  .brand-name {
+    display: none;
+  }
+
+  .brand-logo {
+    margin-right: 0;
+  }
+
+  .env-select-trigger {
+    min-width: 80px;
+    max-width: 120px;
+  }
+
+  .request-row {
+    flex-wrap: wrap;
+    padding: 8px 10px;
+    gap: 6px;
+  }
+
+  .request-row .method-select {
+    flex: 0 0 auto;
+  }
+
+  .request-row .var-hover-host {
+    flex: 1 1 calc(100% - 130px);
+    min-width: 140px;
+  }
+
+  .btn-send {
+    flex: 0 0 auto;
+    padding: 0 10px;
+  }
+
+  /* Force vertical stacked layout on narrow screens */
+  .workbench-split.layout-row {
+    flex-direction: column !important;
+  }
+
+  .workbench-split.layout-row > .workbench-request-side {
+    flex: 1 1 50% !important;
+    min-width: 100% !important;
+    border-right: none !important;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08) !important;
+  }
+
+  .workbench-split.layout-row > .workbench-response-side {
+    flex: 1 1 50% !important;
+    min-width: 100% !important;
+  }
+
+  .modal {
+    width: 96vw;
+    padding: var(--space-3);
+  }
+}
+
+/* Compact screens & narrow windows (769px - 1080px) */
+@media screen and (min-width: 769px) and (max-width: 1080px) {
+  :root {
+    --fs-base: 14px;
+    --fs-editor: 14px;
+    --sidebar-w: 240px;
+  }
+
+  .env-select-trigger {
+    max-width: 140px;
+  }
+
+  .top-bar {
+    gap: 6px;
+    padding: 0 12px;
+  }
+}
+
+/* Large / Ultrawide screens (> 1600px) */
+@media screen and (min-width: 1600px) {
+  :root {
+    --fs-base: 15px;
+    --fs-editor: 15px;
+  }
+}
+
+/* High-DPI crisp text rendering */
+@media (-webkit-min-device-pixel-ratio: 2), (min-resolution: 192dpi) {
+  body, .app-shell, input, select, textarea, button {
+    -webkit-font-smoothing: subpixel-antialiased;
+  }
+}

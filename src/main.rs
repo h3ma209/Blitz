@@ -27,7 +27,12 @@ fn main() {
     // (or CARGO_MANIFEST_DIR). Plain cargo + Finder-launched .app gets "Dioxus App"
     // and broken stylesheet URLs otherwise.
     let cfg = Config::new()
-        .with_window(WindowBuilder::new().with_title("⚡ Blitz"))
+        .with_window(
+            WindowBuilder::new()
+                .with_title("⚡ Blitz")
+                .with_inner_size(dioxus::desktop::tao::dpi::LogicalSize::new(1280.0, 820.0))
+                .with_min_inner_size(dioxus::desktop::tao::dpi::LogicalSize::new(840.0, 560.0))
+        )
         .with_custom_head(format!("<style>{}</style>", brand::STYLES_CSS));
 
     dioxus::LaunchBuilder::desktop()
