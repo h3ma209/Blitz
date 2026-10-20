@@ -159,6 +159,7 @@ install-macos: ## Package Blitz.app into MACOS_APPDIR
 	@sed \
 		-e 's|<string>0\.1\.0</string>|<string>$(VERSION)</string>|g' \
 		packaging/macos/Info.plist > "$(MACOS_BUNDLE)/Contents/Info.plist"
+	@codesign --force --deep -s - "$(MACOS_BUNDLE)" 2>/dev/null || true
 	@echo ''
 	@echo "Installed: $(MACOS_BUNDLE)"
 	@echo "  Open:    open \"$(MACOS_BUNDLE)\""
@@ -182,6 +183,7 @@ ifeq ($(UNAME_S),Darwin)
 	@sed \
 		-e 's|<string>0\.1\.0</string>|<string>$(VERSION)</string>|g' \
 		packaging/macos/Info.plist > target/dmg-stage/$(APP_NAME).app/Contents/Info.plist
+	@codesign --force --deep -s - target/dmg-stage/$(APP_NAME).app 2>/dev/null || true
 	@ln -s /Applications target/dmg-stage/Applications
 	@hdiutil create -volname "$(APP_NAME)" -srcfolder target/dmg-stage -ov -format UDZO target/$(APP_NAME).dmg
 	@rm -rf target/dmg-stage

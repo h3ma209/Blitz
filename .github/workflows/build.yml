@@ -138,6 +138,18 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: dist/*
+          body: |
+            ### ⚡ Blitz Release ${{ github.ref_name }}
+
+            #### 📦 Downloads
+            - **macOS (Apple Silicon)**: `Blitz-macos-arm64.dmg` or `blitz-macos-arm64.tar.gz`
+            - **Linux (x86_64)**: `blitz-linux-x86_64.tar.gz`
+            - **Windows (x86_64)**: `blitz-windows-x86_64.zip`
+
+            > **macOS Gatekeeper notice**: Blitz is open-source software without an Apple Developer paid notarization certificate. If macOS shows *"Blitz is damaged and can't be opened"*, remove the download quarantine flag in Terminal:
+            > ```bash
+            > xattr -cr /Applications/Blitz.app
+            > ```
           generate_release_notes: true
           draft: false
           prerelease: ${{ contains(github.ref_name, '-') }}
