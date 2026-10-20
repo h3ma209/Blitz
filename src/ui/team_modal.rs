@@ -28,6 +28,7 @@ pub fn TeamModal(
     let member_count = activity.members.len();
     let commit_count = activity.recent_commits.len();
     let edited_count = activity.uncommitted_changes.len();
+    let display_remote_url = crate::core::cloud_sync::mask_remote_url(&activity.remote_url);
 
     rsx! {
         ModalShell {
@@ -42,7 +43,7 @@ pub fn TeamModal(
                         span { class: "team-badge", "Git Cloud" }
                         span { class: "team-branch-pill", "🌿 {activity.branch}" }
                         if !activity.remote_url.is_empty() {
-                            span { class: "team-remote-url", title: "{activity.remote_url}", "{activity.remote_url}" }
+                            span { class: "team-remote-url", title: "{display_remote_url}", "{display_remote_url}" }
                         }
                     }
                     div { class: "team-actions-group",

@@ -661,10 +661,37 @@ pub struct TeamActivity {
     pub remote_url: String,
 }
 
+/// Mask sensitive tokens or credentials in a git URL for safe UI display and logging.
+/// Examples:
+/// `https://user:token@github.com/org/repo.git` -> `https://user:***@github.com/org/repo.git`
+/// `https://token@github.com/org/repo.git` -> `https://***@github.com/org/repo.git`
+pub fn mask_remote_url(raw: &str) -> String {
+    let raw = raw.trim();
+    if raw.is_empty() {
+        return String::new();
+    }
+    if let Some(proto_pos) = raw.find("://") {
+        let proto = &raw[..proto_pos + 3];
+        let rest = &raw[proto_pos + 3..];
+        if let Some(at_pos) = rest.find('@') {
+            let auth = &rest[..at_pos];
+            let after_at = &rest[at_pos..];
+            let masked_auth = if let Some(colon_pos) = auth.find(':') {
+                format!("{}:***", &auth[..colon_pos])
+            } else {
+                "***".to_string()
+            };
+            return format!("{proto}{masked_auth}{after_at}");
+        }
+    }
+    raw.to_string()
+}
+
 /// Query team contributors, recent commits with file diffs, and local modified files.
 pub fn get_team_activity(cwd: &Path, limit_commits: usize) -> Result<TeamActivity, CloudGitError> {
     let branch = run_git(cwd, &["rev-parse", "--abbrev-ref", "HEAD"]).unwrap_or_else(|_| "main".into());
-    let remote_url = run_git(cwd, &["remote", "get-url", "origin"]).unwrap_or_default();
+    let raw_remote_url = run_git(cwd, &["remote", "get-url", "origin"]).unwrap_or_default();
+    let remote_url = mask_remote_url(&raw_remote_url);
 
     // 1. Members via `git shortlog -sn --all`
     let mut members = Vec::new();
@@ -880,6 +907,27 @@ mod tests {
         if let Some(base) = root.parent() {
             let _ = fs::remove_dir_all(base);
         }
+    }
+
+    #[test]
+    fn test_mask_remote_url() {
+        assert_eq!(
+            mask_remote_url("https://h3ma209:ghp_secrettoken1234@github.com/h3ma209/evilpostman-cloud.git"),
+            "https://h3ma209:***@github.com/h3ma209/evilpostman-cloud.git"
+        );
+        assert_eq!(
+            mask_remote_url("https://ghp_secrettoken1234@github.com/org/repo.git"),
+            "https://***@github.com/org/repo.git"
+        );
+        assert_eq!(
+            mask_remote_url("https://github.com/org/repo.git"),
+            "https://github.com/org/repo.git"
+        );
+        assert_eq!(
+            mask_remote_url("git@github.com:org/repo.git"),
+            "git@github.com:org/repo.git"
+        );
+        assert_eq!(mask_remote_url(""), "");
     }
 
     #[test]
