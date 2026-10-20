@@ -5323,3 +5323,40 @@ mark.search-match {
     -webkit-font-smoothing: subpixel-antialiased;
   }
 }
+
+/* Update Notification Badge in Top Nav */
+.update-pill-pulse {
+  background: rgba(30, 215, 96, 0.14) !important;
+  color: var(--spot-green-bright) !important;
+  border: 1px solid rgba(30, 215, 96, 0.4) !important;
+  border-radius: var(--radius-pill) !important;
+  font-weight: 700 !important;
+  padding: 3px 10px !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 6px !important;
+  cursor: pointer !important;
+  animation: update-glow 2.5s infinite ease-in-out;
+}
+
+.update-pill-pulse:hover {
+  background: rgba(30, 215, 96, 0.25) !important;
+  border-color: var(--spot-green-bright) !important;
+}
+
+.update-badge-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--spot-green-bright);
+  box-shadow: 0 0 6px var(--spot-green-bright);
+}
+
+@keyframes update-glow {
+  0%, 100% {
+    box-shadow: 0 0 0 0 rgba(30, 215, 96, 0.4);
+  }
+  50% {
+    box-shadow: 0 0 10px 2px rgba(30, 215, 96, 0.25);
+  }
+}

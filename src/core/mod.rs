@@ -29,6 +29,7 @@ pub mod scripts;
 pub mod settings;
 pub mod variables;
 pub mod vault;
+pub mod updater;
 
 pub use assertions::{
     assertions_to_script, merge_assertions, suggest_from_response, Assertion, AssertionKind,
@@ -107,3 +108,4 @@ pub use variables::{
     VariableSuggestion,
 };
 pub use vault::{resolve_vault_key, VaultStore, VAULT_ACCOUNT_ID};
+pub use updater::{check_for_updates, is_newer_version, open_browser_url, UpdateInfo, CURRENT_VERSION};

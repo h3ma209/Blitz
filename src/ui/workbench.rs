@@ -22,7 +22,7 @@ use crate::core::{
     Cookie, CookieJar, EnvVar, Environment, Folder, HistoryEntry, HttpMethod, KeyValue, MockHandle, PerfReport,
     RequestDraft, RequestProtocol, ResponseView, SavedExample, UiSettings, UiTheme, VarResolveScope,
     VariableContext, VaultStore, WorkbenchLayout, WsSession, DEFAULT_CLOUD_REMOTE, HISTORY_MAX,
-    resolve_ancestor_auth,
+    resolve_ancestor_auth, check_for_updates, open_browser_url, UpdateInfo,
 };
 use crate::runtime::{
     run_collection_with_config, send_request_with_options, RunnerConfig, RunnerReport, SendError,
@@ -190,6 +190,8 @@ pub fn Workbench() -> Element {
     let mut team_syncing = use_signal(|| false);
     let mut pending_delete = use_signal(|| None::<PendingDelete>);
     let mut tree_clipboard = use_signal(|| None::<TreeClipboard>);
+    let mut available_update = use_signal(|| None::<UpdateInfo>);
+    let mut checking_update = use_signal(|| false);
 
     use_effect(move || {
         if loaded() {
@@ -245,6 +247,14 @@ pub fn Workbench() -> Element {
             splash_leaving.set(true);
             tokio::time::sleep(Duration::from_millis(320)).await;
             splash_visible.set(false);
+
+            // Check for updates asynchronously after app launch
+            let info = tokio::task::spawn_blocking(check_for_updates).await.ok().flatten();
+            if let Some(info) = info {
+                if info.has_update {
+                    available_update.set(Some(info));
+                }
+            }
         });
     });
 
@@ -2042,6 +2052,31 @@ pub fn Workbench() -> Element {
                                 },
                                 "Trash…"
                             }
+                            button {
+                                class: "menu-item",
+                                onclick: move |_| {
+                                    tools_menu_open.set(false);
+                                    checking_update.set(true);
+                                    status_msg.set("checking for updates…".into());
+                                    spawn(async move {
+                                        let res = tokio::task::spawn_blocking(check_for_updates).await.ok().flatten();
+                                        checking_update.set(false);
+                                        match res {
+                                            Some(info) if info.has_update => {
+                                                status_msg.set(format!("New version v{} available!", info.latest_version));
+                                                available_update.set(Some(info));
+                                            }
+                                            Some(info) => {
+                                                status_msg.set(format!("Blitz v{} is up to date", info.current_version));
+                                            }
+                                            None => {
+                                                status_msg.set("could not check for updates (offline or rate-limited)".into());
+                                            }
+                                        }
+                                    });
+                                },
+                                "Check for updates…"
+                            }
                         }
                     }
                 }
@@ -2516,6 +2551,18 @@ pub fn Workbench() -> Element {
                             app_settings.set(s);
                             persist();
                         },
+                    }
+                    if let Some(upd) = available_update() {
+                        button {
+                            class: "top-link update-pill-pulse",
+                            title: format!("Blitz v{} is available! Click to view release", upd.latest_version),
+                            onclick: {
+                                let url = upd.release_url.clone();
+                                move |_| open_browser_url(&url)
+                            },
+                            span { class: "update-badge-dot" }
+                            span { "Update v{upd.latest_version}" }
+                        }
                     }
                     button {
                         class: "top-icon",
