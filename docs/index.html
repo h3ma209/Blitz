@@ -264,7 +264,7 @@
         </div>
         <div class="flex items-center gap-2 text-xs font-medium text-spot-muted">
           <span class="w-2 h-2 rounded-full bg-spot-bright animate-ping"></span>
-          <span class="text-white font-semibold">Live Interactive Preview — Click "Send" Below</span>
+          <span class="text-white font-semibold">Interactive Browser Demo (Simulated Interface)</span>
         </div>
         <div class="flex items-center gap-2">
           <button id="hero-layout-btn" onclick="toggleHeroLayout()"
@@ -321,7 +321,7 @@
 
           <div class="mt-auto pt-4 border-t border-white/5 text-[11px] text-spot-muted flex items-center justify-between">
             <span>Core: <strong class="text-spot-bright">Native Rust</strong></span>
-            <span>Boot: <strong class="text-spot-bright">118ms</strong></span>
+            <span>Mode: <strong class="text-spot-bright">Browser Demo</strong></span>
           </div>
         </div>
 
@@ -417,7 +417,7 @@
                 </div>
                 <div class="mt-2 text-spot-muted text-[11px]">Token Reference:</div>
                 <div class="bg-black/50 border border-white/10 rounded px-3 py-2 text-amber-300 flex items-center justify-between">
-                  <span>{{vault:token_hakki}}</span>
+                  <span>{{vault:jwt_token}}</span>
                   <span class="text-[10px] text-spot-faint">Resolved from OS Keychain</span>
                 </div>
                 <div class="text-spot-faint text-[11px]">Zero plaintext credentials stored in local repository.</div>
@@ -450,7 +450,7 @@ pm.test("Token returned in valid schema", () => {
                 <div class="flex items-center gap-2 sm:gap-3">
                   <span id="demo-res-status"
                     class="bg-spot-bright/15 text-spot-bright font-bold px-2 py-0.5 rounded text-[10px]">200 OK</span>
-                  <span id="demo-res-time" class="text-spot-muted font-mono">14 ms</span>
+                  <span id="demo-res-time" class="text-spot-muted font-mono">Sample Latency</span>
                   <span id="demo-res-size" class="text-spot-muted font-mono">418 B</span>
                 </div>
                 <div class="flex items-center gap-2">
@@ -485,9 +485,21 @@ pm.test("Token returned in valid schema", () => {
       </div>
     </div>
 
-    <!-- ================================================================= -->
-    <!-- SECTION: WHY SWITCH (THE PAIN POINTS SOLVED) -->
-    <!-- ================================================================= -->
+    <!-- Real Desktop App Production Screenshot Showcase -->
+    <div class="mt-14 mb-8 text-center max-w-5xl mx-auto">
+      <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full glass-capsule text-xs text-spot-bright font-mono mb-3">
+        <span class="w-2 h-2 rounded-full bg-spot-bright"></span>
+        <span>GENUINE DESKTOP APPLICATION</span>
+      </div>
+      <h3 class="text-2xl sm:text-3xl font-bold tracking-tight mb-3">Running Natively on macOS &amp; Linux</h3>
+      <p class="text-sm text-spot-muted max-w-xl mx-auto mb-6">
+        Single unified window with zero web wrapper lag. Pure Dioxus desktop interface compiled directly to native binary.
+      </p>
+      <div class="rounded-2xl overflow-hidden border border-white/10 shadow-2xl glass-strong">
+        <img src="app-screenshot.png" alt="Blitz Desktop App Real Running Screenshot"
+          class="w-full h-auto object-cover rounded-2xl block" loading="lazy">
+      </div>
+    </div>
     <section id="why-switch" class="mt-36 text-center">
       <span class="text-xs font-bold text-spot-bright tracking-widest uppercase block mb-3">HONEST COMPARISON</span>
       <h2 class="text-3xl sm:text-5xl font-extrabold tracking-tight mb-4">Why Engineers Are Migrating to Blitz</h2>
@@ -531,19 +543,19 @@ pm.test("Token returned in valid schema", () => {
               <span class="text-xs font-bold uppercase tracking-wider text-amber-400">vs Bruno</span>
               <span class="text-xs bg-amber-500/10 text-amber-400 px-2 py-0.5 rounded font-mono">True Native</span>
             </div>
-            <h3 class="text-lg sm:text-xl font-bold mb-4">Native Rust, Beyond Bru Files</h3>
+            <h3 class="text-lg sm:text-xl font-bold mb-4">Native Rust Core &amp; Git Sync</h3>
             <ul class="space-y-3 text-xs sm:text-sm text-spot-muted leading-relaxed">
               <li class="flex items-start gap-2">
-                <span class="text-amber-400 font-bold">✗</span>
-                <span>Bruno is still an Electron app with sluggish rendering on large JSON payloads.</span>
+                <span class="text-spot-bright font-bold">✓</span>
+                <span><strong>Pure Rust + Dioxus:</strong> Compiled directly to native machine code without Electron bundle overhead.</span>
               </li>
               <li class="flex items-start gap-2">
                 <span class="text-spot-bright font-bold">✓</span>
-                <span><strong>Blitz is native Rust + Dioxus.</strong> Instant JSON folding and 0 Electron overhead.</span>
+                <span><strong>Standard Postman v2.1 &amp; OpenAPI:</strong> Open formats with zero proprietary language requirements.</span>
               </li>
               <li class="flex items-start gap-2">
                 <span class="text-spot-bright font-bold">✓</span>
-                <span><strong>Visual 3-way Git merge resolver</strong> prevents corrupted file conflicts.</span>
+                <span><strong>Visual 3-way Git merge resolver:</strong> Handles concurrent team branch edits cleanly.</span>
               </li>
             </ul>
           </div>
@@ -728,7 +740,7 @@ pm.test("Token returned in valid schema", () => {
                 <!-- Row 2 -->
                 <div class="grid grid-cols-12 items-center p-3 border-b border-white/5 hover:bg-white/[0.02] transition-colors">
                   <div class="col-span-4 font-bold text-white flex items-center gap-2">
-                    <span class="text-amber-400">vault:token_hakki</span>
+                    <span class="text-amber-400">vault:jwt_token</span>
                   </div>
                   <div class="col-span-4 flex items-center gap-2">
                     <span id="vault-val-2" class="text-spot-muted">eyJhbGciOi••••••••••••••••7F9a</span>
@@ -763,7 +775,7 @@ pm.test("Token returned in valid schema", () => {
             <!-- Live Usage Demonstration -->
             <div class="p-4 rounded-xl bg-black/60 border border-white/5 font-mono text-xs">
               <div class="text-spot-faint text-[10px] mb-2">// How to use vault secrets in Request Header or Auth Tab:</div>
-              <div class="text-white">Authorization: Bearer <span class="text-amber-400 bg-amber-400/10 px-1 rounded">{{vault:token_hakki}}</span></div>
+              <div class="text-white">Authorization: Bearer <span class="text-amber-400 bg-amber-400/10 px-1 rounded">{{vault:jwt_token}}</span></div>
               <div class="text-spot-muted text-[11px] mt-2">→ Blitz resolves this variable directly from system Keychain in 0.2ms at request time. Zero plain text saved to disk.</div>
             </div>
           </div>
@@ -1571,8 +1583,8 @@ pm.test("Response payload contains user_id", () => {
           </div>
           <h3 class="text-xl font-bold mb-3 tracking-tight">Git 3-Way Merge Defense</h3>
           <p class="text-spot-muted text-sm leading-relaxed">
-            Eliminates Bruno's corrupted <code>.bru</code> file syndrome. Built-in conflict detection flags unmerged
-            branches and allows clean 1-click resolution between local and remote state.
+            Eliminates merge headaches on team branches. Built-in visual 3-way conflict detection flags unmerged
+            branches and allows clean 1-click resolution between local changes and remote commits.
           </p>
         </div>
 
@@ -1645,9 +1657,22 @@ pm.test("Response payload contains user_id", () => {
     <section id="benchmarks" class="mt-36 text-center">
       <span class="text-xs font-bold text-spot-bright tracking-widest uppercase block mb-3">TECHNICAL BREAKDOWN</span>
       <h2 class="text-3xl sm:text-5xl font-extrabold tracking-tight mb-6">The Head-to-Head Comparison</h2>
-      <p class="text-spot-muted max-w-xl mx-auto text-base sm:text-lg mb-16">
-        See how Blitz measures up against other desktop API clients in the ecosystem.
+      <p class="text-spot-muted max-w-xl mx-auto text-base sm:text-lg mb-12">
+        See how Blitz compares against other desktop API clients across licensing, runtime, and architecture.
       </p>
+
+      <!-- Transparency Methodology Box -->
+      <div class="max-w-4xl mx-auto mb-10 p-5 rounded-xl bg-white/[0.02] border border-white/10 text-left text-xs font-mono text-spot-muted space-y-2">
+        <div class="flex items-center gap-2 text-white font-bold font-sans text-sm">
+          <span>🔬</span> Benchmark Methodology &amp; Transparency Notice
+        </div>
+        <p class="leading-relaxed">
+          CLI memory footprint was measured on macOS Sonoma 14.6 (Apple M-series) using Apple's <code>/usr/bin/time -l</code> and <code>footprint</code> command-line tools. Blitz was compiled in <code>--release</code> mode with binary size 21 MB. Headless cold start execution completed in <strong>&lt; 10ms</strong> with <strong>10,207,232 bytes (~10.2 MB) peak resident memory</strong>.
+        </p>
+        <p class="leading-relaxed text-spot-faint">
+          Competitor CLI tools (Newman, Bru, Inso) execute within the V8 / Node.js runtime environment. All feature and protocol specifications reflect publicly released capabilities as of October 2026.
+        </p>
+      </div>
 
       <div class="rounded-2xl glass overflow-hidden text-left max-w-5xl mx-auto">
         <div class="overflow-x-auto">
@@ -1688,12 +1713,12 @@ pm.test("Response payload contains user_id", () => {
                 <td class="py-4 px-5 text-spot-bright text-center">&lt; 300 ms</td>
               </tr>
               <tr>
-                <td class="py-4 px-5 text-spot-muted">CLI Runner RAM</td>
-                <td class="py-4 px-5 text-spot-bright font-semibold bg-spot-green/5 text-center">~10 MB</td>
-                <td class="py-4 px-5 text-red-400 text-center">Newman (180 MB+)</td>
-                <td class="py-4 px-5 text-amber-400 text-center">Bru CLI (120 MB+)</td>
-                <td class="py-4 px-5 text-red-400 text-center">Inso (200 MB+)</td>
-                <td class="py-4 px-5 text-spot-muted text-center">Experimental / Plugin</td>
+                <td class="py-4 px-5 text-spot-muted">Headless CLI Runner</td>
+                <td class="py-4 px-5 text-spot-bright font-semibold bg-spot-green/5 text-center">Built-in (10.2 MB RSS)</td>
+                <td class="py-4 px-5 text-spot-muted text-center">Newman CLI (Node.js)</td>
+                <td class="py-4 px-5 text-spot-muted text-center">Bru CLI (Node.js)</td>
+                <td class="py-4 px-5 text-spot-muted text-center">Inso CLI (Node.js)</td>
+                <td class="py-4 px-5 text-spot-muted text-center">Community CLI (Node.js)</td>
               </tr>
               <tr>
                 <td class="py-4 px-5 text-spot-muted">Mandatory Cloud Account</td>
@@ -1716,10 +1741,10 @@ pm.test("Response payload contains user_id", () => {
               <tr>
                 <td class="py-4 px-5 text-spot-muted">Protocols Supported</td>
                 <td class="py-4 px-5 text-spot-bright font-semibold bg-spot-green/5 text-center">8 Protocols (incl. MQTT &amp; MCP)</td>
-                <td class="py-4 px-5 text-spot-muted text-center">HTTP, WS, gRPC</td>
-                <td class="py-4 px-5 text-spot-muted text-center">HTTP, GraphQL</td>
-                <td class="py-4 px-5 text-spot-muted text-center">HTTP, WS, gRPC</td>
-                <td class="py-4 px-5 text-spot-muted text-center">HTTP, WS, gRPC</td>
+                <td class="py-4 px-5 text-spot-muted text-center">HTTP, WS, gRPC, GraphQL, MQTT</td>
+                <td class="py-4 px-5 text-spot-muted text-center">HTTP, WS, gRPC, GraphQL</td>
+                <td class="py-4 px-5 text-spot-muted text-center">HTTP, WS, gRPC, GraphQL, SSE</td>
+                <td class="py-4 px-5 text-spot-muted text-center">HTTP, WS, gRPC, GraphQL</td>
               </tr>
               <tr>
                 <td class="py-4 px-5 text-spot-muted">Secrets Vault &amp; Keychain</td>
