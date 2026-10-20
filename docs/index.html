@@ -492,97 +492,122 @@ pm.test("Token returned in valid schema", () => {
       <span class="text-xs font-bold text-spot-bright tracking-widest uppercase block mb-3">HONEST COMPARISON</span>
       <h2 class="text-3xl sm:text-5xl font-extrabold tracking-tight mb-4">Why Engineers Are Migrating to Blitz</h2>
       <p class="text-spot-muted max-w-2xl mx-auto text-base sm:text-lg mb-16">
-        Here is how Blitz directly fixes the daily frustrations of Postman, Bruno, and Insomnia.
+        Here is how Blitz directly fixes the daily frustrations of Postman, Bruno, Insomnia, and Yaak.
       </p>
 
-      <div class="grid grid-cols-1 md:grid-cols-3 gap-8 text-left">
+      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 text-left">
         <!-- Postman Switcher Card -->
-        <div class="p-8 rounded-2xl glass border-t-2 border-t-red-500/80 glass-hover flex flex-col justify-between">
+        <div class="p-6 sm:p-8 rounded-2xl glass border-t-2 border-t-red-500/80 glass-hover flex flex-col justify-between">
           <div>
             <div class="flex items-center justify-between mb-4">
-              <span class="text-xs font-bold uppercase tracking-wider text-red-400">Switching from Postman</span>
-              <span class="text-xs bg-red-500/10 text-red-400 px-2 py-0.5 rounded font-mono">No Hostage Cloud</span>
+              <span class="text-xs font-bold uppercase tracking-wider text-red-400">vs Postman</span>
+              <span class="text-xs bg-red-500/10 text-red-400 px-2 py-0.5 rounded font-mono">No Cloud Lock-in</span>
             </div>
-            <h3 class="text-xl font-bold mb-4">Escape Forced Logins &amp; Cloud Lock-in</h3>
-            <ul class="space-y-3 text-sm text-spot-muted leading-relaxed">
+            <h3 class="text-lg sm:text-xl font-bold mb-4">Escape Forced Logins &amp; Cloud Lock-in</h3>
+            <ul class="space-y-3 text-xs sm:text-sm text-spot-muted leading-relaxed">
               <li class="flex items-start gap-2">
                 <span class="text-red-400 font-bold">✗</span>
                 <span>Postman forces accounts and uploads your sensitive internal APIs to third-party servers.</span>
               </li>
               <li class="flex items-start gap-2">
                 <span class="text-spot-bright font-bold">✓</span>
-                <span><strong>Blitz is 100% offline-first.</strong> Zero tracking, no login prompts, and complete import
-                  support for Postman v2.1 collections.</span>
+                <span><strong>Blitz is 100% offline-first.</strong> Zero tracking, no login prompts, and full Postman v2.1 import.</span>
               </li>
               <li class="flex items-start gap-2">
                 <span class="text-spot-bright font-bold">✓</span>
-                <span>Sub-150ms startup with a <strong>~10MB CLI runner</strong> versus Postman's 800MB–1.5GB background hogging.</span>
+                <span>Sub-150ms startup with a <strong>~10MB CLI runner</strong> vs Postman's 800MB–1.5GB RAM hogging.</span>
               </li>
             </ul>
           </div>
           <div class="mt-6 pt-4 border-t border-white/5 text-xs text-spot-bright font-medium">
-            Migrate in 10 seconds via File → Import Collection
+            Migrate in 10s via File → Import Collection
           </div>
         </div>
 
         <!-- Bruno Switcher Card -->
-        <div class="p-8 rounded-2xl glass border-t-2 border-t-amber-500/80 glass-hover flex flex-col justify-between">
+        <div class="p-6 sm:p-8 rounded-2xl glass border-t-2 border-t-amber-500/80 glass-hover flex flex-col justify-between">
           <div>
             <div class="flex items-center justify-between mb-4">
-              <span class="text-xs font-bold uppercase tracking-wider text-amber-400">Switching from Bruno</span>
-              <span class="text-xs bg-amber-500/10 text-amber-400 px-2 py-0.5 rounded font-mono">Full Native
-                Power</span>
+              <span class="text-xs font-bold uppercase tracking-wider text-amber-400">vs Bruno</span>
+              <span class="text-xs bg-amber-500/10 text-amber-400 px-2 py-0.5 rounded font-mono">True Native</span>
             </div>
-            <h3 class="text-xl font-bold mb-4">True Native Binary, Beyond Bru Files</h3>
-            <ul class="space-y-3 text-sm text-spot-muted leading-relaxed">
+            <h3 class="text-lg sm:text-xl font-bold mb-4">Native Rust, Beyond Bru Files</h3>
+            <ul class="space-y-3 text-xs sm:text-sm text-spot-muted leading-relaxed">
               <li class="flex items-start gap-2">
                 <span class="text-amber-400 font-bold">✗</span>
-                <span>Bruno is still an Electron app with sluggish UI rendering on large payloads.</span>
+                <span>Bruno is still an Electron app with sluggish rendering on large JSON payloads.</span>
               </li>
               <li class="flex items-start gap-2">
                 <span class="text-spot-bright font-bold">✓</span>
-                <span><strong>Blitz is native Rust + Dioxus.</strong> Sub-millisecond syntax highlighting, timeline
-                  waterfall, and instant JSON folding.</span>
+                <span><strong>Blitz is native Rust + Dioxus.</strong> Instant JSON folding and 0 Electron overhead.</span>
               </li>
               <li class="flex items-start gap-2">
                 <span class="text-spot-bright font-bold">✓</span>
-                <span><strong>Native OS Keychain</strong> integration with <code>{{vault:key}}</code> and automatic
-                  redaction before Git sync.</span>
+                <span><strong>Visual 3-way Git merge resolver</strong> prevents corrupted file conflicts.</span>
               </li>
             </ul>
           </div>
           <div class="mt-6 pt-4 border-t border-white/5 text-xs text-spot-bright font-medium">
-            No proprietary .bru lock-in; standard OpenAPI/cURL import
+            Standard Postman/OpenAPI format, 0 lock-in
           </div>
         </div>
 
         <!-- Insomnia Switcher Card -->
-        <div class="p-8 rounded-2xl glass border-t-2 border-t-purple-500/80 glass-hover flex flex-col justify-between">
+        <div class="p-6 sm:p-8 rounded-2xl glass border-t-2 border-t-purple-500/80 glass-hover flex flex-col justify-between">
           <div>
             <div class="flex items-center justify-between mb-4">
-              <span class="text-xs font-bold uppercase tracking-wider text-purple-400">Switching from Insomnia</span>
-              <span class="text-xs bg-purple-500/10 text-purple-400 px-2 py-0.5 rounded font-mono">No Subscription
-                Paywalls</span>
+              <span class="text-xs font-bold uppercase tracking-wider text-purple-400">vs Insomnia</span>
+              <span class="text-xs bg-purple-500/10 text-purple-400 px-2 py-0.5 rounded font-mono">No Paywalls</span>
             </div>
-            <h3 class="text-xl font-bold mb-4">All Protocols Free Forever</h3>
-            <ul class="space-y-3 text-sm text-spot-muted leading-relaxed">
+            <h3 class="text-lg sm:text-xl font-bold mb-4">All Protocols Free Forever</h3>
+            <ul class="space-y-3 text-xs sm:text-sm text-spot-muted leading-relaxed">
               <li class="flex items-start gap-2">
                 <span class="text-purple-400 font-bold">✗</span>
-                <span>Insomnia locked local storage behind paywalls and limited team collaboration tiers.</span>
+                <span>Insomnia locked local storage and team sync behind subscription tiers.</span>
               </li>
               <li class="flex items-start gap-2">
                 <span class="text-spot-bright font-bold">✓</span>
-                <span><strong>Git-based team sync is free forever.</strong> Use GitHub, GitLab, or private self-hosted
-                  Git repositories.</span>
+                <span><strong>Git-based team sync is free forever.</strong> Use GitHub, GitLab, or your own server.</span>
               </li>
               <li class="flex items-start gap-2">
                 <span class="text-spot-bright font-bold">✓</span>
-                <span>Out-of-the-box support for <strong>8 protocols</strong>: HTTP, WebSocket, SSE, Socket.IO, gRPC,
-                  MQTT, MCP, and GraphQL-WS.</span>
+                <span>Out-of-the-box support for <strong>8 protocols</strong> including MQTT, SSE, and MCP.</span>
               </li>
             </ul>
           </div>
           <div class="mt-6 pt-4 border-t border-white/5 text-xs text-spot-bright font-medium">
+            Zero per-seat invoices
+          </div>
+        </div>
+
+        <!-- Yaak Switcher Card -->
+        <div class="p-6 sm:p-8 rounded-2xl glass border-t-2 border-t-blue-500/80 glass-hover flex flex-col justify-between">
+          <div>
+            <div class="flex items-center justify-between mb-4">
+              <span class="text-xs font-bold uppercase tracking-wider text-blue-400">vs Yaak</span>
+              <span class="text-xs bg-blue-500/10 text-blue-400 px-2 py-0.5 rounded font-mono">100% Open Source</span>
+            </div>
+            <h3 class="text-lg sm:text-xl font-bold mb-4">Pure Rust &amp; Zero Paywalls</h3>
+            <ul class="space-y-3 text-xs sm:text-sm text-spot-muted leading-relaxed">
+              <li class="flex items-start gap-2">
+                <span class="text-blue-400 font-bold">✗</span>
+                <span>Yaak uses React/JS frontend (Tauri) and commercial Fair-Core / SSPL licensing.</span>
+              </li>
+              <li class="flex items-start gap-2">
+                <span class="text-spot-bright font-bold">✓</span>
+                <span><strong>Blitz is pure Rust (Dioxus)</strong> and completely free under permissive open source.</span>
+              </li>
+              <li class="flex items-start gap-2">
+                <span class="text-spot-bright font-bold">✓</span>
+                <span>Includes built-in <strong>Traffic Capture Proxy</strong>, <strong>Local Mock Server</strong>, and <strong>Swagger Export</strong>.</span>
+              </li>
+            </ul>
+          </div>
+          <div class="mt-6 pt-4 border-t border-white/5 text-xs text-spot-bright font-medium">
+            Git-branch team sync vs proprietary cloud
+          </div>
+        </div>
+      </div>
             Full enterprise team sync without enterprise billing
           </div>
         </div>
@@ -1634,6 +1659,7 @@ pm.test("Response payload contains user_id", () => {
                 <th class="py-4 px-5 font-semibold text-center">Postman</th>
                 <th class="py-4 px-5 font-semibold text-center">Bruno</th>
                 <th class="py-4 px-5 font-semibold text-center">Insomnia</th>
+                <th class="py-4 px-5 font-semibold text-center">Yaak</th>
               </tr>
             </thead>
             <tbody class="divide-y divide-white/5 font-medium">
@@ -1643,6 +1669,15 @@ pm.test("Response payload contains user_id", () => {
                 <td class="py-4 px-5 text-red-400 text-center">Electron (Node.js)</td>
                 <td class="py-4 px-5 text-amber-400 text-center">Electron (Node.js)</td>
                 <td class="py-4 px-5 text-red-400 text-center">Electron (Node.js)</td>
+                <td class="py-4 px-5 text-spot-muted text-center">Tauri (React/JS)</td>
+              </tr>
+              <tr>
+                <td class="py-4 px-5 text-spot-muted">License &amp; Pricing</td>
+                <td class="py-4 px-5 text-spot-bright font-semibold bg-spot-green/5 text-center">100% Free / MIT</td>
+                <td class="py-4 px-5 text-red-400 text-center">Proprietary / Paid ($$$)</td>
+                <td class="py-4 px-5 text-spot-muted text-center">Open Source / Paid Pro</td>
+                <td class="py-4 px-5 text-red-400 text-center">Proprietary / Paid ($$$)</td>
+                <td class="py-4 px-5 text-amber-400 text-center">Fair-Core / Commercial</td>
               </tr>
               <tr>
                 <td class="py-4 px-5 text-spot-muted">App Startup Latency</td>
@@ -1650,6 +1685,7 @@ pm.test("Response payload contains user_id", () => {
                 <td class="py-4 px-5 text-red-400 text-center">4,000 - 8,000 ms</td>
                 <td class="py-4 px-5 text-amber-400 text-center">1,500 - 3,000 ms</td>
                 <td class="py-4 px-5 text-red-400 text-center">3,000 - 6,000 ms</td>
+                <td class="py-4 px-5 text-spot-bright text-center">&lt; 300 ms</td>
               </tr>
               <tr>
                 <td class="py-4 px-5 text-spot-muted">CLI Runner RAM</td>
@@ -1657,6 +1693,7 @@ pm.test("Response payload contains user_id", () => {
                 <td class="py-4 px-5 text-red-400 text-center">Newman (180 MB+)</td>
                 <td class="py-4 px-5 text-amber-400 text-center">Bru CLI (120 MB+)</td>
                 <td class="py-4 px-5 text-red-400 text-center">Inso (200 MB+)</td>
+                <td class="py-4 px-5 text-spot-muted text-center">Experimental / Plugin</td>
               </tr>
               <tr>
                 <td class="py-4 px-5 text-spot-muted">Mandatory Cloud Account</td>
@@ -1665,6 +1702,7 @@ pm.test("Response payload contains user_id", () => {
                 <td class="py-4 px-5 text-red-400 text-center">Yes (Forced Login)</td>
                 <td class="py-4 px-5 text-spot-bright text-center">No</td>
                 <td class="py-4 px-5 text-red-400 text-center">Yes (Forced Login)</td>
+                <td class="py-4 px-5 text-spot-bright text-center">No</td>
               </tr>
               <tr>
                 <td class="py-4 px-5 text-spot-muted">Team Collaboration</td>
@@ -1673,12 +1711,14 @@ pm.test("Response payload contains user_id", () => {
                 <td class="py-4 px-5 text-red-400 text-center">Proprietary Cloud</td>
                 <td class="py-4 px-5 text-spot-bright text-center">Git Directory</td>
                 <td class="py-4 px-5 text-red-400 text-center">Proprietary Cloud</td>
+                <td class="py-4 px-5 text-amber-400 text-center">Yaak Cloud ($$$)</td>
               </tr>
               <tr>
                 <td class="py-4 px-5 text-spot-muted">Protocols Supported</td>
-                <td class="py-4 px-5 text-spot-bright font-semibold bg-spot-green/5 text-center">8 Protocols</td>
+                <td class="py-4 px-5 text-spot-bright font-semibold bg-spot-green/5 text-center">8 Protocols (incl. MQTT &amp; MCP)</td>
                 <td class="py-4 px-5 text-spot-muted text-center">HTTP, WS, gRPC</td>
                 <td class="py-4 px-5 text-spot-muted text-center">HTTP, GraphQL</td>
+                <td class="py-4 px-5 text-spot-muted text-center">HTTP, WS, gRPC</td>
                 <td class="py-4 px-5 text-spot-muted text-center">HTTP, WS, gRPC</td>
               </tr>
               <tr>
@@ -1687,6 +1727,7 @@ pm.test("Response payload contains user_id", () => {
                 <td class="py-4 px-5 text-red-400 text-center">Synced to Cloud</td>
                 <td class="py-4 px-5 text-spot-muted text-center">.env files</td>
                 <td class="py-4 px-5 text-red-400 text-center">Synced to Cloud</td>
+                <td class="py-4 px-5 text-spot-muted text-center">SQLite file</td>
               </tr>
               <tr>
                 <td class="py-4 px-5 text-spot-muted">Postman v2.1 Import</td>
@@ -1694,6 +1735,7 @@ pm.test("Response payload contains user_id", () => {
                 <td class="py-4 px-5 text-spot-muted text-center">Native</td>
                 <td class="py-4 px-5 text-spot-muted text-center">Partial Conversion</td>
                 <td class="py-4 px-5 text-spot-muted text-center">Partial Conversion</td>
+                <td class="py-4 px-5 text-spot-muted text-center">Basic Import</td>
               </tr>
               <tr>
                 <td class="py-4 px-5 text-spot-muted">Static Docs Publishing</td>
@@ -1702,14 +1744,16 @@ pm.test("Response payload contains user_id", () => {
                 <td class="py-4 px-5 text-red-400 text-center">Paid Cloud Only ($$$)</td>
                 <td class="py-4 px-5 text-red-400 text-center">None</td>
                 <td class="py-4 px-5 text-red-400 text-center">None</td>
+                <td class="py-4 px-5 text-red-400 text-center">None</td>
               </tr>
               <tr>
-                <td class="py-4 px-5 text-spot-muted">Live Mock Recording</td>
+                <td class="py-4 px-5 text-spot-muted">Live Mock Recording &amp; Proxy</td>
                 <td class="py-4 px-5 text-spot-bright font-semibold bg-spot-green/5 text-center">⚡ 1-Click Local
                   (Offline)</td>
                 <td class="py-4 px-5 text-red-400 text-center">Cloud Hosted Only</td>
                 <td class="py-4 px-5 text-red-400 text-center">None</td>
                 <td class="py-4 px-5 text-spot-muted text-center">Basic Mock Plugin</td>
+                <td class="py-4 px-5 text-red-400 text-center">None</td>
               </tr>
               <tr>
                 <td class="py-4 px-5 text-spot-muted">Code Generators</td>
@@ -1718,6 +1762,7 @@ pm.test("Response payload contains user_id", () => {
                 <td class="py-4 px-5 text-spot-muted text-center">Legacy Snippets</td>
                 <td class="py-4 px-5 text-spot-muted text-center">Basic cURL / fetch</td>
                 <td class="py-4 px-5 text-spot-muted text-center">Basic Snippets</td>
+                <td class="py-4 px-5 text-spot-muted text-center">curl only</td>
               </tr>
             </tbody>
           </table>
