@@ -38,6 +38,19 @@
 
 ## 📦 Downloads & Installation
 
+### Quick Install (macOS & Linux)
+```bash
+curl -fsSL https://raw.githubusercontent.com/h3ma209/Blitz/master/install.sh | bash
+```
+*Automatically downloads the latest binary, installs to `/Applications` or `~/.local/bin`, and clears Gatekeeper quarantine.*
+
+### Homebrew Tap
+```bash
+brew tap h3ma209/blitz https://github.com/h3ma209/homebrew-blitz
+brew install --cask blitz
+```
+
+### Direct Downloads
 Pre-built binaries for macOS, Linux, and Windows are available directly from the **[Releases Page](https://github.com/h3ma209/Blitz/releases)**.
 
 | Platform | Download | Package / Command |
@@ -48,7 +61,7 @@ Pre-built binaries for macOS, Linux, and Windows are available directly from the
 | **Windows (x86_64)** | [blitz-windows-x86_64.zip](https://github.com/h3ma209/Blitz/releases/latest) | Unzip & run `blitz.exe` |
 | **Cargo (Any OS)** | Source crate | `cargo install --git https://github.com/h3ma209/Blitz.git` |
 
-> **macOS Note**: Blitz is free and open-source software without an Apple Developer paid notarization certificate. If macOS displays *"Blitz is damaged and can't be opened"*, clear the Gatekeeper quarantine flag by running:
+> **Manual DMG install note**: If macOS displays *"Blitz is damaged"* or *"Apple cannot verify"*, clear the Gatekeeper quarantine flag in Terminal:
 > ```bash
 > xattr -cr /Applications/Blitz.app
 > ```
