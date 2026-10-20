@@ -5,18 +5,64 @@
 </p>
 
 <p align="center">
-  <strong>Fast, native, offline-first API development client built with Rust.</strong><br/>
-  <em>Lightweight performance, multi-protocol versatility, and zero cloud lock-in.</em>
+  <strong>Lightweight, native Postman alternative built with Rust & Dioxus.</strong><br/>
+  <em>Offline-first, multi-protocol (REST, gRPC, WebSocket, MQTT, SSE, MCP), ~10MB RAM runner, zero cloud lock-in.</em>
 </p>
 
 <p align="center">
-  <a href="#why-blitz">Why Blitz</a> •
+  <a href="https://github.com/h3ma209/Blitz/releases"><img src="https://img.shields.io/github/v/release/h3ma209/Blitz?include_prereleases&label=release&color=22c55e" alt="Release"></a>
+  <a href="https://github.com/h3ma209/Blitz/actions/workflows/build.yml"><img src="https://img.shields.io/github/actions/workflow/status/h3ma209/Blitz/build.yml?branch=master&label=build" alt="CI Build"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT%20%2F%20Apache--2.0-blue" alt="License"></a>
+  <a href="https://h3ma209.github.io/Blitz/"><img src="https://img.shields.io/badge/docs-GitHub%20Pages-brightgreen" alt="Docs"></a>
+</p>
+
+<p align="center">
+  <a href="#downloads">Downloads</a> •
+  <a href="#interface-preview">Interface</a> •
+  <a href="#comparison">Comparison</a> •
   <a href="#key-features">Features</a> •
-  <a href="#quick-start">Quick Start</a> •
   <a href="#ci-cd-automation">CLI Runner</a> •
-  <a href="#team-collaboration">Team Sync</a> •
+  <a href="#team-collaboration">Git Sync</a> •
   <a href="#license">License</a>
 </p>
+
+---
+
+## 📸 Interface Preview
+
+<p align="center">
+  <img src="docs/app-screenshot.png" alt="Blitz Desktop Interface" width="900" style="border-radius: 8px; border: 1px solid rgba(255,255,255,0.1);" />
+</p>
+
+---
+
+## 📦 Downloads & Installation
+
+Pre-built binaries for macOS, Linux, and Windows are available directly from the **[Releases Page](https://github.com/h3ma209/Blitz/releases)**.
+
+| Platform | Download | Package / Command |
+|---|---|---|
+| **macOS (Apple Silicon)** | [Blitz-macos-arm64.dmg](https://github.com/h3ma209/Blitz/releases/latest) | Drag to Applications |
+| **macOS (Tarball)** | [blitz-macos-arm64.tar.gz](https://github.com/h3ma209/Blitz/releases/latest) | `tar -xzf blitz-macos-arm64.tar.gz` |
+| **Linux (x86_64)** | [blitz-linux-x86_64.tar.gz](https://github.com/h3ma209/Blitz/releases/latest) | `tar -xzf blitz-linux-x86_64.tar.gz` |
+| **Windows (x86_64)** | [blitz-windows-x86_64.zip](https://github.com/h3ma209/Blitz/releases/latest) | Unzip & run `blitz.exe` |
+| **Cargo (Any OS)** | Source crate | `cargo install --git https://github.com/h3ma209/Blitz.git` |
+
+---
+
+## ⚡ Comparison
+
+| Feature | Postman | Bruno | Yaak | ⚡ Blitz |
+|---|:---:|:---:|:---:|:---:|
+| **Language / Architecture** | Electron + Node | Electron + Node | Tauri + React | **Pure Rust + Dioxus** |
+| **Cold Start Latency** | ~3,500 ms | ~1,200 ms | ~450 ms | **< 150 ms** |
+| **CLI Runner Footprint** | ~800 MB RSS | ~120 MB RSS | N/A | **~10.2 MB RSS** |
+| **Account Mandatory** | Yes (forced cloud) | No | No | **No (100% offline)** |
+| **Team Collaboration** | Cloud servers ($19+/user) | Git (.bru format) | Git / Sync | **Git-native (any remote)** |
+| **Secret Storage** | Cloud / Local | Plaintext env | SQLite | **OS Keychain (Encrypted)** |
+| **Built-in Mock Server** | Cloud hosted only | No | No | **Localhost 127.0.0.1** |
+| **Traffic Proxy Capture** | Cloud proxy | No | No | **Local HTTP/HTTPS Proxy** |
+| **License** | Proprietary | MIT | Fair-Core / Commercial | **MIT / Apache-2.0** |
 
 ---
 
