@@ -53,7 +53,7 @@ endif
 
 .DEFAULT_GOAL := help
 
-.PHONY: help deps fetch install uninstall install-system \
+.PHONY: help deps fetch install uninstall install-system dmg \
 	install-macos install-linux install-windows \
 	uninstall-macos uninstall-linux uninstall-windows \
 	run run-release release build build-release \
@@ -65,6 +65,7 @@ help: ## List available targets
 		'  help            Show this help (default)' \
 		'  deps / fetch    rustup check + cargo fetch (no app install)' \
 		'  install         Release build + install desktop app (user dirs)' \
+		'  dmg             macOS only: build release and generate portable Blitz.dmg' \
 		'  uninstall       Remove installed app' \
 		'  install-system  macOS only: install to /Applications (needs sudo)' \
 		'  run             Dev build + run (cargo run)' \
@@ -152,6 +153,9 @@ install-macos: ## Package Blitz.app into MACOS_APPDIR
 	@cp "$(RELEASE_BIN)" "$(MACOS_BUNDLE)/Contents/MacOS/$(APP_NAME)"
 	@chmod +x "$(MACOS_BUNDLE)/Contents/MacOS/$(APP_NAME)"
 	@cp -R "$(ASSETS_DIR)/." "$(MACOS_BUNDLE)/Contents/Resources/assets/"
+	@if [ -f packaging/macos/AppIcon.icns ]; then \
+		cp packaging/macos/AppIcon.icns "$(MACOS_BUNDLE)/Contents/Resources/AppIcon.icns"; \
+	fi
 	@sed \
 		-e 's|<string>0\.1\.0</string>|<string>$(VERSION)</string>|g' \
 		packaging/macos/Info.plist > "$(MACOS_BUNDLE)/Contents/Info.plist"
@@ -161,6 +165,33 @@ install-macos: ## Package Blitz.app into MACOS_APPDIR
 	@echo "  Remove:  make uninstall"
 	@echo "  System:  sudo make install-system  → $(MACOS_SYSTEM_APPDIR)/$(APP_NAME).app"
 	@echo "  Note:    CSS/logo are baked into the binary — always reinstall after rebuild."
+
+dmg: build-release ## macOS only: build release and generate Blitz.dmg installer
+ifeq ($(UNAME_S),Darwin)
+	@test -f "$(RELEASE_BIN)" || { echo 'error: missing $(RELEASE_BIN)' >&2; exit 1; }
+	@echo "Creating macOS DMG installer..."
+	@rm -rf target/dmg-stage target/$(APP_NAME).dmg
+	@mkdir -p target/dmg-stage/$(APP_NAME).app/Contents/MacOS
+	@mkdir -p target/dmg-stage/$(APP_NAME).app/Contents/Resources/assets
+	@cp "$(RELEASE_BIN)" target/dmg-stage/$(APP_NAME).app/Contents/MacOS/$(APP_NAME)
+	@chmod +x target/dmg-stage/$(APP_NAME).app/Contents/MacOS/$(APP_NAME)
+	@cp -R "$(ASSETS_DIR)/." target/dmg-stage/$(APP_NAME).app/Contents/Resources/assets/
+	@if [ -f packaging/macos/AppIcon.icns ]; then \
+		cp packaging/macos/AppIcon.icns target/dmg-stage/$(APP_NAME).app/Contents/Resources/AppIcon.icns; \
+	fi
+	@sed \
+		-e 's|<string>0\.1\.0</string>|<string>$(VERSION)</string>|g' \
+		packaging/macos/Info.plist > target/dmg-stage/$(APP_NAME).app/Contents/Info.plist
+	@ln -s /Applications target/dmg-stage/Applications
+	@hdiutil create -volname "$(APP_NAME)" -srcfolder target/dmg-stage -ov -format UDZO target/$(APP_NAME).dmg
+	@rm -rf target/dmg-stage
+	@echo ''
+	@echo "Generated DMG: target/$(APP_NAME).dmg"
+	@ls -lh target/$(APP_NAME).dmg
+else
+	@echo "error: dmg target is macOS-only" >&2
+	@exit 1
+endif
 
 uninstall-macos:
 	@if [ -d "$(MACOS_USER_APPDIR)/$(APP_NAME).app" ]; then \
