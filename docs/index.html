@@ -339,7 +339,7 @@
           </div>
 
           <!-- URL Bar -->
-          <div class="flex items-center gap-2 p-3 bg-[#181818] border-b border-white/5">
+          <div class="flex flex-wrap items-center gap-2 p-2.5 sm:p-3 bg-[#181818] border-b border-white/5">
             <select id="demo-method-select"
               class="px-2.5 py-1.5 rounded-lg bg-spot-bright/15 text-spot-bright font-mono font-bold text-xs border border-spot-bright/30 outline-none cursor-pointer">
               <option value="POST">POST</option>
@@ -347,24 +347,24 @@
               <option value="PUT">PUT</option>
               <option value="DELETE">DELETE</option>
             </select>
-            <div class="flex-1 bg-black/40 border border-white/10 rounded-lg px-3 py-1.5 font-mono text-xs text-white flex items-center">
-              <span class="text-amber-400 shrink-0">https://api.blitz.local</span>
+            <div class="flex-1 min-w-[200px] bg-black/40 border border-white/10 rounded-lg px-2.5 sm:px-3 py-1.5 font-mono text-xs text-white flex items-center overflow-x-auto">
+              <span class="text-amber-400 shrink-0 text-[11px] sm:text-xs">https://api.blitz.local</span>
               <input type="text" id="demo-url-input" value="/api/v2/auth/token"
-                class="bg-transparent border-none text-white focus:outline-none w-full ml-1 font-mono text-xs">
+                class="bg-transparent border-none text-white focus:outline-none w-full ml-1 font-mono text-xs min-w-[120px]">
             </div>
             <button onclick="triggerHeroSend()" id="hero-send-btn"
-              class="flex items-center gap-1.5 bg-spot-bright hover:bg-[#20e267] text-spot-black font-bold text-xs px-4 py-2 rounded-full shadow-[0_2px_12px_rgba(30,215,96,0.35)] transition-all active:scale-95">
+              class="flex items-center gap-1.5 bg-spot-bright hover:bg-[#20e267] text-spot-black font-bold text-xs px-4 py-2 rounded-full shadow-[0_2px_12px_rgba(30,215,96,0.35)] transition-all active:scale-95 ml-auto sm:ml-0">
               <span>Send</span>
-              <span class="text-[10px] opacity-70">⌘↵</span>
+              <span class="text-[10px] opacity-70 hidden sm:inline">⌘↵</span>
             </button>
           </div>
 
           <!-- Split Request/Response View -->
           <div id="hero-split-container"
-            class="grid grid-cols-1 md:grid-cols-2 flex-1 bg-[#151515] overflow-hidden text-xs font-mono min-h-[340px] transition-all">
+            class="grid grid-cols-1 md:grid-cols-2 flex-1 bg-[#151515] text-xs font-mono min-h-[340px] transition-all">
             <!-- Request Pane -->
-            <div id="hero-req-pane" class="flex flex-col border-r border-white/5">
-              <div class="flex gap-4 px-4 py-2 border-b border-white/5 text-[11px] text-spot-muted bg-black/20">
+            <div id="hero-req-pane" class="flex flex-col border-b md:border-b-0 md:border-r border-white/5 min-w-0">
+              <div class="flex gap-3 sm:gap-4 px-3 sm:px-4 py-2 border-b border-white/5 text-[11px] text-spot-muted bg-black/20 overflow-x-auto whitespace-nowrap">
                 <button id="req-subtab-body" onclick="switchReqTab('body')"
                   class="text-white font-medium border-b border-spot-bright pb-1 transition-colors">Body (JSON)</button>
                 <button id="req-subtab-headers" onclick="switchReqTab('headers')"
@@ -445,9 +445,9 @@ pm.test("Token returned in valid schema", () => {
             </div>
 
             <!-- Response Pane -->
-            <div id="hero-res-pane" class="flex flex-col bg-[#111111]">
-              <div class="flex items-center justify-between px-4 py-2 border-b border-white/5 text-[11px] bg-black/40">
-                <div class="flex items-center gap-3">
+            <div id="hero-res-pane" class="flex flex-col bg-[#111111] min-w-0">
+              <div class="flex flex-wrap items-center justify-between px-3 sm:px-4 py-2 border-b border-white/5 text-[11px] bg-black/40 gap-2">
+                <div class="flex items-center gap-2 sm:gap-3">
                   <span id="demo-res-status"
                     class="bg-spot-bright/15 text-spot-bright font-bold px-2 py-0.5 rounded text-[10px]">200 OK</span>
                   <span id="demo-res-time" class="text-spot-muted font-mono">14 ms</span>
@@ -674,61 +674,63 @@ pm.test("Token returned in valid schema", () => {
             </div>
 
             <!-- Vault Table -->
-            <div class="rounded-xl border border-white/10 overflow-hidden font-mono text-xs">
-              <div class="grid grid-cols-12 bg-black/50 p-2.5 text-spot-faint text-[10px] uppercase font-bold tracking-wider border-b border-white/5">
-                <div class="col-span-4">Variable Name</div>
-                <div class="col-span-4">Value (Encrypted at Rest)</div>
-                <div class="col-span-2">Scope</div>
-                <div class="col-span-2 text-right">Git Commit Safety</div>
-              </div>
+            <div class="rounded-xl border border-white/10 overflow-x-auto font-mono text-xs">
+              <div class="min-w-[620px]">
+                <div class="grid grid-cols-12 bg-black/50 p-2.5 text-spot-faint text-[10px] uppercase font-bold tracking-wider border-b border-white/5">
+                  <div class="col-span-4">Variable Name</div>
+                  <div class="col-span-4">Value (Encrypted at Rest)</div>
+                  <div class="col-span-2">Scope</div>
+                  <div class="col-span-2 text-right">Git Commit Safety</div>
+                </div>
 
-              <!-- Row 1 -->
-              <div class="grid grid-cols-12 items-center p-3 border-b border-white/5 hover:bg-white/[0.02] transition-colors">
-                <div class="col-span-4 font-bold text-white flex items-center gap-2">
-                  <span class="text-amber-400">vault:stripe_secret</span>
+                <!-- Row 1 -->
+                <div class="grid grid-cols-12 items-center p-3 border-b border-white/5 hover:bg-white/[0.02] transition-colors">
+                  <div class="col-span-4 font-bold text-white flex items-center gap-2">
+                    <span class="text-amber-400">vault:stripe_secret</span>
+                  </div>
+                  <div class="col-span-4 flex items-center gap-2">
+                    <span id="vault-val-1" class="text-spot-muted">sk_live_••••••••••••••••39a1</span>
+                    <button onclick="toggleVaultVisibility(1, 'sk_live_51N8zK4L2m901XyZ92839a1')" class="text-spot-faint hover:text-white text-[11px] px-1.5 py-0.5 rounded bg-white/5">👁️</button>
+                  </div>
+                  <div class="col-span-2">
+                    <span class="px-2 py-0.5 rounded text-[10px] font-bold bg-purple-500/15 text-purple-300">Vault (OS)</span>
+                  </div>
+                  <div class="col-span-2 text-right">
+                    <span class="text-[10px] text-spot-bright bg-spot-green/10 px-2 py-0.5 rounded font-bold">✓ Excluded from Git</span>
+                  </div>
                 </div>
-                <div class="col-span-4 flex items-center gap-2">
-                  <span id="vault-val-1" class="text-spot-muted">sk_live_••••••••••••••••39a1</span>
-                  <button onclick="toggleVaultVisibility(1, 'sk_live_51N8zK4L2m901XyZ92839a1')" class="text-spot-faint hover:text-white text-[11px] px-1.5 py-0.5 rounded bg-white/5">👁️</button>
-                </div>
-                <div class="col-span-2">
-                  <span class="px-2 py-0.5 rounded text-[10px] font-bold bg-purple-500/15 text-purple-300">Vault (OS)</span>
-                </div>
-                <div class="col-span-2 text-right">
-                  <span class="text-[10px] text-spot-bright bg-spot-green/10 px-2 py-0.5 rounded font-bold">✓ Excluded from Git</span>
-                </div>
-              </div>
 
-              <!-- Row 2 -->
-              <div class="grid grid-cols-12 items-center p-3 border-b border-white/5 hover:bg-white/[0.02] transition-colors">
-                <div class="col-span-4 font-bold text-white flex items-center gap-2">
-                  <span class="text-amber-400">vault:token_hakki</span>
+                <!-- Row 2 -->
+                <div class="grid grid-cols-12 items-center p-3 border-b border-white/5 hover:bg-white/[0.02] transition-colors">
+                  <div class="col-span-4 font-bold text-white flex items-center gap-2">
+                    <span class="text-amber-400">vault:token_hakki</span>
+                  </div>
+                  <div class="col-span-4 flex items-center gap-2">
+                    <span id="vault-val-2" class="text-spot-muted">eyJhbGciOi••••••••••••••••7F9a</span>
+                    <button onclick="toggleVaultVisibility(2, 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.e30.7F9a')" class="text-spot-faint hover:text-white text-[11px] px-1.5 py-0.5 rounded bg-white/5">👁️</button>
+                  </div>
+                  <div class="col-span-2">
+                    <span class="px-2 py-0.5 rounded text-[10px] font-bold bg-purple-500/15 text-purple-300">Vault (OS)</span>
+                  </div>
+                  <div class="col-span-2 text-right">
+                    <span class="text-[10px] text-spot-bright bg-spot-green/10 px-2 py-0.5 rounded font-bold">✓ Excluded from Git</span>
+                  </div>
                 </div>
-                <div class="col-span-4 flex items-center gap-2">
-                  <span id="vault-val-2" class="text-spot-muted">eyJhbGciOi••••••••••••••••7F9a</span>
-                  <button onclick="toggleVaultVisibility(2, 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.e30.7F9a')" class="text-spot-faint hover:text-white text-[11px] px-1.5 py-0.5 rounded bg-white/5">👁️</button>
-                </div>
-                <div class="col-span-2">
-                  <span class="px-2 py-0.5 rounded text-[10px] font-bold bg-purple-500/15 text-purple-300">Vault (OS)</span>
-                </div>
-                <div class="col-span-2 text-right">
-                  <span class="text-[10px] text-spot-bright bg-spot-green/10 px-2 py-0.5 rounded font-bold">✓ Excluded from Git</span>
-                </div>
-              </div>
 
-              <!-- Row 3 -->
-              <div class="grid grid-cols-12 items-center p-3 border-b border-white/5 hover:bg-white/[0.02] transition-colors">
-                <div class="col-span-4 font-bold text-white flex items-center gap-2">
-                  <span class="text-blue-300">endpoint_user</span>
-                </div>
-                <div class="col-span-4 text-emerald-300">
-                  https://api.v2.internal.corp
-                </div>
-                <div class="col-span-2">
-                  <span class="px-2 py-0.5 rounded text-[10px] font-bold bg-blue-500/15 text-blue-300">Environment</span>
-                </div>
-                <div class="col-span-2 text-right">
-                  <span class="text-[10px] text-blue-400 bg-blue-500/10 px-2 py-0.5 rounded">Git Branch Synced</span>
+                <!-- Row 3 -->
+                <div class="grid grid-cols-12 items-center p-3 border-b border-white/5 hover:bg-white/[0.02] transition-colors">
+                  <div class="col-span-4 font-bold text-white flex items-center gap-2">
+                    <span class="text-blue-300">endpoint_user</span>
+                  </div>
+                  <div class="col-span-4 text-emerald-300">
+                    https://api.v2.internal.corp
+                  </div>
+                  <div class="col-span-2">
+                    <span class="px-2 py-0.5 rounded text-[10px] font-bold bg-blue-500/15 text-blue-300">Environment</span>
+                  </div>
+                  <div class="col-span-2 text-right">
+                    <span class="text-[10px] text-blue-400 bg-blue-500/10 px-2 py-0.5 rounded">Git Branch Synced</span>
+                  </div>
                 </div>
               </div>
             </div>
@@ -833,17 +835,17 @@ pm.test("Response payload contains user_id", () => {
           </div>
 
           <div class="p-6 bg-[#131313] space-y-6">
-            <div class="p-4 rounded-xl bg-amber-500/10 border border-amber-500/30 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+            <div class="p-3 sm:p-4 rounded-xl bg-amber-500/10 border border-amber-500/30 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
               <div>
                 <div class="font-bold text-amber-300 text-sm flex items-center gap-2">
                   <span>⚠️</span> Simultaneous Team Edit on <code>/api/v2/orders</code>
                 </div>
                 <div class="text-spot-muted text-xs mt-1">Both you and teammate @sarah modified headers and timeouts on branch <code>env/production</code>.</div>
               </div>
-              <div class="flex items-center gap-2">
-                <button onclick="resolveConflictDemo('local')" class="px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-white font-bold text-xs transition-colors">Accept Mine (Local)</button>
-                <button onclick="resolveConflictDemo('remote')" class="px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-white font-bold text-xs transition-colors">Accept Theirs</button>
-                <button onclick="resolveConflictDemo('smart')" class="px-3.5 py-1.5 rounded-lg bg-spot-bright hover:bg-[#22e76a] text-spot-black font-bold text-xs transition-all shadow-[0_2px_10px_rgba(30,215,96,0.3)]">Smart 3-Way Merge</button>
+              <div class="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+                <button onclick="resolveConflictDemo('local')" class="flex-1 sm:flex-initial px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-white font-bold text-xs transition-colors whitespace-nowrap">Accept Mine</button>
+                <button onclick="resolveConflictDemo('remote')" class="flex-1 sm:flex-initial px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-white font-bold text-xs transition-colors whitespace-nowrap">Accept Theirs</button>
+                <button onclick="resolveConflictDemo('smart')" class="w-full sm:w-auto px-3.5 py-1.5 rounded-lg bg-spot-bright hover:bg-[#22e76a] text-spot-black font-bold text-xs transition-all shadow-[0_2px_10px_rgba(30,215,96,0.3)] whitespace-nowrap">Smart 3-Way Merge</button>
               </div>
             </div>
 
@@ -892,14 +894,14 @@ pm.test("Response payload contains user_id", () => {
 
         <!-- PANE 4: TRAFFIC PROXY & MOCK SERVER -->
         <div id="gallery-pane-proxy" class="gallery-pane hidden">
-          <div class="h-10 bg-spot-black/95 border-b border-white/5 flex items-center justify-between px-4 text-xs font-mono">
+          <div class="h-auto sm:h-10 py-2 sm:py-0 bg-spot-black/95 border-b border-white/5 flex flex-wrap items-center justify-between px-4 gap-2 text-xs font-mono">
             <div class="flex items-center gap-2">
               <span class="w-3 h-3 rounded-full bg-[#ff5f56]"></span>
               <span class="w-3 h-3 rounded-full bg-[#ffbd2e]"></span>
               <span class="w-3 h-3 rounded-full bg-[#27c93f]"></span>
               <span class="text-spot-muted font-sans font-medium ml-2">Blitz Tools: Traffic Capture Proxy &amp; Mock Server</span>
             </div>
-            <div class="flex items-center gap-2">
+            <div class="flex flex-wrap items-center gap-2">
               <span class="text-spot-bright text-[10px] bg-spot-green/10 border border-spot-green/30 px-2 py-0.5 rounded font-mono">Proxy :8080 Active</span>
               <span class="text-blue-400 text-[10px] bg-blue-500/10 border border-blue-500/30 px-2 py-0.5 rounded font-mono">Mock :3001 Active</span>
             </div>
@@ -975,14 +977,14 @@ pm.test("Response payload contains user_id", () => {
 
         <!-- PANE 5: MULTI PROTOCOL STREAMING -->
         <div id="gallery-pane-protocols" class="gallery-pane hidden">
-          <div class="h-10 bg-spot-black/95 border-b border-white/5 flex items-center justify-between px-4 text-xs font-mono">
+          <div class="h-auto sm:h-10 py-2 sm:py-0 bg-spot-black/95 border-b border-white/5 flex flex-wrap items-center justify-between px-4 gap-2 text-xs font-mono">
             <div class="flex items-center gap-2">
               <span class="w-3 h-3 rounded-full bg-[#ff5f56]"></span>
               <span class="w-3 h-3 rounded-full bg-[#ffbd2e]"></span>
               <span class="w-3 h-3 rounded-full bg-[#27c93f]"></span>
               <span class="text-spot-muted font-sans font-medium ml-2">Blitz Multi-Protocol Live Session (WebSocket / MCP)</span>
             </div>
-            <span class="text-spot-bright text-[11px] bg-spot-green/10 border border-spot-green/30 px-2 py-0.5 rounded font-mono">
+            <span class="text-spot-bright text-[11px] bg-spot-green/10 border border-spot-green/30 px-2 py-0.5 rounded font-mono truncate">
               ● Connected wss://echo.websocket.events
             </span>
           </div>
@@ -1142,7 +1144,7 @@ pm.test("Response payload contains user_id", () => {
 
           <!-- Central Node: The Git Repository (Cloud) -->
           <div
-            class="md:col-span-3 p-5 rounded-xl bg-gradient-to-b from-spot-elevated to-black/90 border border-spot-bright/30 shadow-[0_0_25px_rgba(29,185,84,0.15)] text-center">
+            class="md:col-span-3 p-4 sm:p-5 rounded-xl bg-gradient-to-b from-spot-elevated to-black/90 border border-spot-bright/30 shadow-[0_0_25px_rgba(29,185,84,0.15)] text-center min-w-0">
             <div
               class="w-10 h-10 rounded-full bg-spot-green/20 text-spot-bright flex items-center justify-center mx-auto mb-3">
               <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
@@ -1150,10 +1152,10 @@ pm.test("Response payload contains user_id", () => {
                   d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z" />
               </svg>
             </div>
-            <div class="font-extrabold text-sm mb-1">Your Git Repository</div>
-            <div class="text-[10px] text-spot-muted font-mono mb-3">GitHub • GitLab • Gitea • Bitbucket</div>
+            <div class="font-extrabold text-sm mb-1 truncate">Your Git Repository</div>
+            <div class="text-[10px] text-spot-muted font-mono mb-3 truncate">GitHub • GitLab • Gitea • Bitbucket</div>
             <div
-              class="bg-black/60 p-2 rounded border border-white/5 text-[10px] text-left space-y-1 font-mono text-gray-300">
+              class="bg-black/60 p-2 rounded border border-white/5 text-[10px] text-left space-y-1 font-mono text-gray-300 overflow-x-auto">
               <div class="text-blue-300">├── collections/</div>
               <div class="text-blue-300">├── environments/</div>
               <div class="text-amber-300">└── branches: env/*</div>
