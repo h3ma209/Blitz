@@ -1719,6 +1719,98 @@ button.env-menu-row:hover,
   mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath fill='%23000' d='M2.5 3a1.5 1.5 0 0 0-1.5 1.5v7A1.5 1.5 0 0 0 2.5 13h11a1.5 1.5 0 0 0 1.5-1.5v-7A1.5 1.5 0 0 0 13.5 3h-11zm-.5 1.5a.5.5 0 0 1 .5-.5h11a.5.5 0 0 1 .5.5V7H2V4.5zm0 3.5h12v3.5a.5.5 0 0 1-.5.5h-11a.5.5 0 0 1-.5-.5V8z'/%3E%3C/svg%3E");
 }
 
+.action-icon-theme {
+  -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath fill='%23000' d='M8 1a7 7 0 1 0 0 14A7 7 0 0 0 8 1zm0 1.5v11a5.5 5.5 0 0 1 0-11z'/%3E%3C/svg%3E");
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath fill='%23000' d='M8 1a7 7 0 1 0 0 14A7 7 0 0 0 8 1zm0 1.5v11a5.5 5.5 0 0 1 0-11z'/%3E%3C/svg%3E");
+}
+
+.theme-selector-wrap {
+  position: relative;
+  display: inline-flex;
+}
+
+.theme-menu {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 910;
+  min-width: 210px;
+  max-height: 340px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px;
+  background: rgba(18, 18, 18, 0.94);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  border: var(--glass-border);
+  border-radius: 12px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.45);
+}
+
+.theme-menu-header {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-dim, #888);
+  padding: 6px 8px 4px 8px;
+  font-weight: 700;
+}
+
+.theme-menu-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 10px;
+  border-radius: 8px;
+  border: none;
+  background: transparent;
+  color: var(--text, #eee);
+  font-size: var(--fs-caption);
+  font-weight: 500;
+  cursor: pointer;
+  text-align: left;
+  transition: background var(--ease), color var(--ease);
+}
+
+.theme-menu-row:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+}
+
+.theme-menu-row-active {
+  background: rgba(29, 185, 84, 0.12);
+  color: var(--spot-green-bright);
+}
+
+.theme-menu-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.theme-dot-theme-spotify { background: #1ed760; }
+.theme-dot-theme-obsidian { background: #f59e0b; }
+.theme-dot-theme-blueprint { background: #ff5500; }
+.theme-dot-theme-blueprint-light { background: #ff5500; border-color: #333; }
+.theme-dot-theme-slate { background: #38bdf8; }
+.theme-dot-theme-light { background: #ffffff; border-color: #999; }
+.theme-dot-theme-high-contrast { background: #ffff00; }
+
+.theme-menu-label {
+  flex: 1;
+  white-space: nowrap;
+}
+
+.theme-menu-check {
+  font-weight: 700;
+  color: var(--spot-green-bright);
+}
+
 .action-icon-split-row {
   -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath fill='%23000' d='M2.5 3a1.5 1.5 0 0 0-1.5 1.5v7A1.5 1.5 0 0 0 2.5 13h11a1.5 1.5 0 0 0 1.5-1.5v-7A1.5 1.5 0 0 0 13.5 3h-11zm-.5 1.5a.5.5 0 0 1 .5-.5H7v8H2.5a.5.5 0 0 1-.5-.5v-7zm6-.5h4.5a.5.5 0 0 1 .5.5v7a.5.5 0 0 1-.5.5H8V4z'/%3E%3C/svg%3E");
   mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath fill='%23000' d='M2.5 3a1.5 1.5 0 0 0-1.5 1.5v7A1.5 1.5 0 0 0 2.5 13h11a1.5 1.5 0 0 0 1.5-1.5v-7A1.5 1.5 0 0 0 13.5 3h-11zm-.5 1.5a.5.5 0 0 1 .5-.5H7v8H2.5a.5.5 0 0 1-.5-.5v-7zm6-.5h4.5a.5.5 0 0 1 .5.5v7a.5.5 0 0 1-.5.5H8V4z'/%3E%3C/svg%3E");
@@ -4861,12 +4953,25 @@ html:has(.app-shell.theme-blueprint-light) body {
 
 /* Make top-bar dropdown menus pop UPWARD and clamp height so they never clip off-screen */
 .app-shell.chassis-blueprint .top-bar .menu-dropdown,
-.app-shell.chassis-blueprint .top-bar .env-menu-dropdown {
+.app-shell.chassis-blueprint .top-bar .env-menu,
+.app-shell.chassis-blueprint .top-bar .theme-menu {
   top: auto !important;
   bottom: calc(100% + 8px) !important;
   max-height: calc(100vh - 80px);
   overflow-y: auto;
   transform-origin: bottom left;
+}
+
+.app-shell.chassis-blueprint .top-bar .env-menu,
+.app-shell.chassis-blueprint .top-bar .theme-menu {
+  transform-origin: bottom right;
+}
+
+/* Invert carets to point upward in bottom toolbar */
+.app-shell.chassis-blueprint .top-bar .top-caret,
+.app-shell.chassis-blueprint .top-bar .env-select-caret {
+  display: inline-block;
+  transform: rotate(180deg) translateY(-1px);
 }
 
 /* Keep origin ⚡ Blitz logo intact, framed in an industrial anodized bezel */

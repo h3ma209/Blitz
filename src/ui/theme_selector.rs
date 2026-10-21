@@ -1,50 +1,56 @@
 use dioxus::prelude::*;
 
 use crate::core::UiTheme;
+use super::DismissBackdrop;
 
-/// Serialize theme for `<select value>`.
-fn theme_value(theme: UiTheme) -> &'static str {
-    match theme {
-        UiTheme::Spotify => "spotify",
-        UiTheme::Obsidian => "obsidian",
-        UiTheme::Blueprint => "blueprint",
-        UiTheme::BlueprintLight => "blueprint_light",
-        UiTheme::Slate => "slate",
-        UiTheme::Light => "light",
-        UiTheme::HighContrast => "high_contrast",
-    }
-}
-
-/// Compact theme picker for the top bar (applies immediately via parent).
+/// Compact theme icon button with popup picker for the top bar.
 #[component]
 pub fn ThemeSelector(theme: UiTheme, on_change: EventHandler<UiTheme>) -> Element {
-    let value = theme_value(theme);
+    let mut menu_open = use_signal(|| false);
 
     rsx! {
-        label {
-            class: "theme-picker",
-            title: "Color theme",
-            span { class: "theme-picker-label type-caption", "Theme" }
-            select {
-                class: "theme-select",
-                value: "{value}",
-                aria_label: "Color theme",
-                onchange: move |evt: Event<FormData>| {
-                    let next = match evt.value().as_str() {
-                        "obsidian" => UiTheme::Obsidian,
-                        "blueprint" => UiTheme::Blueprint,
-                        "blueprint_light" => UiTheme::BlueprintLight,
-                        "slate" => UiTheme::Slate,
-                        "light" => UiTheme::Light,
-                        "high_contrast" => UiTheme::HighContrast,
-                        _ => UiTheme::Spotify,
-                    };
-                    on_change.call(next);
-                },
-                for t in UiTheme::all() {
-                    option {
-                        value: "{theme_value(*t)}",
-                        "{t.label()}"
+        div { class: "theme-selector-wrap",
+            if menu_open() {
+                DismissBackdrop {
+                    z_index: 900,
+                    on_dismiss: move |_| menu_open.set(false),
+                }
+            }
+            button {
+                class: if menu_open() { "top-icon top-icon-on" } else { "top-icon" },
+                title: format!("Theme: {}", theme.label()),
+                aria_label: "Theme",
+                onclick: move |_| menu_open.set(!menu_open()),
+                span { class: "action-icon action-icon-theme", aria_hidden: "true" }
+            }
+            if menu_open() {
+                div { class: "theme-menu",
+                    div { class: "theme-menu-header", "Color Theme" }
+                    for t in UiTheme::all() {
+                        {
+                            let item_theme = *t;
+                            let is_active = item_theme == theme;
+                            let row_class = if is_active {
+                                "theme-menu-row theme-menu-row-active"
+                            } else {
+                                "theme-menu-row"
+                            };
+                            rsx! {
+                                button {
+                                    key: "{item_theme.class_token()}",
+                                    class: "{row_class}",
+                                    onclick: move |_| {
+                                        menu_open.set(false);
+                                        on_change.call(item_theme);
+                                    },
+                                    span { class: "theme-menu-dot theme-dot-{item_theme.class_token()}" }
+                                    span { class: "theme-menu-label", "{item_theme.label()}" }
+                                    if is_active {
+                                        span { class: "theme-menu-check", "✓" }
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
             }

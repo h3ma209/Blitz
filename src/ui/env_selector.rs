@@ -22,6 +22,12 @@ pub fn EnvSelector(
 
     rsx! {
         div { class: "env-selector-wrap",
+            if menu_open() {
+                DismissBackdrop {
+                    z_index: 900,
+                    on_dismiss: move |_| menu_open.set(false),
+                }
+            }
             button {
                 class: "env-select-trigger",
                 title: "Select environment",
@@ -57,10 +63,6 @@ pub fn EnvSelector(
             }
 
             if menu_open() {
-                DismissBackdrop {
-                    z_index: 900,
-                    on_dismiss: move |_| menu_open.set(false),
-                }
                 div { class: "env-menu",
                     button {
                         class: if active_id.is_none() {
