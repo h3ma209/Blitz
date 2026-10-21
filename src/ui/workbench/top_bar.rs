@@ -50,7 +50,6 @@ pub fn TopBar(st: WorkbenchState) -> Element {
     let mut app_settings = st.app_settings;
     let mut show_vars = st.show_vars;
     let mut vars_active_tab = st.vars_active_tab;
-    let mut show_snippets = st.show_snippets;
     let show_team = st.show_team;
     let conflict_state = st.conflict_state;
     let cloud_busy = st.cloud_busy;
@@ -792,12 +791,6 @@ pub fn TopBar(st: WorkbenchState) -> Element {
                         }
                     },
                     "Vars"
-                }
-                button {
-                    class: if show_snippets() { "top-icon top-icon-on" } else { "top-icon" },
-                    title: "Code snippets",
-                    onclick: move |_| show_snippets.set(!show_snippets()),
-                    "</>"
                 }
                 EnvSelector {
                     environments: environments(),

@@ -2206,6 +2206,21 @@ button.env-menu-row:hover,
   white-space: nowrap;
 }
 
+.tab-rename-input {
+  min-width: 60px;
+  max-width: 170px;
+  margin: 0;
+  padding: 1px 4px;
+  font: inherit;
+  font-size: var(--fs-caption);
+  font-weight: 500;
+  color: var(--white);
+  background: rgba(0, 0, 0, 0.45);
+  border: 1px solid var(--spot-green);
+  border-radius: var(--radius-sm);
+  outline: none;
+}
+
 .tab-method {
   font-family: var(--mono);
   font-size: 9px;

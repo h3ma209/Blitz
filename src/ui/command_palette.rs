@@ -381,10 +381,10 @@ pub fn CommandPalette(
 
                 let mut tabs = (st.open_tabs)();
                 let cur = (st.draft)();
-                if let Some(slot) = tabs.iter_mut().find(|t| t.id == cur.id) {
-                    *slot = cur;
-                } else {
-                    tabs.push(cur);
+                if tabs.iter().any(|t| t.id == cur.id) {
+                    if let Some(slot) = tabs.iter_mut().find(|t| t.id == cur.id) {
+                        *slot = cur;
+                    }
                 }
                 if let Some(slot) = tabs.iter_mut().find(|t| t.id == resolved_req.id) {
                     *slot = resolved_req.clone();

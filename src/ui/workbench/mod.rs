@@ -49,7 +49,7 @@ fn tree_item_label(collections: &[Collection], id: Uuid) -> String {
 
 #[component]
 pub fn Workbench() -> Element {
-    let st = WorkbenchState::use_new();
+    let mut st = WorkbenchState::use_new();
     let mut draft = st.draft;
     let mut response = st.response;
     let mut responses = st.responses;
@@ -100,6 +100,8 @@ pub fn Workbench() -> Element {
     let mut pending_delete = st.pending_delete;
     let mut tree_clipboard = st.tree_clipboard;
     let mut available_update = st.available_update;
+    let mut renaming_tab_id = use_signal(|| None::<Uuid>);
+    let mut rename_tab_draft = use_signal(String::new);
 
     use_effect(move || {
         if loaded() {
@@ -172,10 +174,10 @@ pub fn Workbench() -> Element {
         };
         let mut tabs = open_tabs();
         let cur = draft();
-        if let Some(t) = tabs.iter_mut().find(|t| t.id == cur.id) {
-            *t = cur.clone();
-        } else {
-            tabs.push(cur);
+        if tabs.iter().any(|t| t.id == cur.id) {
+            if let Some(t) = tabs.iter_mut().find(|t| t.id == cur.id) {
+                *t = cur.clone();
+            }
         }
         tabs.push(req.clone());
         open_tabs.set(tabs);
@@ -200,9 +202,6 @@ pub fn Workbench() -> Element {
         tabs.remove(idx);
 
         if tabs.is_empty() {
-            let empty = RequestDraft::default();
-            draft.set(empty.clone());
-            tabs.push(empty);
             active_request_id.set(None);
             response.set(None);
             open_tabs.set(tabs);
@@ -525,7 +524,6 @@ pub fn Workbench() -> Element {
                 push_console(&mut lines, ConsoleLine::error(err.clone()));
             }
             console_lines.set(lines);
-            console_open.set(true);
 
             let env_keys = new_ctx.environment.len();
             let mut v = new_ctx;
@@ -587,10 +585,10 @@ pub fn Workbench() -> Element {
                     if let Some((col_id, req)) = find_request_across(&collections(), id) {
                         let mut tabs = open_tabs();
                         let cur = draft();
-                        if let Some(slot) = tabs.iter_mut().find(|t| t.id == cur.id) {
-                            *slot = cur;
-                        } else {
-                            tabs.push(cur);
+                        if tabs.iter().any(|t| t.id == cur.id) {
+                            if let Some(slot) = tabs.iter_mut().find(|t| t.id == cur.id) {
+                                *slot = cur;
+                            }
                         }
                         if let Some(slot) = tabs.iter_mut().find(|t| t.id == req.id) {
                             *slot = req.clone();
@@ -1260,15 +1258,6 @@ pub fn Workbench() -> Element {
                 } else {
                     div { class: "tab-strip",
                         div { class: "tab-strip-fixed",
-                            input {
-                                class: "tab-name",
-                                value: "{draft().name}",
-                                oninput: move |evt| {
-                                    let mut d = draft();
-                                    d.name = evt.value();
-                                    draft.set(d);
-                                },
-                            }
                             button {
                                 class: "btn btn-save",
                                 title: "Save request (⌘S)",
@@ -1283,12 +1272,27 @@ pub fn Workbench() -> Element {
                                     let tid = t.id;
                                     let tname = request_tab_display_name(&collections(), tid);
                                     let active = draft().id == tid;
+                                    let is_tab_renaming = renaming_tab_id() == Some(tid);
+                                    let raw_cur_name = if active {
+                                        draft().name.clone()
+                                    } else {
+                                        t.name.clone()
+                                    };
                                     rsx! {
                                         div {
                                             class: if active { "tab active" } else { "tab" },
                                             role: "button",
                                             tabindex: "0",
+                                            oncontextmenu: move |evt| {
+                                                evt.prevent_default();
+                                                evt.stop_propagation();
+                                                renaming_tab_id.set(Some(tid));
+                                                rename_tab_draft.set(raw_cur_name.clone());
+                                            },
                                             onclick: move |_| {
+                                                if is_tab_renaming {
+                                                    return;
+                                                }
                                                 let mut tabs = open_tabs();
                                                 let cur = draft();
                                                 if let Some(slot) = tabs.iter_mut().find(|x| x.id == cur.id) {
@@ -1319,7 +1323,76 @@ pub fn Workbench() -> Element {
                                                 class: "tab-method method-{method_class(t.method)}",
                                                 "{t.method.as_str()}"
                                             }
-                                            span { class: "tab-label", "{tname}" }
+                                            if is_tab_renaming {
+                                                input {
+                                                    class: "tab-rename-input",
+                                                    value: "{rename_tab_draft()}",
+                                                    autofocus: true,
+                                                    onclick: move |evt| evt.stop_propagation(),
+                                                    onmousedown: move |evt| evt.stop_propagation(),
+                                                    oninput: move |evt| {
+                                                        rename_tab_draft.set(evt.value());
+                                                    },
+                                                    onblur: move |_| {
+                                                        let raw = rename_tab_draft();
+                                                        let next = sanitize_rename_name(&raw);
+                                                        renaming_tab_id.set(None);
+                                                        rename_tab_draft.set(String::new());
+                                                        if !next.is_empty() {
+                                                            let mut cols = collections();
+                                                            if rename_across(&mut cols, tid, next.clone()) {
+                                                                collections.set(cols);
+                                                                st.persist();
+                                                            }
+                                                            if draft().id == tid {
+                                                                let mut d = draft();
+                                                                d.name = next.clone();
+                                                                draft.set(d);
+                                                            }
+                                                            let mut tabs = open_tabs();
+                                                            if let Some(tab_slot) = tabs.iter_mut().find(|x| x.id == tid) {
+                                                                tab_slot.name = next.clone();
+                                                            }
+                                                            open_tabs.set(tabs);
+                                                        }
+                                                    },
+                                                    onkeydown: move |evt| {
+                                                        evt.stop_propagation();
+                                                        match evt.key() {
+                                                            Key::Enter => {
+                                                                let raw = rename_tab_draft();
+                                                                let next = sanitize_rename_name(&raw);
+                                                                renaming_tab_id.set(None);
+                                                                rename_tab_draft.set(String::new());
+                                                                if !next.is_empty() {
+                                                                    let mut cols = collections();
+                                                                    if rename_across(&mut cols, tid, next.clone()) {
+                                                                        collections.set(cols);
+                                                                        st.persist();
+                                                                    }
+                                                                    if draft().id == tid {
+                                                                        let mut d = draft();
+                                                                        d.name = next.clone();
+                                                                        draft.set(d);
+                                                                    }
+                                                                    let mut tabs = open_tabs();
+                                                                    if let Some(tab_slot) = tabs.iter_mut().find(|x| x.id == tid) {
+                                                                        tab_slot.name = next.clone();
+                                                                    }
+                                                                    open_tabs.set(tabs);
+                                                                }
+                                                            }
+                                                            Key::Escape => {
+                                                                renaming_tab_id.set(None);
+                                                                rename_tab_draft.set(String::new());
+                                                            }
+                                                            _ => {}
+                                                        }
+                                                    },
+                                                }
+                                            } else {
+                                                span { class: "tab-label", "{tname}" }
+                                            }
                                             button {
                                                 class: "tab-close",
                                                 r#type: "button",

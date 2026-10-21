@@ -165,7 +165,7 @@ impl WorkbenchState {
             runner_running: use_signal(|| false),
             runner_report: use_signal(|| None::<RunnerReport>),
             trash: use_signal(Vec::<Collection>::new),
-            open_tabs: use_signal(|| vec![RequestDraft::default()]),
+            open_tabs: use_signal(Vec::<RequestDraft>::new),
             show_vars: use_signal(|| false),
             vars_active_tab: use_signal(|| 0usize),
             show_palette: use_signal(|| false),
@@ -327,15 +327,6 @@ impl WorkbenchState {
             if let Some((col_id, req)) = find_request_across(&snap.collections, req_id) {
                 self.draft.set(req.clone());
                 self.active_collection_id.set(Some(col_id));
-            }
-        } else if let Some(col) = snap.collections.first() {
-            if let Some(req) = col.items.iter().find_map(|i| match i {
-                CollectionItem::Request(r) => Some(r),
-                _ => None,
-            }) {
-                self.draft.set(req.clone());
-                self.active_request_id.set(Some(req.id));
-                self.active_collection_id.set(Some(col.id));
             }
         }
 

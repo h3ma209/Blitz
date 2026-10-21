@@ -150,12 +150,13 @@ mod tests {
 
     #[test]
     fn bad_url_reports_error() {
-        let sess = ws_connect_session("ws://127.0.0.1:1/nope");
+        // Use an invalid scheme/domain so connection fails fast and deterministically across all OSes
+        let sess = ws_connect_session("ws://invalid.domain.test:1/nope");
         assert!(sess.is_ok());
         let sess = sess.unwrap();
         let mut got_error = false;
-        for _ in 0..20 {
-            std::thread::sleep(std::time::Duration::from_millis(100));
+        for _ in 0..60 {
+            std::thread::sleep(std::time::Duration::from_millis(50));
             let ev = sess.events_snapshot();
             if ev.iter().any(|e| matches!(e, WsSessionEvent::Error(_))) {
                 got_error = true;
