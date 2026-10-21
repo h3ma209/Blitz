@@ -17,10 +17,12 @@
 pub mod keychain;
 
 pub use keychain::{
-    is_secret_ref, open_default_store, parse_secret_ref, resolve_secret_value, retrieve_user_key,
-    service_name, store_user_key, InMemorySecrets, SecretError, SecretRef, SecretsStore, APP_NAME,
+    is_secret_ref, open_default_store, parse_secret_ref, resolve_secret_value,
+    service_name, InMemorySecrets, SecretError, SecretRef, SecretsStore, APP_NAME,
     DEFAULT_ACCOUNT, SECRETS_BACKEND_ENV,
 };
+#[cfg(test)]
+pub use keychain::{retrieve_user_key, store_user_key};
 
 #[cfg(target_os = "macos")]
 pub use keychain::OsKeychainSecrets;

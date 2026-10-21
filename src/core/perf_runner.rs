@@ -126,9 +126,11 @@ mod tests {
     #[test]
     fn runs_briefly_against_bad_host() {
         let mut col = Collection::new("perf");
-        let mut d = RequestDraft::default();
-        d.method = HttpMethod::Get;
-        d.url = "http://127.0.0.1:1/nope".into();
+        let mut d = RequestDraft {
+            method: HttpMethod::Get,
+            url: "http://127.0.0.1:1/nope".into(),
+            ..Default::default()
+        };
         d.settings.timeout_ms = 200;
         col.items.push(CollectionItem::Request(d));
         let r = run_performance(&col, &VariableContext::default(), 2, Duration::from_millis(300));

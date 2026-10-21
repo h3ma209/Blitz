@@ -113,6 +113,8 @@ pub enum UiTheme {
     Obsidian,
     /// Swiss Blueprint / Industrial Hardware Studio (floating islands, 0px mechanical geometry, International Orange).
     Blueprint,
+    /// Swiss Blueprint Light — warm drafting paper + International Orange on `.chassis-blueprint`.
+    BlueprintLight,
     /// Cool dark slate + blue accent.
     Slate,
     /// Light surfaces + green accent.
@@ -128,10 +130,16 @@ impl UiTheme {
             Self::Spotify => "theme-spotify",
             Self::Obsidian => "theme-obsidian",
             Self::Blueprint => "theme-blueprint",
+            Self::BlueprintLight => "theme-blueprint-light",
             Self::Slate => "theme-slate",
             Self::Light => "theme-light",
             Self::HighContrast => "theme-high-contrast",
         }
+    }
+
+    /// Structural layout family (shared geometry, separate palettes).
+    pub fn chassis_token(self) -> Option<&'static str> {
+        matches!(self, Self::Blueprint | Self::BlueprintLight).then_some("chassis-blueprint")
     }
 
     /// Human label for Settings dropdown.
@@ -140,6 +148,7 @@ impl UiTheme {
             Self::Spotify => "Spotify (default)",
             Self::Obsidian => "Obsidian Ember",
             Self::Blueprint => "Hardware Blueprint",
+            Self::BlueprintLight => "Hardware Blueprint Light",
             Self::Slate => "Dark slate",
             Self::Light => "Light",
             Self::HighContrast => "High contrast",
@@ -152,6 +161,7 @@ impl UiTheme {
             Self::Spotify,
             Self::Obsidian,
             Self::Blueprint,
+            Self::BlueprintLight,
             Self::Slate,
             Self::Light,
             Self::HighContrast,
@@ -346,6 +356,7 @@ impl UiSettings {
             "editor-nowrap"
         };
         let theme = self.theme.class_token();
+        let chassis = self.theme.chassis_token().unwrap_or("");
         let accent = match self.accent_intensity {
             AccentIntensity::Soft => "accent-soft",
             AccentIntensity::Normal => "accent-normal",
@@ -356,7 +367,7 @@ impl UiSettings {
         } else {
             ""
         };
-        format!("{theme} {density} {wrap} {accent} {motion}")
+        format!("{theme} {chassis} {density} {wrap} {accent} {motion}")
             .split_whitespace()
             .collect::<Vec<_>>()
             .join(" ")
@@ -445,11 +456,6 @@ impl AppSettings {
         } else {
             Some(format!("http://{hp}"))
         }
-    }
-
-    /// Default directory hint for client certs under app data.
-    pub fn certs_dir_hint(data_root: &std::path::Path) -> PathBuf {
-        data_root.join("certs")
     }
 }
 
@@ -565,5 +571,23 @@ mod tests {
         let json_without = r#"{"ui_font_size_px":13}"#;
         let decoded_default: UiSettings = serde_json::from_str(json_without).unwrap();
         assert_eq!(decoded_default.layout, WorkbenchLayout::Column);
+    }
+
+    #[test]
+    fn blueprint_chassis_tokens() {
+        assert_eq!(UiTheme::Blueprint.chassis_token(), Some("chassis-blueprint"));
+        assert_eq!(
+            UiTheme::BlueprintLight.chassis_token(),
+            Some("chassis-blueprint")
+        );
+        assert_eq!(UiTheme::Spotify.chassis_token(), None);
+
+        let ui_light = UiSettings {
+            theme: UiTheme::BlueprintLight,
+            ..Default::default()
+        };
+        let tokens = ui_light.shell_class_tokens();
+        assert!(tokens.contains("theme-blueprint-light"));
+        assert!(tokens.contains("chassis-blueprint"));
     }
 }

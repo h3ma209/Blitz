@@ -6,6 +6,7 @@ use crate::core::{
 };
 
 #[derive(Clone, PartialEq)]
+#[allow(clippy::large_enum_variant)]
 pub enum SettingsEvent {
     Close,
     Save(AppSettings),
@@ -71,6 +72,7 @@ pub fn SettingsPanel(
         UiTheme::Spotify => "spotify",
         UiTheme::Obsidian => "obsidian",
         UiTheme::Blueprint => "blueprint",
+        UiTheme::BlueprintLight => "blueprint_light",
         UiTheme::Slate => "slate",
         UiTheme::Light => "light",
         UiTheme::HighContrast => "high_contrast",
@@ -163,6 +165,7 @@ pub fn SettingsPanel(
                                                 theme.set(match evt.value().as_str() {
                                                     "obsidian" => UiTheme::Obsidian,
                                                     "blueprint" => UiTheme::Blueprint,
+                                                    "blueprint_light" => UiTheme::BlueprintLight,
                                                     "slate" => UiTheme::Slate,
                                                     "light" => UiTheme::Light,
                                                     "high_contrast" => UiTheme::HighContrast,
@@ -172,6 +175,7 @@ pub fn SettingsPanel(
                                             option { value: "spotify", "Spotify (Dark & Green)" }
                                             option { value: "obsidian", "Obsidian Ember (Dark & Amber)" }
                                             option { value: "blueprint", "Hardware Blueprint (Industrial & Tactile)" }
+                                            option { value: "blueprint_light", "Hardware Blueprint Light (Drafting Paper)" }
                                             option { value: "slate", "Dark Slate" }
                                             option { value: "light", "Light Surface" }
                                             option { value: "high_contrast", "High Contrast" }

@@ -41,6 +41,7 @@ pub enum SecretError {
 }
 
 /// Abstraction over secret backends (keychain / vault / 1Password later).
+#[allow(dead_code)]
 pub trait SecretsStore: Send + Sync {
     fn get(&self, service: &str, account: &str) -> Result<String, SecretError>;
     fn set(&self, service: &str, account: &str, secret: &str) -> Result<(), SecretError>;
@@ -53,6 +54,7 @@ pub fn service_name(account_id: &str) -> String {
 }
 
 /// Store under [`DEFAULT_ACCOUNT`] for `account_id`.
+#[cfg(test)]
 pub fn store_user_key(
     store: &dyn SecretsStore,
     account_id: &str,
@@ -62,6 +64,7 @@ pub fn store_user_key(
 }
 
 /// Retrieve [`DEFAULT_ACCOUNT`] for `account_id`.
+#[cfg(test)]
 pub fn retrieve_user_key(
     store: &dyn SecretsStore,
     account_id: &str,

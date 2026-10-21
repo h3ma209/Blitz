@@ -206,6 +206,7 @@ impl Collection {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
+#[allow(clippy::large_enum_variant)]
 pub enum CollectionItem {
     Folder(Folder),
     Request(RequestDraft),
@@ -260,6 +261,7 @@ impl Folder {
         self.items.push(CollectionItem::Request(draft));
     }
 
+    #[cfg(test)]
     pub fn add_folder(&mut self, folder: Folder) {
         self.items.push(CollectionItem::Folder(folder));
     }
@@ -376,28 +378,6 @@ pub fn reorder_before(
     }
 }
 
-/// Move item to index within its current parent (sibling reorder).
-pub fn reorder_within_parent(
-    collections: &mut [Collection],
-    item_id: Uuid,
-    new_index: usize,
-) -> bool {
-    let parent = parent_of(collections, item_id);
-    let Some(item) = take_item(collections, item_id) else {
-        return false;
-    };
-    let parent_id = parent.unwrap_or_else(|| collections.first().map(|c| c.id).unwrap_or(item_id));
-    match try_insert_item_under_at(collections, parent_id, item, new_index) {
-        Ok(()) => true,
-        Err(orphaned) => {
-            if let Some(col) = collections.first_mut() {
-                col.items.push(orphaned);
-            }
-            false
-        }
-    }
-}
-
 fn rekey_sort(items: &mut [CollectionItem]) {
     for (i, item) in items.iter_mut().enumerate() {
         let key = i as i64;
@@ -464,62 +444,6 @@ fn sibling_path(items: &[CollectionItem], item_id: Uuid, path: &mut Vec<usize>) 
         }
     }
     false
-}
-
-fn try_insert_item_under_at(
-    collections: &mut [Collection],
-    parent_id: Uuid,
-    item: CollectionItem,
-    index: usize,
-) -> Result<(), CollectionItem> {
-    for col in collections.iter_mut() {
-        if col.id == parent_id {
-            let idx = index.min(col.items.len());
-            col.items.insert(idx, item);
-            rekey_sort(&mut col.items);
-            return Ok(());
-        }
-    }
-    let mut pending = Some(item);
-    for col in collections.iter_mut() {
-        if let Some(it) = pending.take() {
-            match try_insert_under_items_at(&mut col.items, parent_id, it, index) {
-                Ok(()) => return Ok(()),
-                Err(back) => pending = Some(back),
-            }
-        }
-    }
-    Err(pending.expect("item"))
-}
-
-fn try_insert_under_items_at(
-    items: &mut Vec<CollectionItem>,
-    parent_id: Uuid,
-    item: CollectionItem,
-    index: usize,
-) -> Result<(), CollectionItem> {
-    for existing in items.iter_mut() {
-        if let CollectionItem::Folder(f) = existing {
-            if f.id == parent_id {
-                let idx = index.min(f.items.len());
-                f.items.insert(idx, item);
-                rekey_sort(&mut f.items);
-                return Ok(());
-            }
-        }
-    }
-    let mut pending = Some(item);
-    for existing in items.iter_mut() {
-        if let CollectionItem::Folder(f) = existing {
-            if let Some(it) = pending.take() {
-                match try_insert_under_items_at(&mut f.items, parent_id, it, index) {
-                    Ok(()) => return Ok(()),
-                    Err(back) => pending = Some(back),
-                }
-            }
-        }
-    }
-    Err(pending.expect("item"))
 }
 
 /// Filter tree rows whose name or content contains `query` (case-insensitive),
@@ -679,7 +603,7 @@ pub fn add_folder_under(collections: &mut [Collection], parent_id: Uuid, folder:
 /// Reparent a folder or request onto a collection or folder target.
 /// Rejects: missing ids, drop on request, drop folder into self/descendant.
 pub fn move_item_to(
-    collections: &mut Vec<Collection>,
+    collections: &mut [Collection],
     item_id: Uuid,
     target_id: Uuid,
 ) -> bool {
@@ -980,6 +904,7 @@ fn take_item_from_items(items: &mut Vec<CollectionItem>, id: Uuid) -> Option<Col
     None
 }
 
+#[allow(clippy::result_large_err)]
 fn try_insert_item_under(
     collections: &mut [Collection],
     parent_id: Uuid,
@@ -1003,8 +928,9 @@ fn try_insert_item_under(
     Err(pending.expect("item not consumed"))
 }
 
+#[allow(clippy::result_large_err)]
 fn try_insert_under_items(
-    items: &mut Vec<CollectionItem>,
+    items: &mut [CollectionItem],
     parent_id: Uuid,
     item: CollectionItem,
 ) -> Result<(), CollectionItem> {
@@ -1214,7 +1140,7 @@ pub fn remove_across(collections: &mut Vec<Collection>, id: Uuid) -> bool {
     false
 }
 
-pub fn rename_across(collections: &mut Vec<Collection>, id: Uuid, name: String) -> bool {
+pub fn rename_across(collections: &mut [Collection], id: Uuid, name: String) -> bool {
     for col in collections.iter_mut() {
         if col.rename(id, name.clone()) {
             return true;
@@ -1226,18 +1152,22 @@ pub fn rename_across(collections: &mut Vec<Collection>, id: Uuid, name: String) 
 /// Seed used when snapshot has no collections yet.
 pub fn demo_collections() -> Vec<Collection> {
     let mut mine = Collection::new("My Collection");
-    let mut get = RequestDraft::default();
-    get.name = "httpbin GET".into();
-    get.url = "{{baseUrl}}/get".into();
+    let get = RequestDraft {
+        name: "httpbin GET".into(),
+        url: "{{baseUrl}}/get".into(),
+        ..Default::default()
+    };
     mine.add_request(get);
 
     let mut folder = Folder::new("Examples");
-    let mut post = RequestDraft::default();
-    post.name = "httpbin POST".into();
-    post.method = HttpMethod::Post;
-    post.url = "{{baseUrl}}/post".into();
-    post.body_mode = super::request::BodyMode::Raw;
-    post.body = r#"{"hello":"world"}"#.into();
+    let mut post = RequestDraft {
+        name: "httpbin POST".into(),
+        method: HttpMethod::Post,
+        url: "{{baseUrl}}/post".into(),
+        body_mode: super::request::BodyMode::Raw,
+        body: r#"{"hello":"world"}"#.into(),
+        ..Default::default()
+    };
     post.headers.push(KeyValue::new("Content-Type", "application/json"));
     folder.add_request(post);
     mine.add_folder(folder);
@@ -1290,6 +1220,7 @@ fn remove_item_by_id(items: &mut Vec<CollectionItem>, id: Uuid) -> bool {
     false
 }
 
+#[allow(clippy::collapsible_match)]
 fn rename_item_in_items(items: &mut [CollectionItem], id: Uuid, name: String) -> bool {
     for item in items.iter_mut() {
         match item {
@@ -1422,8 +1353,10 @@ mod tests {
         let nested_id = parent.id;
         parent.add_folder(Folder::new("ViaApi"));
         assert!(add_folder_under(&mut cols, folder_id, parent));
-        let mut req = RequestDraft::default();
-        req.name = "Deep".into();
+        let req = RequestDraft {
+            name: "Deep".into(),
+            ..Default::default()
+        };
         let req_id = req.id;
         assert!(add_request_under(&mut cols, nested_id, req));
         let row = flatten_collections(&cols)
@@ -1580,8 +1513,10 @@ mod tests {
         let folder = Folder::new("Parent Folder");
         let folder_id = folder.id;
         assert!(add_folder_under(&mut cols, col_id, folder));
-        let mut req = RequestDraft::default();
-        req.name = "My Req".into();
+        let req = RequestDraft {
+            name: "My Req".into(),
+            ..Default::default()
+        };
         let req_id = req.id;
         assert!(add_request_under(&mut cols, folder_id, req));
         let title = request_tab_display_name(&cols, req_id);

@@ -2,7 +2,7 @@ use dioxus::prelude::*;
 use uuid::Uuid;
 
 use crate::core::Collection;
-use crate::runtime::RunnerReport;
+use crate::runtime::{to_html, to_junit_xml, RunnerReport};
 use crate::ui::{ModalShell, loading::Spinner};
 
 #[derive(Clone, PartialEq)]
@@ -116,8 +116,62 @@ pub fn RunnerPanel(
                 }
 
                 if let Some(rep) = report.as_ref() {
-                    p { class: "hint",
-                        "Pass {rep.passed_count()} · Fail {rep.failed_count()}"
+                    {
+                        let col_name = sel()
+                            .and_then(|id| collections.iter().find(|c| c.id == id))
+                            .map(|c| c.name.clone())
+                            .unwrap_or_else(|| "Collection".to_string());
+                        let rep_xml = rep.clone();
+                        let col_xml = col_name.clone();
+                        let rep_html = rep.clone();
+                        let col_html = col_name.clone();
+                        rsx! {
+                            div { class: "runner-summary-row", style: "display: flex; justify-content: space-between; align-items: center; gap: 8px; margin: 8px 0;",
+                                p { class: "hint", style: "margin: 0;",
+                                    "Pass {rep.passed_count()} · Fail {rep.failed_count()}"
+                                }
+                                div { style: "display: flex; gap: 6px;",
+                                    button {
+                                        class: "btn btn-ghost",
+                                        title: "Export runner report as JUnit XML for CI/CD",
+                                        onclick: move |_| {
+                                            let xml = to_junit_xml(&col_xml, &rep_xml);
+                                            let slug = col_xml.to_lowercase().replace(' ', "_");
+                                            spawn(async move {
+                                                if let Some(path) = rfd::FileDialog::new()
+                                                    .set_title("Export JUnit XML Report")
+                                                    .set_file_name(format!("{slug}_junit.xml"))
+                                                    .add_filter("XML", &["xml"])
+                                                    .save_file()
+                                                {
+                                                    let _ = std::fs::write(path, xml);
+                                                }
+                                            });
+                                        },
+                                        "Export JUnit XML…"
+                                    }
+                                    button {
+                                        class: "btn btn-ghost",
+                                        title: "Export runner report as self-contained HTML",
+                                        onclick: move |_| {
+                                            let html = to_html(&col_html, &rep_html);
+                                            let slug = col_html.to_lowercase().replace(' ', "_");
+                                            spawn(async move {
+                                                if let Some(path) = rfd::FileDialog::new()
+                                                    .set_title("Export HTML Report")
+                                                    .set_file_name(format!("{slug}_report.html"))
+                                                    .add_filter("HTML", &["html"])
+                                                    .save_file()
+                                                {
+                                                    let _ = std::fs::write(path, html);
+                                                }
+                                            });
+                                        },
+                                        "Export HTML…"
+                                    }
+                                }
+                            }
+                        }
                     }
                     table { class: "kv-table runner-table",
                         thead {

@@ -86,6 +86,5 @@ mod tests {
     #[test]
     fn module_loads() {
         // Connect tests need a live server — skipped.
-        assert!(true);
     }
 }

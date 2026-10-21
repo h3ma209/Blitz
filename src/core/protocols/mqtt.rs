@@ -6,6 +6,7 @@ use rumqttc::{Client, Event, Incoming, MqttOptions, QoS};
 
 #[derive(Debug, Clone)]
 pub struct MqttActionResult {
+    #[allow(dead_code)]
     pub ok: bool,
     pub messages: Vec<String>,
     pub error: Option<String>,

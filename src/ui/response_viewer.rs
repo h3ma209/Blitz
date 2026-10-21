@@ -1,6 +1,7 @@
 use dioxus::prelude::*;
+use uuid::Uuid;
 
-use crate::core::{DefaultResponseTab, ResponseView};
+use crate::core::{diff_bodies, DefaultResponseTab, DiffLine, ResponseView, SavedExample};
 use super::json_highlight::{render_json_highlight_html, should_highlight_json};
 use super::loading::{SkeletonBars, Spinner};
 
@@ -12,8 +13,15 @@ enum RespTab {
     Headers,
     Cookies,
     Tests,
+    Diff,
     Visualize,
     Timeline,
+}
+
+#[derive(Clone, PartialEq, Eq)]
+enum DiffBaseline {
+    PreviousRun,
+    Example(Uuid),
 }
 
 fn resp_tab_from_default(tab: DefaultResponseTab) -> RespTab {
@@ -27,6 +35,8 @@ fn resp_tab_from_default(tab: DefaultResponseTab) -> RespTab {
 #[component]
 pub fn ResponseViewer(
     response: Option<ResponseView>,
+    #[props(default)] prev_response: Option<ResponseView>,
+    #[props(default)] examples: Vec<SavedExample>,
     sending: bool,
     #[props(default)] default_tab: DefaultResponseTab,
     on_save_example: EventHandler<()>,
@@ -37,6 +47,7 @@ pub fn ResponseViewer(
     let mut search_open = use_signal(|| false);
     let mut copied_body = use_signal(|| false);
     let render_mode = use_signal(|| true);
+    let mut diff_baseline = use_signal(|| DiffBaseline::PreviousRun);
 
     rsx! {
         section { class: "response-pane",
@@ -154,6 +165,7 @@ pub fn ResponseViewer(
                         ("Headers", RespTab::Headers),
                         ("Cookies", RespTab::Cookies),
                         ("Test Results", RespTab::Tests),
+                        ("Diff", RespTab::Diff),
                         ("Visualize", RespTab::Visualize),
                         ("Timeline", RespTab::Timeline),
                     ] {
@@ -290,6 +302,147 @@ pub fn ResponseViewer(
                             }
                             if !resp.pipeline_log.is_empty() {
                                 p { class: "hint", "Pipeline: {resp.pipeline_log.join(\" → \")}" }
+                            }
+                        }
+                    },
+                    RespTab::Diff => {
+                        let cur_base = diff_baseline();
+                        let select_val = match cur_base {
+                            DiffBaseline::PreviousRun => "prev".to_string(),
+                            DiffBaseline::Example(id) => format!("ex:{id}"),
+                        };
+
+                        let baseline_data: Option<(String, u16, String, Option<u128>, String)> = match cur_base {
+                            DiffBaseline::PreviousRun => prev_response.as_ref().map(|p| {
+                                (
+                                    "Previous run".to_string(),
+                                    p.status,
+                                    p.status_text.clone(),
+                                    Some(p.elapsed_ms),
+                                    p.body.clone(),
+                                )
+                            }),
+                            DiffBaseline::Example(id) => examples
+                                .iter()
+                                .find(|e| e.id == id)
+                                .or_else(|| examples.first())
+                                .map(|ex| {
+                                    (
+                                        format!("Example: {}", ex.name),
+                                        ex.status,
+                                        ex.status_text.clone(),
+                                        None,
+                                        ex.body.clone(),
+                                    )
+                                }),
+                        };
+
+                        rsx! {
+                            div { class: "response-diff-pane",
+                                div { class: "response-diff-toolbar",
+                                    span { class: "hint", "Compare against:" }
+                                    select {
+                                        class: "response-diff-select",
+                                        value: "{select_val}",
+                                        onchange: move |evt: Event<FormData>| {
+                                            let val = evt.value();
+                                            if val == "prev" {
+                                                diff_baseline.set(DiffBaseline::PreviousRun);
+                                            } else if let Some(uuid_str) = val.strip_prefix("ex:") {
+                                                if let Ok(id) = Uuid::parse_str(uuid_str) {
+                                                    diff_baseline.set(DiffBaseline::Example(id));
+                                                }
+                                            }
+                                        },
+                                        option {
+                                            value: "prev",
+                                            selected: matches!(diff_baseline(), DiffBaseline::PreviousRun),
+                                            if prev_response.is_some() {
+                                                "Previous run"
+                                            } else {
+                                                "Previous run (none yet)"
+                                            }
+                                        }
+                                        for ex in examples.iter() {
+                                            option {
+                                                key: "{ex.id}",
+                                                value: "ex:{ex.id}",
+                                                selected: diff_baseline() == DiffBaseline::Example(ex.id),
+                                                "Saved Example: {ex.name} ({ex.status})"
+                                            }
+                                        }
+                                    }
+                                    if let Some((_, old_status, _, old_ms, ref old_body)) = baseline_data {
+                                        {
+                                            let (_, stats) = diff_bodies(old_body, &resp.body);
+                                            let status_delta = if old_status == resp.status {
+                                                format!("Status {}", resp.status)
+                                            } else {
+                                                format!("Status {} → {}", old_status, resp.status)
+                                            };
+                                            let time_delta = old_ms.map(|old_t| {
+                                                let diff_ms = resp.elapsed_ms as i128 - old_t as i128;
+                                                if diff_ms >= 0 {
+                                                    format!("+{diff_ms} ms")
+                                                } else {
+                                                    format!("{diff_ms} ms")
+                                                }
+                                            });
+                                            rsx! {
+                                                div { class: "response-diff-summary",
+                                                    span { class: "diff-badge diff-badge-neutral", "{status_delta}" }
+                                                    if let Some(td) = time_delta {
+                                                        span { class: "diff-badge diff-badge-neutral", "{td}" }
+                                                    }
+                                                    span { class: "diff-badge diff-badge-add", "+{stats.added}" }
+                                                    span { class: "diff-badge diff-badge-del", "-{stats.removed}" }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+
+                                if let Some((label, _, _, _, old_body)) = baseline_data {
+                                    {
+                                        let (lines, stats) = diff_bodies(&old_body, &resp.body);
+                                        if stats.added == 0 && stats.removed == 0 {
+                                            rsx! {
+                                                p { class: "hint", "No differences between {label} and current response (JSON keys normalized)." }
+                                            }
+                                        } else {
+                                            rsx! {
+                                                div { class: "response-diff-lines",
+                                                    for (idx, line) in lines.into_iter().enumerate() {
+                                                        match line {
+                                                            DiffLine::Same(text) => rsx! {
+                                                                div { key: "{idx}", class: "diff-line diff-line-same",
+                                                                    span { class: "diff-sign", " " }
+                                                                    span { class: "diff-text", "{text}" }
+                                                                }
+                                                            },
+                                                            DiffLine::Add(text) => rsx! {
+                                                                div { key: "{idx}", class: "diff-line diff-line-add",
+                                                                    span { class: "diff-sign", "+" }
+                                                                    span { class: "diff-text", "{text}" }
+                                                                }
+                                                            },
+                                                            DiffLine::Del(text) => rsx! {
+                                                                div { key: "{idx}", class: "diff-line diff-line-del",
+                                                                    span { class: "diff-sign", "-" }
+                                                                    span { class: "diff-text", "{text}" }
+                                                                }
+                                                            },
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                } else {
+                                    p { class: "hint",
+                                        "Send this request a second time or click '⚡ Save to Mock' to create a baseline for comparison."
+                                    }
+                                }
                             }
                         }
                     },

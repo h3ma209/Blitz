@@ -805,15 +805,19 @@ mod tests {
         let root = temp_dir();
         fs::create_dir_all(&root).unwrap();
         let mut col = Collection::new("Demo");
-        let mut req = RequestDraft::default();
-        req.name = "Health".into();
-        req.url = "https://example.com/health".into();
+        let req = RequestDraft {
+            name: "Health".into(),
+            url: "https://example.com/health".into(),
+            ..Default::default()
+        };
         let req_id = req.id;
         col.add_request(req);
         let mut folder = Folder::new("Auth");
-        let mut login = RequestDraft::default();
-        login.name = "Login".into();
-        login.url = "https://example.com/login".into();
+        let login = RequestDraft {
+            name: "Login".into(),
+            url: "https://example.com/login".into(),
+            ..Default::default()
+        };
         let login_id = login.id;
         folder.add_request(login);
         col.add_folder(folder);

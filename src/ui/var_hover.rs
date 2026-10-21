@@ -39,6 +39,7 @@ struct PopoverState {
     top: f64,
 }
 
+#[allow(clippy::too_many_arguments)]
 fn try_open_popover(
     text: &str,
     vars: &VariableContext,
@@ -143,7 +144,6 @@ pub fn VarHoverInput(
                 onkeydown: {
                     let value = value.clone();
                     let input_id = input_id.clone();
-                    let on_input = on_input.clone();
                     move |evt: Event<KeyboardData>| {
                         if let Some(mut m) = var_suggest() {
                             match evt.key() {
@@ -151,18 +151,15 @@ pub fn VarHoverInput(
                                     evt.prevent_default();
                                     m.move_selection(1);
                                     var_suggest.set(Some(m));
-                                    return;
                                 }
                                 Key::ArrowUp => {
                                     evt.prevent_default();
                                     m.move_selection(-1);
                                     var_suggest.set(Some(m));
-                                    return;
                                 }
                                 Key::Escape => {
                                     evt.prevent_default();
                                     var_suggest.set(None);
-                                    return;
                                 }
                                 Key::Enter | Key::Tab => {
                                     if let Some(item) = m.pick() {
@@ -171,7 +168,6 @@ pub fn VarHoverInput(
                                         let item = item.clone();
                                         let value = value.clone();
                                         let input_id = input_id.clone();
-                                        let on_input = on_input.clone();
                                         spawn(async move {
                                             if let Some((caret, _, _)) =
                                                 read_field_caret_anchor(&input_id).await
@@ -184,7 +180,6 @@ pub fn VarHoverInput(
                                         });
                                         var_suggest.set(None);
                                     }
-                                    return;
                                 }
                                 _ => {}
                             }
@@ -297,11 +292,9 @@ pub fn VarHoverInput(
                         let open = menu.open_at;
                         let input_id = input_id.clone();
                         let value = value.clone();
-                        let on_input = on_input.clone();
                         move |item: VariableSuggestion| {
                             let input_id = input_id.clone();
                             let value = value.clone();
-                            let on_input = on_input.clone();
                             let item = item.clone();
                             spawn(async move {
                                 if let Some((caret, _, _)) = read_field_caret_anchor(&input_id).await {

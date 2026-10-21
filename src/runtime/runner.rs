@@ -156,30 +156,6 @@ pub fn load_data_rows(path: &str) -> Result<Vec<HashMap<String, String>>, String
     Ok(rows)
 }
 
-/// Run all requests in a collection sequentially (1 iteration, no delay).
-///
-/// Mutates `ctx` so script env/collection/global side-effects persist after the run.
-pub fn run_collection(
-    col: &Collection,
-    ctx: &mut VariableContext,
-    cookie_jar: &mut CookieJar,
-    app_settings: Option<&AppSettings>,
-    secrets_store: Option<&dyn SecretsStore>,
-) -> RunnerReport {
-    run_collection_with_config(
-        col,
-        ctx,
-        cookie_jar,
-        app_settings,
-        secrets_store,
-        &RunnerConfig {
-            iterations: 1,
-            delay_ms: 0,
-            data_file: String::new(),
-        },
-    )
-}
-
 pub fn run_collection_with_config(
     col: &Collection,
     ctx: &mut VariableContext,

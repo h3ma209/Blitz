@@ -72,26 +72,8 @@ impl CookieJar {
         }
     }
 
-    /// Delete by domain+name+path.
-    pub fn remove_cookie(&mut self, domain: &str, name: &str, path: &str) -> bool {
-        let before = self.cookies.len();
-        self.cookies
-            .retain(|c| !(c.domain == domain && c.name == name && c.path == path));
-        self.cookies.len() < before
-    }
-
     pub fn clear(&mut self) {
         self.cookies.clear();
-    }
-
-    /// Update cookie at index; no-op if OOB.
-    pub fn update_at(&mut self, index: usize, cookie: Cookie) -> bool {
-        if let Some(slot) = self.cookies.get_mut(index) {
-            *slot = cookie;
-            true
-        } else {
-            false
-        }
     }
 }
 

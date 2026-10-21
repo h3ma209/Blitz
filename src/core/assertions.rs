@@ -150,7 +150,7 @@ pub fn suggest_from_response(
     }
 
     // Generous ceiling: 3x observed, rounded up to 100 ms, never below 200.
-    let ceiling = (((elapsed_ms.saturating_mul(3) + 99) / 100) * 100).max(200) as u64;
+    let ceiling = (elapsed_ms.saturating_mul(3).div_ceil(100) * 100).max(200) as u64;
     out.push(Assertion::new(AssertionKind::TimeUnder { ms: ceiling }));
     out
 }

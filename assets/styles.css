@@ -1,7 +1,7 @@
 /* ⚡ Blitz — Modular Typography · Spotify glass
    Dark stage · spot green · frosted panels · modular type scale */
 
-@import url("https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,400..700;1,14..32,400..700&family=JetBrains+Mono:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap");
+/*@FONTS@*/
 
 :root {
   /* —— Modular type scale (major second 1.125; driven by --fs-base) —— */
@@ -137,6 +137,14 @@
   --focus-ring-width: 1px;
   --icon-sm: 16px;
   --icon-md: 18px;
+
+  /* Syntax highlighting tokens */
+  --syn-key: #9bd4b5;
+  --syn-str: #e6c98a;
+  --syn-num: var(--spot-green-bright);
+  --syn-bool: #8eb8d0;
+  --syn-null: var(--spot-faint);
+  --syn-punct: var(--spot-muted);
 }
 
 * {
@@ -2503,32 +2511,32 @@ textarea:focus {
   margin: 0;
 }
 
-/* Pretty JSON tokens — Spotify stage palette (no purple sludge) */
+/* Pretty JSON tokens — driven by per-theme --syn-* variables */
 .response-body-json .json-key,
 .code-editor-mirror .json-key {
-  color: #9bd4b5;
+  color: var(--syn-key);
   font-weight: 500;
 }
 .response-body-json .json-string,
 .code-editor-mirror .json-string {
-  color: #e6c98a;
+  color: var(--syn-str);
 }
 .response-body-json .json-number,
 .code-editor-mirror .json-number {
-  color: var(--spot-green-bright);
+  color: var(--syn-num);
 }
 .response-body-json .json-bool,
 .code-editor-mirror .json-bool {
-  color: #8eb8d0;
+  color: var(--syn-bool);
 }
 .response-body-json .json-null,
 .code-editor-mirror .json-null {
-  color: var(--spot-faint);
+  color: var(--syn-null);
   font-style: italic;
 }
 .response-body-json .json-punct,
 .code-editor-mirror .json-punct {
-  color: var(--spot-muted);
+  color: var(--syn-punct);
 }
 
 /* Inherited Auth Origin Card */
@@ -4377,6 +4385,12 @@ textarea:focus {
   --glass-shine: inset 0 1px 0 rgba(255, 255, 255, 0.08);
   --focus-ring: rgba(251, 191, 36, 0.35);
   --ok: #10b981;
+  --syn-key: #fbbf24;
+  --syn-str: #fde68a;
+  --syn-num: #fb923c;
+  --syn-bool: #38bdf8;
+  --syn-null: #71717a;
+  --syn-punct: #a1a1aa;
 }
 
 html:has(.app-shell.theme-obsidian) body {
@@ -4424,6 +4438,12 @@ html:has(.app-shell.theme-obsidian) body {
   --focus-ring: rgba(96, 165, 250, 0.32);
   --ok: #34d399;
   --method-post: #34d399;
+  --syn-key: #7dd3fc;
+  --syn-str: #a7f3d0;
+  --syn-num: #60a5fa;
+  --syn-bool: #c084fc;
+  --syn-null: #64748b;
+  --syn-punct: #94a3b8;
 }
 
 html:has(.app-shell.theme-slate) body {
@@ -4477,6 +4497,12 @@ html:has(.app-shell.theme-slate) body {
   --glass-shine: inset 0 1px 0 rgba(255, 255, 255, 0.9);
   --shadow-modal: 0 24px 64px rgba(17, 19, 24, 0.18), var(--glass-shine);
   --focus-ring: rgba(22, 156, 70, 0.28);
+  --syn-key: #047857;
+  --syn-str: #b45309;
+  --syn-num: #1d4ed8;
+  --syn-bool: #6d28d9;
+  --syn-null: #6b7280;
+  --syn-punct: #4b5563;
 }
 
 html:has(.app-shell.theme-light) body {
@@ -4525,6 +4551,12 @@ html:has(.app-shell.theme-light) body {
   --focus-ring-width: 2px;
   --ok: #5cff9a;
   --err: #ff6b7a;
+  --syn-key: #5cff9a;
+  --syn-str: #ffe066;
+  --syn-num: #74c0fc;
+  --syn-bool: #ff8787;
+  --syn-null: #c8c8c8;
+  --syn-punct: #ffffff;
 }
 
 html:has(.app-shell.theme-high-contrast) body {
@@ -4563,7 +4595,7 @@ html:has(.app-shell.theme-high-contrast) body {
 }
 
 /* =========================================================================
-   HARDWARE BLUEPRINT THEME (`theme-blueprint`)
+   HARDWARE BLUEPRINT CHASSIS (`.chassis-blueprint`) + DARK / LIGHT PALETTES
    Complete Ground-Up Architectural Rebuild:
    - Bottom Command Dock (`grid-template-rows: 1fr var(--bar-h)`)
    - Disassembled Split Rack Modules (`.workbench-request-side` and `.workbench-response-side`
@@ -4574,10 +4606,27 @@ html:has(.app-shell.theme-high-contrast) body {
    - Tactile 3D Mechanical Switches with physical bottom lip & travel
    ========================================================================= */
 
+/* —— Blueprint Dark Palette (`theme-blueprint`) —— */
 .app-shell.theme-blueprint,
 .app-shell.theme-blueprint.accent-soft,
 .app-shell.theme-blueprint.accent-normal,
 .app-shell.theme-blueprint.accent-strong {
+  --bp-chassis: #08090c;
+  --bp-module: #13151b;
+  --bp-header: #0d0f14;
+  --bp-well: #07080a;
+  --bp-edge: #2b303c;
+  --bp-edge-sub: #252934;
+  --bp-lip: #040507;
+  --bp-keycap: #1e222b;
+  --bp-keycap-hover: #272c37;
+  --bp-keycap-border: #363c4b;
+  --bp-keycap-border-hover: #4c556a;
+  --bp-serial: #6c7486;
+  --bp-telemetry: #00e5a3;
+  --bp-shadow: 0 8px 20px rgba(0, 0, 0, 0.45);
+  --bp-inset-shadow: inset 0 2px 5px rgba(0, 0, 0, 0.75);
+
   --spot-green: #ff5500;
   --spot-green-bright: #ff6a1a;
   --spot-green-dim: #cc4400;
@@ -4649,6 +4698,13 @@ html:has(.app-shell.theme-high-contrast) body {
   --method-patch-soft: rgba(192, 132, 252, 0.14);
   --method-delete: #ff453a;
   --method-delete-soft: rgba(255, 69, 58, 0.15);
+
+  --syn-key: #38bdf8;
+  --syn-str: #00e5a3;
+  --syn-num: #ff6a1a;
+  --syn-bool: #c084fc;
+  --syn-null: #5e6575;
+  --syn-punct: #9ba2b2;
 }
 
 .app-shell.theme-blueprint.accent-soft {
@@ -4661,7 +4717,6 @@ html:has(.app-shell.theme-high-contrast) body {
   --bg-active: rgba(255, 85, 0, 0.28);
 }
 
-/* Blueprint architectural CAD grid + dot-matrix stage */
 html:has(.app-shell.theme-blueprint) body {
   background-color: #08090c;
   background-image:
@@ -4671,44 +4726,157 @@ html:has(.app-shell.theme-blueprint) body {
   background-size: 16px 16px, 64px 64px, 64px 64px;
 }
 
-/* —— 1. INVERTED SHELL ARCHITECTURE: Workspace on Top, Master Control Deck at Bottom —— */
-.app-shell.theme-blueprint {
+/* —— Blueprint Light Palette (`theme-blueprint-light` — Drafting Paper & Braun/TE Enclosure) —— */
+.app-shell.theme-blueprint-light,
+.app-shell.theme-blueprint-light.accent-soft,
+.app-shell.theme-blueprint-light.accent-normal,
+.app-shell.theme-blueprint-light.accent-strong {
+  --bp-chassis: #e8e5dc;
+  --bp-module: #fbfaf6;
+  --bp-header: #f1efe7;
+  --bp-well: #ece9df;
+  --bp-edge: #c8c4b7;
+  --bp-edge-sub: #d7d3c7;
+  --bp-lip: #969182;
+  --bp-keycap: #f4f2ea;
+  --bp-keycap-hover: #ffffff;
+  --bp-keycap-border: #c5c0b2;
+  --bp-keycap-border-hover: #9c9686;
+  --bp-serial: #5c606b;
+  --bp-telemetry: #047857;
+  --bp-shadow: 0 6px 16px rgba(22, 24, 29, 0.08);
+  --bp-inset-shadow: inset 0 1px 3px rgba(22, 24, 29, 0.12);
+
+  --spot-green: #ff5500;
+  --spot-green-bright: #e04800;
+  --spot-green-dim: #b83b00;
+  --spot-void: #f3f1ea;
+  --spot-black: #e9e6dc;
+  --spot-elevated: #fbfaf6;
+  --spot-highlight: #eae7dd;
+  --spot-muted: #525660;
+  --spot-faint: #7d828d;
+
+  --white: #16181d;
+  --ink: #16181d;
+  --paper: #fbfaf6;
+  --paper-solid: #fbfaf6;
+  --paper-dim: #f1efe7;
+  --paper-mute: #e6e3d8;
+
+  --hairline: #dcd8cc;
+  --rule: #c8c4b7;
+  --line: #c8c4b7;
+  --line-strong: #9e998b;
+
+  --bg: #f3f1ea;
+  --bg-panel: #fbfaf6;
+  --bg-elevated: #ffffff;
+  --bg-input: #ece9df;
+  --bg-hover: rgba(22, 24, 29, 0.05);
+  --bg-active: rgba(255, 85, 0, 0.14);
+
+  --border: #c8c4b7;
+  --border-strong: #9e998b;
+  --text: #16181d;
+  --text-muted: #525660;
+  --text-faint: #7d828d;
+
+  --accent: #ff5500;
+  --accent-dim: #cc4400;
+  --accent-soft: rgba(255, 85, 0, 0.12);
+  --accent-ink: #ffffff;
+
+  --radius: 2px;
+  --radius-sm: 2px;
+  --radius-md: 2px;
+  --radius-lg: 3px;
+  --radius-pill: 2px;
+
+  --glass-bg: #fbfaf6;
+  --glass-bg-strong: #ffffff;
+  --glass-blur: none;
+  --glass-border: 1px solid #c8c4b7;
+  --glass-shine: inset 0 1px 0 rgba(255, 255, 255, 0.8);
+  --focus-ring: rgba(255, 85, 0, 0.35);
+  --focus-ring-width: 1px;
+
+  --ok: #047857;
+  --ok-soft: rgba(4, 120, 87, 0.12);
+  --err: #dc2626;
+  --err-soft: rgba(220, 38, 38, 0.12);
+  --warn: #d97706;
+  --warn-soft: rgba(217, 119, 6, 0.12);
+
+  --method-get: #0284c7;
+  --method-get-soft: rgba(2, 132, 199, 0.12);
+  --method-post: #047857;
+  --method-post-soft: rgba(4, 120, 87, 0.12);
+  --method-put: #d97706;
+  --method-put-soft: rgba(217, 119, 6, 0.12);
+  --method-patch: #7c3aed;
+  --method-patch-soft: rgba(124, 58, 237, 0.12);
+  --method-delete: #dc2626;
+  --method-delete-soft: rgba(220, 38, 38, 0.12);
+
+  --syn-key: #0369a1;
+  --syn-str: #047857;
+  --syn-num: #d9460f;
+  --syn-bool: #6d28d9;
+  --syn-null: #7d828d;
+  --syn-punct: #525660;
+}
+
+html:has(.app-shell.theme-blueprint-light) body {
+  background-color: #e8e5dc;
+  background-image:
+    radial-gradient(rgba(22, 24, 29, 0.12) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(22, 24, 29, 0.035) 1px, transparent 1px),
+    linear-gradient(180deg, rgba(22, 24, 29, 0.035) 1px, transparent 1px);
+  background-size: 16px 16px, 64px 64px, 64px 64px;
+  color: #16181d;
+}
+
+/* —— 1. INVERTED SHELL ARCHITECTURE (`.chassis-blueprint`): Workspace on Top, Master Control Deck at Bottom —— */
+.app-shell.chassis-blueprint {
   grid-template-rows: 1fr 48px;
   padding: 10px;
   gap: 10px;
   background: transparent;
 }
 
-.app-shell.theme-blueprint .top-bar {
+.app-shell.chassis-blueprint .top-bar {
   grid-row: 2;
   grid-column: 1 / -1;
   min-height: 48px;
   height: 48px;
-  background: #14161c;
-  border: 1px solid #323846;
+  background: var(--bp-module);
+  border: 1px solid var(--bp-edge);
   border-top: 2px solid #ff5500;
-  border-bottom: 2px solid #040507;
+  border-bottom: 2px solid var(--bp-lip);
   border-radius: 3px;
-  box-shadow: 0 -6px 24px rgba(0, 0, 0, 0.65), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  box-shadow: var(--bp-shadow), var(--glass-shine);
   padding: 0 14px;
 }
 
-/* Make top-bar dropdown menus pop UPWARD since the command deck sits at the bottom! */
-.app-shell.theme-blueprint .top-bar .menu-dropdown,
-.app-shell.theme-blueprint .top-bar .env-menu-dropdown {
+/* Make top-bar dropdown menus pop UPWARD and clamp height so they never clip off-screen */
+.app-shell.chassis-blueprint .top-bar .menu-dropdown,
+.app-shell.chassis-blueprint .top-bar .env-menu-dropdown {
   top: auto !important;
   bottom: calc(100% + 8px) !important;
+  max-height: calc(100vh - 80px);
+  overflow-y: auto;
   transform-origin: bottom left;
 }
 
 /* Keep origin ⚡ Blitz logo intact, framed in an industrial anodized bezel */
-.app-shell.theme-blueprint .brand {
+.app-shell.chassis-blueprint .brand {
   padding-right: 12px;
-  border-right: 1px solid #2b303c;
+  border-right: 1px solid var(--bp-edge);
   margin-right: 4px;
 }
 
-.app-shell.theme-blueprint .brand-logo {
+.app-shell.chassis-blueprint .brand-logo {
   width: 24px;
   height: 24px;
   border-radius: 3px;
@@ -4716,14 +4884,14 @@ html:has(.app-shell.theme-blueprint) body {
   animation: none;
 }
 
-.app-shell.theme-blueprint .brand-name {
+.app-shell.chassis-blueprint .brand-name {
   font-family: var(--mono);
   text-transform: uppercase;
   letter-spacing: 0.1em;
   font-size: 14px;
 }
 
-.app-shell.theme-blueprint .brand::after {
+.app-shell.chassis-blueprint .brand::after {
   content: "HW//OS";
   font-family: var(--mono);
   font-size: 9px;
@@ -4738,31 +4906,31 @@ html:has(.app-shell.theme-blueprint) body {
 }
 
 /* —— 2. SIDEBAR RACK UNIT (`SYS-01 // EXPLORER`) —— */
-.app-shell.theme-blueprint .sidebar-slot {
+.app-shell.chassis-blueprint .sidebar-slot {
   grid-row: 1;
   grid-column: 1;
-  background: #13151b;
-  border: 1px solid #2b303c;
+  background: var(--bp-module);
+  border: 1px solid var(--bp-edge);
   border-radius: 3px;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05), 0 10px 28px rgba(0, 0, 0, 0.55);
+  box-shadow: var(--glass-shine), var(--bp-shadow);
 }
 
-.app-shell.theme-blueprint .sidebar-slot::before {
+.app-shell.chassis-blueprint .sidebar-slot::before {
   content: "SYS-01 // SIGNAL DIRECTORY";
   display: block;
   padding: 6px 12px;
-  background: #0d0f14;
-  border-bottom: 1px solid #252934;
+  background: var(--bp-header);
+  border-bottom: 1px solid var(--bp-edge-sub);
   font-family: var(--mono);
   font-size: 9px;
   font-weight: 700;
   letter-spacing: 0.16em;
-  color: #6c7486;
+  color: var(--bp-serial);
   flex-shrink: 0;
 }
 
 /* —— 3. DISASSEMBLED WORKBENCH: Transparent Carrier with Separate Hardware Modules —— */
-.app-shell.theme-blueprint .workbench {
+.app-shell.chassis-blueprint .workbench {
   grid-row: 1;
   grid-column: 2;
   background: transparent;
@@ -4774,277 +4942,321 @@ html:has(.app-shell.theme-blueprint) body {
   overflow: hidden;
 }
 
-.app-shell.theme-blueprint .workbench.workbench-settings {
-  background: #13151b;
-  border: 1px solid #2b303c;
+.app-shell.chassis-blueprint .workbench.workbench-settings {
+  grid-column: 1 / -1;
+  background: var(--bp-module);
+  border: 1px solid var(--bp-edge);
   border-radius: 3px;
+  box-shadow: var(--bp-shadow);
+}
+
+.app-shell.chassis-blueprint .collection-editor-pane {
+  background: var(--bp-module);
+  border: 1px solid var(--bp-edge);
+  border-radius: 3px;
+  box-shadow: var(--bp-shadow);
 }
 
 /* Top Tab Strip becomes a standalone patch-bay selector bar */
-.app-shell.theme-blueprint .tab-strip {
-  background: #13151b;
-  border: 1px solid #2b303c;
+.app-shell.chassis-blueprint .tab-strip {
+  background: var(--bp-module);
+  border: 1px solid var(--bp-edge);
   border-radius: 3px;
   padding: 5px 10px;
   gap: 8px;
   align-items: center;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05), 0 4px 12px rgba(0, 0, 0, 0.4);
+  box-shadow: var(--glass-shine), var(--bp-shadow);
 }
 
-.app-shell.theme-blueprint .tab-strip-fixed {
+.app-shell.chassis-blueprint .tab-strip-fixed {
   padding-bottom: 0;
-  border-right: 1px solid #2b303c;
+  border-right: 1px solid var(--bp-edge);
   padding-right: 10px;
 }
 
-.app-shell.theme-blueprint .tab-name {
+.app-shell.chassis-blueprint .tab-name {
   font-family: var(--mono);
   font-size: 12px;
   font-weight: 700;
-  background: #08090c;
-  border: 1px solid #252934;
+  background: var(--bp-well);
+  border: 1px solid var(--bp-edge-sub);
   padding: 4px 8px;
   border-radius: 2px;
-  color: #ff6a1a;
+  color: var(--spot-green-bright);
 }
 
-.app-shell.theme-blueprint .tab-strip-scrollable {
+.app-shell.chassis-blueprint .tab-strip-scrollable {
   align-items: center;
   gap: 4px;
 }
 
-.app-shell.theme-blueprint .tab {
+.app-shell.chassis-blueprint .tab {
   border-radius: 2px;
   font-family: var(--mono);
   font-size: 11px;
-  background: #0d0f14;
-  border: 1px solid #232732;
+  background: var(--bp-header);
+  border: 1px solid var(--bp-edge-sub);
   padding: 5px 10px;
   margin-bottom: 0;
 }
 
-.app-shell.theme-blueprint .tab.active {
-  background: #1c2029;
+.app-shell.chassis-blueprint .tab.active {
+  background: var(--bp-module);
   border: 1px solid #ff5500;
   border-left: 3px solid #ff5500;
-  color: var(--white);
+  color: var(--text);
   margin-bottom: 0;
   box-shadow: 0 2px 8px rgba(255, 85, 0, 0.2);
 }
 
-.app-shell.theme-blueprint .tab.active::after {
+.app-shell.chassis-blueprint .tab.active::after {
   display: none;
 }
 
 /* Split Request & Response into two distinct floating hardware enclosures! */
-.app-shell.theme-blueprint .workbench-split {
-  gap: 8px;
+.app-shell.chassis-blueprint .workbench-split {
+  gap: 6px;
   background: transparent;
 }
 
-.app-shell.theme-blueprint .workbench-split.layout-column > .workbench-request-side {
+/* Tactile 6px resize handle with 3 mechanical grip ticks between Request & Response modules */
+.app-shell.chassis-blueprint .pane-resize-h {
+  height: 6px;
+  margin: 0;
+  background: transparent;
   display: flex;
-  flex-direction: column;
-  background: #13151b;
-  border: 1px solid #2b303c;
-  border-radius: 3px;
-  overflow: hidden;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05), 0 8px 20px rgba(0, 0, 0, 0.45);
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  flex-shrink: 0;
 }
 
-.app-shell.theme-blueprint .workbench-split.layout-column > .workbench-response-side {
+.app-shell.chassis-blueprint .pane-resize-h::after {
+  content: "• • •";
+  font-size: 8px;
+  letter-spacing: 3px;
+  color: var(--bp-serial);
+  line-height: 1;
+}
+
+.app-shell.chassis-blueprint .pane-resize-h:hover::after,
+.app-shell.chassis-blueprint .pane-resize-h.active::after {
+  color: #ff5500;
+}
+
+.app-shell.chassis-blueprint .workbench-split.layout-column > .workbench-request-side {
+  display: flex;
+  flex-direction: column;
+  height: var(--request-h);
+  min-height: 140px;
+  flex-shrink: 0;
+  background: var(--bp-module);
+  border: 1px solid var(--bp-edge);
+  border-radius: 3px;
+  overflow: hidden;
+  box-shadow: var(--glass-shine), var(--bp-shadow);
+}
+
+.app-shell.chassis-blueprint .workbench-split.layout-column > .workbench-request-side > .request-pane {
+  flex: 1;
+  height: auto;
+  min-height: 0;
+  border-bottom: none;
+}
+
+.app-shell.chassis-blueprint .workbench-split.layout-column > .workbench-response-side {
   display: flex;
   flex-direction: column;
   flex: 1;
   min-height: 0;
-  background: #13151b;
-  border: 1px solid #2b303c;
+  background: var(--bp-module);
+  border: 1px solid var(--bp-edge);
   border-radius: 3px;
   overflow: hidden;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05), 0 8px 20px rgba(0, 0, 0, 0.45);
+  box-shadow: var(--glass-shine), var(--bp-shadow);
 }
 
-.app-shell.theme-blueprint .workbench-split.layout-row {
+.app-shell.chassis-blueprint .workbench-split.layout-row {
   gap: 10px;
 }
 
-.app-shell.theme-blueprint .workbench-split.layout-row > .workbench-request-side,
-.app-shell.theme-blueprint .workbench-split.layout-row > .workbench-response-side {
-  background: #13151b;
-  border: 1px solid #2b303c;
+.app-shell.chassis-blueprint .workbench-split.layout-row > .workbench-request-side,
+.app-shell.chassis-blueprint .workbench-split.layout-row > .workbench-response-side {
+  background: var(--bp-module);
+  border: 1px solid var(--bp-edge);
   border-radius: 3px;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05), 0 8px 20px rgba(0, 0, 0, 0.45);
+  box-shadow: var(--glass-shine), var(--bp-shadow);
 }
 
 /* Engraved hardware headers on Request & Response modules */
-.app-shell.theme-blueprint .workbench-request-side::before {
+.app-shell.chassis-blueprint .workbench-request-side::before {
   content: "TX-02 // REQUEST TRANSMITTER";
   display: block;
   padding: 5px 12px;
-  background: #0d0f14;
-  border-bottom: 1px solid #252934;
+  background: var(--bp-header);
+  border-bottom: 1px solid var(--bp-edge-sub);
   font-family: var(--mono);
   font-size: 9px;
   font-weight: 700;
   letter-spacing: 0.16em;
-  color: #ff6a1a;
+  color: var(--spot-green-bright);
   flex-shrink: 0;
 }
 
-.app-shell.theme-blueprint .workbench-response-side::before {
+.app-shell.chassis-blueprint .workbench-response-side::before {
   content: "RX-03 // TELEMETRY & PAYLOAD OSCILLOSCOPE";
   display: block;
   padding: 5px 12px;
-  background: #0d0f14;
-  border-bottom: 1px solid #252934;
+  background: var(--bp-header);
+  border-bottom: 1px solid var(--bp-edge-sub);
   font-family: var(--mono);
   font-size: 9px;
   font-weight: 700;
   letter-spacing: 0.16em;
-  color: #00e5a3;
+  color: var(--bp-telemetry);
   flex-shrink: 0;
 }
 
 /* —— 4. UNIFIED SIGNAL BUS BAR (Request Row) —— */
-.app-shell.theme-blueprint .request-row {
-  background: #0d0f14;
-  border-bottom: 1px solid #2b303c;
+.app-shell.chassis-blueprint .request-row {
+  background: var(--bp-header);
+  border-bottom: 1px solid var(--bp-edge);
   padding: 10px 12px;
   gap: 0;
 }
 
-.app-shell.theme-blueprint .request-row .protocol-select {
+.app-shell.chassis-blueprint .request-row .protocol-select {
   border-radius: 2px 0 0 2px;
   border-right: none;
   height: 34px;
-  background: #161922;
-  border-color: #323846;
+  background: var(--bp-module);
+  border-color: var(--bp-edge);
 }
 
-.app-shell.theme-blueprint .request-row .method-select:not(.protocol-select) {
+.app-shell.chassis-blueprint .request-row .method-select:not(.protocol-select) {
   border-radius: 0;
   border-right: none;
   height: 34px;
-  border-color: #323846;
+  border-color: var(--bp-edge);
 }
 
-.app-shell.theme-blueprint .request-row .var-hover-host {
+.app-shell.chassis-blueprint .request-row .var-hover-host {
   margin-right: 8px;
 }
 
-.app-shell.theme-blueprint .request-row .url-input {
+.app-shell.chassis-blueprint .request-row .url-input {
   height: 34px;
   border-radius: 0 2px 2px 0;
-  background: #060709;
-  border: 1px solid #323846;
-  color: #00e5a3;
+  background: var(--bp-well);
+  border: 1px solid var(--bp-edge);
+  color: var(--bp-telemetry);
   font-weight: 500;
-  box-shadow: inset 0 2px 5px rgba(0, 0, 0, 0.8);
+  box-shadow: var(--bp-inset-shadow);
 }
 
-.app-shell.theme-blueprint .request-row .url-input:focus {
+.app-shell.chassis-blueprint .request-row .url-input:focus {
   border-color: #ff5500;
-  color: #ffffff;
+  color: var(--text);
 }
 
 /* —— 5. RECESSED OLED TELEMETRY GAUGES (Response Meta) —— */
-.app-shell.theme-blueprint .response-pane {
-  background: #13151b;
+.app-shell.chassis-blueprint .response-pane {
+  background: var(--bp-module);
   padding: 8px 12px;
 }
 
-.app-shell.theme-blueprint .response-meta {
-  background: #090a0d;
-  border: 1px solid #252934;
+.app-shell.chassis-blueprint .response-meta {
+  background: var(--bp-well);
+  border: 1px solid var(--bp-edge-sub);
   border-radius: 2px;
   padding: 4px 8px;
   gap: 6px;
   align-items: center;
-  box-shadow: inset 0 2px 5px rgba(0, 0, 0, 0.75);
+  box-shadow: var(--bp-inset-shadow);
 }
 
-.app-shell.theme-blueprint .status-chip {
+.app-shell.chassis-blueprint .status-chip {
   padding: 2px 6px;
   font-size: 11px;
   border-radius: 2px;
 }
 
-.app-shell.theme-blueprint .meta-pair {
-  background: #12151c;
-  border: 1px solid #252934;
+.app-shell.chassis-blueprint .meta-pair {
+  background: var(--bp-module);
+  border: 1px solid var(--bp-edge-sub);
   padding: 2px 6px;
   border-radius: 2px;
   gap: 4px;
 }
 
-.app-shell.theme-blueprint .meta-pair .meta-label {
+.app-shell.chassis-blueprint .meta-pair .meta-label {
   font-size: 8px;
   text-transform: uppercase;
   letter-spacing: 0.08em;
-  color: #6c7486;
+  color: var(--bp-serial);
 }
 
-.app-shell.theme-blueprint .meta-pair .meta-value {
-  color: #00e5a3;
+.app-shell.chassis-blueprint .meta-pair .meta-value {
+  color: var(--bp-telemetry);
   font-family: var(--mono);
   font-weight: 700;
   font-size: 11px;
 }
 
-.app-shell.theme-blueprint .response-meta .btn {
+.app-shell.chassis-blueprint .response-meta .btn {
   height: 22px;
   padding: 0 6px;
   font-size: 10px;
 }
 
-.app-shell.theme-blueprint .response-body {
-  background: #07080a;
-  border: 1px solid #252934;
+.app-shell.chassis-blueprint .response-body {
+  background: var(--bp-well);
+  border: 1px solid var(--bp-edge-sub);
   border-radius: 2px;
-  box-shadow: inset 0 2px 6px rgba(0, 0, 0, 0.8);
+  box-shadow: var(--bp-inset-shadow);
 }
 
 /* —— 6. TACTILE MECHANICAL KEYCAP SWITCHES —— */
-.app-shell.theme-blueprint .btn,
-.app-shell.theme-blueprint .top-link,
-.app-shell.theme-blueprint .top-icon,
-.app-shell.theme-blueprint .env-select-trigger,
-.app-shell.theme-blueprint .theme-picker {
+.app-shell.chassis-blueprint .btn,
+.app-shell.chassis-blueprint .top-link,
+.app-shell.chassis-blueprint .top-icon,
+.app-shell.chassis-blueprint .env-select-trigger,
+.app-shell.chassis-blueprint .theme-picker {
   border-radius: 2px;
   font-family: var(--mono);
   font-size: 11px;
   text-transform: uppercase;
   letter-spacing: 0.05em;
-  background: #1e222b;
-  border: 1px solid #363c4b;
-  border-bottom: 2px solid #060709;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08), 0 1px 2px rgba(0, 0, 0, 0.4);
+  background: var(--bp-keycap);
+  border: 1px solid var(--bp-keycap-border);
+  border-bottom: 2px solid var(--bp-lip);
+  box-shadow: var(--glass-shine), 0 1px 2px rgba(0, 0, 0, 0.25);
   transition: transform 50ms ease, background 90ms ease;
 }
 
-.app-shell.theme-blueprint .btn:hover,
-.app-shell.theme-blueprint .top-link:hover,
-.app-shell.theme-blueprint .top-icon:hover,
-.app-shell.theme-blueprint .env-select-trigger:hover {
-  background: #272c37;
-  border-color: #4c556a;
-  border-bottom-color: #060709;
-  color: var(--white);
+.app-shell.chassis-blueprint .btn:hover,
+.app-shell.chassis-blueprint .top-link:hover,
+.app-shell.chassis-blueprint .top-icon:hover,
+.app-shell.chassis-blueprint .env-select-trigger:hover {
+  background: var(--bp-keycap-hover);
+  border-color: var(--bp-keycap-border-hover);
+  border-bottom-color: var(--bp-lip);
+  color: var(--text);
   transform: none;
 }
 
-.app-shell.theme-blueprint .btn:active,
-.app-shell.theme-blueprint .top-link:active,
-.app-shell.theme-blueprint .top-icon:active {
+.app-shell.chassis-blueprint .btn:active,
+.app-shell.chassis-blueprint .top-link:active,
+.app-shell.chassis-blueprint .top-icon:active {
   transform: translateY(1px);
   border-bottom-width: 1px;
 }
 
 /* International Orange Master Trigger */
-.app-shell.theme-blueprint .btn-send,
-.app-shell.theme-blueprint .btn-primary {
+.app-shell.chassis-blueprint .btn-send,
+.app-shell.chassis-blueprint .btn-primary {
   background: #ff5500;
-  color: #07080a;
+  color: #ffffff;
   font-weight: 800;
   height: 34px;
   border: 1px solid #ff7733;
@@ -5052,86 +5264,88 @@ html:has(.app-shell.theme-blueprint) body {
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.3), 0 2px 8px rgba(255, 85, 0, 0.35);
 }
 
-.app-shell.theme-blueprint .btn-send:hover,
-.app-shell.theme-blueprint .btn-primary:hover {
+.app-shell.chassis-blueprint .btn-send:hover,
+.app-shell.chassis-blueprint .btn-primary:hover {
   background: #ff661a;
   border-color: #ff884d;
   border-bottom-color: #8f2d00;
+  color: #ffffff;
   filter: none;
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.4), 0 3px 12px rgba(255, 85, 0, 0.5);
   transform: none;
 }
 
-.app-shell.theme-blueprint .btn-send:active,
-.app-shell.theme-blueprint .btn-primary:active {
+.app-shell.chassis-blueprint .btn-send:active,
+.app-shell.chassis-blueprint .btn-primary:active {
   transform: translateY(2px);
   border-bottom-width: 1px;
 }
 
-.app-shell.theme-blueprint .btn-save {
-  background: #181c24;
-  color: #ff6a1a;
+.app-shell.chassis-blueprint .btn-save {
+  background: var(--bp-keycap);
+  color: var(--spot-green-bright);
   border: 1px solid rgba(255, 85, 0, 0.45);
-  border-bottom: 2px solid #060709;
+  border-bottom: 2px solid var(--bp-lip);
 }
 
 /* —— 7. SIDEBAR TREE, KV SPEC SHEET & CONSOLE —— */
-.app-shell.theme-blueprint .sidebar-search,
-.app-shell.theme-blueprint input[type="text"]:not(.url-input):not(.tab-name),
-.app-shell.theme-blueprint input[type="password"],
-.app-shell.theme-blueprint input[type="number"],
-.app-shell.theme-blueprint textarea {
-  background: #07080a;
-  border: 1px solid #252934;
+.app-shell.chassis-blueprint .sidebar-search,
+.app-shell.chassis-blueprint input[type="text"]:not(.url-input):not(.tab-name),
+.app-shell.chassis-blueprint input[type="password"],
+.app-shell.chassis-blueprint input[type="number"],
+.app-shell.chassis-blueprint textarea {
+  background: var(--bp-well);
+  border: 1px solid var(--bp-edge-sub);
   border-radius: 2px;
-  box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.65);
+  box-shadow: var(--bp-inset-shadow);
   font-family: var(--mono);
+  color: var(--text);
 }
 
-.app-shell.theme-blueprint .sidebar h3,
-.app-shell.theme-blueprint .sidebar .type-label {
+.app-shell.chassis-blueprint .sidebar h3,
+.app-shell.chassis-blueprint .sidebar .type-label {
   font-family: var(--mono);
   font-size: 10px;
   letter-spacing: 0.14em;
-  color: #788091;
+  color: var(--bp-serial);
 }
 
-.app-shell.theme-blueprint .tree-row {
+.app-shell.chassis-blueprint .tree-row {
   border-radius: 2px;
   border-left: 2px solid transparent;
   font-family: var(--mono);
   font-size: 12px;
 }
 
-.app-shell.theme-blueprint .tree-row:hover {
-  background: rgba(255, 255, 255, 0.04);
-  border-left-color: #454c5e;
+.app-shell.chassis-blueprint .tree-row:hover {
+  background: var(--bg-hover);
+  border-left-color: var(--bp-edge);
 }
 
-.app-shell.theme-blueprint .tree-row.active {
+.app-shell.chassis-blueprint .tree-row.active {
   background: rgba(255, 85, 0, 0.12);
   border-color: rgba(255, 85, 0, 0.28);
   border-left: 3px solid #ff5500;
   box-shadow: none;
 }
 
-.app-shell.theme-blueprint .method-badge {
+.app-shell.chassis-blueprint .method-badge {
   border-radius: 2px;
   font-weight: 800;
   letter-spacing: 0.06em;
   box-shadow: none;
 }
 
-.app-shell.theme-blueprint .builder-tabs,
-.app-shell.theme-blueprint .response-tabs {
-  background: #0d0f14;
-  border-bottom: 1px solid #252934;
+.app-shell.chassis-blueprint .builder-tabs,
+.app-shell.chassis-blueprint .response-tabs {
+  background: var(--bp-header);
+  border-bottom: 1px solid var(--bp-edge-sub);
   padding: 4px 10px;
   gap: 4px;
 }
 
-.app-shell.theme-blueprint .builder-tab,
-.app-shell.theme-blueprint .response-tab {
+.app-shell.chassis-blueprint .builder-tab,
+.app-shell.chassis-blueprint .response-tab {
   font-family: var(--mono);
   font-size: 10px;
   letter-spacing: 0.08em;
@@ -5140,65 +5354,66 @@ html:has(.app-shell.theme-blueprint) body {
   border: 1px solid transparent;
 }
 
-.app-shell.theme-blueprint .builder-tab.active,
-.app-shell.theme-blueprint .response-tab.active {
-  color: #090a0d;
+.app-shell.chassis-blueprint .builder-tab.active,
+.app-shell.chassis-blueprint .response-tab.active {
+  color: #ffffff;
   background: #ff5500;
   border-color: #ff7733;
   font-weight: 800;
 }
 
-.app-shell.theme-blueprint .builder-tab.active::after,
-.app-shell.theme-blueprint .response-tab.active::after {
+.app-shell.chassis-blueprint .builder-tab.active::after,
+.app-shell.chassis-blueprint .response-tab.active::after {
   display: none;
 }
 
-.app-shell.theme-blueprint .kv-table th,
-.app-shell.theme-blueprint .kv-table td {
-  border: 1px solid #222630;
+.app-shell.chassis-blueprint .kv-table th,
+.app-shell.chassis-blueprint .kv-table td {
+  border: 1px solid var(--bp-edge-sub);
   padding: 4px 8px;
 }
 
-.app-shell.theme-blueprint .kv-table th {
-  background: #0d0f14;
+.app-shell.chassis-blueprint .kv-table th {
+  background: var(--bp-header);
   font-family: var(--mono);
   font-size: 10px;
   text-transform: uppercase;
   letter-spacing: 0.1em;
 }
 
-.app-shell.theme-blueprint .console-wrap {
-  background: #13151b;
-  border: 1px solid #2b303c;
+.app-shell.chassis-blueprint .console-wrap {
+  background: var(--bp-module);
+  border: 1px solid var(--bp-edge);
   border-radius: 3px;
 }
 
-.app-shell.theme-blueprint .console-body {
-  background: #07080a;
-  border-top: 1px solid #252934;
+.app-shell.chassis-blueprint .console-body {
+  background: var(--bp-well);
+  color: var(--text);
+  border-top: 1px solid var(--bp-edge-sub);
 }
 
-.app-shell.theme-blueprint .status-line {
-  background: #0d0f14;
-  border: 1px solid #252934;
+.app-shell.chassis-blueprint .status-line {
+  background: var(--bp-header);
+  border: 1px solid var(--bp-edge-sub);
   border-radius: 2px;
   padding: 4px 12px;
-  color: #8c93a4;
+  color: var(--text-muted);
 }
 
-.app-shell.theme-blueprint .modal,
-.app-shell.theme-blueprint .menu-dropdown,
-.app-shell.theme-blueprint .ctx-menu {
-  background: #14161c;
-  border: 1px solid #3a4050;
+.app-shell.chassis-blueprint .modal,
+.app-shell.chassis-blueprint .menu-dropdown,
+.app-shell.chassis-blueprint .ctx-menu {
+  background: var(--bp-module);
+  border: 1px solid var(--bp-edge);
   border-top: 2px solid #ff5500;
   border-radius: 3px;
-  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.8);
+  box-shadow: var(--bp-shadow);
 }
 
-.app-shell.theme-blueprint .settings-card {
-  background: #101217;
-  border: 1px solid #252934;
+.app-shell.chassis-blueprint .settings-card {
+  background: var(--bp-header);
+  border: 1px solid var(--bp-edge-sub);
   border-radius: 2px;
   box-shadow: none;
 }
@@ -6094,3 +6309,230 @@ mark.search-match {
     box-shadow: 0 0 10px 2px rgba(30, 215, 96, 0.25);
   }
 }
+
+/* =========================================================================
+   COMMAND PALETTE (⌘K / ⌘⇧P) & RESPONSE DIFF
+   ========================================================================= */
+.modal.palette-modal {
+  max-width: 660px;
+  width: 92vw;
+  padding: 0;
+  overflow: hidden;
+}
+
+.palette-container {
+  display: flex;
+  flex-direction: column;
+  max-height: 70vh;
+}
+
+.palette-search-wrap {
+  padding: 12px 14px;
+  border-bottom: var(--glass-border);
+  background: rgba(0, 0, 0, 0.18);
+}
+
+.palette-search-input {
+  width: 100%;
+  padding: 9px 12px;
+  font-size: 14px;
+  background: var(--bg-elevated);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: var(--radius);
+  color: var(--text);
+  outline: none;
+}
+
+.palette-search-input:focus {
+  border-color: var(--spot-green-bright);
+  box-shadow: var(--focus-ring);
+}
+
+.palette-list {
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  padding: 6px;
+  gap: 2px;
+  max-height: 54vh;
+}
+
+.palette-empty {
+  padding: 20px;
+  text-align: center;
+}
+
+.palette-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  padding: 8px 10px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+  transition: background 90ms ease, border-color 90ms ease;
+}
+
+.palette-item:hover,
+.palette-item.active {
+  background: var(--accent-soft);
+  border-color: rgba(29, 185, 84, 0.35);
+}
+
+.palette-item-main {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  flex: 1;
+}
+
+.palette-category {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-dim);
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.05);
+  flex-shrink: 0;
+}
+
+.palette-title {
+  font-weight: 600;
+  font-size: 13px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.palette-item-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+  max-width: 45%;
+}
+
+.palette-subtitle {
+  font-size: 11px;
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.palette-kbd {
+  font-family: var(--mono);
+  font-size: 10px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  color: var(--text);
+}
+
+/* Response Diff Viewer */
+.response-diff-pane {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex: 1;
+  min-height: 0;
+}
+
+.response-diff-toolbar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 6px 8px;
+  background: var(--bg-elevated);
+  border: var(--glass-border);
+  border-radius: var(--radius-sm);
+}
+
+.response-diff-select {
+  padding: 4px 8px;
+  font-size: 12px;
+  background: var(--bg-panel);
+  border: var(--glass-border);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+}
+
+.response-diff-summary {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+}
+
+.diff-badge {
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 7px;
+  border-radius: 4px;
+}
+
+.diff-badge-neutral {
+  background: rgba(255, 255, 255, 0.07);
+  color: var(--text-muted);
+}
+
+.diff-badge-add {
+  background: rgba(35, 209, 139, 0.16);
+  color: var(--ok);
+}
+
+.diff-badge-del {
+  background: rgba(241, 76, 76, 0.16);
+  color: var(--err);
+}
+
+.response-diff-lines {
+  font-family: var(--mono);
+  font-size: var(--fs-editor);
+  line-height: 1.45;
+  background: var(--bg-elevated);
+  border: var(--glass-border);
+  border-radius: var(--radius-sm);
+  overflow: auto;
+  max-height: 460px;
+  padding: 6px 0;
+}
+
+.diff-line {
+  display: flex;
+  padding: 1px 10px;
+  white-space: pre;
+}
+
+.diff-sign {
+  width: 18px;
+  flex-shrink: 0;
+  user-select: none;
+  font-weight: 700;
+}
+
+.diff-line-same {
+  color: var(--text-muted);
+}
+
+.diff-line-add {
+  background: rgba(35, 209, 139, 0.12);
+  color: var(--ok);
+}
+
+.diff-line-del {
+  background: rgba(241, 76, 76, 0.12);
+  color: var(--err);
+}
+

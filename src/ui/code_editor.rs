@@ -249,7 +249,6 @@ pub fn MultilineCodeField(
             onkeyup: {
                 let value = value.clone();
                 let vars = vars.clone();
-                let field_id = field_id.clone();
                 move |_| {
                     let value = value.clone();
                     let vars = vars.clone();
@@ -270,7 +269,6 @@ pub fn MultilineCodeField(
             onclick: {
                 let value = value.clone();
                 let vars = vars.clone();
-                let field_id = field_id.clone();
                 move |_| {
                     let value = value.clone();
                     let vars = vars.clone();
@@ -324,7 +322,6 @@ pub fn MultilineCodeField(
                                 let open = m.open_at;
                                 let id = field_id();
                                 let value = value_for_fallback.clone();
-                                let on_change = on_change.clone();
                                 spawn(async move {
                                     if let Some((caret, _, _)) = read_field_caret_anchor(&id).await {
                                         let (new_text, new_caret) =
@@ -373,7 +370,6 @@ pub fn MultilineCodeField(
                                 let snippet = snippet.clone();
                                 let id = field_id();
                                 let value = value_for_fallback.clone();
-                                let on_change = on_change.clone();
                                 spawn(async move {
                                     if let Some((caret, _, _)) = read_field_caret_anchor(&id).await {
                                         let (new_text, new_caret) =
@@ -394,7 +390,6 @@ pub fn MultilineCodeField(
                     evt.prevent_default();
                     let shift = evt.modifiers().shift();
                     let fallback = value_for_fallback.clone();
-                    let on_change = on_change.clone();
                     let id = field_id();
                     spawn(async move {
                         let (text, start, end) = match read_textarea_state_by_id(&id).await {
@@ -461,7 +456,6 @@ pub fn MultilineCodeField(
                 }
                 evt.prevent_default();
                 let fallback = value_for_fallback.clone();
-                let on_change = on_change.clone();
                 let id = field_id();
                 spawn(async move {
                     let (text, start, end) = match read_textarea_state_by_id(&id).await {
@@ -501,14 +495,11 @@ pub fn MultilineCodeField(
                     VarSuggestDropdown {
                         menu: menu.clone(),
                         on_pick: {
-                            let field_id = field_id.clone();
                             let value = value.clone();
-                            let on_change = on_change.clone();
                             move |item: VariableSuggestion| {
                                 let open = var_menu().map(|m| m.open_at).unwrap_or(0);
                                 let id = field_id();
                                 let value = value.clone();
-                                let on_change = on_change.clone();
                                 spawn(async move {
                                     if let Some((caret, _, _)) = read_field_caret_anchor(&id).await {
                                         let (new_text, new_caret) =
@@ -537,13 +528,10 @@ pub fn MultilineCodeField(
                                 onclick: {
                                     let snippet = menu.items[idx].1.clone();
                                     let start = menu.replace_start;
-                                    let field_id = field_id.clone();
                                     let value = value.clone();
-                                    let on_change = on_change.clone();
                                     move |_| {
                                         let id = field_id();
                                         let value = value.clone();
-                                        let on_change = on_change.clone();
                                         let snippet = snippet.clone();
                                         spawn(async move {
                                             if let Some((caret, _, _)) = read_field_caret_anchor(&id).await {

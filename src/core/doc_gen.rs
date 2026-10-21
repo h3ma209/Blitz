@@ -529,9 +529,11 @@ mod tests {
         col.description = "Test Description".into();
 
         let mut folder = Folder::new("Authentication");
-        let mut req = RequestDraft::default();
-        req.name = "Get Users".into();
-        req.url = "https://api.example.com/users".into();
+        let req = RequestDraft {
+            name: "Get Users".into(),
+            url: "https://api.example.com/users".into(),
+            ..Default::default()
+        };
         folder.items.push(CollectionItem::Request(req));
         col.items.push(CollectionItem::Folder(folder));
 
@@ -549,9 +551,11 @@ mod tests {
         let mut col = Collection::new("Petstore API");
         col.description = "Swagger UI Export Test".into();
 
-        let mut req = RequestDraft::default();
-        req.name = "List Pets".into();
-        req.url = "https://petstore.example.com/pets".into();
+        let req = RequestDraft {
+            name: "List Pets".into(),
+            url: "https://petstore.example.com/pets".into(),
+            ..Default::default()
+        };
         col.items.push(CollectionItem::Request(req));
 
         let html = generate_swagger_ui_html(&col).expect("swagger export");

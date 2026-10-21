@@ -9,6 +9,7 @@ use tokio::sync::mpsc;
 use tokio_tungstenite::{connect_async, tungstenite::Message};
 
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub enum WsSessionEvent {
     Opened,
     Message(String),

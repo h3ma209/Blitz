@@ -103,16 +103,15 @@ async fn subscribe_async(
         log.push(format!("graphql-ws ← {ty}: {}", truncate(&text, 300)));
 
         match ty {
-            "connection_ack" => {
-                if !started {
-                    let _ = ws.send(Message::Text(subscribe.to_string().into())).await;
-                    let _ = ws
-                        .send(Message::Text(legacy_start.to_string().into()))
-                        .await;
-                    started = true;
-                    log.push("graphql-ws: subscribe sent".into());
-                }
+            "connection_ack" if !started => {
+                let _ = ws.send(Message::Text(subscribe.to_string().into())).await;
+                let _ = ws
+                    .send(Message::Text(legacy_start.to_string().into()))
+                    .await;
+                started = true;
+                log.push("graphql-ws: subscribe sent".into());
             }
+            "connection_ack" => {}
             "next" | "data" | "error" | "complete" => {
                 events += 1;
                 if ty == "complete" || events >= max_events {

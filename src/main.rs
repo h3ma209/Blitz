@@ -33,7 +33,7 @@ fn main() {
                 .with_inner_size(dioxus::desktop::tao::dpi::LogicalSize::new(1280.0, 820.0))
                 .with_min_inner_size(dioxus::desktop::tao::dpi::LogicalSize::new(840.0, 560.0))
         )
-        .with_custom_head(format!("<style>{}</style>", brand::STYLES_CSS));
+        .with_custom_head(format!("<style>{}</style>", brand::STYLES_CSS.as_str()));
 
     dioxus::LaunchBuilder::desktop()
         .with_cfg(cfg)

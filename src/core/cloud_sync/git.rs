@@ -27,6 +27,7 @@ pub struct SyncResult {
 }
 
 /// `true` if `git --version` succeeds.
+#[cfg(test)]
 pub fn git_available() -> bool {
     Command::new("git")
         .arg("--version")
@@ -407,6 +408,7 @@ pub fn push_commit(cwd: &Path, message: &str) -> Result<SyncResult, CloudGitErro
 }
 
 /// Pull --rebase, then push current HEAD (never force). Caller handles export/commit/import.
+#[allow(dead_code)]
 pub fn sync_pull_push(cwd: &Path) -> Result<SyncResult, CloudGitError> {
     let pull = pull_rebase(cwd)?;
     if !pull.ok {
@@ -693,54 +695,34 @@ pub fn get_team_activity(cwd: &Path, limit_commits: usize) -> Result<TeamActivit
     let raw_remote_url = run_git(cwd, &["remote", "get-url", "origin"]).unwrap_or_default();
     let remote_url = mask_remote_url(&raw_remote_url);
 
-    // 1. Members via `git shortlog -sn --all`
-    let mut members = Vec::new();
-    if let Ok(shortlog) = run_git(cwd, &["shortlog", "-sne", "--all"]) {
-        for line in shortlog.lines() {
+    // 1. Members via `git log --all --format=%an|%ae|%cr` (works even without a TTY on Windows CI)
+    let mut members: Vec<TeamMember> = Vec::new();
+    if let Ok(authors_log) = run_git(cwd, &["log", "--all", "--format=%an|%ae|%cr"]) {
+        for line in authors_log.lines() {
             let line = line.trim();
             if line.is_empty() {
                 continue;
             }
-            // format: "  12\tAlice Bob <alice@example.com>"
-            let mut parts = line.splitn(2, '\t');
-            let count_str = parts.next().unwrap_or("0").trim();
-            let count: usize = count_str.parse().unwrap_or(0);
-            if let Some(author_email) = parts.next() {
-                let name = if let Some(idx) = author_email.find('<') {
-                    author_email[..idx].trim().to_string()
-                } else {
-                    author_email.trim().to_string()
-                };
-                let email = if let (Some(start), Some(end)) = (author_email.find('<'), author_email.find('>')) {
-                    if start < end {
-                        author_email[start + 1..end].trim().to_string()
-                    } else {
-                        String::new()
-                    }
-                } else {
-                    String::new()
-                };
+            let parts: Vec<&str> = line.splitn(3, '|').collect();
+            if parts.len() < 3 {
+                continue;
+            }
+            let name = parts[0].trim().to_string();
+            let email = parts[1].trim().to_string();
+            let date = parts[2].trim().to_string();
 
-                // Find last active date for this author
-                let last_active = run_git(
-                    cwd,
-                    &[
-                        "log",
-                        "-1",
-                        &format!("--author={}", name),
-                        "--format=%cr",
-                    ],
-                )
-                .unwrap_or_else(|_| "recently".into());
-
+            if let Some(existing) = members.iter_mut().find(|m| m.name == name && m.email == email) {
+                existing.commit_count += 1;
+            } else {
                 members.push(TeamMember {
                     name,
                     email,
-                    commit_count: count,
-                    last_active,
+                    commit_count: 1,
+                    last_active: date,
                 });
             }
         }
+        members.sort_by_key(|b| std::cmp::Reverse(b.commit_count));
     }
 
     // 2. Recent commits via `git log -n {limit} --name-only --format=%H|%an|%ae|%cr|%s`
@@ -823,6 +805,9 @@ mod tests {
     use std::time::{SystemTime, UNIX_EPOCH};
 
     fn temp_git_repo() -> std::path::PathBuf {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        static COUNTER: AtomicUsize = AtomicUsize::new(0);
+        let seq = COUNTER.fetch_add(1, Ordering::Relaxed);
         let nanos = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap()
@@ -833,7 +818,7 @@ mod tests {
         let base = Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("target")
             .join("test-tmp")
-            .join(format!("blitz-git-{nanos}"));
+            .join(format!("blitz-git-{nanos}-{seq}"));
         let root = base.join("wt");
         let git_meta = base.join("git-meta");
         fs::create_dir_all(&root).unwrap();

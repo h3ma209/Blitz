@@ -2,7 +2,9 @@
 //!
 //! See `core/sandbox.rs` for supported `blitz.*` surface.
 
+#[cfg(test)]
 use regex::Regex;
+#[cfg(test)]
 use std::sync::OnceLock;
 
 use super::request::TestResult;
@@ -24,6 +26,7 @@ pub struct ScriptRunOutcome {
 }
 
 /// Run pre-request or test script via JS sandbox.
+#[cfg(test)]
 pub fn run_script(
     script: &str,
     phase: &str,
@@ -60,6 +63,7 @@ pub fn run_script_ex(
 }
 
 /// Legacy regex helpers (kept for tests / tiny scripts without full JS needs).
+#[cfg(test)]
 pub fn run_script_helpers(
     script: &str,
     phase: &str,

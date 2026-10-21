@@ -17,8 +17,6 @@ pub enum StorageError {
     Io(#[from] std::io::Error),
     #[error("json: {0}")]
     Json(#[from] serde_json::Error),
-    #[error("path: {0}")]
-    Path(String),
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -223,9 +221,11 @@ mod tests {
         let root = temp_root();
         let store = JsonStore::open(&root).unwrap();
         let mut snap = JsonStore::default_snapshot();
-        let mut draft = RequestDraft::default();
-        draft.name = "persisted".into();
-        draft.url = "https://example.com/x".into();
+        let draft = RequestDraft {
+            name: "persisted".into(),
+            url: "https://example.com/x".into(),
+            ..Default::default()
+        };
         snap.collections[0].add_request(draft.clone());
         snap.active_request_id = Some(draft.id);
         store.save(&snap).unwrap();

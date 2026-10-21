@@ -8,6 +8,7 @@ fn theme_value(theme: UiTheme) -> &'static str {
         UiTheme::Spotify => "spotify",
         UiTheme::Obsidian => "obsidian",
         UiTheme::Blueprint => "blueprint",
+        UiTheme::BlueprintLight => "blueprint_light",
         UiTheme::Slate => "slate",
         UiTheme::Light => "light",
         UiTheme::HighContrast => "high_contrast",
@@ -32,6 +33,7 @@ pub fn ThemeSelector(theme: UiTheme, on_change: EventHandler<UiTheme>) -> Elemen
                     let next = match evt.value().as_str() {
                         "obsidian" => UiTheme::Obsidian,
                         "blueprint" => UiTheme::Blueprint,
+                        "blueprint_light" => UiTheme::BlueprintLight,
                         "slate" => UiTheme::Slate,
                         "light" => UiTheme::Light,
                         "high_contrast" => UiTheme::HighContrast,

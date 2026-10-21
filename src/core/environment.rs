@@ -115,18 +115,11 @@ pub fn ensure_default_environments(environments: &mut Vec<Environment>) -> bool 
     changed
 }
 
-pub fn find_environment<'a>(
-    environments: &'a [Environment],
+pub fn find_environment(
+    environments: &[Environment],
     id: Option<Uuid>,
-) -> Option<&'a Environment> {
+) -> Option<&Environment> {
     id.and_then(|id| environments.iter().find(|e| e.id == id))
-}
-
-pub fn find_environment_by_name<'a>(
-    environments: &'a [Environment],
-    name: &str,
-) -> Option<&'a Environment> {
-    environments.iter().find(|e| e.name == name)
 }
 
 /// Import Postman environment export JSON (`{ "name", "values": [{key,value,enabled,type}] }`).

@@ -9,6 +9,7 @@ use reqwest::blocking::Client;
 pub struct SseEvent {
     pub event: String,
     pub data: String,
+    #[allow(dead_code)]
     pub id: String,
 }
 

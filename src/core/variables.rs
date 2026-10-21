@@ -88,16 +88,8 @@ pub fn snap_to_char_boundary(text: &str, mut index: usize) -> usize {
     index
 }
 
-/// Convert a character index (count of Unicode scalar values) into a UTF-8 byte offset.
-/// If `char_idx` exceeds character count, returns `text.len()`.
-pub fn char_index_to_byte_offset(text: &str, char_idx: usize) -> usize {
-    text.char_indices()
-        .nth(char_idx)
-        .map(|(byte_idx, _)| byte_idx)
-        .unwrap_or(text.len())
-}
-
 /// Convert a UTF-16 code unit offset (e.g. from DOM `selectionStart`) to UTF-8 byte offset.
+#[cfg(test)]
 pub fn utf16_offset_to_byte_offset(text: &str, utf16_offset: usize) -> usize {
     let mut u16_count = 0;
     for (byte_idx, ch) in text.char_indices() {
@@ -113,12 +105,7 @@ pub fn utf16_offset_to_byte_offset(text: &str, utf16_offset: usize) -> usize {
 /// Index may equal `end` (caret after closing `}}`).
 pub fn find_var_at(text: &str, index: usize) -> Option<VarSpan> {
     let index = snap_to_char_boundary(text, index);
-    for span in iter_var_spans(text) {
-        if index >= span.start && index <= span.end {
-            return Some(span);
-        }
-    }
-    None
+    iter_var_spans(text).find(|span| index >= span.start && index <= span.end)
 }
 
 /// Caret is inside an incomplete `{{…}}` token → `(byte index of `{`, partial name)`.
@@ -288,7 +275,7 @@ impl VariableContext {
             });
         }
 
-        out.sort_by(|a, b| a.label.to_lowercase().cmp(&b.label.to_lowercase()));
+        out.sort_by_key(|a| a.label.to_lowercase());
         out
     }
 

@@ -3,11 +3,11 @@
 mod assertions_editor;
 mod code_editor;
 mod collection_editor;
+pub(crate) mod command_palette;
 mod comment_toggle;
 mod conflict_resolver;
 mod console_panel;
 mod dismiss_backdrop;
-mod env_manager;
 mod env_selector;
 mod json_highlight;
 mod js_highlight;

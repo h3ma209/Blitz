@@ -82,6 +82,7 @@ pub struct SandboxExecution {
 }
 
 /// Run script in boa with a minimal `pm` + `console` host.
+#[cfg(test)]
 pub fn run_js_sandbox(
     script: &str,
     phase: &str,

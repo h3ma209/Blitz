@@ -716,29 +716,14 @@ fn method_from(m: HttpMethod) -> reqwest::Method {
 ///
 /// Mutates `ctx` in place so `blitz.environment` / `blitz.collectionVariables` / globals
 /// side-effects from scripts are visible to the caller (Postman semantics).
+#[cfg(test)]
 pub fn send_request(draft: &RequestDraft, ctx: &mut VariableContext) -> SendResult {
     send_request_with_options(draft, ctx, SendOptions::default())
 }
 
-/// Like [`send_request`], but uses an explicit secrets backend when provided.
-pub fn send_request_with_secrets(
-    draft: &RequestDraft,
-    ctx: &mut VariableContext,
-    secrets_store: Option<&dyn SecretsStore>,
-) -> SendResult {
-    send_request_with_options(
-        draft,
-        ctx,
-        SendOptions {
-            secrets_store,
-            ..Default::default()
-        },
-    )
-}
-
 pub fn send_request_with_options(
     draft: &RequestDraft,
-    mut ctx: &mut VariableContext,
+    ctx: &mut VariableContext,
     mut opts: SendOptions<'_>,
 ) -> SendResult {
     let mut log = Vec::new();
@@ -801,7 +786,7 @@ pub fn send_request_with_options(
         let pre = run_script_ex(
             script,
             &format!("pre-request/inherited-{i}"),
-            &mut ctx,
+            ctx,
             None,
             &extras,
         );
@@ -822,7 +807,7 @@ pub fn send_request_with_options(
     let pre = run_script_ex(
         &draft.pre_request_script,
         "pre-request",
-        &mut ctx,
+        ctx,
         None,
         &extras,
     );
@@ -863,7 +848,7 @@ pub fn send_request_with_options(
     }
 
     // 2. Variable + vault resolution
-    let mut resolved = resolve_draft(draft, &ctx, secrets_ref);
+    let mut resolved = resolve_draft(draft, ctx, secrets_ref);
     log.push("vars: resolved {{…}} / {{vault:…}}".into());
 
     // 2a. Headers from blitz.request.headers.upsert (pre-request scripts)
@@ -1148,7 +1133,7 @@ pub fn send_request_with_options(
     let mut test_results: Vec<TestResult> = Vec::new();
     let mut visualizer_html = String::new();
     let mut run_post = |script: &str, phase: &str| {
-        let tests = run_script_ex(script, phase, &mut ctx, Some(&sandbox_resp), &extras);
+        let tests = run_script_ex(script, phase, ctx, Some(&sandbox_resp), &extras);
         log.extend(tests.messages.iter().cloned());
         console.extend(tests.messages.iter().cloned());
         if let Some(err) = tests.error {

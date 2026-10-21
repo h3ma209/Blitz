@@ -86,6 +86,7 @@ fn pkcs12_to_pem(der: &[u8], passphrase: &str, src: &str) -> Result<Vec<u8>, Str
 }
 
 /// True when path looks like PKCS#12.
+#[cfg(test)]
 pub fn looks_like_pkcs12(path: &str) -> bool {
     let p = Path::new(path);
     p.extension()

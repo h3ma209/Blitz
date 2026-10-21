@@ -1,0 +1,7 @@
+SIL OPEN FONT LICENSE (OFL-1.1)
+
+Inter Variable Font — Copyright (c) 2016-present The Inter Project Authors (https://github.com/rsms/inter)
+JetBrains Mono Variable Font — Copyright (c) 2020-present JetBrains s.r.o. (https://github.com/JetBrains/JetBrainsMono)
+
+Licensed under the SIL Open Font License, Version 1.1.
+This license is available with a FAQ at: https://scripts.sil.org/OFL

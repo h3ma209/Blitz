@@ -241,6 +241,7 @@ fn value_to_json(v: &Value) -> JsonValue {
 
 /// Server-streaming stub: sends unary request, reads multiple gRPC frames from response body.
 /// Full client/bidi streaming + reflection require `.proto` / tonic — documented gap.
+#[allow(dead_code)]
 pub fn grpc_server_stream_stub(
     endpoint: &str,
     method: &str,

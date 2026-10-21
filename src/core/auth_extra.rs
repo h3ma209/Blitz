@@ -435,14 +435,6 @@ fn base64_encode(bytes: &[u8]) -> String {
     base64::engine::general_purpose::STANDARD.encode(bytes)
 }
 
-/// Whether auth type needs the `extra` field UI.
-pub fn auth_uses_extra(t: AuthType) -> bool {
-    matches!(
-        t,
-        AuthType::Oauth1 | AuthType::Hawk | AuthType::AwsSigV4 | AuthType::EdgeGrid | AuthType::Ntlm
-    )
-}
-
 /// Human labels for AuthConfig (pipeline logs).
 pub fn auth_type_label(t: AuthType) -> &'static str {
     match t {
@@ -468,8 +460,10 @@ mod tests {
 
     #[test]
     fn oauth1_sets_authorization() {
-        let mut d = RequestDraft::default();
-        d.url = "https://api.example.com/resource".into();
+        let mut d = RequestDraft {
+            url: "https://api.example.com/resource".into(),
+            ..Default::default()
+        };
         d.auth.auth_type = AuthType::Oauth1;
         d.auth.extra = AuthExtra {
             key: "ck".into(),
@@ -489,8 +483,10 @@ mod tests {
 
     #[test]
     fn hawk_sets_authorization() {
-        let mut d = RequestDraft::default();
-        d.url = "https://example.com/resource".into();
+        let mut d = RequestDraft {
+            url: "https://example.com/resource".into(),
+            ..Default::default()
+        };
         d.auth.auth_type = AuthType::Hawk;
         d.auth.extra.key = "dh37fgj492je".into();
         d.auth.extra.secret = "werxhqb98rpaxn39848xrunpaw3489ruxnpa98w4rxn".into();
@@ -504,9 +500,11 @@ mod tests {
 
     #[test]
     fn aws_sigv4_sets_authorization() {
-        let mut d = RequestDraft::default();
-        d.method = crate::core::request::HttpMethod::Get;
-        d.url = "https://service.region.amazonaws.com/path".into();
+        let mut d = RequestDraft {
+            method: crate::core::request::HttpMethod::Get,
+            url: "https://service.region.amazonaws.com/path".into(),
+            ..Default::default()
+        };
         d.auth.auth_type = AuthType::AwsSigV4;
         d.auth.extra.key = "AKID".into();
         d.auth.extra.secret = "secret".into();

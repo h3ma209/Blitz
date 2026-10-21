@@ -40,10 +40,6 @@ impl VarSuggestMenu {
         })
     }
 
-    pub fn is_open(&self) -> bool {
-        !self.items.is_empty() || self.filter.is_empty()
-    }
-
     pub fn move_selection(&mut self, delta: isize) {
         if self.items.is_empty() {
             return;

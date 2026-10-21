@@ -145,9 +145,7 @@ fn wait_for_loopback_code(redirect_uri: &str, timeout: Duration) -> Result<Strin
                     .unwrap_or("")
                     .split('&')
                     .find_map(|p| {
-                        let mut kv = p.splitn(2, '=');
-                        let k = kv.next()?;
-                        let v = kv.next()?;
+                        let (k, v) = p.split_once('=')?;
                         (k == "code").then(|| v.to_string())
                     });
                 let html = if code.is_some() {
@@ -173,7 +171,7 @@ fn open_browser(url: &str) -> Result<(), OAuthError> {
             .arg(url)
             .spawn()
             .map_err(|e| OAuthError::Msg(e.to_string()))?;
-        return Ok(());
+        Ok(())
     }
     #[cfg(target_os = "linux")]
     {
@@ -181,7 +179,7 @@ fn open_browser(url: &str) -> Result<(), OAuthError> {
             .arg(url)
             .spawn()
             .map_err(|e| OAuthError::Msg(e.to_string()))?;
-        return Ok(());
+        Ok(())
     }
     #[cfg(target_os = "windows")]
     {
@@ -189,7 +187,7 @@ fn open_browser(url: &str) -> Result<(), OAuthError> {
             .args(["/C", "start", url])
             .spawn()
             .map_err(|e| OAuthError::Msg(e.to_string()))?;
-        return Ok(());
+        Ok(())
     }
     #[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "windows")))]
     {

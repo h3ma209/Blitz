@@ -12,12 +12,15 @@ use uuid::Uuid;
 
 #[derive(Debug, Clone)]
 pub struct CapturedRequest {
+    #[allow(dead_code)]
     pub id: Uuid,
     pub method: String,
     pub url: String,
     pub status: Option<u16>,
     pub elapsed_ms: Option<u128>,
+    #[allow(dead_code)]
     pub at: String,
+    #[allow(dead_code)]
     pub error: Option<String>,
 }
 
@@ -35,10 +38,6 @@ impl CaptureProxyHandle {
         if let Some(j) = self.join.take() {
             let _ = j.join();
         }
-    }
-
-    pub fn drain_log(&self) -> Vec<CapturedRequest> {
-        self.log.lock().map(|mut g| g.drain(..).collect()).unwrap_or_default()
     }
 
     pub fn snapshot(&self) -> Vec<CapturedRequest> {

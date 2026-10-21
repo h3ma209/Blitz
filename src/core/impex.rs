@@ -96,37 +96,38 @@ fn import_items(val: &Value) -> Result<Vec<CollectionItem>, ImpexError> {
 }
 
 fn import_request(item: &Value) -> Result<RequestDraft, ImpexError> {
-    let mut draft = RequestDraft::default();
-    draft.id = item
-        .get("id")
-        .or_else(|| item.get("_postman_id"))
-        .or_else(|| item.get("_blitz_id"))
-        .and_then(|v| v.as_str())
-        .and_then(|s| Uuid::parse_str(s).ok())
-        .unwrap_or_else(Uuid::new_v4);
-    draft.name = item
-        .get("name")
-        .and_then(|v| v.as_str())
-        .unwrap_or("Request")
-        .to_string();
-    draft.description = item
-        .get("request")
-        .and_then(|r| r.get("description"))
-        .and_then(|d| d.as_str())
-        .or_else(|| item.get("description").and_then(|d| d.as_str()))
-        .unwrap_or("")
-        .to_string();
-
     let req = item
         .get("request")
         .ok_or_else(|| ImpexError::Json("missing request".into()))?;
 
-    draft.method = parse_method(
-        req.get("method")
+    let mut draft = RequestDraft {
+        id: item
+            .get("id")
+            .or_else(|| item.get("_postman_id"))
+            .or_else(|| item.get("_blitz_id"))
             .and_then(|v| v.as_str())
-            .unwrap_or("GET"),
-    );
-    draft.url = url_from_postman(req.get("url"));
+            .and_then(|s| Uuid::parse_str(s).ok())
+            .unwrap_or_else(Uuid::new_v4),
+        name: item
+            .get("name")
+            .and_then(|v| v.as_str())
+            .unwrap_or("Request")
+            .to_string(),
+        description: item
+            .get("request")
+            .and_then(|r| r.get("description"))
+            .and_then(|d| d.as_str())
+            .or_else(|| item.get("description").and_then(|d| d.as_str()))
+            .unwrap_or("")
+            .to_string(),
+        method: parse_method(
+            req.get("method")
+                .and_then(|v| v.as_str())
+                .unwrap_or("GET"),
+        ),
+        url: url_from_postman(req.get("url")),
+        ..Default::default()
+    };
 
     if let Some(headers) = req.get("header").and_then(|v| v.as_array()) {
         draft.headers = headers
@@ -668,22 +669,12 @@ pub fn bundled_postman_collections() -> Vec<Collection> {
     super::collection::demo_collections()
 }
 
-/// Import one or more Postman Collection v2.1 JSON documents (file contents).
-pub fn import_postman_export_texts(texts: &[String]) -> Result<Vec<Collection>, ImpexError> {
-    let mut out = Vec::new();
-    for text in texts {
-        out.push(import_collection_v21(text)?);
-    }
-    if out.is_empty() {
-        return Err(ImpexError::Unsupported("no collections in selection".into()));
-    }
-    Ok(out)
-}
-
 /// Parse a simple cURL command into a [`RequestDraft`].
 pub fn import_curl(text: &str) -> Result<RequestDraft, ImpexError> {
-    let mut draft = RequestDraft::default();
-    draft.name = "cURL import".into();
+    let mut draft = RequestDraft {
+        name: "cURL import".into(),
+        ..Default::default()
+    };
     let t = text.trim();
     if !t.to_ascii_lowercase().contains("curl") {
         return Err(ImpexError::Unsupported("not a curl command".into()));
@@ -751,7 +742,7 @@ fn shellish_tokens(s: &str) -> Vec<String> {
     let mut in_double = false;
     while let Some(c) = chars.next() {
         match c {
-            '\\' if in_double || (!in_single && !in_double) => {
+            '\\' if in_double || !in_single => {
                 if let Some(n) = chars.next() {
                     cur.push(n);
                 }
@@ -824,10 +815,12 @@ pub fn import_openapi3(text: &str) -> Result<Collection, ImpexError> {
             ) {
                 continue;
             }
-            let mut draft = RequestDraft::default();
-            draft.name = format!("{m} {path}");
-            draft.method = parse_method(&m);
-            draft.url = format!("{base}{path}");
+            let draft = RequestDraft {
+                name: format!("{m} {path}"),
+                method: parse_method(&m),
+                url: format!("{base}{path}"),
+                ..Default::default()
+            };
             col.add_request(draft);
         }
     }
@@ -838,6 +831,7 @@ pub fn import_openapi3(text: &str) -> Result<Collection, ImpexError> {
 /// Merges new endpoints from an updated OpenAPI spec into an existing collection,
 /// preserving user tests, pre-request scripts, auth settings, and custom headers.
 /// Returns (number of new endpoints added, number of existing preserved).
+#[cfg(test)]
 pub fn reconcile_openapi3_collection(
     existing: &mut Collection,
     new_spec_text: &str,
@@ -885,27 +879,29 @@ pub fn import_har(text: &str) -> Result<Collection, ImpexError> {
         let req = entry.get("request").ok_or_else(|| {
             ImpexError::Json(format!("entry {i}: missing request"))
         })?;
-        let mut draft = RequestDraft::default();
-        draft.name = req
-            .get("url")
-            .and_then(|u| u.as_str())
-            .map(|u| {
-                u.split('?')
-                    .next()
-                    .unwrap_or(u)
-                    .rsplit('/')
-                    .next()
-                    .unwrap_or(u)
-                    .to_string()
-            })
-            .filter(|s| !s.is_empty())
-            .unwrap_or_else(|| format!("entry-{i}"));
-        draft.method = parse_method(req.get("method").and_then(|m| m.as_str()).unwrap_or("GET"));
-        draft.url = req
-            .get("url")
-            .and_then(|u| u.as_str())
-            .unwrap_or("")
-            .to_string();
+        let mut draft = RequestDraft {
+            name: req
+                .get("url")
+                .and_then(|u| u.as_str())
+                .map(|u| {
+                    u.split('?')
+                        .next()
+                        .unwrap_or(u)
+                        .rsplit('/')
+                        .next()
+                        .unwrap_or(u)
+                        .to_string()
+                })
+                .filter(|s| !s.is_empty())
+                .unwrap_or_else(|| format!("entry-{i}")),
+            method: parse_method(req.get("method").and_then(|m| m.as_str()).unwrap_or("GET")),
+            url: req
+                .get("url")
+                .and_then(|u| u.as_str())
+                .unwrap_or("")
+                .to_string(),
+            ..Default::default()
+        };
         if let Some(headers) = req.get("headers").and_then(|h| h.as_array()) {
             draft.headers = headers
                 .iter()
@@ -1015,10 +1011,12 @@ mod tests {
     #[test]
     fn roundtrip_minimal() {
         let mut col = Collection::new("Roundtrip");
-        let mut req = RequestDraft::default();
-        req.name = "Ping".into();
-        req.url = "https://example.com".into();
-        req.method = HttpMethod::Get;
+        let req = RequestDraft {
+            name: "Ping".into(),
+            url: "https://example.com".into(),
+            method: HttpMethod::Get,
+            ..Default::default()
+        };
         col.add_request(req);
 
         let json = export_collection_v21(&col).unwrap();
@@ -1077,10 +1075,12 @@ mod tests {
     #[test]
     fn test_export_openapi3() {
         let mut col = Collection::new("Store API");
-        let mut req = RequestDraft::default();
-        req.name = "List Products".into();
-        req.url = "https://api.store.com/v1/products?limit=10".into();
-        req.method = HttpMethod::Get;
+        let mut req = RequestDraft {
+            name: "List Products".into(),
+            url: "https://api.store.com/v1/products?limit=10".into(),
+            method: HttpMethod::Get,
+            ..Default::default()
+        };
         req.params.push(KeyValue::new("limit", "10"));
         col.items.push(CollectionItem::Request(req));
 
@@ -1114,11 +1114,13 @@ mod tests {
     #[test]
     fn test_reconcile_openapi3_preserves_custom_tests() {
         let mut col = Collection::new("API");
-        let mut req = RequestDraft::default();
-        req.name = "GET /users".into();
-        req.method = HttpMethod::Get;
-        req.url = "https://api.com/users".into();
-        req.test_script = "pm.test('status is 200', () => {});".into();
+        let req = RequestDraft {
+            name: "GET /users".into(),
+            method: HttpMethod::Get,
+            url: "https://api.com/users".into(),
+            test_script: "pm.test('status is 200', () => {});".into(),
+            ..Default::default()
+        };
         col.items.push(CollectionItem::Request(req));
 
         let updated_spec = r#"{
@@ -1150,14 +1152,16 @@ mod tests {
     #[test]
     fn assertions_roundtrip_through_request_item() {
         use crate::core::{Assertion, AssertionKind};
-        let mut r = RequestDraft::default();
-        r.assertions = vec![
-            Assertion::new(AssertionKind::StatusEquals { code: 201 }),
-            Assertion::new(AssertionKind::JsonPathEquals {
-                path: "data.id".into(),
-                expected: "7".into(),
-            }),
-        ];
+        let mut r = RequestDraft {
+            assertions: vec![
+                Assertion::new(AssertionKind::StatusEquals { code: 201 }),
+                Assertion::new(AssertionKind::JsonPathEquals {
+                    path: "data.id".into(),
+                    expected: "7".into(),
+                }),
+            ],
+            ..Default::default()
+        };
         r.assertions[1].enabled = false;
         let text = serde_json::to_string(&export_request_item(&r)).unwrap();
         let back = import_request_item(&text).unwrap();

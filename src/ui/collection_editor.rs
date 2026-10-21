@@ -50,7 +50,6 @@ pub fn CollectionEditor(
                         placeholder: "Collection name",
                         oninput: {
                             let collection = collection.clone();
-                            let on_change = on_change.clone();
                             move |evt: Event<FormData>| {
                                 let mut c = collection.clone();
                                 c.name = evt.value();
@@ -112,7 +111,6 @@ pub fn CollectionEditor(
                                 placeholder: "Describe the API endpoints in this collection...".to_string(),
                                 on_change: {
                                     let collection = collection.clone();
-                                    let on_change = on_change.clone();
                                     move |desc: String| {
                                         let mut c = collection.clone();
                                         c.description = desc;
@@ -241,7 +239,6 @@ pub fn CollectionEditor(
                                     on_edit_parent_auth: move |_| {},
                                     on_change: {
                                         let collection = collection.clone();
-                                        let on_change = on_change.clone();
                                         move |new_auth: AuthConfig| {
                                             let mut c = collection.clone();
                                             c.auth = new_auth;
@@ -264,7 +261,6 @@ pub fn CollectionEditor(
                                 vars: vars.clone(),
                                 on_change: {
                                     let collection = collection.clone();
-                                    let on_change = on_change.clone();
                                     move |(pre, test): (String, String)| {
                                         let mut c = collection.clone();
                                         c.pre_request_script = pre;
@@ -303,7 +299,6 @@ pub fn CollectionEditor(
                                                             placeholder: "Key",
                                                             oninput: {
                                                                 let collection = collection.clone();
-                                                                let on_change = on_change.clone();
                                                                 move |evt: Event<FormData>| {
                                                                     let mut c = collection.clone();
                                                                     if let Some(r) = c.variables.get_mut(i) {
@@ -320,7 +315,6 @@ pub fn CollectionEditor(
                                                             placeholder: "Initial value (synced)",
                                                             oninput: {
                                                                 let collection = collection.clone();
-                                                                let on_change = on_change.clone();
                                                                 move |evt: Event<FormData>| {
                                                                     let mut c = collection.clone();
                                                                     if let Some(r) = c.variables.get_mut(i) {
@@ -345,7 +339,6 @@ pub fn CollectionEditor(
                                                             title: "Remove variable",
                                                             onclick: {
                                                                 let collection = collection.clone();
-                                                                let on_change = on_change.clone();
                                                                 move |_| {
                                                                     let mut c = collection.clone();
                                                                     if i < c.variables.len() {
@@ -368,7 +361,6 @@ pub fn CollectionEditor(
                                     class: "btn btn-ghost",
                                     onclick: {
                                         let collection = collection.clone();
-                                        let on_change = on_change.clone();
                                         move |_| {
                                             let mut c = collection.clone();
                                             c.variables.push(KeyValue {

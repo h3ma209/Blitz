@@ -295,9 +295,11 @@ mod tests {
 
     #[test]
     fn prepare_raw_adds_content_type() {
-        let mut d = RequestDraft::default();
-        d.body_mode = BodyMode::Raw;
-        d.body = r#"{"a":1}"#.into();
+        let mut d = RequestDraft {
+            body_mode: BodyMode::Raw,
+            body: r#"{"a":1}"#.into(),
+            ..Default::default()
+        };
         let mut log = vec![];
         prepare_raw_body_for_send(&mut d, &mut log).unwrap();
         assert!(has_header(&d, "Content-Type"));

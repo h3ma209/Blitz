@@ -6,7 +6,7 @@
 //! ```
 
 #[cfg(test)]
-mod ui_flow_smoke {
+mod tests {
     use crate::core::{
         add_folder_under, add_request_under, duplicate_across, export_collection_v21,
         flatten_collections, generate_snippet, import_collection_v21, import_curl, import_openapi3,
@@ -28,20 +28,22 @@ mod ui_flow_smoke {
     #[test]
     #[ignore = "network + full pipeline smoke"]
     fn flow_send_get_with_vars() {
-        let mut draft = RequestDraft::default();
-        draft.method = HttpMethod::Get;
-        draft.url = "{{baseUrl}}/get".into();
-        draft.params = vec![KeyValue::new("hello", "world")];
-        draft.test_script = r#"
-            blitz.test("status 200", function () {
-                blitz.expect(blitz.response.code).to.equal(200);
-            });
-            blitz.test("has args", function () {
-                var j = blitz.response.json();
-                blitz.expect(j.args.hello).to.equal("world");
-            });
-        "#
-        .into();
+        let draft = RequestDraft {
+            method: HttpMethod::Get,
+            url: "{{baseUrl}}/get".into(),
+            params: vec![KeyValue::new("hello", "world")],
+            test_script: r#"
+                blitz.test("status 200", function () {
+                    blitz.expect(blitz.response.code).to.equal(200);
+                });
+                blitz.test("has args", function () {
+                    var j = blitz.response.json();
+                    blitz.expect(j.args.hello).to.equal("world");
+                });
+            "#
+            .into(),
+            ..Default::default()
+        };
 
         let mut ctx = demo_ctx();
         let view = send_request_with_options(&draft, &mut ctx, SendOptions::default())
@@ -59,11 +61,13 @@ mod ui_flow_smoke {
     #[test]
     #[ignore = "network"]
     fn flow_post_json_body() {
-        let mut draft = RequestDraft::default();
-        draft.method = HttpMethod::Post;
-        draft.url = "https://postman-echo.com/post".into();
-        draft.body_mode = BodyMode::Raw;
-        draft.body = r#"{"name":"ada"}"#.into();
+        let mut draft = RequestDraft {
+            method: HttpMethod::Post,
+            url: "https://postman-echo.com/post".into(),
+            body_mode: BodyMode::Raw,
+            body: r#"{"name":"ada"}"#.into(),
+            ..Default::default()
+        };
         draft
             .headers
             .push(KeyValue::new("Content-Type", "application/json"));
@@ -78,8 +82,10 @@ mod ui_flow_smoke {
     #[test]
     #[ignore = "network"]
     fn flow_bearer_auth() {
-        let mut draft = RequestDraft::default();
-        draft.url = "https://postman-echo.com/headers".into();
+        let mut draft = RequestDraft {
+            url: "https://postman-echo.com/headers".into(),
+            ..Default::default()
+        };
         draft.auth.auth_type = AuthType::Bearer;
         draft.auth.token = "smoke-token".into();
 
@@ -113,9 +119,11 @@ mod ui_flow_smoke {
         let nested_id = nested.id;
         assert!(add_folder_under(&mut cols, folder_id, nested));
 
-        let mut req = RequestDraft::default();
-        req.name = "Smoke Req".into();
-        req.url = "https://example.com/smoke".into();
+        let req = RequestDraft {
+            name: "Smoke Req".into(),
+            url: "https://example.com/smoke".into(),
+            ..Default::default()
+        };
         let req_id = req.id;
         assert!(add_request_under(&mut cols, nested_id, req));
 
@@ -174,9 +182,11 @@ mod ui_flow_smoke {
     #[test]
     fn flow_import_export_roundtrip() {
         let mut col = Collection::new("Smoke");
-        let mut r = RequestDraft::default();
-        r.name = "A".into();
-        r.url = "https://example.com".into();
+        let r = RequestDraft {
+            name: "A".into(),
+            url: "https://example.com".into(),
+            ..Default::default()
+        };
         col.add_request(r);
         let json = export_collection_v21(&col).unwrap();
         let back = import_collection_v21(&json).unwrap();
@@ -209,10 +219,12 @@ mod ui_flow_smoke {
     #[test]
     fn flow_local_mock_from_example() {
         let mut col = Collection::new("MockSmoke");
-        let mut r = RequestDraft::default();
-        r.name = "echo".into();
-        r.method = HttpMethod::Get;
-        r.url = "http://127.0.0.1/mock-smoke".into();
+        let mut r = RequestDraft {
+            name: "echo".into(),
+            method: HttpMethod::Get,
+            url: "http://127.0.0.1/mock-smoke".into(),
+            ..Default::default()
+        };
         r.examples.push(SavedExample {
             id: uuid::Uuid::new_v4(),
             name: "ok".into(),
@@ -236,10 +248,12 @@ mod ui_flow_smoke {
     fn flow_full_mock_recording_and_live_playback_pipeline() {
         // 1. Create request with live mock server endpoint
         let mut col = Collection::new("PlaybackCol");
-        let mut r = RequestDraft::default();
-        r.name = "get_user".into();
-        r.method = HttpMethod::Get;
-        r.url = "http://127.0.0.1/api/v1/user/42".into();
+        let mut r = RequestDraft {
+            name: "get_user".into(),
+            method: HttpMethod::Get,
+            url: "http://127.0.0.1/api/v1/user/42".into(),
+            ..Default::default()
+        };
 
         // 2. Simulate response received and record as example
         let example = SavedExample {
@@ -259,16 +273,19 @@ mod ui_flow_smoke {
         let port = handle.port;
 
         // 4. Send request through runtime pipeline against local mock
-        let mut test_draft = RequestDraft::default();
-        test_draft.method = HttpMethod::Get;
-        test_draft.url = format!("http://127.0.0.1:{port}/api/v1/user/42");
-        test_draft.test_script = r#"
-            blitz.test("user is blitz_user", function() {
-                var json = blitz.response.json();
-                blitz.expect(json.id).to.equal(42);
-                blitz.expect(json.username).to.equal("blitz_user");
-            });
-        "#.into();
+        let test_draft = RequestDraft {
+            method: HttpMethod::Get,
+            url: format!("http://127.0.0.1:{port}/api/v1/user/42"),
+            test_script: r#"
+                blitz.test("user is blitz_user", function() {
+                    var json = blitz.response.json();
+                    blitz.expect(json.id).to.equal(42);
+                    blitz.expect(json.username).to.equal("blitz_user");
+                });
+            "#
+            .into(),
+            ..Default::default()
+        };
 
         let mut ctx = VariableContext::default();
         let view = send_request_with_options(&test_draft, &mut ctx, SendOptions::default())
@@ -286,15 +303,17 @@ mod ui_flow_smoke {
     fn flow_collection_runner_local_pipeline_with_scripts() {
         // Test pre-request script variable setting + tests validation in Collection Runner
         let mut col = Collection::new("RunnerLocalCol");
-        let mut r1 = RequestDraft::default();
-        r1.name = "Setup Vars".into();
-        r1.method = HttpMethod::Get;
-        // Point to example mock
-        r1.url = "http://127.0.0.1/ping".into();
-        r1.pre_request_script = r#"
-            blitz.environment.set("auth_token", "secret_jwt_xyz");
-            blitz.collectionVariables.set("apiVersion", "v2");
-        "#.into();
+        let mut r1 = RequestDraft {
+            name: "Setup Vars".into(),
+            method: HttpMethod::Get,
+            url: "http://127.0.0.1/ping".into(),
+            pre_request_script: r#"
+                blitz.environment.set("auth_token", "secret_jwt_xyz");
+                blitz.collectionVariables.set("apiVersion", "v2");
+            "#
+            .into(),
+            ..Default::default()
+        };
         r1.examples.push(SavedExample {
             id: uuid::Uuid::new_v4(),
             name: "pong".into(),
@@ -304,10 +323,12 @@ mod ui_flow_smoke {
             body: "pong".into(),
         });
 
-        let mut r2 = RequestDraft::default();
-        r2.name = "Verify Vars".into();
-        r2.method = HttpMethod::Get;
-        r2.url = "http://127.0.0.1/{{apiVersion}}/data".into();
+        let mut r2 = RequestDraft {
+            name: "Verify Vars".into(),
+            method: HttpMethod::Get,
+            url: "http://127.0.0.1/{{apiVersion}}/data".into(),
+            ..Default::default()
+        };
         r2.examples.push(SavedExample {
             id: uuid::Uuid::new_v4(),
             name: "pong".into(),
@@ -366,16 +387,19 @@ mod ui_flow_smoke {
 
         // 1. Initial collection created with user modifications (custom tests & descriptions)
         let mut col = Collection::new("Petstore");
-        let mut r = RequestDraft::default();
-        r.name = "List Pets".into();
-        r.method = HttpMethod::Get;
-        r.url = "https://petstore.example.com/api/pets".into();
-        r.description = "User added important documentation notes".into();
-        r.test_script = r#"
-            blitz.test("pets is array", function() {
-                blitz.expect(Array.isArray(blitz.response.json())).to.be.true;
-            });
-        "#.into();
+        let r = RequestDraft {
+            name: "List Pets".into(),
+            method: HttpMethod::Get,
+            url: "https://petstore.example.com/api/pets".into(),
+            description: "User added important documentation notes".into(),
+            test_script: r#"
+                blitz.test("pets is array", function() {
+                    blitz.expect(Array.isArray(blitz.response.json())).to.be.true;
+                });
+            "#
+            .into(),
+            ..Default::default()
+        };
         col.add_request(r);
 
         // 2. Upstream engineering updates OpenAPI spec: changes path summary, adds new query param and new /api/pets/{id} endpoint
@@ -446,13 +470,13 @@ mod ui_flow_smoke {
         fs::create_dir_all(&root).unwrap();
 
         Command::new("git")
-            .args(&["init", "--template=", &format!("--separate-git-dir={}", git_meta.display())])
+            .args(["init", "--template=", &format!("--separate-git-dir={}", git_meta.display())])
             .current_dir(&root)
             .output()
             .unwrap();
-        Command::new("git").args(&["config", "user.email", "flow@test.com"]).current_dir(&root).output().unwrap();
-        Command::new("git").args(&["config", "user.name", "Flow"]).current_dir(&root).output().unwrap();
-        Command::new("git").args(&["checkout", "-b", "main"]).current_dir(&root).output().unwrap();
+        Command::new("git").args(["config", "user.email", "flow@test.com"]).current_dir(&root).output().unwrap();
+        Command::new("git").args(["config", "user.name", "Flow"]).current_dir(&root).output().unwrap();
+        Command::new("git").args(["checkout", "-b", "main"]).current_dir(&root).output().unwrap();
 
         // Commit initial base file
         let file_path = root.join("request.json");
@@ -460,17 +484,17 @@ mod ui_flow_smoke {
         commit_local_changes(&root, Some("initial commit")).unwrap();
 
         // Create feature branch and commit changes
-        Command::new("git").args(&["checkout", "-b", "feature"]).current_dir(&root).output().unwrap();
+        Command::new("git").args(["checkout", "-b", "feature"]).current_dir(&root).output().unwrap();
         fs::write(&file_path, "remote feature version").unwrap();
         commit_local_changes(&root, Some("feature commit")).unwrap();
 
         // Switch back to main and make conflicting changes
-        Command::new("git").args(&["checkout", "main"]).current_dir(&root).output().unwrap();
+        Command::new("git").args(["checkout", "main"]).current_dir(&root).output().unwrap();
         fs::write(&file_path, "local main version").unwrap();
         commit_local_changes(&root, Some("local commit")).unwrap();
 
         // Trigger conflict via merge
-        let _ = Command::new("git").args(&["merge", "feature"]).current_dir(&root).output().unwrap();
+        let _ = Command::new("git").args(["merge", "feature"]).current_dir(&root).output().unwrap();
 
         // 1. Detect conflicts
         let conflicts = detect_git_conflicts(&root).expect("detect git conflicts");
@@ -507,10 +531,12 @@ mod ui_flow_smoke {
 
         // Start mock server
         let mut col = Collection::new("CliMockCol");
-        let mut r = RequestDraft::default();
-        r.name = "Health".into();
-        r.method = HttpMethod::Get;
-        r.url = "http://127.0.0.1/{{path}}".into();
+        let mut r = RequestDraft {
+            name: "Health".into(),
+            method: HttpMethod::Get,
+            url: "http://127.0.0.1/{{path}}".into(),
+            ..Default::default()
+        };
         r.examples.push(SavedExample {
             id: uuid::Uuid::new_v4(),
             name: "ok".into(),
@@ -564,14 +590,19 @@ mod ui_flow_smoke {
     #[ignore = "network"]
     fn flow_runner_two_requests() {
         let mut col = Collection::new("RunSmoke");
-        let mut a = RequestDraft::default();
-        a.name = "one".into();
-        a.url = "https://postman-echo.com/get?n=1".into();
-        a.test_script =
-            r#"blitz.test("ok", function(){ blitz.expect(blitz.response.code).to.equal(200); });"#.into();
-        let mut b = RequestDraft::default();
-        b.name = "two".into();
-        b.url = "https://postman-echo.com/get?n=2".into();
+        let a = RequestDraft {
+            name: "one".into(),
+            url: "https://postman-echo.com/get?n=1".into(),
+            test_script:
+                r#"blitz.test("ok", function(){ blitz.expect(blitz.response.code).to.equal(200); });"#
+                    .into(),
+            ..Default::default()
+        };
+        let b = RequestDraft {
+            name: "two".into(),
+            url: "https://postman-echo.com/get?n=2".into(),
+            ..Default::default()
+        };
         col.add_request(a);
         col.add_request(b);
 

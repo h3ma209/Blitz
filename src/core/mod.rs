@@ -24,6 +24,7 @@ pub mod perf_runner;
 pub mod pkcs12_util;
 pub mod protocols;
 pub mod request;
+pub mod response_diff;
 pub mod sandbox;
 pub mod scripts;
 pub mod settings;
@@ -48,7 +49,7 @@ pub use collection::{
     folder_child_count, folder_path_to_request, insert_item_under, item_contains_id, move_item_to,
     paste_target_parent_id, remint_pasted_item, request_tab_display_name, resolve_ancestor_auth,
     snapshot_tree_item, purge_from_trash, remove_across, rename_across, reorder_before,
-    reorder_within_parent, restore_from_trash, save_request_to_collections, sort_collections,
+    restore_from_trash, save_request_to_collections, sort_collections,
     trash_collection, AncestorAuthOrigin, Collection, CollectionItem, Folder, TreeRow, TreeRowKind,
 };
 pub use console::{push_console, ConsoleLevel, ConsoleLine, CONSOLE_MAX};
@@ -57,17 +58,19 @@ pub use digest::{build_digest_authorization, digest_uri, DigestChallenge};
 pub use doc_gen::{generate_static_doc_html, generate_swagger_ui_html};
 pub use environment::{
     demo_environments, ensure_default_environments, export_environment_json, find_environment,
-    find_environment_by_name, import_environment_json, import_environment_texts, EnvVar,
+    import_environment_json, import_environment_texts, EnvVar,
     Environment, DEFAULT_ENV_NAMES,
 };
 pub use history::{push_history, HistoryEntry, HISTORY_MAX};
 pub use impex::{
     bundled_postman_collections, export_collection_v21, export_openapi3, export_request_item,
-    import_collection_v21, import_curl, import_har, import_openapi3, import_postman_export_texts,
-    import_request_item, limitations_blurb, reconcile_openapi3_collection, ImpexError,
+    import_collection_v21, import_curl, import_har, import_openapi3,
+    import_request_item, limitations_blurb, ImpexError,
 };
+#[cfg(test)]
+pub use impex::reconcile_openapi3_collection;
 pub use mock_server::{
-    draft_mock_path, routes_from_collections, save_example_to_request, start_mock, MockHandle,
+    routes_from_collections, save_example_to_request, start_mock, MockHandle,
     MockRoute,
 };
 pub use oauth::{fetch_oauth2_token, OAuthError};
@@ -83,14 +86,15 @@ pub use request::{
     FormDataField, HttpMethod, KeyValue, OAuth2Config, OAuth2Grant, RequestDraft, RequestProtocol,
     ResponseView, SavedExample, TestResult, TimingBreakdown,
 };
+pub use response_diff::{diff_bodies, normalize_body_for_diff, DiffLine, DiffStats};
 pub use sandbox::{
-    apply_request_header_upserts, body_mode_label, run_js_sandbox, run_js_sandbox_ex,
+    apply_request_header_upserts, body_mode_label, run_js_sandbox_ex,
     SandboxExecution, SandboxExtras, SandboxOutcome, SandboxResponse,
 };
-pub use scripts::{run_script, run_script_ex, run_script_helpers, ScriptRunOutcome};
+pub use scripts::{run_script_ex, ScriptRunOutcome};
 pub use cloud_sync::{
-    apply_sync_to_snapshot, branch_name_for_env, clone_or_ensure, detect_git_conflicts,
-    get_conflict_file_versions, get_team_activity, git_available, link_folder,
+    branch_name_for_env, clone_or_ensure, detect_git_conflicts,
+    get_conflict_file_versions, get_team_activity, link_folder,
     open_in_file_manager, pull_workspace, push_workspace, refresh_status, resolve_git_conflicts,
     status_summary, switch_env_branch, sync_environment, sync_on_save, ChangedFile, SyncResult,
     TeamActivity, TeamCommit, TeamMember,
@@ -102,10 +106,16 @@ pub use settings::{
 };
 pub use variables::{
     apply_collection_map, apply_collection_var_edit, apply_env_var_edit, apply_environment_map,
-    apply_var_insert, char_index_to_byte_offset, find_var_at, iter_var_spans,
-    render_var_highlight_html, snap_to_char_boundary, utf16_offset_to_byte_offset,
+    apply_var_insert, find_var_at, iter_var_spans,
+    render_var_highlight_html, snap_to_char_boundary,
     var_insert_context, VarHoverInfo, VarResolveScope, VarSpan, VariableContext, VariableScope,
     VariableSuggestion,
 };
+#[cfg(test)]
+pub use variables::utf16_offset_to_byte_offset;
 pub use vault::{resolve_vault_key, VaultStore, VAULT_ACCOUNT_ID};
-pub use updater::{check_for_updates, is_newer_version, open_browser_url, UpdateInfo, CURRENT_VERSION};
+pub use updater::{
+    check_for_updates, download_and_verify_update, is_newer_version, open_browser_url,
+    platform_asset_name, reveal_or_open_installer, verify_sha256_manifest, UpdateInfo,
+    CURRENT_VERSION,
+};

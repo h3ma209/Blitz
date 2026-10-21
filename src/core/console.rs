@@ -29,14 +29,6 @@ impl ConsoleLine {
         }
     }
 
-    pub fn script(msg: impl Into<String>) -> Self {
-        Self {
-            at: Utc::now(),
-            level: ConsoleLevel::Script,
-            message: msg.into(),
-        }
-    }
-
     pub fn error(msg: impl Into<String>) -> Self {
         Self {
             at: Utc::now(),

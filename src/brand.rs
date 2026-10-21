@@ -10,8 +10,22 @@ use std::sync::LazyLock;
 
 use base64::Engine;
 
-/// Full CSS embedded at compile time (served via `<style>` in the desktop head).
-pub const STYLES_CSS: &str = include_str!("../assets/styles.css");
+const RAW_CSS: &str = include_str!("../assets/styles.css");
+static INTER_WOFF2: &[u8] = include_bytes!("../assets/fonts/Inter-Variable.woff2");
+static JBM_WOFF2: &[u8] = include_bytes!("../assets/fonts/JetBrainsMono-Variable.woff2");
+
+/// Full CSS embedded at compile time with offline `@font-face` data URIs.
+pub static STYLES_CSS: LazyLock<String> = LazyLock::new(|| {
+    let b64 = base64::engine::general_purpose::STANDARD;
+    let face = |fam: &str, bytes: &[u8]| {
+        format!(
+            "@font-face{{font-family:\"{fam}\";src:url(data:font/woff2;base64,{}) format(\"woff2\");font-weight:100 900;font-style:normal;font-display:block;}}",
+            b64.encode(bytes)
+        )
+    };
+    let fonts_css = format!("{}\n{}", face("Inter", INTER_WOFF2), face("JetBrains Mono", JBM_WOFF2));
+    RAW_CSS.replacen("/*@FONTS@*/", &fonts_css, 1)
+});
 
 /// `data:` URI for the brand logo — no runtime filesystem lookup.
 /// Rendered directly in desktop UI (top bar, splash screen, env switch overlay).
@@ -33,6 +47,8 @@ mod tests {
             STYLES_CSS.contains("top-bar") || STYLES_CSS.contains("brand"),
             "expected workbench selectors in embedded CSS"
         );
+        assert!(STYLES_CSS.contains("@font-face"), "expected embedded @font-face rules");
+        assert!(!STYLES_CSS.contains("fonts.googleapis.com"), "must not fetch Google Fonts online");
     }
 
     #[test]

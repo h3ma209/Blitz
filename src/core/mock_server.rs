@@ -10,7 +10,7 @@ use std::thread::{self, JoinHandle};
 use uuid::Uuid;
 
 use super::collection::Collection;
-use super::request::{HttpMethod, RequestDraft, SavedExample};
+use super::request::{HttpMethod, SavedExample};
 
 #[derive(Debug, Clone)]
 pub struct MockRoute {
@@ -19,15 +19,6 @@ pub struct MockRoute {
     pub example: SavedExample,
     /// Optional: require request header `name: value` substring match.
     pub match_header: Option<(String, String)>,
-    /// Optional: example name must contain this (scenario picker).
-    pub match_name: Option<String>,
-}
-
-#[derive(Debug, Default)]
-pub struct MockServerState {
-    pub routes: Vec<MockRoute>,
-    pub port: u16,
-    pub running: bool,
 }
 
 /// Build routes from all requests that have examples.
@@ -71,7 +62,6 @@ fn walk_items(items: &[super::collection::CollectionItem], out: &mut Vec<MockRou
                         path: path_only(&r.url),
                         example: ex.clone(),
                         match_header: header_match.clone(),
-                        match_name: name_filter.clone(),
                     });
                 }
             }
@@ -239,11 +229,6 @@ pub fn save_example_to_request(
         }
     }
     false
-}
-
-/// Convenience: path from draft URL for display.
-pub fn draft_mock_path(draft: &RequestDraft) -> String {
-    path_only(&draft.url)
 }
 
 #[cfg(test)]

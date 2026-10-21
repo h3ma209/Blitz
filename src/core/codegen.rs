@@ -454,8 +454,10 @@ mod tests {
 
     #[test]
     fn test_new_snippets_and_resolution() {
-        let mut d = RequestDraft::default();
-        d.url = "https://api.example.com/{{resource}}".into();
+        let mut d = RequestDraft {
+            url: "https://api.example.com/{{resource}}".into(),
+            ..Default::default()
+        };
         d.headers.push(crate::core::request::KeyValue {
             key: "X-Key".into(),
             value: "{{api_key}}".into(),

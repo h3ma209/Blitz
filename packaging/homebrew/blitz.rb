@@ -1,6 +1,6 @@
 cask "blitz" do
-  version "0.1.0"
-  sha256 "ac29a1b4e96d0331f0dc7ab699453893433f340bd27aaab75f331bb19b8c9ba3"
+  version "0.1.1"
+  sha256 "2ba649458e49d2b4948a619ed409a13d0bb7097bc960cc1ec5876497d25241c1"
 
   url "https://github.com/h3ma209/Blitz/releases/download/v#{version}/Blitz-macos-arm64.dmg"
   name "Blitz"

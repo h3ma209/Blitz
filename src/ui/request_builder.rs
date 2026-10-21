@@ -43,7 +43,6 @@ pub fn RequestBuilder(
 
     let set_method = {
         let draft = draft.clone();
-        let on_change = on_change.clone();
         move |evt: Event<FormData>| {
             let mut d = draft.clone();
             d.method = parse_method(&evt.value());
@@ -53,7 +52,6 @@ pub fn RequestBuilder(
 
     let set_protocol = {
         let draft = draft.clone();
-        let on_change = on_change.clone();
         move |evt: Event<FormData>| {
             let mut d = draft.clone();
             d.protocol = parse_protocol(&evt.value());
@@ -130,7 +128,7 @@ pub fn RequestBuilder(
                         on_change.call(d);
                     }
                 },
-                on_var_edit: on_var_edit.clone(),
+                on_var_edit,
             }
             if draft.protocol == RequestProtocol::Http {
                 button {
@@ -161,8 +159,8 @@ pub fn RequestBuilder(
         if draft.protocol != RequestProtocol::Http {
             ProtocolFields {
                 draft: draft.clone(),
-                on_change: on_change.clone(),
-                on_protocol_action: on_protocol_action.clone(),
+                on_change,
+                on_protocol_action,
                 ws_connected,
                 protocol_log: protocol_log.clone(),
                 sending,
@@ -202,7 +200,7 @@ pub fn RequestBuilder(
                     KvEditor {
                         rows: draft.params.clone(),
                         vars: vars.clone(),
-                        on_var_edit: on_var_edit.clone(),
+                        on_var_edit,
                         on_change: {
                             let draft = draft.clone();
                             move |rows| {
@@ -218,7 +216,7 @@ pub fn RequestBuilder(
                     KvEditor {
                         rows: draft.headers.clone(),
                         vars: vars.clone(),
-                        on_var_edit: on_var_edit.clone(),
+                        on_var_edit,
                         on_change: {
                             let draft = draft.clone();
                             move |rows| {
@@ -240,7 +238,7 @@ pub fn RequestBuilder(
                         graphql_variables: draft.graphql_variables.clone(),
                         vars: vars.clone(),
                         data_root: data_root.clone(),
-                        on_var_edit: on_var_edit.clone(),
+                        on_var_edit,
                         on_change: {
                             let draft = draft.clone();
                             move |(mode, body, binary_path, urlencoded, formdata, gql_q, gql_v)| {
@@ -261,7 +259,7 @@ pub fn RequestBuilder(
                     AuthEditor {
                         auth: draft.auth.clone(),
                         ancestor_origin: ancestor_origin.clone(),
-                        on_edit_parent_auth: on_edit_parent_auth.clone(),
+                        on_edit_parent_auth,
                         on_change: {
                             let draft = draft.clone();
                             move |auth| {
@@ -749,7 +747,7 @@ fn KvEditor(
                                         on_change.call(next);
                                     }
                                 },
-                                on_var_edit: on_var_edit.clone(),
+                                on_var_edit,
                             }
                         }
                     }
@@ -769,6 +767,16 @@ fn ensure_trailing_empty(rows: &mut Vec<KeyValue>) {
     }
 }
 
+type BodyChangePayload = (
+    BodyMode,
+    String,
+    String,
+    Vec<KeyValue>,
+    Vec<FormDataField>,
+    String,
+    String,
+);
+
 #[component]
 fn BodyEditor(
     mode: BodyMode,
@@ -781,15 +789,7 @@ fn BodyEditor(
     vars: VariableContext,
     #[props(default)] data_root: String,
     on_var_edit: EventHandler<VarEditEvent>,
-    on_change: EventHandler<(
-        BodyMode,
-        String,
-        String,
-        Vec<KeyValue>,
-        Vec<FormDataField>,
-        String,
-        String,
-    )>,
+    on_change: EventHandler<BodyChangePayload>,
 ) -> Element {
     let mode_str = match mode {
         BodyMode::None => "none",
@@ -892,7 +892,6 @@ fn BodyEditor(
                         let formdata = formdata.clone();
                         let graphql_query = graphql_query.clone();
                         let graphql_variables = graphql_variables.clone();
-                        let on_change = on_change.clone();
                         move |_| {
                             if let Some(p) = rfd::FileDialog::new().pick_file() {
                                 on_change.call((
@@ -918,7 +917,6 @@ fn BodyEditor(
                         let formdata = formdata.clone();
                         let graphql_query = graphql_query.clone();
                         let graphql_variables = graphql_variables.clone();
-                        let on_change = on_change.clone();
                         let data_root = data_root.clone();
                         move |_| {
                             if let Some(p) = rfd::FileDialog::new().pick_file() {
@@ -950,7 +948,7 @@ fn BodyEditor(
             KvEditor {
                 rows: urlencoded.clone(),
                 vars: vars.clone(),
-                on_var_edit: on_var_edit.clone(),
+                on_var_edit,
                 on_change: {
                     let body = body.clone();
                     let binary_path = binary_path.clone();
@@ -974,7 +972,7 @@ fn BodyEditor(
                 rows: formdata.clone(),
                 vars: vars.clone(),
                 data_root: data_root.clone(),
-                on_var_edit: on_var_edit.clone(),
+                on_var_edit,
                 on_change: {
                     let body = body.clone();
                     let binary_path = binary_path.clone();
@@ -1105,7 +1103,7 @@ fn FormDataEditor(
                                         on_change.call(next);
                                     }
                                 },
-                                on_var_edit: on_var_edit.clone(),
+                                on_var_edit,
                             }
                         }
                         td {

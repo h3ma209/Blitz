@@ -20,7 +20,7 @@ mod tree;
 
 pub use git::{
     build_commit_message, checkout_env_branch, commit_local_changes, detect_git_conflicts,
-    ensure_clone, get_conflict_file_versions, get_team_activity, git_available,
+    ensure_clone, get_conflict_file_versions, get_team_activity,
     mask_remote_url, open_in_file_manager, pull_rebase, push_commit, push_only, resolve_commit_message,
     resolve_git_conflicts, status_detail, status_summary, sync_pull_push, ChangedFile,
     CloudGitError, GitStatus, SyncResult, TeamActivity, TeamCommit, TeamMember,
@@ -34,7 +34,6 @@ pub use tree::{
 use std::path::Path;
 
 use super::{AppSettings, Collection, Environment, VariableContext};
-use crate::storage::AppSnapshot;
 
 fn is_no_environment(name: &str) -> bool {
     let t = name.trim();
@@ -364,14 +363,6 @@ pub fn switch_env_branch(
     }
 
     Ok((cols, envs))
-}
-
-/// Apply sync result message onto a snapshot settings blob (for persist).
-pub fn apply_sync_to_snapshot(snap: &mut AppSnapshot, result: &SyncResult) {
-    snap.settings.cloud_sync.last_status = result.message.clone();
-    if !result.branch.is_empty() {
-        snap.settings.cloud_sync.last_branch = result.branch.clone();
-    }
 }
 
 /// Clone remote into configured path (or verify existing `.git`).
