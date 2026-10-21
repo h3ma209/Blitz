@@ -34,6 +34,7 @@ pub const SECRETS_BACKEND_ENV: &str = "BLITZ_SECRETS";
 pub enum SecretError {
     #[error("not found: {0}")]
     NotFound(String),
+    #[allow(dead_code)]
     #[error("backend unavailable: {0}")]
     Unavailable(String),
     #[error("invalid secret reference: {0}")]

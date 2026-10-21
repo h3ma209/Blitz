@@ -153,12 +153,17 @@ mod tests {
         let sess = ws_connect_session("ws://127.0.0.1:1/nope");
         assert!(sess.is_ok());
         let sess = sess.unwrap();
-        std::thread::sleep(std::time::Duration::from_millis(400));
+        let mut got_error = false;
+        for _ in 0..20 {
+            std::thread::sleep(std::time::Duration::from_millis(100));
+            let ev = sess.events_snapshot();
+            if ev.iter().any(|e| matches!(e, WsSessionEvent::Error(_))) {
+                got_error = true;
+                break;
+            }
+        }
         let ev = sess.events_snapshot();
-        assert!(
-            ev.iter().any(|e| matches!(e, WsSessionEvent::Error(_))),
-            "{ev:?}"
-        );
+        assert!(got_error, "{ev:?}");
         sess.close();
     }
 }

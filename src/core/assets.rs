@@ -82,7 +82,8 @@ mod tests {
         fs::write(&src_file, b"%PDF-dummy-content").unwrap();
 
         let rel = copy_file_to_assets(ws, &src_file, Some("payloads")).unwrap();
-        assert_eq!(rel, "assets/payloads/sample.pdf");
+        let normalized = rel.replace('\\', "/");
+        assert_eq!(normalized, "assets/payloads/sample.pdf");
 
         let dest = resolve_asset_path(ws, &rel);
         assert!(dest.exists());

@@ -259,7 +259,8 @@ pub fn Workbench() -> Element {
         let mut req = draft();
 
         // Snapshot previous response for diffing before sending new one
-        if let Some(prev) = responses().get(&req.id).cloned().or_else(&move || response()) {
+        let cur_resp = response();
+        if let Some(prev) = responses().get(&req.id).cloned().or(cur_resp) {
             if prev.status != 0 {
                 let mut prev_map = prev_responses();
                 prev_map.insert(req.id, prev);
