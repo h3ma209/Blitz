@@ -1286,7 +1286,7 @@ pub fn Workbench() -> Element {
         }
     };
 
-    let on_env_manager = move |evt: EnvManagerEvent| {
+    let _on_env_manager = move |evt: EnvManagerEvent| {
         match evt {
             EnvManagerEvent::Close => show_env_manager.set(false),
             EnvManagerEvent::Select(id) => {

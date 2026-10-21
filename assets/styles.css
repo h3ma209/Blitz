@@ -162,12 +162,15 @@ body {
   color: var(--text);
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
+  overflow: hidden;
 }
 
 #main {
   height: 100vh;
   display: flex;
   flex-direction: column;
+  overflow: hidden;
+  background-color: var(--spot-void);
 }
 
 /* —— Type roles —— */
@@ -2249,24 +2252,29 @@ textarea:focus {
 
 .btn-send {
   background: linear-gradient(180deg, var(--spot-green-bright), var(--spot-green));
-  color: #000;
+  color: var(--accent-ink, #000);
   font-weight: 700;
   min-width: 72px;
   height: 30px;
   padding: 0 14px;
   border: none;
-  box-shadow: 0 2px 10px rgba(29, 185, 84, 0.3);
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.3), 0 0 12px color-mix(in srgb, var(--spot-green) 35%, transparent);
 }
 
 .btn-send:hover {
-  background: linear-gradient(180deg, #2ae869, var(--spot-green-bright));
-  box-shadow: 0 4px 14px rgba(30, 215, 96, 0.45);
+  filter: brightness(1.12);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4), 0 0 16px color-mix(in srgb, var(--spot-green-bright) 50%, transparent);
   transform: translateY(-1px);
 }
 
+.btn-send:active {
+  transform: translateY(1px);
+  filter: brightness(0.95);
+}
+
 .btn-save {
-  background: rgba(29, 185, 84, 0.12);
-  border: 1px solid rgba(29, 185, 84, 0.35);
+  background: var(--bg-active);
+  border: 1px solid color-mix(in srgb, var(--spot-green) 35%, transparent);
   color: var(--spot-green-bright);
   font-weight: 600;
   height: 28px;
@@ -2274,25 +2282,34 @@ textarea:focus {
 }
 
 .btn-save:hover {
-  background: rgba(29, 185, 84, 0.22);
-  border-color: rgba(29, 185, 84, 0.6);
+  background: var(--bg-active);
+  border-color: color-mix(in srgb, var(--spot-green) 60%, transparent);
   color: #fff;
-  box-shadow: 0 0 10px rgba(29, 185, 84, 0.25);
+  box-shadow: 0 0 10px color-mix(in srgb, var(--spot-green) 30%, transparent);
   transform: translateY(-1px);
+}
+
+.btn-save:active {
+  transform: translateY(1px);
 }
 
 .btn-primary {
   background: linear-gradient(180deg, var(--spot-green-bright), var(--spot-green));
-  color: #000;
+  color: var(--accent-ink, #000);
   font-weight: 700;
   border: none;
-  box-shadow: 0 2px 8px rgba(29, 185, 84, 0.25);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3), 0 0 10px color-mix(in srgb, var(--spot-green) 30%, transparent);
 }
 
 .btn-primary:hover {
-  background: linear-gradient(180deg, #2ae869, var(--spot-green-bright));
-  box-shadow: 0 4px 12px rgba(30, 215, 96, 0.4);
+  filter: brightness(1.12);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4), 0 0 14px color-mix(in srgb, var(--spot-green-bright) 45%, transparent);
   transform: translateY(-1px);
+}
+
+.btn-primary:active {
+  transform: translateY(1px);
+  filter: brightness(0.95);
 }
 
 .btn-ghost {
@@ -2432,12 +2449,21 @@ textarea:focus {
 
 .response-meta {
   display: flex;
-  gap: var(--space-4);
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
   margin-bottom: var(--space-2);
   color: var(--text-muted);
   font-family: var(--mono);
   font-size: var(--fs-caption);
   letter-spacing: var(--track-mono);
+}
+
+.response-meta .btn {
+  height: 24px;
+  padding: 0 8px;
+  font-size: var(--fs-micro);
+  gap: 4px;
 }
 
 .response-meta .status-ok {
@@ -3849,7 +3875,21 @@ textarea:focus {
 }
 
 *::-webkit-scrollbar-corner {
-  background: transparent;
+  background: transparent !important;
+}
+
+*::-webkit-resizer {
+  display: none !important;
+  background: transparent !important;
+  width: 0 !important;
+  height: 0 !important;
+}
+
+::-webkit-resizer {
+  display: none !important;
+  background: transparent !important;
+  width: 0 !important;
+  height: 0 !important;
 }
 
 *::-webkit-scrollbar-track {
@@ -4305,6 +4345,59 @@ textarea:focus {
   /* :root defaults */
 }
 
+/* Obsidian Ember: Ultra-deep volcanic black + warm amber neon & gold embers */
+.app-shell.theme-obsidian,
+.app-shell.theme-obsidian.accent-soft,
+.app-shell.theme-obsidian.accent-normal,
+.app-shell.theme-obsidian.accent-strong {
+  --spot-green: #f59e0b;
+  --spot-green-bright: #fbbf24;
+  --spot-green-dim: #d97706;
+  --spot-void: #09090b;
+  --spot-black: #121215;
+  --spot-elevated: #18181c;
+  --spot-highlight: #27272f;
+  --spot-muted: #a1a1aa;
+  --spot-faint: #71717a;
+  --paper: rgba(24, 24, 28, 0.65);
+  --paper-solid: #18181c;
+  --paper-dim: #121215;
+  --paper-mute: #1d1d23;
+  --bg: var(--spot-void);
+  --bg-input: rgba(0, 0, 0, 0.45);
+  --bg-hover: rgba(251, 191, 36, 0.07);
+  --accent: #fbbf24;
+  --accent-dim: #d97706;
+  --accent-soft: rgba(251, 191, 36, 0.16);
+  --accent-ink: #000000;
+  --bg-active: rgba(251, 191, 36, 0.18);
+  --glass-bg: rgba(24, 24, 28, 0.62);
+  --glass-bg-strong: rgba(18, 18, 21, 0.88);
+  --glass-border: 1px solid rgba(251, 191, 36, 0.14);
+  --glass-shine: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  --focus-ring: rgba(251, 191, 36, 0.35);
+  --ok: #10b981;
+}
+
+html:has(.app-shell.theme-obsidian) body {
+  background-color: #09090b;
+  background-image:
+    radial-gradient(ellipse 80% 50% at 10% -10%, rgba(245, 158, 11, 0.18), transparent 55%),
+    radial-gradient(ellipse 60% 40% at 90% 0%, rgba(239, 68, 68, 0.10), transparent 50%),
+    radial-gradient(ellipse 50% 60% at 70% 100%, rgba(251, 191, 36, 0.08), transparent 45%),
+    linear-gradient(180deg, #09090b 0%, #121215 100%);
+}
+
+.app-shell.theme-obsidian.accent-soft {
+  --accent-soft: rgba(251, 191, 36, 0.09);
+  --bg-active: rgba(251, 191, 36, 0.11);
+}
+
+.app-shell.theme-obsidian.accent-strong {
+  --accent-soft: rgba(251, 191, 36, 0.28);
+  --bg-active: rgba(251, 191, 36, 0.32);
+}
+
 .app-shell.theme-slate,
 .app-shell.theme-slate.accent-soft,
 .app-shell.theme-slate.accent-normal,
@@ -4467,6 +4560,647 @@ html:has(.app-shell.theme-high-contrast) body {
 .app-shell.theme-high-contrast.accent-strong {
   --accent-soft: rgba(92, 255, 154, 0.32);
   --bg-active: rgba(92, 255, 154, 0.38);
+}
+
+/* =========================================================================
+   HARDWARE BLUEPRINT THEME (`theme-blueprint`)
+   Complete Ground-Up Architectural Rebuild:
+   - Bottom Command Dock (`grid-template-rows: 1fr var(--bar-h)`)
+   - Disassembled Split Rack Modules (`.workbench-request-side` and `.workbench-response-side`
+     become independent hardware units separated by an 8px chassis gap)
+   - Unified Monolithic Signal Bus Bar (`[PROTO] | [METHOD] | [URL] | [SEND]`)
+   - Recessed OLED Telemetry Readout Boxes for Status, Latency, and Payload Size
+   - Engraved CAD Module Serial Stamps (`SYS-01 // COLLECTIONS`, `TX-02 // SIGNAL TRANSMITTER`, `RX-03 // TELEMETRY`)
+   - Tactile 3D Mechanical Switches with physical bottom lip & travel
+   ========================================================================= */
+
+.app-shell.theme-blueprint,
+.app-shell.theme-blueprint.accent-soft,
+.app-shell.theme-blueprint.accent-normal,
+.app-shell.theme-blueprint.accent-strong {
+  --spot-green: #ff5500;
+  --spot-green-bright: #ff6a1a;
+  --spot-green-dim: #cc4400;
+  --spot-void: #090a0d;
+  --spot-black: #12141a;
+  --spot-elevated: #181b22;
+  --spot-highlight: #222630;
+  --spot-muted: #9ba2b2;
+  --spot-faint: #5e6575;
+
+  --white: #f4f1ea;
+  --ink: #f4f1ea;
+  --paper: #14161c;
+  --paper-solid: #14161c;
+  --paper-dim: #0d0f13;
+  --paper-mute: #1a1d24;
+
+  --hairline: #252934;
+  --rule: #303543;
+  --line: #2b303c;
+  --line-strong: #42495c;
+
+  --bg: #090a0d;
+  --bg-panel: #14161c;
+  --bg-elevated: #181b22;
+  --bg-input: #07080a;
+  --bg-hover: rgba(244, 241, 234, 0.05);
+  --bg-active: rgba(255, 85, 0, 0.16);
+
+  --border: #2b303c;
+  --border-strong: #42495c;
+  --text: #f4f1ea;
+  --text-muted: #9ba2b2;
+  --text-faint: #5e6575;
+
+  --accent: #ff5500;
+  --accent-dim: #cc4400;
+  --accent-soft: rgba(255, 85, 0, 0.15);
+  --accent-ink: #090a0d;
+
+  --radius: 2px;
+  --radius-sm: 2px;
+  --radius-md: 2px;
+  --radius-lg: 3px;
+  --radius-pill: 2px;
+
+  --glass-bg: #14161c;
+  --glass-bg-strong: #181b22;
+  --glass-blur: none;
+  --glass-border: 1px solid #2b303c;
+  --glass-shine: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  --focus-ring: rgba(255, 85, 0, 0.45);
+  --focus-ring-width: 1px;
+
+  --ok: #00e5a3;
+  --ok-soft: rgba(0, 229, 163, 0.14);
+  --err: #ff3b30;
+  --err-soft: rgba(255, 59, 48, 0.15);
+  --warn: #ffcc00;
+  --warn-soft: rgba(255, 204, 0, 0.14);
+
+  --method-get: #38bdf8;
+  --method-get-soft: rgba(56, 189, 248, 0.14);
+  --method-post: #00e5a3;
+  --method-post-soft: rgba(0, 229, 163, 0.14);
+  --method-put: #ff9f0a;
+  --method-put-soft: rgba(255, 159, 10, 0.14);
+  --method-patch: #c084fc;
+  --method-patch-soft: rgba(192, 132, 252, 0.14);
+  --method-delete: #ff453a;
+  --method-delete-soft: rgba(255, 69, 58, 0.15);
+}
+
+.app-shell.theme-blueprint.accent-soft {
+  --accent-soft: rgba(255, 85, 0, 0.09);
+  --bg-active: rgba(255, 85, 0, 0.10);
+}
+
+.app-shell.theme-blueprint.accent-strong {
+  --accent-soft: rgba(255, 85, 0, 0.25);
+  --bg-active: rgba(255, 85, 0, 0.28);
+}
+
+/* Blueprint architectural CAD grid + dot-matrix stage */
+html:has(.app-shell.theme-blueprint) body {
+  background-color: #08090c;
+  background-image:
+    radial-gradient(rgba(255, 255, 255, 0.09) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.02) 1px, transparent 1px),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.02) 1px, transparent 1px);
+  background-size: 16px 16px, 64px 64px, 64px 64px;
+}
+
+/* —— 1. INVERTED SHELL ARCHITECTURE: Workspace on Top, Master Control Deck at Bottom —— */
+.app-shell.theme-blueprint {
+  grid-template-rows: 1fr 48px;
+  padding: 10px;
+  gap: 10px;
+  background: transparent;
+}
+
+.app-shell.theme-blueprint .top-bar {
+  grid-row: 2;
+  grid-column: 1 / -1;
+  min-height: 48px;
+  height: 48px;
+  background: #14161c;
+  border: 1px solid #323846;
+  border-top: 2px solid #ff5500;
+  border-bottom: 2px solid #040507;
+  border-radius: 3px;
+  box-shadow: 0 -6px 24px rgba(0, 0, 0, 0.65), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  padding: 0 14px;
+}
+
+/* Make top-bar dropdown menus pop UPWARD since the command deck sits at the bottom! */
+.app-shell.theme-blueprint .top-bar .menu-dropdown,
+.app-shell.theme-blueprint .top-bar .env-menu-dropdown {
+  top: auto !important;
+  bottom: calc(100% + 8px) !important;
+  transform-origin: bottom left;
+}
+
+/* Keep origin ⚡ Blitz logo intact, framed in an industrial anodized bezel */
+.app-shell.theme-blueprint .brand {
+  padding-right: 12px;
+  border-right: 1px solid #2b303c;
+  margin-right: 4px;
+}
+
+.app-shell.theme-blueprint .brand-logo {
+  width: 24px;
+  height: 24px;
+  border-radius: 3px;
+  box-shadow: 0 0 0 1px #ff5500, 0 0 10px rgba(255, 85, 0, 0.4);
+  animation: none;
+}
+
+.app-shell.theme-blueprint .brand-name {
+  font-family: var(--mono);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  font-size: 14px;
+}
+
+.app-shell.theme-blueprint .brand::after {
+  content: "HW//OS";
+  font-family: var(--mono);
+  font-size: 9px;
+  font-weight: 700;
+  color: #ff5500;
+  background: rgba(255, 85, 0, 0.12);
+  border: 1px solid rgba(255, 85, 0, 0.35);
+  padding: 2px 5px;
+  margin-left: 8px;
+  letter-spacing: 0.08em;
+  border-radius: 2px;
+}
+
+/* —— 2. SIDEBAR RACK UNIT (`SYS-01 // EXPLORER`) —— */
+.app-shell.theme-blueprint .sidebar-slot {
+  grid-row: 1;
+  grid-column: 1;
+  background: #13151b;
+  border: 1px solid #2b303c;
+  border-radius: 3px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05), 0 10px 28px rgba(0, 0, 0, 0.55);
+}
+
+.app-shell.theme-blueprint .sidebar-slot::before {
+  content: "SYS-01 // SIGNAL DIRECTORY";
+  display: block;
+  padding: 6px 12px;
+  background: #0d0f14;
+  border-bottom: 1px solid #252934;
+  font-family: var(--mono);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  color: #6c7486;
+  flex-shrink: 0;
+}
+
+/* —— 3. DISASSEMBLED WORKBENCH: Transparent Carrier with Separate Hardware Modules —— */
+.app-shell.theme-blueprint .workbench {
+  grid-row: 1;
+  grid-column: 2;
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  gap: 8px;
+  overflow: hidden;
+}
+
+.app-shell.theme-blueprint .workbench.workbench-settings {
+  background: #13151b;
+  border: 1px solid #2b303c;
+  border-radius: 3px;
+}
+
+/* Top Tab Strip becomes a standalone patch-bay selector bar */
+.app-shell.theme-blueprint .tab-strip {
+  background: #13151b;
+  border: 1px solid #2b303c;
+  border-radius: 3px;
+  padding: 5px 10px;
+  gap: 8px;
+  align-items: center;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05), 0 4px 12px rgba(0, 0, 0, 0.4);
+}
+
+.app-shell.theme-blueprint .tab-strip-fixed {
+  padding-bottom: 0;
+  border-right: 1px solid #2b303c;
+  padding-right: 10px;
+}
+
+.app-shell.theme-blueprint .tab-name {
+  font-family: var(--mono);
+  font-size: 12px;
+  font-weight: 700;
+  background: #08090c;
+  border: 1px solid #252934;
+  padding: 4px 8px;
+  border-radius: 2px;
+  color: #ff6a1a;
+}
+
+.app-shell.theme-blueprint .tab-strip-scrollable {
+  align-items: center;
+  gap: 4px;
+}
+
+.app-shell.theme-blueprint .tab {
+  border-radius: 2px;
+  font-family: var(--mono);
+  font-size: 11px;
+  background: #0d0f14;
+  border: 1px solid #232732;
+  padding: 5px 10px;
+  margin-bottom: 0;
+}
+
+.app-shell.theme-blueprint .tab.active {
+  background: #1c2029;
+  border: 1px solid #ff5500;
+  border-left: 3px solid #ff5500;
+  color: var(--white);
+  margin-bottom: 0;
+  box-shadow: 0 2px 8px rgba(255, 85, 0, 0.2);
+}
+
+.app-shell.theme-blueprint .tab.active::after {
+  display: none;
+}
+
+/* Split Request & Response into two distinct floating hardware enclosures! */
+.app-shell.theme-blueprint .workbench-split {
+  gap: 8px;
+  background: transparent;
+}
+
+.app-shell.theme-blueprint .workbench-split.layout-column > .workbench-request-side {
+  display: flex;
+  flex-direction: column;
+  background: #13151b;
+  border: 1px solid #2b303c;
+  border-radius: 3px;
+  overflow: hidden;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05), 0 8px 20px rgba(0, 0, 0, 0.45);
+}
+
+.app-shell.theme-blueprint .workbench-split.layout-column > .workbench-response-side {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  background: #13151b;
+  border: 1px solid #2b303c;
+  border-radius: 3px;
+  overflow: hidden;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05), 0 8px 20px rgba(0, 0, 0, 0.45);
+}
+
+.app-shell.theme-blueprint .workbench-split.layout-row {
+  gap: 10px;
+}
+
+.app-shell.theme-blueprint .workbench-split.layout-row > .workbench-request-side,
+.app-shell.theme-blueprint .workbench-split.layout-row > .workbench-response-side {
+  background: #13151b;
+  border: 1px solid #2b303c;
+  border-radius: 3px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05), 0 8px 20px rgba(0, 0, 0, 0.45);
+}
+
+/* Engraved hardware headers on Request & Response modules */
+.app-shell.theme-blueprint .workbench-request-side::before {
+  content: "TX-02 // REQUEST TRANSMITTER";
+  display: block;
+  padding: 5px 12px;
+  background: #0d0f14;
+  border-bottom: 1px solid #252934;
+  font-family: var(--mono);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  color: #ff6a1a;
+  flex-shrink: 0;
+}
+
+.app-shell.theme-blueprint .workbench-response-side::before {
+  content: "RX-03 // TELEMETRY & PAYLOAD OSCILLOSCOPE";
+  display: block;
+  padding: 5px 12px;
+  background: #0d0f14;
+  border-bottom: 1px solid #252934;
+  font-family: var(--mono);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  color: #00e5a3;
+  flex-shrink: 0;
+}
+
+/* —— 4. UNIFIED SIGNAL BUS BAR (Request Row) —— */
+.app-shell.theme-blueprint .request-row {
+  background: #0d0f14;
+  border-bottom: 1px solid #2b303c;
+  padding: 10px 12px;
+  gap: 0;
+}
+
+.app-shell.theme-blueprint .request-row .protocol-select {
+  border-radius: 2px 0 0 2px;
+  border-right: none;
+  height: 34px;
+  background: #161922;
+  border-color: #323846;
+}
+
+.app-shell.theme-blueprint .request-row .method-select:not(.protocol-select) {
+  border-radius: 0;
+  border-right: none;
+  height: 34px;
+  border-color: #323846;
+}
+
+.app-shell.theme-blueprint .request-row .var-hover-host {
+  margin-right: 8px;
+}
+
+.app-shell.theme-blueprint .request-row .url-input {
+  height: 34px;
+  border-radius: 0 2px 2px 0;
+  background: #060709;
+  border: 1px solid #323846;
+  color: #00e5a3;
+  font-weight: 500;
+  box-shadow: inset 0 2px 5px rgba(0, 0, 0, 0.8);
+}
+
+.app-shell.theme-blueprint .request-row .url-input:focus {
+  border-color: #ff5500;
+  color: #ffffff;
+}
+
+/* —— 5. RECESSED OLED TELEMETRY GAUGES (Response Meta) —— */
+.app-shell.theme-blueprint .response-pane {
+  background: #13151b;
+  padding: 8px 12px;
+}
+
+.app-shell.theme-blueprint .response-meta {
+  background: #090a0d;
+  border: 1px solid #252934;
+  border-radius: 2px;
+  padding: 4px 8px;
+  gap: 6px;
+  align-items: center;
+  box-shadow: inset 0 2px 5px rgba(0, 0, 0, 0.75);
+}
+
+.app-shell.theme-blueprint .status-chip {
+  padding: 2px 6px;
+  font-size: 11px;
+  border-radius: 2px;
+}
+
+.app-shell.theme-blueprint .meta-pair {
+  background: #12151c;
+  border: 1px solid #252934;
+  padding: 2px 6px;
+  border-radius: 2px;
+  gap: 4px;
+}
+
+.app-shell.theme-blueprint .meta-pair .meta-label {
+  font-size: 8px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #6c7486;
+}
+
+.app-shell.theme-blueprint .meta-pair .meta-value {
+  color: #00e5a3;
+  font-family: var(--mono);
+  font-weight: 700;
+  font-size: 11px;
+}
+
+.app-shell.theme-blueprint .response-meta .btn {
+  height: 22px;
+  padding: 0 6px;
+  font-size: 10px;
+}
+
+.app-shell.theme-blueprint .response-body {
+  background: #07080a;
+  border: 1px solid #252934;
+  border-radius: 2px;
+  box-shadow: inset 0 2px 6px rgba(0, 0, 0, 0.8);
+}
+
+/* —— 6. TACTILE MECHANICAL KEYCAP SWITCHES —— */
+.app-shell.theme-blueprint .btn,
+.app-shell.theme-blueprint .top-link,
+.app-shell.theme-blueprint .top-icon,
+.app-shell.theme-blueprint .env-select-trigger,
+.app-shell.theme-blueprint .theme-picker {
+  border-radius: 2px;
+  font-family: var(--mono);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  background: #1e222b;
+  border: 1px solid #363c4b;
+  border-bottom: 2px solid #060709;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08), 0 1px 2px rgba(0, 0, 0, 0.4);
+  transition: transform 50ms ease, background 90ms ease;
+}
+
+.app-shell.theme-blueprint .btn:hover,
+.app-shell.theme-blueprint .top-link:hover,
+.app-shell.theme-blueprint .top-icon:hover,
+.app-shell.theme-blueprint .env-select-trigger:hover {
+  background: #272c37;
+  border-color: #4c556a;
+  border-bottom-color: #060709;
+  color: var(--white);
+  transform: none;
+}
+
+.app-shell.theme-blueprint .btn:active,
+.app-shell.theme-blueprint .top-link:active,
+.app-shell.theme-blueprint .top-icon:active {
+  transform: translateY(1px);
+  border-bottom-width: 1px;
+}
+
+/* International Orange Master Trigger */
+.app-shell.theme-blueprint .btn-send,
+.app-shell.theme-blueprint .btn-primary {
+  background: #ff5500;
+  color: #07080a;
+  font-weight: 800;
+  height: 34px;
+  border: 1px solid #ff7733;
+  border-bottom: 3px solid #8f2d00;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.3), 0 2px 8px rgba(255, 85, 0, 0.35);
+}
+
+.app-shell.theme-blueprint .btn-send:hover,
+.app-shell.theme-blueprint .btn-primary:hover {
+  background: #ff661a;
+  border-color: #ff884d;
+  border-bottom-color: #8f2d00;
+  filter: none;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.4), 0 3px 12px rgba(255, 85, 0, 0.5);
+  transform: none;
+}
+
+.app-shell.theme-blueprint .btn-send:active,
+.app-shell.theme-blueprint .btn-primary:active {
+  transform: translateY(2px);
+  border-bottom-width: 1px;
+}
+
+.app-shell.theme-blueprint .btn-save {
+  background: #181c24;
+  color: #ff6a1a;
+  border: 1px solid rgba(255, 85, 0, 0.45);
+  border-bottom: 2px solid #060709;
+}
+
+/* —— 7. SIDEBAR TREE, KV SPEC SHEET & CONSOLE —— */
+.app-shell.theme-blueprint .sidebar-search,
+.app-shell.theme-blueprint input[type="text"]:not(.url-input):not(.tab-name),
+.app-shell.theme-blueprint input[type="password"],
+.app-shell.theme-blueprint input[type="number"],
+.app-shell.theme-blueprint textarea {
+  background: #07080a;
+  border: 1px solid #252934;
+  border-radius: 2px;
+  box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.65);
+  font-family: var(--mono);
+}
+
+.app-shell.theme-blueprint .sidebar h3,
+.app-shell.theme-blueprint .sidebar .type-label {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  color: #788091;
+}
+
+.app-shell.theme-blueprint .tree-row {
+  border-radius: 2px;
+  border-left: 2px solid transparent;
+  font-family: var(--mono);
+  font-size: 12px;
+}
+
+.app-shell.theme-blueprint .tree-row:hover {
+  background: rgba(255, 255, 255, 0.04);
+  border-left-color: #454c5e;
+}
+
+.app-shell.theme-blueprint .tree-row.active {
+  background: rgba(255, 85, 0, 0.12);
+  border-color: rgba(255, 85, 0, 0.28);
+  border-left: 3px solid #ff5500;
+  box-shadow: none;
+}
+
+.app-shell.theme-blueprint .method-badge {
+  border-radius: 2px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  box-shadow: none;
+}
+
+.app-shell.theme-blueprint .builder-tabs,
+.app-shell.theme-blueprint .response-tabs {
+  background: #0d0f14;
+  border-bottom: 1px solid #252934;
+  padding: 4px 10px;
+  gap: 4px;
+}
+
+.app-shell.theme-blueprint .builder-tab,
+.app-shell.theme-blueprint .response-tab {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  border-radius: 2px;
+  padding: 5px 10px;
+  border: 1px solid transparent;
+}
+
+.app-shell.theme-blueprint .builder-tab.active,
+.app-shell.theme-blueprint .response-tab.active {
+  color: #090a0d;
+  background: #ff5500;
+  border-color: #ff7733;
+  font-weight: 800;
+}
+
+.app-shell.theme-blueprint .builder-tab.active::after,
+.app-shell.theme-blueprint .response-tab.active::after {
+  display: none;
+}
+
+.app-shell.theme-blueprint .kv-table th,
+.app-shell.theme-blueprint .kv-table td {
+  border: 1px solid #222630;
+  padding: 4px 8px;
+}
+
+.app-shell.theme-blueprint .kv-table th {
+  background: #0d0f14;
+  font-family: var(--mono);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+}
+
+.app-shell.theme-blueprint .console-wrap {
+  background: #13151b;
+  border: 1px solid #2b303c;
+  border-radius: 3px;
+}
+
+.app-shell.theme-blueprint .console-body {
+  background: #07080a;
+  border-top: 1px solid #252934;
+}
+
+.app-shell.theme-blueprint .status-line {
+  background: #0d0f14;
+  border: 1px solid #252934;
+  border-radius: 2px;
+  padding: 4px 12px;
+  color: #8c93a4;
+}
+
+.app-shell.theme-blueprint .modal,
+.app-shell.theme-blueprint .menu-dropdown,
+.app-shell.theme-blueprint .ctx-menu {
+  background: #14161c;
+  border: 1px solid #3a4050;
+  border-top: 2px solid #ff5500;
+  border-radius: 3px;
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.8);
+}
+
+.app-shell.theme-blueprint .settings-card {
+  background: #101217;
+  border: 1px solid #252934;
+  border-radius: 2px;
+  box-shadow: none;
 }
 
 /* =========================================================================

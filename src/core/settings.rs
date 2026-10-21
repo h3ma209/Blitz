@@ -109,6 +109,10 @@ pub enum UiTheme {
     /// Dark glass + Spotify green accent (default).
     #[default]
     Spotify,
+    /// Obsidian & Electric Amber / Cyberpunk minimal terminal dark stage.
+    Obsidian,
+    /// Swiss Blueprint / Industrial Hardware Studio (floating islands, 0px mechanical geometry, International Orange).
+    Blueprint,
     /// Cool dark slate + blue accent.
     Slate,
     /// Light surfaces + green accent.
@@ -122,6 +126,8 @@ impl UiTheme {
     pub fn class_token(self) -> &'static str {
         match self {
             Self::Spotify => "theme-spotify",
+            Self::Obsidian => "theme-obsidian",
+            Self::Blueprint => "theme-blueprint",
             Self::Slate => "theme-slate",
             Self::Light => "theme-light",
             Self::HighContrast => "theme-high-contrast",
@@ -132,6 +138,8 @@ impl UiTheme {
     pub fn label(self) -> &'static str {
         match self {
             Self::Spotify => "Spotify (default)",
+            Self::Obsidian => "Obsidian Ember",
+            Self::Blueprint => "Hardware Blueprint",
             Self::Slate => "Dark slate",
             Self::Light => "Light",
             Self::HighContrast => "High contrast",
@@ -142,6 +150,8 @@ impl UiTheme {
     pub fn all() -> &'static [UiTheme] {
         &[
             Self::Spotify,
+            Self::Obsidian,
+            Self::Blueprint,
             Self::Slate,
             Self::Light,
             Self::HighContrast,

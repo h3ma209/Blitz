@@ -6,6 +6,8 @@ use crate::core::UiTheme;
 fn theme_value(theme: UiTheme) -> &'static str {
     match theme {
         UiTheme::Spotify => "spotify",
+        UiTheme::Obsidian => "obsidian",
+        UiTheme::Blueprint => "blueprint",
         UiTheme::Slate => "slate",
         UiTheme::Light => "light",
         UiTheme::HighContrast => "high_contrast",
@@ -28,6 +30,8 @@ pub fn ThemeSelector(theme: UiTheme, on_change: EventHandler<UiTheme>) -> Elemen
                 aria_label: "Color theme",
                 onchange: move |evt: Event<FormData>| {
                     let next = match evt.value().as_str() {
+                        "obsidian" => UiTheme::Obsidian,
+                        "blueprint" => UiTheme::Blueprint,
                         "slate" => UiTheme::Slate,
                         "light" => UiTheme::Light,
                         "high_contrast" => UiTheme::HighContrast,

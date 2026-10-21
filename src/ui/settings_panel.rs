@@ -69,6 +69,8 @@ pub fn SettingsPanel(
     };
     let theme_str = match theme() {
         UiTheme::Spotify => "spotify",
+        UiTheme::Obsidian => "obsidian",
+        UiTheme::Blueprint => "blueprint",
         UiTheme::Slate => "slate",
         UiTheme::Light => "light",
         UiTheme::HighContrast => "high_contrast",
@@ -159,6 +161,8 @@ pub fn SettingsPanel(
                                             value: "{theme_str}",
                                             onchange: move |evt: Event<FormData>| {
                                                 theme.set(match evt.value().as_str() {
+                                                    "obsidian" => UiTheme::Obsidian,
+                                                    "blueprint" => UiTheme::Blueprint,
                                                     "slate" => UiTheme::Slate,
                                                     "light" => UiTheme::Light,
                                                     "high_contrast" => UiTheme::HighContrast,
@@ -166,6 +170,8 @@ pub fn SettingsPanel(
                                                 });
                                             },
                                             option { value: "spotify", "Spotify (Dark & Green)" }
+                                            option { value: "obsidian", "Obsidian Ember (Dark & Amber)" }
+                                            option { value: "blueprint", "Hardware Blueprint (Industrial & Tactile)" }
                                             option { value: "slate", "Dark Slate" }
                                             option { value: "light", "Light Surface" }
                                             option { value: "high_contrast", "High Contrast" }
