@@ -6,16 +6,18 @@
 
 use std::collections::HashMap;
 use std::io::{self, BufRead, Write};
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
 
 use serde_json::{json, Value as JsonValue};
 use uuid::Uuid;
 
-use crate::core::collection::{find_request_across, flatten_collections, Collection, CollectionItem};
-use crate::core::environment::Environment;
+use crate::core::codegen::{generate_snippet_resolved, snippet_languages};
+use crate::core::collection::{
+    find_request_across, flatten_collections, Collection, CollectionItem, Folder,
+};
+use crate::core::environment::{EnvVar, Environment};
+use crate::core::history::{push_history, HistoryEntry, HISTORY_MAX};
+use crate::core::impex::import_curl;
 use crate::core::request::{HttpMethod, KeyValue, RequestDraft};
-use crate::core::variables::VariableContext;
 use crate::runtime::pipeline::{send_request_with_options, SendOptions};
 use crate::runtime::runner::{run_collection_with_config, RunnerConfig};
 use crate::storage::JsonStore;
@@ -311,10 +313,179 @@ fn list_mcp_tools() -> Vec<JsonValue> {
         }),
         json!({
             "name": "blitz_list_environments",
-            "description": "Lists all configured environments in Blitz (e.g. Local, Development, Production) and their non-secret variable keys.",
+            "description": "Lists all configured environments in Blitz (e.g. Local, Development, Production) and their variable keys.",
             "inputSchema": {
                 "type": "object",
-                "properties": {}
+                "properties": {
+                    "include_values": {
+                        "type": "boolean",
+                        "description": "Whether to include variable effective values in the output (default false)."
+                    }
+                }
+            }
+        }),
+        json!({
+            "name": "blitz_set_env_var",
+            "description": "Sets or updates an environment variable in a Blitz environment. If variable exists, its value is updated; otherwise created.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "key": {
+                        "type": "string",
+                        "description": "Variable name (e.g. 'token', 'baseUrl')."
+                    },
+                    "value": {
+                        "type": "string",
+                        "description": "Variable value."
+                    },
+                    "environment": {
+                        "type": "string",
+                        "description": "Optional target environment name or UUID (defaults to active environment)."
+                    },
+                    "enabled": {
+                        "type": "boolean",
+                        "description": "Whether the variable is enabled (default true)."
+                    }
+                },
+                "required": ["key", "value"]
+            }
+        }),
+        json!({
+            "name": "blitz_set_active_environment",
+            "description": "Switches the active environment in Blitz, or clears it ('none').",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "environment": {
+                        "type": "string",
+                        "description": "Name or UUID of environment to activate, or 'none' / empty string to clear."
+                    }
+                },
+                "required": ["environment"]
+            }
+        }),
+        json!({
+            "name": "blitz_upsert_request",
+            "description": "Creates or updates an API request draft in a Blitz collection or folder.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "collection": {
+                        "type": "string",
+                        "description": "Name or UUID of collection. Created if it does not exist."
+                    },
+                    "name": {
+                        "type": "string",
+                        "description": "Display name of the request."
+                    },
+                    "method": {
+                        "type": "string",
+                        "description": "HTTP method (GET, POST, PUT, DELETE, PATCH, etc.). Default GET.",
+                        "default": "GET"
+                    },
+                    "url": {
+                        "type": "string",
+                        "description": "Request URL endpoint (supports {{variable}} interpolations)."
+                    },
+                    "folder": {
+                        "type": "string",
+                        "description": "Optional folder name inside the collection. Created if it does not exist."
+                    },
+                    "headers": {
+                        "type": "object",
+                        "description": "Optional key-value map of HTTP headers."
+                    },
+                    "params": {
+                        "type": "object",
+                        "description": "Optional key-value map of URL query parameters."
+                    },
+                    "body": {
+                        "type": "string",
+                        "description": "Optional raw request body."
+                    },
+                    "description": {
+                        "type": "string",
+                        "description": "Optional documentation / description for the request."
+                    },
+                    "request_id": {
+                        "type": "string",
+                        "description": "Optional UUID to update an existing request explicitly."
+                    }
+                },
+                "required": ["collection", "name", "url"]
+            }
+        }),
+        json!({
+            "name": "blitz_import_curl",
+            "description": "Imports a raw cURL command into a Blitz request draft, optionally saving it into a collection.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "curl": {
+                        "type": "string",
+                        "description": "The raw cURL command string."
+                    },
+                    "collection": {
+                        "type": "string",
+                        "description": "Optional collection name or UUID to save the imported request into."
+                    },
+                    "name": {
+                        "type": "string",
+                        "description": "Optional custom name for the imported request."
+                    }
+                },
+                "required": ["curl"]
+            }
+        }),
+        json!({
+            "name": "blitz_generate_code",
+            "description": "Generates client code snippet for a saved request or ad-hoc URL in cURL, Python (httpx/requests), TypeScript (axios), JavaScript fetch, Rust (reqwest), Go, etc.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "language": {
+                        "type": "string",
+                        "description": "Target language: 'curl', 'python', 'requests', 'typescript', 'javascript', 'rust', 'go', 'java', 'csharp'."
+                    },
+                    "request_id": {
+                        "type": "string",
+                        "description": "UUID or name of an existing request in Blitz."
+                    },
+                    "method": {
+                        "type": "string",
+                        "description": "HTTP method for ad-hoc snippet (default 'GET')."
+                    },
+                    "url": {
+                        "type": "string",
+                        "description": "URL for ad-hoc snippet (required if request_id not provided)."
+                    },
+                    "headers": {
+                        "type": "object",
+                        "description": "Optional headers map for ad-hoc snippet."
+                    },
+                    "body": {
+                        "type": "string",
+                        "description": "Optional body for ad-hoc snippet."
+                    },
+                    "environment": {
+                        "type": "string",
+                        "description": "Optional environment name to interpolate variables."
+                    }
+                },
+                "required": ["language"]
+            }
+        }),
+        json!({
+            "name": "blitz_list_history",
+            "description": "Lists recent HTTP requests executed in Blitz with status codes, latency, and timestamps.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "limit": {
+                        "type": "integer",
+                        "description": "Maximum number of recent history entries to return (default 20)."
+                    }
+                }
             }
         }),
         json!({
@@ -455,6 +626,21 @@ fn execute_mcp_tool(name: &str, args: &JsonValue) -> Result<String, String> {
             let view = send_request_with_options(&req, &mut ctx, send_opts)
                 .map_err(|e| format!("Send failed: {e}"))?;
 
+            // Record to history & response cache so Blitz desktop UI reflects this run
+            let mut snap_for_save = snapshot;
+            push_history(
+                &mut snap_for_save.history,
+                HistoryEntry::from_send(
+                    &req,
+                    &view.resolved_url,
+                    Some(view.status),
+                    Some(view.elapsed_ms),
+                ),
+                HISTORY_MAX,
+            );
+            snap_for_save.responses.insert(req.id, view.clone());
+            let _ = store.save(&snap_for_save);
+
             let tests_summary: Vec<_> = view
                 .test_results
                 .iter()
@@ -534,6 +720,20 @@ fn execute_mcp_tool(name: &str, args: &JsonValue) -> Result<String, String> {
             let view = send_request_with_options(&draft, &mut ctx, send_opts)
                 .map_err(|e| format!("Execution error: {e}"))?;
 
+            // Record to history
+            let mut snap_for_save = snapshot;
+            push_history(
+                &mut snap_for_save.history,
+                HistoryEntry::from_send(
+                    &draft,
+                    &view.resolved_url,
+                    Some(view.status),
+                    Some(view.elapsed_ms),
+                ),
+                HISTORY_MAX,
+            );
+            let _ = store.save(&snap_for_save);
+
             let out = json!({
                 "status": view.status,
                 "status_text": view.status_text,
@@ -547,21 +747,453 @@ fn execute_mcp_tool(name: &str, args: &JsonValue) -> Result<String, String> {
             serde_json::to_string_pretty(&out).map_err(|e| e.to_string())
         }
         "blitz_list_environments" => {
+            let include_values = args
+                .get("include_values")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false);
+
             let envs: Vec<_> = snapshot
                 .environments
                 .iter()
                 .map(|e| {
-                    json!({
-                        "id": e.id.to_string(),
-                        "name": e.name,
-                        "variable_keys": e.values.iter().filter(|v| v.enabled && !v.key.is_empty()).map(|v| &v.key).collect::<Vec<_>>()
-                    })
+                    if include_values {
+                        json!({
+                            "id": e.id.to_string(),
+                            "name": e.name,
+                            "variables": e.values.iter().filter(|v| v.enabled && !v.key.is_empty()).map(|v| {
+                                json!({
+                                    "key": v.key,
+                                    "value": v.effective(),
+                                    "enabled": v.enabled
+                                })
+                            }).collect::<Vec<_>>()
+                        })
+                    } else {
+                        json!({
+                            "id": e.id.to_string(),
+                            "name": e.name,
+                            "variable_keys": e.values.iter().filter(|v| v.enabled && !v.key.is_empty()).map(|v| &v.key).collect::<Vec<_>>()
+                        })
+                    }
                 })
                 .collect();
 
             let res = json!({
                 "active_environment": snapshot.active_environment,
+                "active_environment_id": snapshot.active_environment_id.map(|id| id.to_string()),
                 "environments": envs
+            });
+            serde_json::to_string_pretty(&res).map_err(|e| e.to_string())
+        }
+        "blitz_set_env_var" => {
+            let key = args
+                .get("key")
+                .and_then(|k| k.as_str())
+                .ok_or_else(|| "Missing required parameter 'key'".to_string())?;
+            let value = args
+                .get("value")
+                .and_then(|v| v.as_str())
+                .ok_or_else(|| "Missing required parameter 'value'".to_string())?;
+            let env_name_opt = args.get("environment").and_then(|e| e.as_str());
+            let enabled = args.get("enabled").and_then(|e| e.as_bool()).unwrap_or(true);
+
+            let mut snapshot = snapshot;
+
+            let env_idx = if let Some(target) = env_name_opt {
+                if let Some(idx) = snapshot.environments.iter().position(|e| {
+                    e.name.eq_ignore_ascii_case(target) || e.id.to_string() == target
+                }) {
+                    idx
+                } else {
+                    let new_env = Environment::new(target);
+                    snapshot.environments.push(new_env);
+                    snapshot.environments.len() - 1
+                }
+            } else if let Some(active_id) = snapshot.active_environment_id {
+                if let Some(idx) = snapshot.environments.iter().position(|e| e.id == active_id) {
+                    idx
+                } else if !snapshot.environments.is_empty() {
+                    0
+                } else {
+                    snapshot.environments.push(Environment::new("Development"));
+                    0
+                }
+            } else if !snapshot.environments.is_empty() {
+                0
+            } else {
+                snapshot.environments.push(Environment::new("Development"));
+                0
+            };
+
+            let env = &mut snapshot.environments[env_idx];
+            let env_name = env.name.clone();
+            let env_id = env.id;
+
+            if let Some(v) = env.values.iter_mut().find(|v| v.key == key) {
+                v.current_value = value.to_string();
+                if v.initial_value.is_empty() {
+                    v.initial_value = value.to_string();
+                }
+                v.enabled = enabled;
+            } else {
+                env.values.push(EnvVar {
+                    key: key.to_string(),
+                    initial_value: value.to_string(),
+                    current_value: value.to_string(),
+                    enabled,
+                });
+            }
+
+            // Sync into active variable context if this is current environment
+            if snapshot.active_environment_id == Some(env_id)
+                || snapshot.active_environment.eq_ignore_ascii_case(&env_name)
+            {
+                snapshot
+                    .variables
+                    .environment
+                    .insert(key.to_string(), value.to_string());
+            }
+
+            store
+                .save(&snapshot)
+                .map_err(|e| format!("Save snapshot: {e}"))?;
+
+            let res = json!({
+                "status": "ok",
+                "environment": env_name,
+                "environment_id": env_id.to_string(),
+                "key": key,
+                "value": value,
+                "enabled": enabled
+            });
+            serde_json::to_string_pretty(&res).map_err(|e| e.to_string())
+        }
+        "blitz_set_active_environment" => {
+            let env_target = args
+                .get("environment")
+                .and_then(|e| e.as_str())
+                .unwrap_or("");
+            let mut snapshot = snapshot;
+
+            if env_target.is_empty() || env_target.eq_ignore_ascii_case("none") {
+                snapshot.active_environment = "No Environment".to_string();
+                snapshot.active_environment_id = None;
+                snapshot.variables.environment.clear();
+                store
+                    .save(&snapshot)
+                    .map_err(|e| format!("Save snapshot: {e}"))?;
+                let res = json!({
+                    "status": "ok",
+                    "active_environment": null
+                });
+                return serde_json::to_string_pretty(&res).map_err(|e| e.to_string());
+            }
+
+            let env = snapshot
+                .environments
+                .iter()
+                .find(|e| e.name.eq_ignore_ascii_case(env_target) || e.id.to_string() == env_target)
+                .ok_or_else(|| format!("Environment '{env_target}' not found"))?;
+
+            let env_name = env.name.clone();
+            let env_id = env.id;
+            let env_map = env.to_map();
+
+            snapshot.active_environment = env_name.clone();
+            snapshot.active_environment_id = Some(env_id);
+            snapshot.variables.environment = env_map;
+
+            store
+                .save(&snapshot)
+                .map_err(|e| format!("Save snapshot: {e}"))?;
+
+            let res = json!({
+                "status": "ok",
+                "active_environment": env_name,
+                "id": env_id.to_string()
+            });
+            serde_json::to_string_pretty(&res).map_err(|e| e.to_string())
+        }
+        "blitz_upsert_request" => {
+            let col_name_or_id = args
+                .get("collection")
+                .and_then(|c| c.as_str())
+                .ok_or_else(|| "Missing required parameter 'collection'".to_string())?;
+            let req_name = args
+                .get("name")
+                .and_then(|n| n.as_str())
+                .ok_or_else(|| "Missing required parameter 'name'".to_string())?;
+            let url = args
+                .get("url")
+                .and_then(|u| u.as_str())
+                .ok_or_else(|| "Missing required parameter 'url'".to_string())?;
+            let method_str = args
+                .get("method")
+                .and_then(|m| m.as_str())
+                .unwrap_or("GET");
+            let method = parse_http_method(method_str);
+
+            let mut headers = Vec::new();
+            if let Some(h_obj) = args.get("headers").and_then(|h| h.as_object()) {
+                for (k, v) in h_obj {
+                    if let Some(val) = v.as_str() {
+                        headers.push(KeyValue::new(k, val));
+                    }
+                }
+            }
+
+            let mut params = Vec::new();
+            if let Some(p_obj) = args.get("params").and_then(|p| p.as_object()) {
+                for (k, v) in p_obj {
+                    if let Some(val) = v.as_str() {
+                        params.push(KeyValue::new(k, val));
+                    }
+                }
+            }
+
+            let body = args
+                .get("body")
+                .and_then(|b| b.as_str())
+                .unwrap_or("")
+                .to_string();
+            let description = args
+                .get("description")
+                .and_then(|d| d.as_str())
+                .unwrap_or("")
+                .to_string();
+            let folder_name = args.get("folder").and_then(|f| f.as_str());
+            let req_id_opt = args
+                .get("request_id")
+                .and_then(|r| r.as_str())
+                .and_then(|s| Uuid::parse_str(s).ok());
+
+            let mut snapshot = snapshot;
+
+            let col_idx = if let Some(idx) = snapshot.collections.iter().position(|c| {
+                c.name.eq_ignore_ascii_case(col_name_or_id) || c.id.to_string() == col_name_or_id
+            }) {
+                idx
+            } else {
+                let new_col = Collection::new(col_name_or_id);
+                snapshot.collections.push(new_col);
+                snapshot.collections.len() - 1
+            };
+
+            let col = &mut snapshot.collections[col_idx];
+
+            let draft = RequestDraft {
+                id: req_id_opt.unwrap_or_else(Uuid::new_v4),
+                name: req_name.to_string(),
+                method,
+                url: url.to_string(),
+                headers,
+                params,
+                body,
+                description,
+                ..Default::default()
+            };
+
+            let final_id = draft.id;
+
+            if let Some(f_name) = folder_name {
+                let folder_item = col.items.iter_mut().find_map(|item| match item {
+                    CollectionItem::Folder(f) if f.name.eq_ignore_ascii_case(f_name) => Some(f),
+                    _ => None,
+                });
+
+                if let Some(folder) = folder_item {
+                    if let Some(existing) = folder.items.iter_mut().find_map(|item| match item {
+                        CollectionItem::Request(r)
+                            if r.id == final_id || r.name.eq_ignore_ascii_case(req_name) =>
+                        {
+                            Some(r)
+                        }
+                        _ => None,
+                    }) {
+                        *existing = draft;
+                    } else {
+                        folder.add_request(draft);
+                    }
+                } else {
+                    let mut new_folder = Folder::new(f_name);
+                    new_folder.add_request(draft);
+                    col.items.push(CollectionItem::Folder(new_folder));
+                }
+            } else if let Some(existing) = col.items.iter_mut().find_map(|item| match item {
+                CollectionItem::Request(r)
+                    if r.id == final_id || r.name.eq_ignore_ascii_case(req_name) =>
+                {
+                    Some(r)
+                }
+                _ => None,
+            }) {
+                *existing = draft;
+            } else {
+                col.add_request(draft);
+            }
+
+            let col_id_str = col.id.to_string();
+            let col_name_str = col.name.clone();
+
+            store
+                .save(&snapshot)
+                .map_err(|e| format!("Save snapshot: {e}"))?;
+
+            let res = json!({
+                "status": "ok",
+                "collection_id": col_id_str,
+                "collection_name": col_name_str,
+                "request_id": final_id.to_string(),
+                "name": req_name,
+                "method": method_str,
+                "url": url
+            });
+            serde_json::to_string_pretty(&res).map_err(|e| e.to_string())
+        }
+        "blitz_import_curl" => {
+            let curl_str = args
+                .get("curl")
+                .and_then(|c| c.as_str())
+                .ok_or_else(|| "Missing required parameter 'curl'".to_string())?;
+            let col_name_opt = args.get("collection").and_then(|c| c.as_str());
+            let custom_name_opt = args.get("name").and_then(|n| n.as_str());
+
+            let mut draft = import_curl(curl_str).map_err(|e| format!("Import cURL: {e}"))?;
+            if let Some(custom_name) = custom_name_opt {
+                draft.name = custom_name.to_string();
+            }
+
+            let mut snapshot = snapshot;
+            let saved_col = if let Some(col_name) = col_name_opt {
+                let col = if let Some(c) = snapshot.collections.iter_mut().find(|c| {
+                    c.name.eq_ignore_ascii_case(col_name) || c.id.to_string() == col_name
+                }) {
+                    c
+                } else {
+                    snapshot.collections.push(Collection::new(col_name));
+                    snapshot.collections.last_mut().unwrap()
+                };
+                let c_name = col.name.clone();
+                col.add_request(draft.clone());
+                store
+                    .save(&snapshot)
+                    .map_err(|e| format!("Save snapshot: {e}"))?;
+                Some(c_name)
+            } else {
+                None
+            };
+
+            let res = json!({
+                "status": "ok",
+                "saved": saved_col.is_some(),
+                "saved_collection": saved_col,
+                "request": {
+                    "id": draft.id.to_string(),
+                    "name": draft.name,
+                    "method": draft.method.as_str(),
+                    "url": draft.url,
+                    "headers": draft.headers.iter().filter(|h| h.enabled && !h.key.is_empty()).map(|h| (&h.key, &h.value)).collect::<HashMap<_, _>>(),
+                    "body": draft.body
+                }
+            });
+            serde_json::to_string_pretty(&res).map_err(|e| e.to_string())
+        }
+        "blitz_generate_code" => {
+            let lang_str = args
+                .get("language")
+                .and_then(|l| l.as_str())
+                .ok_or_else(|| "Missing required parameter 'language'".to_string())?;
+
+            let draft = if let Some(req_id_str) = args.get("request_id").and_then(|r| r.as_str()) {
+                let (_, r) = find_request_by_id_or_name(&snapshot.collections, req_id_str, None)?;
+                r
+            } else {
+                let url = args
+                    .get("url")
+                    .and_then(|u| u.as_str())
+                    .ok_or_else(|| "Must provide either 'request_id' or 'url'".to_string())?;
+                let method = parse_http_method(
+                    args.get("method").and_then(|m| m.as_str()).unwrap_or("GET"),
+                );
+                let mut headers = Vec::new();
+                if let Some(h_obj) = args.get("headers").and_then(|h| h.as_object()) {
+                    for (k, v) in h_obj {
+                        if let Some(val) = v.as_str() {
+                            headers.push(KeyValue::new(k, val));
+                        }
+                    }
+                }
+                let body = args
+                    .get("body")
+                    .and_then(|b| b.as_str())
+                    .unwrap_or("")
+                    .to_string();
+                RequestDraft {
+                    name: "Snippet Request".into(),
+                    method,
+                    url: url.into(),
+                    headers,
+                    body,
+                    ..Default::default()
+                }
+            };
+
+            let mut ctx = snapshot.variables.clone();
+            if let Some(env_name) = args.get("environment").and_then(|e| e.as_str()) {
+                if let Some(env) = find_env_by_name_or_id(&snapshot.environments, env_name) {
+                    ctx.environment = env.to_map();
+                }
+            }
+
+            let lang_lower = lang_str.trim().to_lowercase();
+            let target_lang: &'static str = match lang_lower.as_str() {
+                "curl" | "sh" | "bash" => "cURL",
+                "rust" | "reqwest" => "Rust (reqwest)",
+                "typescript" | "ts" | "axios" => "TypeScript (axios)",
+                "javascript" | "js" | "fetch" => "JavaScript fetch",
+                "python" | "py" | "httpx" => "Python (httpx)",
+                "requests" | "python-requests" => "Python (requests)",
+                "go" | "golang" => "Go net/http",
+                "java" | "okhttp" => "Java OkHttp",
+                "c#" | "csharp" | "dotnet" | "httpclient" => "C# HttpClient",
+                other => snippet_languages()
+                    .iter()
+                    .copied()
+                    .find(|l| l.eq_ignore_ascii_case(other))
+                    .unwrap_or("cURL"),
+            };
+
+            let code = generate_snippet_resolved(target_lang, &draft, Some(&ctx));
+            let res = json!({
+                "language": target_lang,
+                "code": code
+            });
+            serde_json::to_string_pretty(&res).map_err(|e| e.to_string())
+        }
+        "blitz_list_history" => {
+            let limit = args
+                .get("limit")
+                .and_then(|l| l.as_u64())
+                .unwrap_or(20) as usize;
+            let entries: Vec<_> = snapshot
+                .history
+                .iter()
+                .take(limit)
+                .map(|h| {
+                    json!({
+                        "id": h.id.to_string(),
+                        "at": h.at.to_rfc3339(),
+                        "method": h.method.as_str(),
+                        "url": h.url,
+                        "status": h.status,
+                        "elapsed_ms": h.elapsed_ms
+                    })
+                })
+                .collect();
+
+            let res = json!({
+                "count": entries.len(),
+                "history": entries
             });
             serde_json::to_string_pretty(&res).map_err(|e| e.to_string())
         }
@@ -646,6 +1278,18 @@ fn list_mcp_resources() -> Vec<JsonValue> {
             "name": "Blitz Environments",
             "description": "All configured Blitz environments and non-secret variables.",
             "mimeType": "application/json"
+        }),
+        json!({
+            "uri": "blitz://active-env",
+            "name": "Blitz Active Environment",
+            "description": "The currently active Blitz environment and its resolved key-value pairs.",
+            "mimeType": "application/json"
+        }),
+        json!({
+            "uri": "blitz://history",
+            "name": "Blitz Request History",
+            "description": "Recent HTTP request execution history.",
+            "mimeType": "application/json"
         })
     ]
 }
@@ -662,6 +1306,19 @@ fn read_mcp_resource(uri: &str) -> Result<(&'static str, String), String> {
         }
         "blitz://environments" => {
             let s = serde_json::to_string_pretty(&snapshot.environments).map_err(|e| e.to_string())?;
+            Ok(("application/json", s))
+        }
+        "blitz://active-env" => {
+            let res = json!({
+                "active_environment": snapshot.active_environment,
+                "active_environment_id": snapshot.active_environment_id.map(|id| id.to_string()),
+                "variables": snapshot.variables.environment
+            });
+            let s = serde_json::to_string_pretty(&res).map_err(|e| e.to_string())?;
+            Ok(("application/json", s))
+        }
+        "blitz://history" => {
+            let s = serde_json::to_string_pretty(&snapshot.history).map_err(|e| e.to_string())?;
             Ok(("application/json", s))
         }
         _ => Err(format!("Unknown resource URI: {uri}")),
@@ -770,9 +1427,77 @@ mod tests {
         let resp = handle_mcp_message(&req).expect("response expected");
         let tools = resp["result"]["tools"].as_array().expect("tools array");
         assert!(tools.iter().any(|t| t["name"] == "blitz_list_collections"));
+        assert!(tools.iter().any(|t| t["name"] == "blitz_get_request"));
         assert!(tools.iter().any(|t| t["name"] == "blitz_send_request"));
         assert!(tools.iter().any(|t| t["name"] == "blitz_execute_http"));
+        assert!(tools.iter().any(|t| t["name"] == "blitz_list_environments"));
+        assert!(tools.iter().any(|t| t["name"] == "blitz_set_env_var"));
+        assert!(tools.iter().any(|t| t["name"] == "blitz_set_active_environment"));
+        assert!(tools.iter().any(|t| t["name"] == "blitz_upsert_request"));
+        assert!(tools.iter().any(|t| t["name"] == "blitz_import_curl"));
+        assert!(tools.iter().any(|t| t["name"] == "blitz_generate_code"));
+        assert!(tools.iter().any(|t| t["name"] == "blitz_list_history"));
         assert!(tools.iter().any(|t| t["name"] == "blitz_run_collection"));
+        assert_eq!(tools.len(), 12);
+    }
+
+    #[test]
+    fn test_resources_list_returns_resources() {
+        let req = json!({
+            "jsonrpc": "2.0",
+            "id": 3,
+            "method": "resources/list"
+        });
+        let resp = handle_mcp_message(&req).expect("response expected");
+        let res = resp["result"]["resources"].as_array().expect("resources array");
+        assert!(res.iter().any(|r| r["uri"] == "blitz://collections"));
+        assert!(res.iter().any(|r| r["uri"] == "blitz://environments"));
+        assert!(res.iter().any(|r| r["uri"] == "blitz://active-env"));
+        assert!(res.iter().any(|r| r["uri"] == "blitz://history"));
+    }
+
+    #[test]
+    fn test_tool_generate_code() {
+        let req = json!({
+            "jsonrpc": "2.0",
+            "id": 4,
+            "method": "tools/call",
+            "params": {
+                "name": "blitz_generate_code",
+                "arguments": {
+                    "language": "python",
+                    "url": "https://api.example.com/v1/users",
+                    "method": "POST",
+                    "body": "{\"name\": \"Alice\"}"
+                }
+            }
+        });
+        let resp = handle_mcp_message(&req).expect("response expected");
+        assert_eq!(resp["jsonrpc"], "2.0");
+        assert_eq!(resp["id"], 4);
+        let content = &resp["result"]["content"][0]["text"].as_str().unwrap();
+        assert!(content.contains("httpx") || content.contains("requests") || content.contains("Alice"));
+    }
+
+    #[test]
+    fn test_tool_import_curl() {
+        let req = json!({
+            "jsonrpc": "2.0",
+            "id": 5,
+            "method": "tools/call",
+            "params": {
+                "name": "blitz_import_curl",
+                "arguments": {
+                    "curl": "curl -X POST https://api.test.com/login -H 'Content-Type: application/json' -d '{\"user\":\"test\"}'"
+                }
+            }
+        });
+        let resp = handle_mcp_message(&req).expect("response expected");
+        assert_eq!(resp["jsonrpc"], "2.0");
+        assert_eq!(resp["id"], 5);
+        let content = resp["result"]["content"][0]["text"].as_str().unwrap();
+        assert!(content.contains("https://api.test.com/login"));
+        assert!(content.contains("POST"));
     }
 
     #[test]
