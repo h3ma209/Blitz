@@ -199,10 +199,22 @@ Add Blitz to your `mcpServers` configuration (e.g. `~/.gemini/antigravity/mcp.js
 #### Exposed MCP Tools:
 - **`blitz_list_collections`**: Discover all collections, folders, and requests.
 - **`blitz_get_request`**: Retrieve full request details (URL, headers, query params, body, auth).
-- **`blitz_send_request`**: Execute a saved request through Blitz pipeline (scripts, cookies, and env vars).
-- **`blitz_execute_http`**: Run an ad-hoc HTTP request through Blitz engine.
-- **`blitz_list_environments`**: List available environments and active variable keys.
+- **`blitz_send_request`**: Execute a saved request through Blitz pipeline (scripts, cookies, and env vars; records history).
+- **`blitz_execute_http`**: Run an ad-hoc HTTP request through Blitz engine (records history).
+- **`blitz_list_environments`**: List available environments, active state, and variable keys/values.
+- **`blitz_set_env_var`**: Update or create an environment variable (e.g. auth token or baseUrl) directly from agent output.
+- **`blitz_set_active_environment`**: Switch or clear the active environment.
+- **`blitz_upsert_request`**: Create or edit request drafts in collections and folders.
+- **`blitz_import_curl`**: Import raw cURL commands directly into collections.
+- **`blitz_generate_code`**: Generate client code snippets (`cURL`, `Python`, `TypeScript`, `Rust`, `Go`, `Java`, `C#`) with variable interpolation.
+- **`blitz_list_history`**: Query past request executions with status, latency, and timestamps.
 - **`blitz_run_collection`**: Run a complete collection test suite and return assertion results.
+
+#### Exposed MCP Resources:
+- `blitz://collections`: Hierarchy of all collections, folders, and requests.
+- `blitz://environments`: Configured environments and variables.
+- `blitz://active-env`: Currently active environment with resolved key-value pairs.
+- `blitz://history`: Recent execution history.
 
 ---
 

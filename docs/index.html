@@ -1073,36 +1073,64 @@ pm.test("Response payload contains user_id", () => {
     <!-- SECTION: CLI & CI/CD AUTOMATION -->
     <!-- ================================================================= -->
     <section id="cli-runner" class="mt-36 text-center">
-      <span class="text-xs font-bold text-spot-bright tracking-widest uppercase block mb-3">DEVSECOPS &amp;
-        AUTOMATION</span>
-      <h2 class="text-3xl sm:text-5xl font-extrabold tracking-tight mb-4">Built-in CLI Runner. Zero NPM Dependencies.
+      <span class="text-xs font-bold text-spot-bright tracking-widest uppercase block mb-3">DEVSECOPS, AUTOMATION &amp; AI AGENTS</span>
+      <h2 class="text-3xl sm:text-5xl font-extrabold tracking-tight mb-4">Built-in CLI Runner &amp; MCP Agent Server.
       </h2>
       <p class="text-spot-muted max-w-2xl mx-auto text-base sm:text-lg mb-12">
         Never install <code>newman</code> or heavyweight Node packages again. Blitz ships with its own single-binary CLI
-        runner for GitHub Actions, GitLab CI, and local terminal workflows.
+        runner for CI/CD pipelines, plus a native <strong>Model Context Protocol (MCP)</strong> server for AI agents.
       </p>
 
-      <div class="rounded-2xl glass p-8 text-left max-w-3xl mx-auto">
-        <div class="flex items-center justify-between mb-4 border-b border-white/5 pb-3">
-          <div class="flex items-center gap-2">
-            <span class="text-xs font-mono text-spot-bright font-bold">Terminal</span>
-            <span class="text-xs text-spot-faint">— blitz run</span>
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-5xl mx-auto text-left">
+        <!-- Card 1: blitz run -->
+        <div class="rounded-2xl glass p-6">
+          <div class="flex items-center justify-between mb-4 border-b border-white/5 pb-3">
+            <div class="flex items-center gap-2">
+              <span class="text-xs font-mono text-spot-bright font-bold">Terminal</span>
+              <span class="text-xs text-spot-faint">— blitz run</span>
+            </div>
+            <span class="text-xs text-spot-muted font-mono">Exit Code: 0 (PASS)</span>
           </div>
-          <span class="text-xs text-spot-muted font-mono">Exit Code: 0 (PASS)</span>
+          <div
+            class="font-mono text-xs leading-relaxed text-gray-300 bg-black/60 p-4 rounded-xl border border-white/5 overflow-x-auto">
+            <div class="text-spot-muted mb-2"><span class="text-spot-bright">$</span> blitz run api-tests.json --env
+              staging.json</div>
+            <div class="text-spot-bright">⚡ Blitz Collection Runner v1.0</div>
+            <div class="text-spot-faint">Loaded collection: Authentication &amp; Billing API (14 requests)</div>
+            <div class="text-spot-faint">Active environment: Staging Cluster (US-East)</div>
+            <div class="my-2 border-t border-white/5"></div>
+            <div><span class="text-spot-bright font-bold">✓ PASS</span> POST /oauth/v2/token [200 OK, 12ms]</div>
+            <div><span class="text-spot-bright font-bold">✓ PASS</span> GET /user/billing [200 OK, 28ms]</div>
+            <div><span class="text-spot-bright font-bold">✓ PASS</span> POST /v1/charges [201 CREATED, 44ms]</div>
+            <div class="my-2 border-t border-white/5"></div>
+            <div class="text-spot-bright font-bold">Summary: 14/14 tests passed (0 failures) • Duration: 142ms total</div>
+          </div>
         </div>
-        <div
-          class="font-mono text-xs leading-relaxed text-gray-300 bg-black/60 p-4 rounded-xl border border-white/5 overflow-x-auto">
-          <div class="text-spot-muted mb-2"><span class="text-spot-bright">$</span> blitz run api-tests.json --env
-            staging.json</div>
-          <div class="text-spot-bright">⚡ Blitz Collection Runner v1.0</div>
-          <div class="text-spot-faint">Loaded collection: Authentication &amp; Billing API (14 requests)</div>
-          <div class="text-spot-faint">Active environment: Staging Cluster (US-East)</div>
-          <div class="my-2 border-t border-white/5"></div>
-          <div><span class="text-spot-bright font-bold">✓ PASS</span> POST /oauth/v2/token [200 OK, 12ms]</div>
-          <div><span class="text-spot-bright font-bold">✓ PASS</span> GET /user/billing [200 OK, 28ms]</div>
-          <div><span class="text-spot-bright font-bold">✓ PASS</span> POST /v1/charges [201 CREATED, 44ms]</div>
-          <div class="my-2 border-t border-white/5"></div>
-          <div class="text-spot-bright font-bold">Summary: 14/14 tests passed (0 failures) • Duration: 142ms total</div>
+
+        <!-- Card 2: blitz mcp -->
+        <div class="rounded-2xl glass p-6">
+          <div class="flex items-center justify-between mb-4 border-b border-white/5 pb-3">
+            <div class="flex items-center gap-2">
+              <span class="text-xs font-mono text-yellow-300 font-bold">AI Agent MCP</span>
+              <span class="text-xs text-spot-faint">— blitz mcp</span>
+            </div>
+            <span class="text-xs text-spot-bright font-mono bg-spot-green/10 border border-spot-green/30 px-2 py-0.5 rounded">12 Tools Active</span>
+          </div>
+          <div
+            class="font-mono text-xs leading-relaxed text-gray-300 bg-black/60 p-4 rounded-xl border border-white/5 overflow-x-auto">
+            <div class="text-spot-muted mb-2"><span class="text-spot-bright">$</span> blitz mcp</div>
+            <div class="text-spot-bright">⚡ Blitz Model Context Protocol Server (Stdio)</div>
+            <div class="text-spot-faint">JSON-RPC 2.0 (protocol 2024-11-05)</div>
+            <div class="my-2 border-t border-white/5"></div>
+            <div class="text-yellow-300 font-bold">AI Agent Tools:</div>
+            <div class="text-gray-400">● blitz_list_collections &amp; blitz_get_request</div>
+            <div class="text-gray-400">● blitz_send_request &amp; blitz_execute_http</div>
+            <div class="text-gray-400">● blitz_upsert_request &amp; blitz_import_curl</div>
+            <div class="text-gray-400">● blitz_set_env_var &amp; blitz_set_active_environment</div>
+            <div class="text-gray-400">● blitz_generate_code &amp; blitz_list_history</div>
+            <div class="my-2 border-t border-white/5"></div>
+            <div class="text-spot-bright font-bold">Native Antigravity, Gemini, Claude, Cursor Integration</div>
+          </div>
         </div>
       </div>
     </section>
@@ -1363,6 +1391,29 @@ pm.test("Response payload contains user_id", () => {
             on any machine.
           </p>
         </div>
+
+        <!-- Feature 14: Built-in Model Context Protocol (MCP) Server -->
+        <div class="p-8 rounded-2xl glass glass-hover relative overflow-hidden group">
+          <div class="absolute top-4 right-4">
+            <span
+              class="text-[10px] font-bold bg-yellow-400/20 text-yellow-300 px-2 py-0.5 rounded tracking-wide font-mono uppercase">NEW</span>
+          </div>
+          <div class="w-12 h-12 rounded-xl bg-yellow-500/15 text-yellow-300 flex items-center justify-center mb-6">
+            <svg class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <path d="M12 2a10 10 0 1 0 10 10H12V2z" />
+              <path d="M12 12L2.5 7.5" />
+              <path d="M12 12v10" />
+            </svg>
+          </div>
+          <h3 class="text-xl font-bold mb-3 tracking-tight">Built-in MCP Server for AI Agents</h3>
+          <p class="text-spot-muted text-sm leading-relaxed mb-3">
+            Expose collections, environments, and execution runtime to <strong>Antigravity</strong>, <strong>Gemini</strong>, <strong>Claude</strong>, and <strong>Cursor</strong> via <code>blitz mcp</code>. Autonomous agents can run requests, parse responses, generate client code, and update environment variables directly.
+          </p>
+          <div class="flex flex-wrap items-center gap-2 text-xs font-mono text-spot-bright">
+            <span class="px-2 py-0.5 rounded bg-spot-green/10 border border-spot-green/20">⚡ 12 Agent Tools</span>
+            <span class="px-2 py-0.5 rounded bg-white/5 border border-white/10 text-spot-muted">JSON-RPC 2.0 stdio</span>
+          </div>
+        </div>
       </div>
     </section>
 
@@ -1503,6 +1554,14 @@ pm.test("Response payload contains user_id", () => {
                 <td class="py-4 px-5 text-spot-muted text-center">Basic cURL / fetch</td>
                 <td class="py-4 px-5 text-spot-muted text-center">Basic Snippets</td>
                 <td class="py-4 px-5 text-spot-muted text-center">curl only</td>
+              </tr>
+              <tr>
+                <td class="py-4 px-5 text-spot-muted">AI Agent Server (MCP)</td>
+                <td class="py-4 px-5 text-spot-bright font-semibold bg-spot-green/5 text-center">⚡ Native Stdio (12 Tools)</td>
+                <td class="py-4 px-5 text-red-400 text-center">Paid Cloud AI ($$$)</td>
+                <td class="py-4 px-5 text-red-400 text-center">None</td>
+                <td class="py-4 px-5 text-red-400 text-center">None</td>
+                <td class="py-4 px-5 text-red-400 text-center">None</td>
               </tr>
             </tbody>
           </table>
