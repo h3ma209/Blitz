@@ -159,16 +159,25 @@ pub enum OAuth2Grant {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub struct OAuth2Config {
+    #[serde(default)]
     pub grant: OAuth2Grant,
+    #[serde(default)]
     pub auth_url: String,
+    #[serde(default)]
     pub token_url: String,
+    #[serde(default)]
     pub client_id: String,
+    #[serde(default)]
     pub client_secret: String,
+    #[serde(default)]
     pub scope: String,
     /// Loopback redirect, e.g. http://127.0.0.1:8765/callback
+    #[serde(default)]
     pub redirect_uri: String,
     /// Cached access token after Get Token.
+    #[serde(default)]
     pub access_token: String,
+    #[serde(default)]
     pub refresh_token: String,
 }
 
@@ -228,32 +237,46 @@ impl Default for FormDataField {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub struct AuthExtra {
     /// OAuth1 consumer key / Hawk id / EdgeGrid client token / AWS access key.
+    #[serde(default)]
     pub key: String,
     /// OAuth1 consumer secret / Hawk key / EdgeGrid client secret / AWS secret key.
+    #[serde(default)]
     pub secret: String,
     /// OAuth1 token / EdgeGrid access token / AWS session token.
+    #[serde(default)]
     pub token: String,
     /// OAuth1 token secret / EdgeGrid host (base URL host).
+    #[serde(default)]
     pub token_secret: String,
     /// OAuth1 signature method (HMAC-SHA1 / HMAC-SHA256 / PLAINTEXT).
+    #[serde(default)]
     pub signature_method: String,
     /// AWS region (default us-east-1).
+    #[serde(default)]
     pub region: String,
     /// AWS service name (default execute-api).
+    #[serde(default)]
     pub service: String,
     /// Hawk algorithm (sha256 / sha1).
+    #[serde(default)]
     pub algorithm: String,
     /// Hawk ext / optional.
+    #[serde(default)]
     pub ext: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub struct AuthConfig {
+    #[serde(default)]
     pub auth_type: AuthType,
     /// Bearer token or API key. Plaintext, or `secret://{id}` / `secret://{id}/{account}`.
+    #[serde(default)]
     pub token: String,
+    #[serde(default)]
     pub username: String,
+    #[serde(default)]
     pub password: String,
+    #[serde(default)]
     pub api_key_header: String,
     #[serde(default)]
     pub oauth2: OAuth2Config,
@@ -280,11 +303,17 @@ pub struct RequestDraft {
     pub description: String,
     #[serde(default)]
     pub protocol: RequestProtocol,
+    #[serde(default)]
     pub method: HttpMethod,
+    #[serde(default)]
     pub url: String,
+    #[serde(default)]
     pub params: Vec<KeyValue>,
+    #[serde(default)]
     pub headers: Vec<KeyValue>,
+    #[serde(default)]
     pub body_mode: BodyMode,
+    #[serde(default)]
     pub body: String,
     /// Local file path when `body_mode == Binary`.
     #[serde(default)]
@@ -304,10 +333,13 @@ pub struct RequestDraft {
     /// GraphQL variables JSON object string.
     #[serde(default)]
     pub graphql_variables: String,
+    #[serde(default)]
     pub auth: AuthConfig,
     /// Pre-request script (boa JS sandbox + helpers).
+    #[serde(default)]
     pub pre_request_script: String,
     /// Post-response / test script (boa JS sandbox).
+    #[serde(default)]
     pub test_script: String,
     #[serde(default)]
     pub settings: RequestSettings,

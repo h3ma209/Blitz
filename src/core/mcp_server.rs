@@ -20,7 +20,7 @@ use crate::core::impex::import_curl;
 use crate::core::request::{HttpMethod, KeyValue, RequestDraft};
 use crate::runtime::pipeline::{send_request_with_options, SendOptions};
 use crate::runtime::runner::{run_collection_with_config, RunnerConfig};
-use crate::storage::JsonStore;
+use crate::storage::{AppSnapshot, JsonStore};
 
 /// Entry point to start the Blitz MCP server on stdio.
 /// Reads JSON-RPC requests line-by-line from stdin and writes responses to stdout.
@@ -260,7 +260,7 @@ fn list_mcp_tools() -> Vec<JsonValue> {
         }),
         json!({
             "name": "blitz_send_request",
-            "description": "Executes a saved Blitz request by ID or name using the Blitz pipeline (resolving variables, running pre-request and test scripts, managing cookies), and returns status, headers, body, and test results.",
+            "description": "Executes a saved Blitz request by ID or name using the Blitz pipeline (resolving variables, running pre-request and test scripts, managing cookies), and returns status, headers, body, parsed JSON, and test results.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -275,6 +275,10 @@ fn list_mcp_tools() -> Vec<JsonValue> {
                     "override_vars": {
                         "type": "object",
                         "description": "Optional key-value pairs to override variables during this execution."
+                    },
+                    "save_to_env": {
+                        "type": "object",
+                        "description": "Optional mapping of environment variable names to response JSON paths or headers (e.g. {\"token\": \"data.token\", \"user_id\": \"data.id\"}) to automatically extract and persist to active environment."
                     }
                 },
                 "required": ["request_id"]
@@ -306,6 +310,10 @@ fn list_mcp_tools() -> Vec<JsonValue> {
                     "environment": {
                         "type": "string",
                         "description": "Optional environment name to resolve {{variables}} against."
+                    },
+                    "save_to_env": {
+                        "type": "object",
+                        "description": "Optional mapping of environment variable names to response JSON paths or headers (e.g. {\"token\": \"data.token\"}) to automatically extract and persist to active environment."
                     }
                 },
                 "required": ["url"]
@@ -490,13 +498,17 @@ fn list_mcp_tools() -> Vec<JsonValue> {
         }),
         json!({
             "name": "blitz_run_collection",
-            "description": "Runs all requests in a collection sequentially, executing assertions and returning a complete test pass/fail report.",
+            "description": "Runs all requests in a collection (or scoped folder) sequentially, executing assertions and returning a complete test pass/fail report.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
                     "collection": {
                         "type": "string",
                         "description": "UUID or name of the collection to run."
+                    },
+                    "folder": {
+                        "type": "string",
+                        "description": "Optional folder name or slash-separated path within collection (e.g. 'User/Account'). Scopes execution to only requests in this folder."
                     },
                     "environment": {
                         "type": "string",
@@ -525,7 +537,7 @@ fn execute_mcp_tool(name: &str, args: &JsonValue) -> Result<String, String> {
             let mut out = Vec::new();
             for col in &snapshot.collections {
                 let mut requests_list = Vec::new();
-                collect_request_summaries(&col.items, &mut requests_list);
+                collect_request_summaries(&col.items, "", &mut requests_list);
 
                 if !filter.is_empty() {
                     let col_match = col.name.to_lowercase().contains(&filter);
@@ -533,6 +545,7 @@ fn execute_mcp_tool(name: &str, args: &JsonValue) -> Result<String, String> {
                         col_match
                             || r["name"].as_str().unwrap_or("").to_lowercase().contains(&filter)
                             || r["url"].as_str().unwrap_or("").to_lowercase().contains(&filter)
+                            || r["path"].as_str().unwrap_or("").to_lowercase().contains(&filter)
                     });
                     if !col_match && requests_list.is_empty() {
                         continue;
@@ -626,6 +639,8 @@ fn execute_mcp_tool(name: &str, args: &JsonValue) -> Result<String, String> {
             let view = send_request_with_options(&req, &mut ctx, send_opts)
                 .map_err(|e| format!("Send failed: {e}"))?;
 
+            let parsed_json: Option<JsonValue> = serde_json::from_str(&view.body).ok();
+
             // Record to history & response cache so Blitz desktop UI reflects this run
             let mut snap_for_save = snapshot;
             push_history(
@@ -639,6 +654,18 @@ fn execute_mcp_tool(name: &str, args: &JsonValue) -> Result<String, String> {
                 HISTORY_MAX,
             );
             snap_for_save.responses.insert(req.id, view.clone());
+
+            // Auto-extract response vars into active/target environment
+            let save_to_env = args.get("save_to_env").and_then(|s| s.as_object());
+            let env_name_arg = args.get("environment").and_then(|e| e.as_str());
+            let saved_vars = apply_saved_vars(
+                &mut snap_for_save,
+                save_to_env,
+                parsed_json.as_ref(),
+                &view.headers,
+                env_name_arg,
+            );
+
             let _ = store.save(&snap_for_save);
 
             let tests_summary: Vec<_> = view
@@ -653,7 +680,7 @@ fn execute_mcp_tool(name: &str, args: &JsonValue) -> Result<String, String> {
                 })
                 .collect();
 
-            let out = json!({
+            let mut out = json!({
                 "status": view.status,
                 "status_text": view.status_text,
                 "elapsed_ms": view.elapsed_ms,
@@ -663,6 +690,13 @@ fn execute_mcp_tool(name: &str, args: &JsonValue) -> Result<String, String> {
                 "error": view.error,
                 "tests": tests_summary
             });
+
+            if let Some(ref j) = parsed_json {
+                out["json"] = j.clone();
+            }
+            if !saved_vars.is_empty() {
+                out["saved_to_env"] = json!(saved_vars);
+            }
 
             serde_json::to_string_pretty(&out).map_err(|e| e.to_string())
         }
@@ -720,6 +754,8 @@ fn execute_mcp_tool(name: &str, args: &JsonValue) -> Result<String, String> {
             let view = send_request_with_options(&draft, &mut ctx, send_opts)
                 .map_err(|e| format!("Execution error: {e}"))?;
 
+            let parsed_json: Option<JsonValue> = serde_json::from_str(&view.body).ok();
+
             // Record to history
             let mut snap_for_save = snapshot;
             push_history(
@@ -732,9 +768,21 @@ fn execute_mcp_tool(name: &str, args: &JsonValue) -> Result<String, String> {
                 ),
                 HISTORY_MAX,
             );
+
+            // Auto-extract response vars into active/target environment
+            let save_to_env = args.get("save_to_env").and_then(|s| s.as_object());
+            let env_name_arg = args.get("environment").and_then(|e| e.as_str());
+            let saved_vars = apply_saved_vars(
+                &mut snap_for_save,
+                save_to_env,
+                parsed_json.as_ref(),
+                &view.headers,
+                env_name_arg,
+            );
+
             let _ = store.save(&snap_for_save);
 
-            let out = json!({
+            let mut out = json!({
                 "status": view.status,
                 "status_text": view.status_text,
                 "elapsed_ms": view.elapsed_ms,
@@ -743,6 +791,13 @@ fn execute_mcp_tool(name: &str, args: &JsonValue) -> Result<String, String> {
                 "body": view.body,
                 "error": view.error
             });
+
+            if let Some(ref j) = parsed_json {
+                out["json"] = j.clone();
+            }
+            if !saved_vars.is_empty() {
+                out["saved_to_env"] = json!(saved_vars);
+            }
 
             serde_json::to_string_pretty(&out).map_err(|e| e.to_string())
         }
@@ -1202,6 +1257,7 @@ fn execute_mcp_tool(name: &str, args: &JsonValue) -> Result<String, String> {
                 .get("collection")
                 .and_then(|c| c.as_str())
                 .ok_or_else(|| "Missing required parameter 'collection'".to_string())?;
+            let folder_name_opt = args.get("folder").and_then(|f| f.as_str());
 
             let target_col = snapshot
                 .collections
@@ -1209,8 +1265,37 @@ fn execute_mcp_tool(name: &str, args: &JsonValue) -> Result<String, String> {
                 .find(|c| c.name.eq_ignore_ascii_case(col_name) || c.id.to_string() == col_name)
                 .ok_or_else(|| format!("Collection '{col_name}' not found"))?;
 
+            let scoped_col_storage;
+            let run_col = if let Some(folder_query) = folder_name_opt {
+                if let Some(folder) = find_folder_by_path_or_name(&target_col.items, folder_query) {
+                    let mut sc = target_col.clone();
+                    sc.name = format!("{} / {}", target_col.name, folder.name);
+                    sc.items = folder.items.clone();
+                    if folder.auth.auth_type != crate::core::AuthType::Inherit {
+                        sc.auth = folder.auth.clone();
+                    }
+                    if !folder.pre_request_script.is_empty() {
+                        sc.pre_request_script = folder.pre_request_script.clone();
+                    }
+                    if !folder.test_script.is_empty() {
+                        sc.test_script = folder.test_script.clone();
+                    }
+                    scoped_col_storage = sc;
+                    &scoped_col_storage
+                } else {
+                    let mut available = Vec::new();
+                    collect_folder_paths(&target_col.items, "", &mut available);
+                    return Err(format!(
+                        "Folder '{folder_query}' not found in collection '{}'. Available folders: {:?}",
+                        target_col.name, available
+                    ));
+                }
+            } else {
+                target_col
+            };
+
             let mut ctx = snapshot.variables.clone();
-            ctx.collection = target_col.variables_map();
+            ctx.collection = run_col.variables_map();
 
             if let Some(env_name) = args.get("environment").and_then(|e| e.as_str()) {
                 if let Some(env) = find_env_by_name_or_id(&snapshot.environments, env_name) {
@@ -1226,7 +1311,7 @@ fn execute_mcp_tool(name: &str, args: &JsonValue) -> Result<String, String> {
             let mut jar = snapshot.cookies.clone();
 
             let report = run_collection_with_config(
-                target_col,
+                run_col,
                 &mut ctx,
                 &mut jar,
                 Some(&snapshot.settings),
@@ -1252,6 +1337,8 @@ fn execute_mcp_tool(name: &str, args: &JsonValue) -> Result<String, String> {
                 .collect();
 
             let out = json!({
+                "collection": target_col.name,
+                "folder": folder_name_opt,
                 "total_requests": report.results.len(),
                 "passed": report.passed_count(),
                 "failed": report.failed_count(),
@@ -1326,21 +1413,239 @@ fn read_mcp_resource(uri: &str) -> Result<(&'static str, String), String> {
 }
 
 // Helpers
-fn collect_request_summaries(items: &[CollectionItem], out: &mut Vec<JsonValue>) {
+fn collect_request_summaries(
+    items: &[CollectionItem],
+    current_folder: &str,
+    out: &mut Vec<JsonValue>,
+) {
     for item in items {
         match item {
             CollectionItem::Request(r) => {
+                let path = if current_folder.is_empty() {
+                    r.name.clone()
+                } else {
+                    format!("{}/{}", current_folder, r.name)
+                };
+                let folder_val = if current_folder.is_empty() {
+                    JsonValue::Null
+                } else {
+                    json!(current_folder)
+                };
                 out.push(json!({
                     "id": r.id.to_string(),
                     "name": r.name,
                     "method": r.method.as_str(),
-                    "url": r.url
+                    "url": r.url,
+                    "path": path,
+                    "folder": folder_val
                 }));
             }
             CollectionItem::Folder(f) => {
-                collect_request_summaries(&f.items, out);
+                let next_folder = if current_folder.is_empty() {
+                    f.name.clone()
+                } else {
+                    format!("{}/{}", current_folder, f.name)
+                };
+                collect_request_summaries(&f.items, &next_folder, out);
             }
         }
+    }
+}
+
+fn find_folder_by_path_or_name<'a>(items: &'a [CollectionItem], query: &str) -> Option<&'a Folder> {
+    let clean = query.trim().trim_matches('/');
+    if clean.is_empty() {
+        return None;
+    }
+
+    // 1. Slash-separated path search e.g. "User/Account"
+    let segments: Vec<&str> = clean
+        .split('/')
+        .map(|s| s.trim())
+        .filter(|s| !s.is_empty())
+        .collect();
+    if segments.len() > 1 {
+        let mut curr_items = items;
+        let mut matched = None;
+        for (i, seg) in segments.iter().enumerate() {
+            let found = curr_items.iter().find_map(|item| match item {
+                CollectionItem::Folder(f) if f.name.eq_ignore_ascii_case(seg) => Some(f),
+                _ => None,
+            });
+            if let Some(f) = found {
+                if i == segments.len() - 1 {
+                    return Some(f);
+                }
+                curr_items = &f.items;
+                matched = Some(f);
+            } else {
+                matched = None;
+                break;
+            }
+        }
+        if matched.is_some() {
+            return matched;
+        }
+    }
+
+    // 2. Recursive name or UUID search
+    for item in items {
+        if let CollectionItem::Folder(f) = item {
+            if f.name.eq_ignore_ascii_case(clean) || f.id.to_string() == clean {
+                return Some(f);
+            }
+            if let Some(sub) = find_folder_by_path_or_name(&f.items, clean) {
+                return Some(sub);
+            }
+        }
+    }
+    None
+}
+
+fn collect_folder_paths(items: &[CollectionItem], prefix: &str, out: &mut Vec<String>) {
+    for item in items {
+        if let CollectionItem::Folder(f) = item {
+            let path = if prefix.is_empty() {
+                f.name.clone()
+            } else {
+                format!("{}/{}", prefix, f.name)
+            };
+            out.push(path.clone());
+            collect_folder_paths(&f.items, &path, out);
+        }
+    }
+}
+
+fn apply_saved_vars(
+    snap: &mut AppSnapshot,
+    save_to_env_arg: Option<&serde_json::Map<String, JsonValue>>,
+    parsed_json: Option<&JsonValue>,
+    headers: &[(String, String)],
+    target_env_name: Option<&str>,
+) -> HashMap<String, String> {
+    let mut saved_vars = HashMap::new();
+    let map = match save_to_env_arg {
+        Some(m) => m,
+        None => return saved_vars,
+    };
+
+    for (var_name, path_val) in map {
+        let val_opt = if let Some(path_str) = path_val.as_str() {
+            if let Some(hdr_key) = path_str
+                .strip_prefix("headers.")
+                .or_else(|| path_str.strip_prefix("header."))
+            {
+                headers
+                    .iter()
+                    .find(|(k, _)| k.eq_ignore_ascii_case(hdr_key))
+                    .map(|(_, v)| v.clone())
+            } else if let Some(j) = parsed_json {
+                extract_json_path(j, path_str)
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+
+        if let Some(val) = val_opt {
+            saved_vars.insert(var_name.clone(), val);
+        }
+    }
+
+    if saved_vars.is_empty() {
+        return saved_vars;
+    }
+
+    let env_idx = if let Some(target) = target_env_name {
+        snap.environments.iter().position(|e| {
+            e.name.eq_ignore_ascii_case(target) || e.id.to_string() == target
+        })
+    } else if let Some(active_id) = snap.active_environment_id {
+        snap.environments.iter().position(|e| e.id == active_id)
+    } else if !snap.environments.is_empty() {
+        Some(0)
+    } else {
+        None
+    };
+
+    if let Some(idx) = env_idx {
+        let env = &mut snap.environments[idx];
+        let env_id = env.id;
+        let env_name = env.name.clone();
+
+        for (k, v) in &saved_vars {
+            if let Some(existing) = env.values.iter_mut().find(|ev| ev.key == *k) {
+                existing.current_value = v.clone();
+                if existing.initial_value.is_empty() {
+                    existing.initial_value = v.clone();
+                }
+                existing.enabled = true;
+            } else {
+                env.values.push(EnvVar::new(k, v));
+            }
+        }
+
+        if snap.active_environment_id == Some(env_id)
+            || snap.active_environment.eq_ignore_ascii_case(&env_name)
+        {
+            for (k, v) in &saved_vars {
+                snap.variables.environment.insert(k.clone(), v.clone());
+            }
+        }
+    }
+
+    saved_vars
+}
+
+fn extract_json_path(root: &JsonValue, path: &str) -> Option<String> {
+    let clean = path.trim();
+    if clean.is_empty() {
+        return None;
+    }
+
+    if clean.starts_with('/') {
+        if let Some(val) = root.pointer(clean) {
+            return json_val_to_string(val);
+        }
+    }
+
+    let normalized = clean.replace('[', ".").replace(']', "");
+    let segments: Vec<&str> = normalized.split('.').filter(|s| !s.is_empty()).collect();
+    let mut curr = root;
+    for seg in segments {
+        match curr {
+            JsonValue::Object(map) => {
+                if let Some(next) = map.get(seg) {
+                    curr = next;
+                } else {
+                    return None;
+                }
+            }
+            JsonValue::Array(arr) => {
+                if let Ok(idx) = seg.parse::<usize>() {
+                    if let Some(next) = arr.get(idx) {
+                        curr = next;
+                    } else {
+                        return None;
+                    }
+                } else {
+                    return None;
+                }
+            }
+            _ => return None,
+        }
+    }
+    json_val_to_string(curr)
+}
+
+fn json_val_to_string(v: &JsonValue) -> Option<String> {
+    match v {
+        JsonValue::String(s) => Some(s.clone()),
+        JsonValue::Number(n) => Some(n.to_string()),
+        JsonValue::Bool(b) => Some(b.to_string()),
+        JsonValue::Null => Some("null".to_string()),
+        other => Some(other.to_string()),
     }
 }
 
@@ -1498,6 +1803,97 @@ mod tests {
         let content = resp["result"]["content"][0]["text"].as_str().unwrap();
         assert!(content.contains("https://api.test.com/login"));
         assert!(content.contains("POST"));
+    }
+
+    #[test]
+    fn test_extract_json_path() {
+        let sample = json!({
+            "status": "success",
+            "data": {
+                "token": "secret_jwt_xyz",
+                "user": {
+                    "id": 42,
+                    "name": "Alice"
+                },
+                "roles": ["admin", "editor"]
+            }
+        });
+
+        assert_eq!(
+            extract_json_path(&sample, "data.token"),
+            Some("secret_jwt_xyz".to_string())
+        );
+        assert_eq!(
+            extract_json_path(&sample, "data.user.id"),
+            Some("42".to_string())
+        );
+        assert_eq!(
+            extract_json_path(&sample, "data.roles[0]"),
+            Some("admin".to_string())
+        );
+        assert_eq!(
+            extract_json_path(&sample, "/data/user/name"),
+            Some("Alice".to_string())
+        );
+        assert_eq!(extract_json_path(&sample, "data.missing"), None);
+    }
+
+    #[test]
+    fn test_folder_path_breadcrumbs() {
+        let mut f_sub = Folder::new("Account");
+        f_sub.add_request(RequestDraft {
+            name: "Login".into(),
+            method: HttpMethod::Post,
+            url: "https://api.com/login".into(),
+            ..Default::default()
+        });
+
+        let mut f_parent = Folder::new("User");
+        f_parent.items.push(CollectionItem::Folder(f_sub));
+
+        let items = vec![CollectionItem::Folder(f_parent)];
+        let mut summaries = Vec::new();
+        collect_request_summaries(&items, "", &mut summaries);
+
+        assert_eq!(summaries.len(), 1);
+        assert_eq!(summaries[0]["name"], "Login");
+        assert_eq!(summaries[0]["path"], "User/Account/Login");
+        assert_eq!(summaries[0]["folder"], "User/Account");
+    }
+
+    #[test]
+    fn test_find_folder_by_path_or_name() {
+        let mut f_sub = Folder::new("Account");
+        f_sub.add_request(RequestDraft {
+            name: "Login".into(),
+            ..Default::default()
+        });
+
+        let mut f_parent = Folder::new("User");
+        f_parent.items.push(CollectionItem::Folder(f_sub));
+
+        let items = vec![CollectionItem::Folder(f_parent)];
+
+        assert!(find_folder_by_path_or_name(&items, "User").is_some());
+        assert!(find_folder_by_path_or_name(&items, "Account").is_some());
+        assert!(find_folder_by_path_or_name(&items, "User/Account").is_some());
+        assert!(find_folder_by_path_or_name(&items, "NonExistent").is_none());
+    }
+
+    #[test]
+    fn test_serde_resilience_missing_fields() {
+        // Missing username, token, extra, oauth2 in AuthConfig
+        let auth_json = r#"{"auth_type": "bearer"}"#;
+        let auth: Result<crate::core::AuthConfig, _> = serde_json::from_str(auth_json);
+        assert!(auth.is_ok(), "AuthConfig should deserialize with missing fields");
+
+        // Missing params, headers, body, auth in RequestDraft
+        let draft_json = r#"{
+            "id": "00000000-0000-0000-0000-000000000001",
+            "name": "Minimal Request"
+        }"#;
+        let draft: Result<RequestDraft, _> = serde_json::from_str(draft_json);
+        assert!(draft.is_ok(), "RequestDraft should deserialize with missing fields");
     }
 
     #[test]

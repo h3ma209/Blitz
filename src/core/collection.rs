@@ -77,10 +77,12 @@ pub struct CollectionEnvOverrides {
 pub struct Collection {
     pub id: Uuid,
     pub name: String,
+    #[serde(default)]
     pub description: String,
     /// Collection-level auth (used when request auth is Inherit).
     #[serde(default)]
     pub auth: AuthConfig,
+    #[serde(default)]
     pub items: Vec<CollectionItem>,
     #[serde(default)]
     pub favorite: bool,
@@ -231,6 +233,7 @@ pub struct Folder {
     /// Folder-level auth (used when child request auth is Inherit).
     #[serde(default)]
     pub auth: AuthConfig,
+    #[serde(default)]
     pub items: Vec<CollectionItem>,
     #[serde(default)]
     pub pre_request_script: String,

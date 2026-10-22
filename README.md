@@ -197,10 +197,10 @@ Add Blitz to your `mcpServers` configuration (e.g. `~/.gemini/antigravity/mcp.js
 ```
 
 #### Exposed MCP Tools:
-- **`blitz_list_collections`**: Discover all collections, folders, and requests.
+- **`blitz_list_collections`**: Discover all collections, folders, and requests with folder breadcrumb paths (`path`, `folder`).
 - **`blitz_get_request`**: Retrieve full request details (URL, headers, query params, body, auth).
-- **`blitz_send_request`**: Execute a saved request through Blitz pipeline (scripts, cookies, and env vars; records history).
-- **`blitz_execute_http`**: Run an ad-hoc HTTP request through Blitz engine (records history).
+- **`blitz_send_request`**: Execute a saved request through Blitz pipeline (returns parsed `json`, supports `save_to_env` auto-extraction, records history).
+- **`blitz_execute_http`**: Run an ad-hoc HTTP request through Blitz engine (returns parsed `json`, supports `save_to_env` auto-extraction, records history).
 - **`blitz_list_environments`**: List available environments, active state, and variable keys/values.
 - **`blitz_set_env_var`**: Update or create an environment variable (e.g. auth token or baseUrl) directly from agent output.
 - **`blitz_set_active_environment`**: Switch or clear the active environment.
@@ -208,7 +208,7 @@ Add Blitz to your `mcpServers` configuration (e.g. `~/.gemini/antigravity/mcp.js
 - **`blitz_import_curl`**: Import raw cURL commands directly into collections.
 - **`blitz_generate_code`**: Generate client code snippets (`cURL`, `Python`, `TypeScript`, `Rust`, `Go`, `Java`, `C#`) with variable interpolation.
 - **`blitz_list_history`**: Query past request executions with status, latency, and timestamps.
-- **`blitz_run_collection`**: Run a complete collection test suite and return assertion results.
+- **`blitz_run_collection`**: Run a complete collection test suite (supports `folder` scoping) and return assertion results.
 
 #### Exposed MCP Resources:
 - `blitz://collections`: Hierarchy of all collections, folders, and requests.
