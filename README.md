@@ -169,14 +169,40 @@ make install
 
 ---
 
-## CI/CD Automation
+## CI/CD Automation & AI Agent Integration
 
+### Headless CLI Runner
 Run test collections headless in your CI/CD pipelines without cloud subscriptions or proprietary API keys:
 
 ```bash
 # Execute collection headless (returns exit code 0 on pass, 1 on failure)
 blitz run collection.json --env staging.json
 ```
+
+### 🤖 AI Agent Integration via MCP (Antigravity, Gemini, Claude, Cursor)
+Blitz includes a built-in **Model Context Protocol (MCP)** server (`blitz mcp`), allowing AI coding assistants and autonomous agents to list collections, inspect request schemas, execute endpoints, and run API test suites directly through Blitz.
+
+#### Setup in Antigravity / Gemini / Cursor / Claude:
+Add Blitz to your `mcpServers` configuration (e.g. `~/.gemini/antigravity/mcp.json` or `claude_desktop_config.json`):
+
+```json
+{
+  "mcpServers": {
+    "blitz": {
+      "command": "blitz",
+      "args": ["mcp"]
+    }
+  }
+}
+```
+
+#### Exposed MCP Tools:
+- **`blitz_list_collections`**: Discover all collections, folders, and requests.
+- **`blitz_get_request`**: Retrieve full request details (URL, headers, query params, body, auth).
+- **`blitz_send_request`**: Execute a saved request through Blitz pipeline (scripts, cookies, and env vars).
+- **`blitz_execute_http`**: Run an ad-hoc HTTP request through Blitz engine.
+- **`blitz_list_environments`**: List available environments and active variable keys.
+- **`blitz_run_collection`**: Run a complete collection test suite and return assertion results.
 
 ---
 

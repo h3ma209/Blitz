@@ -15,6 +15,7 @@ pub fn try_run_cli(args: &[String]) -> Option<i32> {
         return None;
     }
     match args[1].as_str() {
+        "mcp" => Some(super::mcp_server::run_stdio_server()),
         "run" => Some(run_collection_cli(&args[2..])),
         "help" | "--help" | "-h" => {
             print_help();
@@ -29,7 +30,9 @@ fn print_help() {
         "blitz — local API client\n\n\
          GUI:  blitz\n\
          CLI:  blitz run <collection.json> [--env <environment.json>]\n\
-               blitz help\n"
+               blitz mcp\n\
+               blitz help\n\n\
+         MCP:  Model Context Protocol stdio server for Antigravity, Gemini, Claude, Cursor.\n"
     );
 }
 
