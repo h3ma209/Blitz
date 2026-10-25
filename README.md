@@ -302,6 +302,8 @@ If you prefer manual setup, add Blitz to your IDE's `mcpServers` configuration:
 - **`blitz_generate_code`**: Generate client code snippets (`cURL`, `Python`, `TypeScript`, `Rust`, `Go`, `Java`, `C#`) with variable interpolation.
 - **`blitz_list_history`**: Query past request executions with status, latency, and timestamps.
 - **`blitz_run_collection`**: Run a complete collection test suite (supports `folder` scoping) and return assertion results.
+- **`blitz_suggest_assertions`**: Automatically generate test scripts & assertions (status, JSON path, headers, latency ceiling) from an HTTP response or request, with optional auto-attachment.
+- **`blitz_perf_test`**: Run concurrent load/benchmark testing against any request or collection (concurrency VUs, duration) and get RPS throughput, error rate, and p50/min/max latencies.
 
 #### Exposed MCP Resources:
 - `blitz://collections`: Hierarchy of all collections, folders, and requests.

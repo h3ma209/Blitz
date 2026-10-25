@@ -10,6 +10,7 @@ use std::io::{self, BufRead, Write};
 use serde_json::{json, Value as JsonValue};
 use uuid::Uuid;
 
+use crate::core::assertions::{assertions_to_script, suggest_from_response};
 use crate::core::codegen::{generate_snippet_resolved, snippet_languages};
 use crate::core::collection::{
     find_request_across, flatten_collections, Collection, CollectionItem, Folder,
@@ -17,6 +18,7 @@ use crate::core::collection::{
 use crate::core::environment::{EnvVar, Environment};
 use crate::core::history::{push_history, HistoryEntry, HISTORY_MAX};
 use crate::core::impex::import_curl;
+use crate::core::perf_runner::run_performance;
 use crate::core::request::{HttpMethod, KeyValue, RequestDraft};
 use crate::runtime::pipeline::{send_request_with_options, SendOptions};
 use crate::runtime::runner::{run_collection_with_config, RunnerConfig};
@@ -516,6 +518,68 @@ fn list_mcp_tools() -> Vec<JsonValue> {
                     }
                 },
                 "required": ["collection"]
+            }
+        }),
+        json!({
+            "name": "blitz_suggest_assertions",
+            "description": "Analyzes an HTTP response (or request execution) and generates recommended assertions (status code, content-type header, JSON path presence/equality, response time budget) and compiled JavaScript test script. Optionally applies generated tests directly to the request.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "request_id": {
+                        "type": "string",
+                        "description": "Optional UUID or name of a saved request. If status/body are omitted, Blitz runs this request or uses its latest history to suggest assertions."
+                    },
+                    "status": {
+                        "type": "integer",
+                        "description": "Optional HTTP status code (e.g. 200) to base assertions on."
+                    },
+                    "body": {
+                        "type": "string",
+                        "description": "Optional response body string (typically JSON) to generate path assertions from."
+                    },
+                    "headers": {
+                        "type": "object",
+                        "description": "Optional response headers map (e.g. {\"content-type\": \"application/json\"})."
+                    },
+                    "elapsed_ms": {
+                        "type": "integer",
+                        "description": "Optional observed response latency in milliseconds to calculate time budget ceiling."
+                    },
+                    "apply_to_request": {
+                        "type": "boolean",
+                        "description": "If true and request_id is provided, automatically appends the generated test script/assertions to the request."
+                    }
+                }
+            }
+        }),
+        json!({
+            "name": "blitz_perf_test",
+            "description": "Runs a concurrent load/performance benchmark against a saved request or collection for a specified duration and virtual users (VUs). Returns throughput (RPS), total requests, error rate, and average/min/max latencies.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "request_id": {
+                        "type": "string",
+                        "description": "UUID or name of the request to benchmark."
+                    },
+                    "collection": {
+                        "type": "string",
+                        "description": "UUID or name of the collection to benchmark (if request_id is not specified)."
+                    },
+                    "vus": {
+                        "type": "integer",
+                        "description": "Number of concurrent virtual users (workers). Defaults to 5 (max 50)."
+                    },
+                    "duration_seconds": {
+                        "type": "integer",
+                        "description": "Duration in seconds to run load test. Defaults to 5 (max 60)."
+                    },
+                    "environment": {
+                        "type": "string",
+                        "description": "Optional environment name or UUID to resolve variables."
+                    }
+                }
             }
         })
     ]
@@ -1347,8 +1411,224 @@ fn execute_mcp_tool(name: &str, args: &JsonValue) -> Result<String, String> {
 
             serde_json::to_string_pretty(&out).map_err(|e| e.to_string())
         }
+        "blitz_suggest_assertions" => {
+            let request_id_opt = args.get("request_id").and_then(|r| r.as_str());
+            let status_opt = args.get("status").and_then(|s| s.as_u64()).map(|s| s as u16);
+            let body_opt = args.get("body").and_then(|b| b.as_str());
+            let elapsed_ms_opt = args.get("elapsed_ms").and_then(|e| e.as_u64()).map(|e| e as u128);
+            let apply_to_request = args.get("apply_to_request").and_then(|a| a.as_bool()).unwrap_or(false);
+
+            let mut final_status = status_opt;
+            let mut final_body = body_opt.map(|b| b.to_string());
+            let mut final_headers: Vec<(String, String)> = Vec::new();
+            let mut final_elapsed = elapsed_ms_opt.unwrap_or(150);
+
+            if let Some(h_obj) = args.get("headers").and_then(|h| h.as_object()) {
+                for (k, v) in h_obj {
+                    if let Some(val_str) = v.as_str() {
+                        final_headers.push((k.clone(), val_str.to_string()));
+                    }
+                }
+            }
+
+            let mut target_request = None;
+            let mut target_col_idx = None;
+            if let Some(req_id) = request_id_opt {
+                if let Ok((col, req)) = find_request_by_id_or_name(&snapshot.collections, req_id, None) {
+                    target_request = Some(req);
+                    target_col_idx = snapshot.collections.iter().position(|c| c.id == col.id);
+                }
+
+                if final_status.is_none() || final_body.is_none() {
+                    let mut found_history = false;
+                    for h in snapshot.history.iter().rev() {
+                        if h.draft.id.to_string() == req_id
+                            || target_request.as_ref().map(|r| r.id) == Some(h.draft.id)
+                        {
+                            final_status = h.status;
+                            final_body = Some(h.draft.body.clone());
+                            final_elapsed = h.elapsed_ms.unwrap_or(150);
+                            for hdr in &h.draft.headers {
+                                if hdr.enabled && !hdr.key.is_empty() {
+                                    final_headers.push((hdr.key.clone(), hdr.value.clone()));
+                                }
+                            }
+                            found_history = true;
+                            break;
+                        }
+                    }
+
+                    if !found_history {
+                        if let Some(ref draft) = target_request {
+                            let mut ctx = snapshot.variables.clone();
+                            let active_env = if let Some(id) = snapshot.active_environment_id {
+                                snapshot.environments.iter().find(|e| e.id == id)
+                            } else {
+                                snapshot.environments.iter().find(|e| e.name.eq_ignore_ascii_case(&snapshot.active_environment))
+                            };
+                            if let Some(env) = active_env {
+                                ctx.environment = env.to_map();
+                            }
+                            let mut jar = snapshot.cookies.clone();
+                            let view = send_request_with_options(
+                                draft,
+                                &mut ctx,
+                                SendOptions {
+                                    cookie_jar: Some(&mut jar),
+                                    ..Default::default()
+                                },
+                            ).map_err(|e| format!("Execute request to capture response: {e}"))?;
+
+                            final_status = Some(view.status);
+                            final_body = Some(view.body);
+                            final_elapsed = view.timing.total_ms;
+                            for (hk, hv) in view.headers {
+                                final_headers.push((hk, hv));
+                            }
+                        }
+                    }
+                }
+            }
+
+            let status_code = final_status.unwrap_or(200);
+            let body_str = final_body.unwrap_or_else(|| "{}".to_string());
+            let assertions = suggest_from_response(status_code, &final_headers, &body_str, final_elapsed);
+            let test_script = assertions_to_script(&assertions);
+
+            let mut applied = false;
+            if apply_to_request {
+                if let (Some(req_id), Some(col_idx)) = (request_id_opt, target_col_idx) {
+                    let mut snapshot = snapshot;
+                    let col = &mut snapshot.collections[col_idx];
+                    if let Some(req) = find_request_in_items_mut(&mut col.items, req_id) {
+                        if req.test_script.is_empty() {
+                            req.test_script = test_script.clone();
+                        } else {
+                            req.test_script.push_str("\n\n// Auto-generated assertions\n");
+                            req.test_script.push_str(&test_script);
+                        }
+                        store.save(&snapshot).map_err(|e| format!("Save snapshot: {e}"))?;
+                        applied = true;
+                    }
+                }
+            }
+
+            let assertion_list = assertions
+                .iter()
+                .map(|a| {
+                    json!({
+                        "id": a.id.to_string(),
+                        "type": a.kind.type_key(),
+                        "label": a.kind.label(),
+                        "enabled": a.enabled
+                    })
+                })
+                .collect::<Vec<_>>();
+
+            let out = json!({
+                "status": status_code,
+                "assertion_count": assertions.len(),
+                "assertions": assertion_list,
+                "test_script": test_script,
+                "applied_to_request": applied
+            });
+
+            serde_json::to_string_pretty(&out).map_err(|e| e.to_string())
+        }
+        "blitz_perf_test" => {
+            let request_id_opt = args.get("request_id").and_then(|r| r.as_str());
+            let col_name_opt = args.get("collection").and_then(|c| c.as_str());
+            let vus = args.get("vus").and_then(|v| v.as_u64()).unwrap_or(5).clamp(1, 50) as u32;
+            let duration_secs = args.get("duration_seconds").and_then(|d| d.as_u64()).unwrap_or(5).clamp(1, 60);
+
+            let (target_label, perf_col) = if let Some(req_id) = request_id_opt {
+                let (_, req) = find_request_by_id_or_name(&snapshot.collections, req_id, None)?;
+                let label = format!("{} {}", req.method.as_str(), req.url);
+                let col = Collection {
+                    id: Uuid::new_v4(),
+                    name: format!("Perf: {}", req.name),
+                    items: vec![CollectionItem::Request(req)],
+                    ..Collection::new("PerfTarget")
+                };
+                (label, col)
+            } else if let Some(col_name) = col_name_opt {
+                let col = snapshot
+                    .collections
+                    .iter()
+                    .find(|c| c.name.eq_ignore_ascii_case(col_name) || c.id.to_string() == col_name)
+                    .ok_or_else(|| format!("Collection '{col_name}' not found"))?;
+                (format!("Collection '{}'", col.name), col.clone())
+            } else {
+                return Err("Missing target: specify 'request_id' or 'collection'".to_string());
+            };
+
+            let mut ctx = snapshot.variables.clone();
+            ctx.collection = perf_col.variables_map();
+            if let Some(env_name) = args.get("environment").and_then(|e| e.as_str()) {
+                if let Some(env) = find_env_by_name_or_id(&snapshot.environments, env_name) {
+                    ctx.environment = env.to_map();
+                }
+            } else {
+                let active_env = if let Some(id) = snapshot.active_environment_id {
+                    snapshot.environments.iter().find(|e| e.id == id)
+                } else {
+                    snapshot.environments.iter().find(|e| e.name.eq_ignore_ascii_case(&snapshot.active_environment))
+                };
+                if let Some(env) = active_env {
+                    ctx.environment = env.to_map();
+                }
+            }
+
+            let report = run_performance(&perf_col, &ctx, vus, std::time::Duration::from_secs(duration_secs));
+
+            let total = report.total_requests;
+            let dur_actual = report.duration_secs.max(1);
+            let rps = (total as f64 / dur_actual as f64 * 100.0).round() / 100.0;
+            let err_rate = if total > 0 {
+                ((report.errors as f64 / total as f64) * 10000.0).round() / 100.0
+            } else {
+                0.0
+            };
+            let min_lat = if report.latency_min_ms == u64::MAX { 0 } else { report.latency_min_ms };
+
+            let out = json!({
+                "target": target_label,
+                "vus": report.vus,
+                "duration_seconds": report.duration_secs,
+                "total_requests": total,
+                "requests_per_second": rps,
+                "errors": report.errors,
+                "error_rate_percent": err_rate,
+                "avg_latency_ms": (report.avg_latency_ms() * 10.0).round() / 10.0,
+                "min_latency_ms": min_lat,
+                "max_latency_ms": report.latency_max_ms
+            });
+
+            serde_json::to_string_pretty(&out).map_err(|e| e.to_string())
+        }
         _ => Err(format!("Unknown tool: {name}")),
     }
+}
+
+fn find_request_in_items_mut<'a>(
+    items: &'a mut [CollectionItem],
+    id_or_name: &str,
+) -> Option<&'a mut RequestDraft> {
+    for item in items.iter_mut() {
+        match item {
+            CollectionItem::Request(r) => {
+                if r.id.to_string() == id_or_name || r.name.eq_ignore_ascii_case(id_or_name) {
+                    return Some(r);
+                }
+            }
+            CollectionItem::Folder(f) => {
+                if let Some(found) = find_request_in_items_mut(&mut f.items, id_or_name) {
+                    return Some(found);
+                }
+            }
+        }
+    }
+    None
 }
 
 /// Resources exposed by Blitz to agents.
@@ -1732,7 +2012,9 @@ mod tests {
         assert!(tools.iter().any(|t| t["name"] == "blitz_generate_code"));
         assert!(tools.iter().any(|t| t["name"] == "blitz_list_history"));
         assert!(tools.iter().any(|t| t["name"] == "blitz_run_collection"));
-        assert_eq!(tools.len(), 12);
+        assert!(tools.iter().any(|t| t["name"] == "blitz_suggest_assertions"));
+        assert!(tools.iter().any(|t| t["name"] == "blitz_perf_test"));
+        assert_eq!(tools.len(), 14);
     }
 
     #[test]
@@ -1883,6 +2165,49 @@ mod tests {
         }"#;
         let draft: Result<RequestDraft, _> = serde_json::from_str(draft_json);
         assert!(draft.is_ok(), "RequestDraft should deserialize with missing fields");
+    }
+
+    #[test]
+    fn test_tool_suggest_assertions() {
+        let req = json!({
+            "jsonrpc": "2.0",
+            "id": 10,
+            "method": "tools/call",
+            "params": {
+                "name": "blitz_suggest_assertions",
+                "arguments": {
+                    "status": 200,
+                    "body": "{\"user\": {\"id\": 42, \"name\": \"Bob\"}}",
+                    "headers": {
+                        "content-type": "application/json"
+                    },
+                    "elapsed_ms": 120
+                }
+            }
+        });
+        let resp = handle_mcp_message(&req).expect("response expected");
+        assert_eq!(resp["id"], 10);
+        let text = resp["result"]["content"][0]["text"].as_str().unwrap();
+        let val: JsonValue = serde_json::from_str(text).unwrap();
+        assert_eq!(val["status"], 200);
+        assert!(val["assertion_count"].as_u64().unwrap() >= 3);
+        assert!(val["test_script"].as_str().unwrap().contains("blitz.test"));
+    }
+
+    #[test]
+    fn test_tool_perf_test_missing_target() {
+        let req = json!({
+            "jsonrpc": "2.0",
+            "id": 11,
+            "method": "tools/call",
+            "params": {
+                "name": "blitz_perf_test",
+                "arguments": {}
+            }
+        });
+        let resp = handle_mcp_message(&req).expect("response expected");
+        assert_eq!(resp["id"], 11);
+        assert_eq!(resp["result"]["isError"], true);
     }
 
     #[test]
