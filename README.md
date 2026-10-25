@@ -1,28 +1,32 @@
-# ⚡ Blitz
+# ⚡ Blitz — Ultra-Fast, Local-First API Client in Rust
 
 <p align="center">
-  <img src="assets/logo.png" alt="Blitz Logo" width="128" />
+  <img src="assets/logo.png" alt="Blitz — Open-Source Postman Alternative Logo" width="128" />
 </p>
 
 <p align="center">
-  <strong>Lightweight, native Postman alternative built with Rust & Dioxus.</strong><br/>
-  <em>Offline-first, multi-protocol (REST, gRPC, WebSocket, MQTT, SSE, MCP), ~10MB RAM runner, zero cloud lock-in.</em>
+  <strong>Lightweight, offline-first Postman alternative built with Rust & Dioxus.</strong><br/>
+  <em>Multi-protocol (REST, gRPC, WebSocket, GraphQL, MQTT, SSE), ~10MB RAM runner, zero cloud lock-in, and native MCP server for AI coding agents.</em>
 </p>
 
 <p align="center">
   <a href="https://github.com/h3ma209/Blitz/releases"><img src="https://img.shields.io/github/v/release/h3ma209/Blitz?include_prereleases&label=release&color=22c55e" alt="Release"></a>
   <a href="https://github.com/h3ma209/Blitz/actions/workflows/build.yml"><img src="https://img.shields.io/github/actions/workflow/status/h3ma209/Blitz/build.yml?branch=master&label=build" alt="CI Build"></a>
+  <img src="https://img.shields.io/badge/rust-1.83%2B-orange.svg?logo=rust" alt="Rust 1.83+">
+  <img src="https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20Windows-blue" alt="Cross-Platform">
+  <img src="https://img.shields.io/badge/MCP-14%20Tools%20Active-brightgreen" alt="Model Context Protocol">
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT%20%2F%20Apache--2.0-blue" alt="License"></a>
   <a href="https://h3ma209.github.io/Blitz/"><img src="https://img.shields.io/badge/docs-GitHub%20Pages-brightgreen" alt="Docs"></a>
 </p>
 
 <p align="center">
-  <a href="#downloads">Downloads</a> •
-  <a href="#interface-preview">Interface</a> •
-  <a href="#comparison">Comparison</a> •
+  <a href="#downloads--installation">Downloads</a> •
+  <a href="#-interface-preview">Interface</a> •
+  <a href="#why-blitz-vs-the-alternatives">Comparison</a> •
   <a href="#key-features">Features</a> •
-  <a href="#ci-cd-automation">CLI Runner</a> •
-  <a href="#team-collaboration">Git Sync</a> •
+  <a href="#-ai-agent-integration-via-mcp-cursor-claude-antigravity-windsurf-vs-code-zed">MCP Server</a> •
+  <a href="#headless-cli-runner">CLI Runner</a> •
+  <a href="#team-collaboration-via-git">Git Sync</a> •
   <a href="#license">License</a>
 </p>
 
