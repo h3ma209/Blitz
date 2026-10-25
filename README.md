@@ -38,11 +38,34 @@
 
 ## 📦 Downloads & Installation
 
-### Quick Install (macOS & Linux)
+### ⚡ 1-Line Quick Install
+
+#### macOS
 ```bash
 curl -fsSL https://raw.githubusercontent.com/h3ma209/Blitz/master/install.sh | bash
 ```
-*Automatically downloads the latest binary, installs to `/Applications` or `~/.local/bin`, and clears Gatekeeper quarantine.*
+*Downloads latest DMG, installs to `/Applications/Blitz.app`, and automatically clears Gatekeeper quarantine.*
+
+#### Linux
+```bash
+curl -fsSL https://raw.githubusercontent.com/h3ma209/Blitz/master/install.sh | bash
+```
+*Downloads latest binary and installs executable to `~/.local/bin/blitz`.*
+
+#### Windows
+**PowerShell:**
+```powershell
+irm https://raw.githubusercontent.com/h3ma209/Blitz/master/install.ps1 | iex
+```
+**Command Prompt (`curl`):**
+```cmd
+curl.exe -fsSL https://raw.githubusercontent.com/h3ma209/Blitz/master/install.ps1 -o install.ps1 && powershell -ExecutionPolicy Bypass -File install.ps1
+```
+**Git Bash / WSL:**
+```bash
+curl -fsSL https://raw.githubusercontent.com/h3ma209/Blitz/master/install.sh | bash
+```
+*Installs to `%LOCALAPPDATA%\Blitz\blitz.exe`, adds to User PATH, and creates Start Menu shortcut.*
 
 ### Homebrew Tap
 ```bash

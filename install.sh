@@ -57,6 +57,21 @@ case "$OS" in
     echo "✓ Blitz CLI installed to ${INSTALL_DIR}/blitz"
     ;;
 
+  MINGW*|MSYS*|CYGWIN*)
+    ZIP_URL="https://github.com/${REPO}/releases/download/${TAG}/blitz-windows-x86_64.zip"
+    INSTALL_DIR="${LOCALAPPDATA:-$HOME/AppData/Local}/Blitz"
+    mkdir -p "$INSTALL_DIR"
+    TMP_ZIP=$(mktemp --suffix=.zip 2>/dev/null || mktemp)
+    echo "Downloading ${ZIP_URL}..."
+    curl -fsSL -o "$TMP_ZIP" "$ZIP_URL"
+    unzip -o -q "$TMP_ZIP" -d "$INSTALL_DIR"
+    rm -f "$TMP_ZIP"
+    chmod +x "${INSTALL_DIR}/blitz.exe" 2>/dev/null || true
+    echo ""
+    echo "✓ Blitz successfully installed to ${INSTALL_DIR}/blitz.exe"
+    echo "  Launch it by typing: ${INSTALL_DIR}/blitz.exe"
+    ;;
+
   *)
     echo "Unsupported OS: $OS" >&2
     exit 1

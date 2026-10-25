@@ -1696,6 +1696,57 @@ pm.test("Response payload contains user_id", () => {
         </div>
       </div>
 
+      <!-- 1-Line Quick Terminal Install -->
+      <div class="max-w-4xl mx-auto mb-10 text-left">
+        <div class="rounded-2xl glass p-6 border border-white/10">
+          <div class="flex items-center justify-between mb-4 pb-3 border-b border-white/5">
+            <div class="flex items-center gap-2">
+              <span class="text-xs font-mono text-spot-bright font-bold">⚡ 1-Line Quick Install</span>
+              <span class="text-xs text-spot-faint">— Automated Terminal Installers</span>
+            </div>
+            <span class="text-xs text-spot-muted font-mono">macOS • Linux • Windows</span>
+          </div>
+
+          <div class="space-y-4 font-mono text-xs">
+            <div>
+              <div class="text-[11px] text-spot-faint uppercase tracking-wider mb-1.5 flex items-center gap-1.5">
+                <span class="text-spot-bright">●</span> macOS (Terminal)
+              </div>
+              <div class="bg-black/60 border border-white/5 rounded-xl p-3 text-gray-200 flex items-center justify-between group">
+                <code class="overflow-x-auto">curl -fsSL https://raw.githubusercontent.com/h3ma209/Blitz/master/install.sh | bash</code>
+                <button onclick="copySnippet(this)" class="p-1 rounded bg-white/5 hover:bg-white/10 text-spot-muted hover:text-white transition-colors shrink-0 ml-2" title="Copy">
+                  <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                </button>
+              </div>
+            </div>
+
+            <div>
+              <div class="text-[11px] text-spot-faint uppercase tracking-wider mb-1.5 flex items-center gap-1.5">
+                <span class="text-blue-400">●</span> Linux (Terminal)
+              </div>
+              <div class="bg-black/60 border border-white/5 rounded-xl p-3 text-gray-200 flex items-center justify-between group">
+                <code class="overflow-x-auto">curl -fsSL https://raw.githubusercontent.com/h3ma209/Blitz/master/install.sh | bash</code>
+                <button onclick="copySnippet(this)" class="p-1 rounded bg-white/5 hover:bg-white/10 text-spot-muted hover:text-white transition-colors shrink-0 ml-2" title="Copy">
+                  <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                </button>
+              </div>
+            </div>
+
+            <div>
+              <div class="text-[11px] text-spot-faint uppercase tracking-wider mb-1.5 flex items-center gap-1.5">
+                <span class="text-purple-400">●</span> Windows (PowerShell / Command Prompt)
+              </div>
+              <div class="bg-black/60 border border-white/5 rounded-xl p-3 text-gray-200 flex items-center justify-between group">
+                <code class="overflow-x-auto">irm https://raw.githubusercontent.com/h3ma209/Blitz/master/install.ps1 | iex</code>
+                <button onclick="copySnippet(this)" class="p-1 rounded bg-white/5 hover:bg-white/10 text-spot-muted hover:text-white transition-colors shrink-0 ml-2" title="Copy">
+                  <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <div class="grid grid-cols-1 md:grid-cols-12 gap-6 text-left max-w-4xl mx-auto">
         <!-- Build Code Block -->
         <div class="md:col-span-7 rounded-2xl glass p-6">
