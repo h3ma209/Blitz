@@ -185,6 +185,8 @@ ifeq ($(UNAME_S),Darwin)
 		packaging/macos/Info.plist > target/dmg-stage/$(APP_NAME).app/Contents/Info.plist
 	@codesign --force --deep -s - target/dmg-stage/$(APP_NAME).app 2>/dev/null || true
 	@ln -s /Applications target/dmg-stage/Applications
+	@printf '#!/bin/bash\necho "⚡ Bypassing macOS Gatekeeper quarantine for Blitz.app..."\nxattr -cr /Applications/$(APP_NAME).app 2>/dev/null || true\necho ""\necho "✓ Fixed! Quarantine cleared for /Applications/$(APP_NAME).app."\necho "You can now open Blitz from Applications or Spotlight."\necho ""\nread -n 1 -s -r -p "Press any key to close..."\necho ""\n' > target/dmg-stage/Fix-Unverified-App.command
+	@chmod +x target/dmg-stage/Fix-Unverified-App.command
 	@hdiutil create -volname "$(APP_NAME)" -srcfolder target/dmg-stage -ov -format UDZO target/$(APP_NAME).dmg
 	@rm -rf target/dmg-stage
 	@echo ''

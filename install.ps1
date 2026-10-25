@@ -26,6 +26,13 @@ Write-Host "Extracting to $installDir..." -ForegroundColor Gray
 Expand-Archive -Path $zipPath -DestinationPath $installDir -Force
 Remove-Item -Path $zipPath -Force
 
+# Automatically unblock from Windows SmartScreen quarantine
+try {
+    Unblock-File -Path (Join-Path $installDir "blitz.exe") -ErrorAction SilentlyContinue
+} catch {
+    # Non-fatal
+}
+
 # Add to user PATH if not present
 $userPath = [Environment]::GetEnvironmentVariable("Path", "User")
 if ($userPath -split ';' -notcontains $installDir) {

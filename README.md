@@ -84,10 +84,49 @@ Pre-built binaries for macOS, Linux, and Windows are available directly from the
 | **Windows (x86_64)** | [blitz-windows-x86_64.zip](https://github.com/h3ma209/Blitz/releases/latest) | Unzip & run `blitz.exe` |
 | **Cargo (Any OS)** | Source crate | `cargo install --git https://github.com/h3ma209/Blitz.git` |
 
-> **Manual DMG install note**: If macOS displays *"Blitz is damaged"* or *"Apple cannot verify"*, clear the Gatekeeper quarantine flag in Terminal:
-> ```bash
-> xattr -cr /Applications/Blitz.app
-> ```
+### 🛡️ First-Launch Security Notice (macOS & Windows)
+
+Because Blitz is an open-source project distributed without paid Apple Developer ($99/yr) or Windows EV enterprise certificates, your operating system may display a security verification warning on first manual launch.
+
+#### 🍎 macOS Fix: *"Apple cannot verify that this app is free of malware"* or *"Blitz is damaged"*
+Apple Gatekeeper attaches a quarantine attribute to files downloaded via web browsers.
+
+**Method 1 — 1-Line Terminal Command (Recommended):**
+```bash
+xattr -cr /Applications/Blitz.app
+```
+*(If installed to user folder `~/Applications/Blitz.app`, run `xattr -cr ~/Applications/Blitz.app`)*
+
+**Method 2 — GUI Right-Click:**
+1. Open **Finder** → navigate to **Applications**.
+2. **Right-click** (or `Control`-click) on **Blitz** and select **Open**.
+3. Click **Open** in the confirmation prompt (macOS will remember this permanently).
+
+**Method 3 — System Settings:**
+Open **System Settings → Privacy & Security**, scroll down to the **Security** section, and click **Open Anyway**.
+
+---
+
+#### 🪟 Windows Fix: *"Windows protected your PC (SmartScreen)"*
+Microsoft Defender SmartScreen flags newly downloaded open-source executables.
+
+**Method 1 — GUI:**
+1. On the *"Windows protected your PC"* popup, click **More info**.
+2. Click **Run anyway**.
+
+**Method 2 — PowerShell (Instant Unblock):**
+```powershell
+Unblock-File "$env:LOCALAPPDATA\Blitz\blitz.exe"
+```
+*(Or if downloaded zip: `Unblock-File .\blitz-windows-x86_64.zip` before unzipping)*
+
+---
+
+#### 🐧 Linux: *"Permission denied"*
+Ensure the binary has executable permissions:
+```bash
+chmod +x ~/.local/bin/blitz
+```
 
 ---
 

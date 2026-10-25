@@ -1801,6 +1801,49 @@ make run</code></pre>
           </div>
         </div>
       </div>
+
+      <!-- Security Verification Notice (macOS & Windows) -->
+      <div class="max-w-4xl mx-auto mt-6 text-left">
+        <div class="rounded-2xl glass p-6 border border-white/10">
+          <div class="flex items-center gap-2 mb-3">
+            <span class="text-base">🛡️</span>
+            <span class="font-bold text-sm text-white">First-Launch Security Verification Notice</span>
+            <span class="text-[10px] bg-yellow-400/20 text-yellow-300 px-2 py-0.5 rounded font-mono uppercase">Open-Source</span>
+          </div>
+          <p class="text-xs text-spot-muted leading-relaxed mb-4">
+            Because Blitz is an independent open-source project distributed without paid Apple Developer ($99/yr) or Windows EV enterprise certificates, your OS may display an unverified app prompt on first manual launch.
+          </p>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs font-mono">
+            <div class="bg-black/60 border border-white/5 rounded-xl p-4">
+              <div class="text-spot-bright font-bold mb-1 flex items-center gap-1.5">
+                <span>🍎</span> macOS: "Apple cannot verify malware"
+              </div>
+              <p class="text-[11px] text-spot-faint mb-2">Clear browser download quarantine in Terminal:</p>
+              <div class="flex items-center justify-between bg-black/50 p-2 rounded border border-white/5 text-gray-200">
+                <code>xattr -cr /Applications/Blitz.app</code>
+                <button onclick="copySnippet(this)" class="p-1 rounded bg-white/5 hover:bg-white/10 text-spot-muted hover:text-white transition-colors shrink-0 ml-2" title="Copy">
+                  <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                </button>
+              </div>
+              <p class="text-[10px] text-spot-faint mt-2 font-sans">Or: Right-click Blitz.app in Applications → select <strong>Open</strong>.</p>
+            </div>
+
+            <div class="bg-black/60 border border-white/5 rounded-xl p-4">
+              <div class="text-purple-400 font-bold mb-1 flex items-center gap-1.5">
+                <span>🪟</span> Windows: SmartScreen "Protected your PC"
+              </div>
+              <p class="text-[11px] text-spot-faint mb-2">Click <strong>More info → Run anyway</strong>, or run in PowerShell:</p>
+              <div class="flex items-center justify-between bg-black/50 p-2 rounded border border-white/5 text-gray-200">
+                <code>Unblock-File "$env:LOCALAPPDATA\Blitz\blitz.exe"</code>
+                <button onclick="copySnippet(this)" class="p-1 rounded bg-white/5 hover:bg-white/10 text-spot-muted hover:text-white transition-colors shrink-0 ml-2" title="Copy">
+                  <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                </button>
+              </div>
+              <p class="text-[10px] text-spot-faint mt-2 font-sans">1-line installer automatically unblocks SmartScreen.</p>
+            </div>
+          </div>
+        </div>
+      </div>
     </section>
   </main>
 
