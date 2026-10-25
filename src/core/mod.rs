@@ -20,6 +20,7 @@ pub mod history;
 pub mod impex;
 pub mod mock_server;
 pub mod mcp_server;
+pub mod mcp_setup;
 pub mod oauth;
 pub mod perf_runner;
 pub mod pkcs12_util;

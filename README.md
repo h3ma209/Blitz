@@ -241,17 +241,48 @@ Run test collections headless in your CI/CD pipelines without cloud subscription
 blitz run collection.json --env staging.json
 ```
 
-### 🤖 AI Agent Integration via MCP (Antigravity, Gemini, Claude, Cursor)
+### 🤖 AI Agent Integration via MCP (Cursor, Claude, Antigravity, Windsurf, VS Code, Zed)
 Blitz includes a built-in **Model Context Protocol (MCP)** server (`blitz mcp`), allowing AI coding assistants and autonomous agents to list collections, inspect request schemas, execute endpoints, and run API test suites directly through Blitz.
 
-#### Setup in Antigravity / Gemini / Cursor / Claude:
-Add Blitz to your `mcpServers` configuration (e.g. `~/.gemini/antigravity/mcp.json` or `claude_desktop_config.json`):
+#### Automatic IDE & Agent Setup:
+Blitz can automatically scan your machine for installed IDEs and AI coding agents, and configure the MCP server for you:
+
+```bash
+# Scan and interactively select which IDEs/agents to configure:
+blitz mcp setup
+
+# Or configure all detected IDEs automatically without prompting:
+blitz mcp setup --all
+
+# Or target a specific IDE:
+blitz mcp setup --target cursor
+blitz mcp setup --target claude_desktop
+blitz mcp setup --target vscode
+blitz mcp setup --target zed
+
+# Scan only (preview detected tools without modifying configs):
+blitz mcp setup --scan
+```
+
+Supported IDEs and coding agents detected out of the box:
+- **Cursor** (`~/.cursor/mcp.json`)
+- **Claude Desktop** (`claude_desktop_config.json`)
+- **Antigravity / Gemini CLI** (`~/.gemini/antigravity/mcp_config.json`)
+- **Windsurf** (`~/.codeium/windsurf/mcp_config.json`)
+- **VS Code** (`~/Library/Application Support/Code/User/mcp.json`)
+- **Cline** extension for VS Code (`cline_mcp_settings.json`)
+- **Roo Code** extension for VS Code (`cline_mcp_settings.json`)
+- **Zed** (`settings.json` context_servers)
+- **Claude Code CLI** (`~/.claude.json`)
+
+#### Manual Configuration:
+If you prefer manual setup, add Blitz to your IDE's `mcpServers` configuration:
 
 ```json
 {
   "mcpServers": {
     "blitz": {
-      "command": "blitz",
+      "command": "/Applications/Blitz.app/Contents/MacOS/Blitz",
       "args": ["mcp"]
     }
   }

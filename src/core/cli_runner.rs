@@ -15,7 +15,23 @@ pub fn try_run_cli(args: &[String]) -> Option<i32> {
         return None;
     }
     match args[1].as_str() {
-        "mcp" => Some(super::mcp_server::run_stdio_server()),
+        "mcp" => {
+            if args.len() > 2 {
+                match args[2].as_str() {
+                    "setup" | "install" | "scan" | "add" => {
+                        Some(super::mcp_setup::run_mcp_setup_cli(&args[3..]))
+                    }
+                    "serve" => Some(super::mcp_server::run_stdio_server()),
+                    "help" | "--help" | "-h" => {
+                        print_mcp_help();
+                        Some(0)
+                    }
+                    _ => Some(super::mcp_server::run_stdio_server()),
+                }
+            } else {
+                Some(super::mcp_server::run_stdio_server())
+            }
+        }
         "run" => Some(run_collection_cli(&args[2..])),
         "help" | "--help" | "-h" => {
             print_help();
@@ -31,8 +47,22 @@ fn print_help() {
          GUI:  blitz\n\
          CLI:  blitz run <collection.json> [--env <environment.json>]\n\
                blitz mcp\n\
+               blitz mcp setup [--all] [--scan]\n\
                blitz help\n\n\
-         MCP:  Model Context Protocol stdio server for Antigravity, Gemini, Claude, Cursor.\n"
+         MCP:  Model Context Protocol server & scanner for Cursor, Claude, Antigravity, Windsurf, VS Code.\n"
+    );
+}
+
+fn print_mcp_help() {
+    eprintln!(
+        "blitz mcp — Model Context Protocol\n\n\
+         USAGE:\n\
+             blitz mcp                  Run stdio MCP server (for AI agents)\n\
+             blitz mcp setup [OPTIONS]  Scan system and configure Blitz MCP in IDEs & AI agents\n\n\
+         OPTIONS:\n\
+             -a, --all                  Configure all detected IDEs without prompt\n\
+             -s, --scan                 Scan and print detected IDEs without modifying files\n\
+             -b, --bin <PATH>           Custom Blitz binary path\n"
     );
 }
 
