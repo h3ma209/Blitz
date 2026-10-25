@@ -160,8 +160,11 @@ install-macos: ## Package Blitz.app into MACOS_APPDIR
 		-e 's|<string>0\.1\.0</string>|<string>$(VERSION)</string>|g' \
 		packaging/macos/Info.plist > "$(MACOS_BUNDLE)/Contents/Info.plist"
 	@codesign --force --deep -s - "$(MACOS_BUNDLE)" 2>/dev/null || true
+	@mkdir -p "$(DESTDIR)$(PREFIX)/bin"
+	@ln -sf "$(MACOS_BUNDLE)/Contents/MacOS/$(APP_NAME)" "$(DESTDIR)$(PREFIX)/bin/$(BIN_NAME)"
 	@echo ''
 	@echo "Installed: $(MACOS_BUNDLE)"
+	@echo "  CLI:     $(DESTDIR)$(PREFIX)/bin/$(BIN_NAME) → $(MACOS_BUNDLE)/Contents/MacOS/$(APP_NAME)"
 	@echo "  Open:    open \"$(MACOS_BUNDLE)\""
 	@echo "  Remove:  make uninstall"
 	@echo "  System:  sudo make install-system  → $(MACOS_SYSTEM_APPDIR)/$(APP_NAME).app"
@@ -198,6 +201,7 @@ else
 endif
 
 uninstall-macos:
+	@rm -f "$(DESTDIR)$(PREFIX)/bin/$(BIN_NAME)"
 	@if [ -d "$(MACOS_USER_APPDIR)/$(APP_NAME).app" ]; then \
 		rm -rf "$(MACOS_USER_APPDIR)/$(APP_NAME).app"; \
 		echo "Removed $(MACOS_USER_APPDIR)/$(APP_NAME).app"; \

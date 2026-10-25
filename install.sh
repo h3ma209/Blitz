@@ -37,12 +37,17 @@ case "$OS" in
     
     # Strip Gatekeeper quarantine automatically
     xattr -cr "/Applications/Blitz.app" 2>/dev/null || true
+
+    # Link CLI into ~/.local/bin
+    mkdir -p "${HOME}/.local/bin"
+    ln -sf "/Applications/Blitz.app/Contents/MacOS/Blitz" "${HOME}/.local/bin/blitz"
     
     hdiutil detach "$MOUNT_DIR" -quiet
     rm -rf "$TMP_DIR" "$MOUNT_DIR"
     
     echo ""
     echo "✓ Blitz successfully installed to /Applications/Blitz.app!"
+    echo "  CLI linked to ~/.local/bin/blitz"
     echo "  You can open it from Spotlight, Launchpad, or by typing: open /Applications/Blitz.app"
     ;;
 
