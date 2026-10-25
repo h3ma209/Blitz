@@ -1616,22 +1616,11 @@ fn extract_json_path(root: &JsonValue, path: &str) -> Option<String> {
     for seg in segments {
         match curr {
             JsonValue::Object(map) => {
-                if let Some(next) = map.get(seg) {
-                    curr = next;
-                } else {
-                    return None;
-                }
+                curr = map.get(seg)?;
             }
             JsonValue::Array(arr) => {
-                if let Ok(idx) = seg.parse::<usize>() {
-                    if let Some(next) = arr.get(idx) {
-                        curr = next;
-                    } else {
-                        return None;
-                    }
-                } else {
-                    return None;
-                }
+                let idx = seg.parse::<usize>().ok()?;
+                curr = arr.get(idx)?;
             }
             _ => return None,
         }
