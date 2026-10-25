@@ -13,11 +13,11 @@ use uuid::Uuid;
 use crate::core::assertions::{assertions_to_script, suggest_from_response};
 use crate::core::codegen::{generate_snippet_resolved, snippet_languages};
 use crate::core::collection::{
-    find_request_across, flatten_collections, Collection, CollectionItem, Folder,
+    find_request_across, flatten_collections, remove_across, Collection, CollectionItem, Folder,
 };
 use crate::core::environment::{EnvVar, Environment};
 use crate::core::history::{push_history, HistoryEntry, HISTORY_MAX};
-use crate::core::impex::import_curl;
+use crate::core::impex::{import_curl, import_openapi3, reconcile_openapi3_collection};
 use crate::core::perf_runner::run_performance;
 use crate::core::request::{HttpMethod, KeyValue, RequestDraft};
 use crate::runtime::pipeline::{send_request_with_options, SendOptions};
@@ -580,6 +580,78 @@ fn list_mcp_tools() -> Vec<JsonValue> {
                         "description": "Optional environment name or UUID to resolve variables."
                     }
                 }
+            }
+        }),
+        json!({
+            "name": "blitz_sync_openapi",
+            "description": "Imports or syncs an OpenAPI 3.0 specification (raw YAML/JSON or local file path) into a Blitz collection. If the collection already exists, non-destructively reconciles new routes and updates schemas while preserving custom tests, scripts, and auth.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "spec": {
+                        "type": "string",
+                        "description": "Raw OpenAPI 3.0 JSON/YAML specification string or an absolute local file path to the spec."
+                    },
+                    "collection": {
+                        "type": "string",
+                        "description": "Optional collection name to sync into. If omitted, uses the OpenAPI document title."
+                    }
+                },
+                "required": ["spec"]
+            }
+        }),
+        json!({
+            "name": "blitz_get_collection",
+            "description": "Retrieves the complete configuration of an entire collection (all folders, request definitions, authentication, variables, pre-request and test scripts) by collection name or UUID.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "collection": {
+                        "type": "string",
+                        "description": "UUID or name of the collection to fetch."
+                    }
+                },
+                "required": ["collection"]
+            }
+        }),
+        json!({
+            "name": "blitz_create_environment",
+            "description": "Creates a new named environment with initial key-value variables and can optionally set it as the active environment.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "name": {
+                        "type": "string",
+                        "description": "Name for the new environment (e.g. 'Local Docker', 'Staging AWS')."
+                    },
+                    "variables": {
+                        "type": "object",
+                        "description": "Key-value pairs to set in this environment (e.g. {\"baseUrl\": \"http://localhost:8080\", \"apiKey\": \"test\"})."
+                    },
+                    "set_active": {
+                        "type": "boolean",
+                        "description": "Whether to switch to this environment as the active environment immediately. Defaults to false."
+                    }
+                },
+                "required": ["name"]
+            }
+        }),
+        json!({
+            "name": "blitz_delete_request",
+            "description": "Deletes a saved request from a Blitz collection by its request UUID or name.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "request_id": {
+                        "type": "string",
+                        "description": "UUID or exact name of the request to delete."
+                    },
+                    "collection": {
+                        "type": "string",
+                        "description": "Optional collection name or UUID to disambiguate identical request names."
+                    }
+                },
+                "required": ["request_id"]
             }
         })
     ]
@@ -1606,6 +1678,140 @@ fn execute_mcp_tool(name: &str, args: &JsonValue) -> Result<String, String> {
 
             serde_json::to_string_pretty(&out).map_err(|e| e.to_string())
         }
+        "blitz_sync_openapi" => {
+            let spec_arg = args
+                .get("spec")
+                .and_then(|s| s.as_str())
+                .ok_or_else(|| "Missing required parameter 'spec'".to_string())?;
+            let col_name_opt = args.get("collection").and_then(|c| c.as_str());
+
+            let spec_content = if std::path::Path::new(spec_arg).exists() {
+                std::fs::read_to_string(spec_arg)
+                    .map_err(|e| format!("Failed to read OpenAPI file '{spec_arg}': {e}"))?
+            } else {
+                spec_arg.to_string()
+            };
+
+            let mut snapshot = snapshot;
+            let target_col_pos = if let Some(c_query) = col_name_opt {
+                snapshot.collections.iter().position(|c| {
+                    c.name.eq_ignore_ascii_case(c_query) || c.id.to_string() == c_query
+                })
+            } else {
+                None
+            };
+
+            let (col_name, added_count, preserved_count, created_new) = if let Some(idx) = target_col_pos {
+                let col = &mut snapshot.collections[idx];
+                let (added, preserved) = reconcile_openapi3_collection(col, &spec_content)
+                    .map_err(|e| format!("Reconcile OpenAPI: {e}"))?;
+                (col.name.clone(), added, preserved, false)
+            } else {
+                let mut imported = import_openapi3(&spec_content)
+                    .map_err(|e| format!("Import OpenAPI: {e}"))?;
+                if let Some(custom_name) = col_name_opt {
+                    imported.name = custom_name.to_string();
+                }
+                let name = imported.name.clone();
+                let count = count_requests_in_items(&imported.items);
+                snapshot.collections.push(imported);
+                (name, count, 0, true)
+            };
+
+            store.save(&snapshot).map_err(|e| format!("Save snapshot: {e}"))?;
+
+            let res = json!({
+                "status": "ok",
+                "collection": col_name,
+                "created_new": created_new,
+                "added_routes": added_count,
+                "preserved_routes": preserved_count
+            });
+            serde_json::to_string_pretty(&res).map_err(|e| e.to_string())
+        }
+        "blitz_get_collection" => {
+            let col_query = args
+                .get("collection")
+                .and_then(|c| c.as_str())
+                .ok_or_else(|| "Missing required parameter 'collection'".to_string())?;
+
+            let target_col = snapshot
+                .collections
+                .iter()
+                .find(|c| c.name.eq_ignore_ascii_case(col_query) || c.id.to_string() == col_query)
+                .ok_or_else(|| format!("Collection '{col_query}' not found"))?;
+
+            serde_json::to_string_pretty(target_col).map_err(|e| e.to_string())
+        }
+        "blitz_create_environment" => {
+            let env_name = args
+                .get("name")
+                .and_then(|n| n.as_str())
+                .ok_or_else(|| "Missing required parameter 'name'".to_string())?;
+            let set_active = args.get("set_active").and_then(|a| a.as_bool()).unwrap_or(false);
+
+            let mut snapshot = snapshot;
+            if snapshot.environments.iter().any(|e| e.name.eq_ignore_ascii_case(env_name)) {
+                return Err(format!("Environment '{env_name}' already exists"));
+            }
+
+            let mut new_env = Environment::new(env_name);
+            if let Some(vars_obj) = args.get("variables").and_then(|v| v.as_object()) {
+                for (k, v) in vars_obj {
+                    let val_str = json_val_to_string(v).unwrap_or_default();
+                    new_env.values.push(EnvVar::new(k, val_str));
+                }
+            }
+
+            let env_id = new_env.id;
+            let env_name_str = new_env.name.clone();
+            let var_count = new_env.values.len();
+            snapshot.environments.push(new_env);
+
+            if set_active {
+                snapshot.active_environment_id = Some(env_id);
+                snapshot.active_environment = env_name_str.clone();
+            }
+
+            store.save(&snapshot).map_err(|e| format!("Save snapshot: {e}"))?;
+
+            let res = json!({
+                "status": "ok",
+                "id": env_id.to_string(),
+                "name": env_name_str,
+                "variable_count": var_count,
+                "is_active": set_active
+            });
+            serde_json::to_string_pretty(&res).map_err(|e| e.to_string())
+        }
+        "blitz_delete_request" => {
+            let req_query = args
+                .get("request_id")
+                .and_then(|r| r.as_str())
+                .ok_or_else(|| "Missing required parameter 'request_id'".to_string())?;
+            let col_name_opt = args.get("collection").and_then(|c| c.as_str());
+
+            let mut snapshot = snapshot;
+            let (target_col, req_draft) = find_request_by_id_or_name(&snapshot.collections, req_query, col_name_opt)?;
+            let col_name = target_col.name.clone();
+            let req_id = req_draft.id;
+            let req_name = req_draft.name.clone();
+
+            let removed = remove_across(&mut snapshot.collections, req_id);
+            if !removed {
+                return Err(format!("Failed to delete request '{req_query}'"));
+            }
+
+            store.save(&snapshot).map_err(|e| format!("Save snapshot: {e}"))?;
+
+            let res = json!({
+                "status": "deleted",
+                "request_id": req_id.to_string(),
+                "name": req_name,
+                "collection": col_name
+            });
+            serde_json::to_string_pretty(&res).map_err(|e| e.to_string())
+        }
         _ => Err(format!("Unknown tool: {name}")),
     }
 }
@@ -1629,6 +1835,17 @@ fn find_request_in_items_mut<'a>(
         }
     }
     None
+}
+
+fn count_requests_in_items(items: &[CollectionItem]) -> usize {
+    let mut count = 0;
+    for item in items {
+        match item {
+            CollectionItem::Request(_) => count += 1,
+            CollectionItem::Folder(f) => count += count_requests_in_items(&f.items),
+        }
+    }
+    count
 }
 
 /// Resources exposed by Blitz to agents.
@@ -2014,7 +2231,11 @@ mod tests {
         assert!(tools.iter().any(|t| t["name"] == "blitz_run_collection"));
         assert!(tools.iter().any(|t| t["name"] == "blitz_suggest_assertions"));
         assert!(tools.iter().any(|t| t["name"] == "blitz_perf_test"));
-        assert_eq!(tools.len(), 14);
+        assert!(tools.iter().any(|t| t["name"] == "blitz_sync_openapi"));
+        assert!(tools.iter().any(|t| t["name"] == "blitz_get_collection"));
+        assert!(tools.iter().any(|t| t["name"] == "blitz_create_environment"));
+        assert!(tools.iter().any(|t| t["name"] == "blitz_delete_request"));
+        assert_eq!(tools.len(), 18);
     }
 
     #[test]
@@ -2208,6 +2429,45 @@ mod tests {
         let resp = handle_mcp_message(&req).expect("response expected");
         assert_eq!(resp["id"], 11);
         assert_eq!(resp["result"]["isError"], true);
+    }
+
+    #[test]
+    fn test_tool_sync_openapi_creates_collection() {
+        let minimal_spec = json!({
+            "openapi": "3.0.0",
+            "info": {
+                "title": "Petstore Minimal",
+                "version": "1.0.0"
+            },
+            "paths": {
+                "/pets": {
+                    "get": {
+                        "summary": "List all pets",
+                        "responses": {
+                            "200": { "description": "OK" }
+                        }
+                    }
+                }
+            }
+        });
+        let req = json!({
+            "jsonrpc": "2.0",
+            "id": 12,
+            "method": "tools/call",
+            "params": {
+                "name": "blitz_sync_openapi",
+                "arguments": {
+                    "spec": serde_json::to_string(&minimal_spec).unwrap()
+                }
+            }
+        });
+        let resp = handle_mcp_message(&req).expect("response expected");
+        assert_eq!(resp["id"], 12);
+        let text = resp["result"]["content"][0]["text"].as_str().unwrap();
+        let val: JsonValue = serde_json::from_str(text).unwrap();
+        assert_eq!(val["status"], "ok");
+        assert_eq!(val["created_new"], true);
+        assert_eq!(val["added_routes"], 1);
     }
 
     #[test]

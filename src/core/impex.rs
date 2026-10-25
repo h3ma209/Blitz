@@ -831,7 +831,6 @@ pub fn import_openapi3(text: &str) -> Result<Collection, ImpexError> {
 /// Merges new endpoints from an updated OpenAPI spec into an existing collection,
 /// preserving user tests, pre-request scripts, auth settings, and custom headers.
 /// Returns (number of new endpoints added, number of existing preserved).
-#[cfg(test)]
 pub fn reconcile_openapi3_collection(
     existing: &mut Collection,
     new_spec_text: &str,
