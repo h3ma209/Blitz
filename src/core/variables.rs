@@ -6,6 +6,7 @@ use regex::Regex;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::OnceLock;
+use uuid::Uuid;
 
 use super::collection::Collection;
 use super::environment::{EnvVar, Environment};
@@ -30,6 +31,7 @@ pub enum VarResolveScope {
     Collection,
     Global,
     Vault,
+    Dynamic,
     Unresolved,
 }
 
@@ -41,6 +43,7 @@ impl VarResolveScope {
             Self::Collection => "collection",
             Self::Global => "global",
             Self::Vault => "vault",
+            Self::Dynamic => "dynamic",
             Self::Unresolved => "unresolved",
         }
     }
@@ -275,6 +278,35 @@ impl VariableContext {
             });
         }
 
+        let dynamic_names = [
+            "$guid",
+            "$timestamp",
+            "$isoTimestamp",
+            "$randomInt",
+            "$randomEmail",
+            "$randomFullName",
+            "$randomFirstName",
+            "$randomLastName",
+            "$randomCity",
+            "$randomCountry",
+            "$randomIP",
+            "$randomBoolean",
+            "$randomPrice",
+            "$randomAlphaNumeric",
+            "$randomPhoneNumber",
+            "$randomWord",
+            "$randomColor",
+        ];
+        for d in dynamic_names {
+            if needle.is_empty() || d.to_lowercase().starts_with(&needle) {
+                out.push(VariableSuggestion {
+                    label: d.to_string(),
+                    insert: d.to_string(),
+                    scope: VarResolveScope::Dynamic,
+                });
+            }
+        }
+
         out.sort_by_key(|a| a.label.to_lowercase());
         out
     }
@@ -316,6 +348,16 @@ impl VariableContext {
     /// Inspect `{{…}}` inner raw for hover UI (value + owning scope).
     pub fn inspect_var(&self, raw: &str) -> VarHoverInfo {
         let raw = raw.trim();
+        if raw.starts_with('$') {
+            if let Some(dyn_val) = resolve_dynamic_var(raw) {
+                return VarHoverInfo {
+                    name: raw.to_string(),
+                    raw: raw.to_string(),
+                    scope: VarResolveScope::Dynamic,
+                    value: dyn_val,
+                };
+            }
+        }
         if let Some(key) = raw.strip_prefix("vault:") {
             let key = key.trim();
             let value = self.vault.get(key).unwrap_or("").to_string();
@@ -386,7 +428,7 @@ impl VariableContext {
             VarResolveScope::Vault => {
                 self.vault.set(name, value);
             }
-            VarResolveScope::Unresolved => {}
+            VarResolveScope::Unresolved | VarResolveScope::Dynamic => {}
         }
     }
 
@@ -406,11 +448,90 @@ impl VariableContext {
             let raw = caps[1].trim();
             if let Some(key) = raw.strip_prefix("vault:") {
                 resolve_vault_key(&self.vault, secrets, key.trim()).unwrap_or_default()
+            } else if raw.starts_with('$') {
+                if let Some(dyn_val) = resolve_dynamic_var(raw) {
+                    dyn_val
+                } else {
+                    self.get(raw).unwrap_or("").to_string()
+                }
             } else {
                 self.get(raw).unwrap_or("").to_string()
             }
         })
         .into_owned()
+    }
+}
+
+/// Resolve Postman-compatible dynamic / faker pseudo-variables (e.g. `{{$guid}}`, `{{$timestamp}}`).
+pub fn resolve_dynamic_var(name: &str) -> Option<String> {
+    let key = name.trim().to_lowercase();
+    match key.as_str() {
+        "$guid" | "$randomuuid" => Some(Uuid::new_v4().to_string()),
+        "$timestamp" => Some(chrono::Utc::now().timestamp().to_string()),
+        "$isotimestamp" => Some(chrono::Utc::now().to_rfc3339()),
+        "$randomint" => {
+            let n = (Uuid::new_v4().as_u128() % 1000) + 1;
+            Some(n.to_string())
+        }
+        "$randomemail" => {
+            let u = Uuid::new_v4().to_string();
+            Some(format!("user_{}@example.com", &u[..8]))
+        }
+        "$randomfirstname" => {
+            let list = ["Alice", "Bob", "Carol", "David", "Emma", "Frank", "Grace", "Henry", "Ivy", "Jack"];
+            let idx = (Uuid::new_v4().as_u128() as usize) % list.len();
+            Some(list[idx].to_string())
+        }
+        "$randomlastname" => {
+            let list = ["Smith", "Johnson", "Williams", "Brown", "Jones", "Garcia", "Miller", "Davis", "Taylor", "Wilson"];
+            let idx = (Uuid::new_v4().as_u128() as usize) % list.len();
+            Some(list[idx].to_string())
+        }
+        "$randomfullname" => {
+            let first = resolve_dynamic_var("$randomfirstname")?;
+            let last = resolve_dynamic_var("$randomlastname")?;
+            Some(format!("{first} {last}"))
+        }
+        "$randomcity" => {
+            let list = ["New York", "London", "Tokyo", "Paris", "Berlin", "Sydney", "San Francisco", "Toronto", "Singapore", "Amsterdam"];
+            let idx = (Uuid::new_v4().as_u128() as usize) % list.len();
+            Some(list[idx].to_string())
+        }
+        "$randomcountry" => {
+            let list = ["United States", "United Kingdom", "Germany", "Japan", "France", "Canada", "Australia", "Netherlands", "Sweden", "Singapore"];
+            let idx = (Uuid::new_v4().as_u128() as usize) % list.len();
+            Some(list[idx].to_string())
+        }
+        "$randomip" | "$randomipv4" => {
+            let u = Uuid::new_v4().as_u128();
+            Some(format!("{}.{}.{}.{}", (u & 0xff).max(1), ((u >> 8) & 0xff), ((u >> 16) & 0xff), ((u >> 24) & 0xff).max(1)))
+        }
+        "$randomboolean" => {
+            let b = (Uuid::new_v4().as_u128() & 1) == 0;
+            Some(b.to_string())
+        }
+        "$randomprice" => {
+            let n = (Uuid::new_v4().as_u128() % 9900) + 100;
+            Some(format!("{}.{:02}", n / 100, n % 100))
+        }
+        "$randomalphanumeric" => {
+            let s = Uuid::new_v4().to_string().replace('-', "");
+            Some(s[..10].to_string())
+        }
+        "$randomphonenumber" => {
+            let n = (Uuid::new_v4().as_u128() % 9000) + 1000;
+            Some(format!("+1-555-{:04}", n))
+        }
+        "$randomword" => {
+            let list = ["lorem", "payload", "service", "cluster", "gateway", "token", "request", "client", "response", "metric", "pipeline"];
+            let idx = (Uuid::new_v4().as_u128() as usize) % list.len();
+            Some(list[idx].to_string())
+        }
+        "$randomcolor" => {
+            let u = Uuid::new_v4().as_u128();
+            Some(format!("#{:06x}", u & 0xffffff))
+        }
+        _ => None,
     }
 }
 
@@ -677,5 +798,33 @@ mod tests {
         assert_eq!(utf16_offset_to_byte_offset(s, 3), 5); // after 'b', before '🔥'
         assert_eq!(utf16_offset_to_byte_offset(s, 5), 9); // after '🔥' (2 u16 units), before 'c'
         assert_eq!(utf16_offset_to_byte_offset(s, 6), 10); // after 'c'
+    }
+
+    #[test]
+    fn test_dynamic_faker_variables() {
+        let ctx = VariableContext::default();
+
+        // 1. {{$guid}}
+        let guid = ctx.resolve_string("{{$guid}}");
+        assert_eq!(guid.len(), 36);
+        assert_eq!(guid.chars().filter(|c| *c == '-').count(), 4);
+
+        // 2. {{$timestamp}}
+        let ts = ctx.resolve_string("{{$timestamp}}");
+        assert!(ts.parse::<u64>().is_ok());
+
+        // 3. {{$randomInt}}
+        let ri = ctx.resolve_string("{{$randomInt}}");
+        let n: u32 = ri.parse().expect("random int integer");
+        assert!((1..=1000).contains(&n));
+
+        // 4. {{$randomEmail}}
+        let em = ctx.resolve_string("{{$randomEmail}}");
+        assert!(em.contains("@example.com"));
+
+        // 5. Autocomplete suggestions include dynamic variables
+        let suggs = ctx.insert_suggestions("$");
+        assert!(suggs.iter().any(|s| s.label == "$guid" && s.scope == VarResolveScope::Dynamic));
+        assert!(suggs.iter().any(|s| s.label == "$randomEmail" && s.scope == VarResolveScope::Dynamic));
     }
 }

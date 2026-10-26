@@ -1529,7 +1529,7 @@ pub fn Workbench() -> Element {
                                                                 v.apply_edit(scope, &name, &value);
                                                                 vars.set(v);
                                                             }
-                                                            VarResolveScope::Unresolved => {}
+                                                            VarResolveScope::Unresolved | VarResolveScope::Dynamic => {}
                                                         }
                                                         st.persist();
                                                         status_msg.set(format!("updated {name}"));

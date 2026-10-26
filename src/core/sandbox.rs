@@ -183,8 +183,63 @@ function __scope(name) {{
     }}
   }};
 }}
+function __np_dynamicVar(key) {{
+  key = String(key || "").toLowerCase();
+  switch (key) {{
+    case "$guid":
+    case "$randomuuid":
+      return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, function(c) {{
+        var r = Math.random() * 16 | 0;
+        return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16);
+      }});
+    case "$timestamp":
+      return String(Math.floor(Date.now() / 1000));
+    case "$isotimestamp":
+      return new Date().toISOString();
+    case "$randomint":
+      return String(Math.floor(Math.random() * 1000) + 1);
+    case "$randomemail":
+      return "user_" + Math.random().toString(36).substring(2, 10) + "@example.com";
+    case "$randomfirstname":
+      var fnames = ["Alice", "Bob", "Carol", "David", "Emma", "Frank", "Grace", "Henry"];
+      return fnames[Math.floor(Math.random() * fnames.length)];
+    case "$randomlastname":
+      var lnames = ["Smith", "Johnson", "Williams", "Brown", "Jones", "Garcia", "Miller"];
+      return lnames[Math.floor(Math.random() * lnames.length)];
+    case "$randomfullname":
+      return __np_dynamicVar("$randomfirstname") + " " + __np_dynamicVar("$randomlastname");
+    case "$randomcity":
+      var cities = ["New York", "London", "Tokyo", "Paris", "Berlin", "Sydney", "San Francisco"];
+      return cities[Math.floor(Math.random() * cities.length)];
+    case "$randomcountry":
+      var countries = ["United States", "United Kingdom", "Germany", "Japan", "France", "Canada"];
+      return countries[Math.floor(Math.random() * countries.length)];
+    case "$randomip":
+    case "$randomipv4":
+      return Math.floor(Math.random() * 255 + 1) + "." + Math.floor(Math.random() * 255) + "." + Math.floor(Math.random() * 255) + "." + Math.floor(Math.random() * 255 + 1);
+    case "$randomboolean":
+      return Math.random() < 0.5 ? "true" : "false";
+    case "$randomprice":
+      return (Math.random() * 1000 + 1).toFixed(2);
+    case "$randomalphanumeric":
+      return Math.random().toString(36).substring(2, 12);
+    case "$randomword":
+      var words = ["lorem", "payload", "service", "cluster", "gateway", "token", "request"];
+      return words[Math.floor(Math.random() * words.length)];
+    case "$randomphonenumber":
+      return "+1-555-" + Math.floor(1000 + Math.random() * 9000);
+    case "$randomcolor":
+      return '#' + Math.floor(Math.random() * 16777215).toString(16);
+    default:
+      return undefined;
+  }}
+}}
 function __np_lookupVar(key) {{
   key = String(key).trim();
+  if (key.charAt(0) === '$') {{
+    var d = __np_dynamicVar(key);
+    if (d !== undefined) return d;
+  }}
   var order = ["local", "environment", "collection", "globals"];
   for (var i = 0; i < order.length; i++) {{
     var m = __np.scopes[order[i]] || {{}};
@@ -356,6 +411,13 @@ function require(id) {{
 var pm = {{
   variables: (function() {{
     var s = __scope("local");
+    s.get = function(k) {{
+      var v = __np_lookupVar(k);
+      return v !== undefined ? v : undefined;
+    }};
+    s.has = function(k) {{
+      return __np_lookupVar(k) !== undefined;
+    }};
     s.replaceIn = function(str) {{
       var out = String(str);
       var i = 0;
@@ -1204,6 +1266,24 @@ mod tests {
             if (h.length !== 64) throw new Error("sha");
             var empty = require("lodash");
             if (typeof empty !== "object") throw new Error("stub");
+            "#,
+            "pre-request",
+            &mut ctx,
+            None,
+        );
+        assert!(out.error.is_none(), "{:?}", out.error);
+    }
+
+    #[test]
+    fn dynamic_faker_variables_in_sandbox() {
+        let mut ctx = VariableContext::default();
+        let out = run_js_sandbox(
+            r#"
+            var g = pm.variables.get("$guid");
+            if (!g || g.length !== 36) throw new Error("guid invalid: " + g);
+
+            var replaced = pm.variables.replaceIn("hello {{$randomEmail}} - {{$timestamp}}");
+            if (replaced.indexOf("@example.com") === -1) throw new Error("replaceIn email failed: " + replaced);
             "#,
             "pre-request",
             &mut ctx,
