@@ -14,7 +14,7 @@
   <a href="https://github.com/h3ma209/Blitz/actions/workflows/build.yml"><img src="https://img.shields.io/github/actions/workflow/status/h3ma209/Blitz/build.yml?branch=master&label=build" alt="CI Build"></a>
   <img src="https://img.shields.io/badge/rust-1.83%2B-orange.svg?logo=rust" alt="Rust 1.83+">
   <img src="https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20Windows-blue" alt="Cross-Platform">
-  <img src="https://img.shields.io/badge/MCP-30%20Tools%20Active-brightgreen" alt="Model Context Protocol">
+  <img src="https://img.shields.io/badge/MCP-37%20Tools%20Active-brightgreen" alt="Model Context Protocol">
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT%20%2F%20Apache--2.0-blue" alt="License"></a>
   <a href="https://h3ma209.github.io/Blitz/"><img src="https://img.shields.io/badge/docs-GitHub%20Pages-brightgreen" alt="Docs"></a>
 </p>
@@ -324,6 +324,13 @@ If you prefer manual setup, add Blitz to your IDE's `mcpServers` configuration:
 - **`blitz_clear_history`**: Clear execution history globally or filtered by request ID.
 - **`blitz_import_har`**: Import HTTP Archive (`.har` file path or raw JSON) into collections.
 - **`blitz_manage_cookies`**: Inspect or clear session cookies stored in Blitz's global cookie jar.
+- **`blitz_websocket_send`**: Connect to a WebSocket endpoint (`ws://` or `wss://`), transmit text/JSON payload, capture streaming inbound frames, and gracefully disconnect.
+- **`blitz_grpc_unary`**: Execute a gRPC unary procedure call over HTTP/2 with JSON body encoding (`google.protobuf.Struct`) returning response data and status code.
+- **`blitz_sse_listen`**: Connect to Server-Sent Events (SSE) HTTP stream, capture streaming events (`event`, `data`, `id`), and return trace.
+- **`blitz_mqtt_publish`**: Publish a message to an MQTT broker topic with QoS 1 confirmation and disconnect.
+- **`blitz_mqtt_subscribe`**: Subscribe to an MQTT topic on a broker and wait for incoming message with timeout.
+- **`blitz_graphql_ws_subscribe`**: Execute GraphQL subscription over WebSocket (`graphql-transport-ws`) and collect streaming payloads.
+- **`blitz_socketio_emit`**: Connect to Socket.IO server, emit event with payload, and capture inbound events.
 
 #### Exposed MCP Resources:
 - `blitz://collections`: Hierarchy of all collections, folders, and requests.

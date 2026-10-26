@@ -6,8 +6,8 @@
 
 use std::collections::HashMap;
 use std::io::{self, BufRead, Write};
-
 use std::sync::Mutex;
+use std::time::{Duration, Instant};
 use serde_json::{json, Value as JsonValue};
 use uuid::Uuid;
 
@@ -25,6 +25,10 @@ use crate::core::impex::{
 };
 use crate::core::mock_server::{routes_from_collections, start_mock, MockHandle, MockRoute};
 use crate::core::perf_runner::run_performance;
+use crate::core::protocols::{
+    graphql_ws_subscribe, grpc_unary, mqtt_publish, mqtt_subscribe_once, socketio_session,
+    sse_listen, ws_connect_session, WsSessionEvent,
+};
 use crate::core::request::{HttpMethod, KeyValue, RequestDraft, SavedExample};
 use crate::core::response_diff::{diff_bodies, DiffLine};
 use crate::runtime::pipeline::{send_request_with_options, SendOptions};
@@ -882,6 +886,192 @@ fn list_mcp_tools() -> Vec<JsonValue> {
                         "description": "Optional domain filter (e.g. 'api.example.com') when listing cookies."
                     }
                 }
+            }
+        }),
+        json!({
+            "name": "blitz_websocket_send",
+            "description": "Connects to a WebSocket server (ws:// or wss://), transmits an optional text/JSON payload, captures streaming inbound messages, and gracefully disconnects.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "url": {
+                        "type": "string",
+                        "description": "WebSocket endpoint URL (e.g. 'wss://echo.websocket.events' or 'ws://127.0.0.1:8080/ws')."
+                    },
+                    "message": {
+                        "type": "string",
+                        "description": "Optional text or JSON message string to transmit after connection handshake."
+                    },
+                    "timeout_ms": {
+                        "type": "integer",
+                        "description": "Duration in milliseconds to wait and collect inbound messages. Defaults to 2000 (max 10000)."
+                    },
+                    "max_messages": {
+                        "type": "integer",
+                        "description": "Maximum number of inbound messages to collect before closing session. Defaults to 5 (max 50)."
+                    }
+                },
+                "required": ["url"]
+            }
+        }),
+        json!({
+            "name": "blitz_grpc_unary",
+            "description": "Executes a gRPC unary procedure call over HTTP/2 with JSON body encoding (google.protobuf.Struct) and returns parsed response data, gRPC status code, and latency.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "endpoint": {
+                        "type": "string",
+                        "description": "gRPC server base URL (e.g. 'http://127.0.0.1:50051' or 'https://grpc.example.com')."
+                    },
+                    "method": {
+                        "type": "string",
+                        "description": "Full procedure name in 'package.Service/Method' notation (e.g. 'auth.AuthService/Login')."
+                    },
+                    "body": {
+                        "type": "string",
+                        "description": "JSON string payload for the gRPC request message."
+                    }
+                },
+                "required": ["endpoint", "method", "body"]
+            }
+        }),
+        json!({
+            "name": "blitz_sse_listen",
+            "description": "Connects to a Server-Sent Events (SSE / EventSource) HTTP endpoint, captures streaming events ('event', 'data', 'id'), and returns the collected stream trace.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "url": {
+                        "type": "string",
+                        "description": "HTTP/HTTPS streaming endpoint URL."
+                    },
+                    "headers": {
+                        "type": "object",
+                        "description": "Optional request headers dictionary (e.g. {'Authorization': 'Bearer ...'})."
+                    },
+                    "max_events": {
+                        "type": "integer",
+                        "description": "Maximum number of SSE events to collect. Defaults to 5 (max 50)."
+                    },
+                    "timeout_ms": {
+                        "type": "integer",
+                        "description": "Listening timeout in milliseconds. Defaults to 3000 (max 15000)."
+                    }
+                },
+                "required": ["url"]
+            }
+        }),
+        json!({
+            "name": "blitz_mqtt_publish",
+            "description": "Publishes a message to an MQTT broker topic with QoS 1 confirmation and disconnects.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "broker_url": {
+                        "type": "string",
+                        "description": "MQTT broker host and port (e.g. '127.0.0.1:1883' or 'broker.emqx.io:1883')."
+                    },
+                    "topic": {
+                        "type": "string",
+                        "description": "MQTT topic name to publish to (e.g. 'sensors/temp')."
+                    },
+                    "payload": {
+                        "type": "string",
+                        "description": "Payload string or JSON to publish."
+                    },
+                    "client_id": {
+                        "type": "string",
+                        "description": "Optional MQTT client identifier. Defaults to random 'blitz-mcp-<uuid>'."
+                    }
+                },
+                "required": ["broker_url", "topic", "payload"]
+            }
+        }),
+        json!({
+            "name": "blitz_mqtt_subscribe",
+            "description": "Subscribes to an MQTT topic on a broker and waits for an incoming message with a timeout.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "broker_url": {
+                        "type": "string",
+                        "description": "MQTT broker host and port (e.g. '127.0.0.1:1883')."
+                    },
+                    "topic": {
+                        "type": "string",
+                        "description": "MQTT topic name to subscribe to."
+                    },
+                    "client_id": {
+                        "type": "string",
+                        "description": "Optional MQTT client identifier."
+                    },
+                    "timeout_seconds": {
+                        "type": "integer",
+                        "description": "Wait timeout in seconds. Defaults to 3 (max 10)."
+                    }
+                },
+                "required": ["broker_url", "topic"]
+            }
+        }),
+        json!({
+            "name": "blitz_graphql_ws_subscribe",
+            "description": "Connects to a GraphQL WebSocket endpoint using the graphql-transport-ws protocol, executes a subscription query, and collects streaming payloads.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "ws_url": {
+                        "type": "string",
+                        "description": "GraphQL WebSocket endpoint (e.g. 'ws://127.0.0.1:4000/graphql')."
+                    },
+                    "query": {
+                        "type": "string",
+                        "description": "GraphQL subscription document string (e.g. 'subscription { postAdded { id title } }')."
+                    },
+                    "variables": {
+                        "type": "string",
+                        "description": "Optional JSON string or object for subscription variables."
+                    },
+                    "max_events": {
+                        "type": "integer",
+                        "description": "Maximum subscription frames to capture. Defaults to 3 (max 20)."
+                    },
+                    "timeout_ms": {
+                        "type": "integer",
+                        "description": "Listening timeout in milliseconds. Defaults to 3000 (max 10000)."
+                    }
+                },
+                "required": ["ws_url", "query"]
+            }
+        }),
+        json!({
+            "name": "blitz_socketio_emit",
+            "description": "Connects to a Socket.IO server over WebSocket transport, optionally emits an event with payload, and listens for inbound events.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "url": {
+                        "type": "string",
+                        "description": "Socket.IO server URL (e.g. 'http://127.0.0.1:3000')."
+                    },
+                    "emit_event": {
+                        "type": "string",
+                        "description": "Optional event name to emit upon connection."
+                    },
+                    "emit_payload": {
+                        "type": "string",
+                        "description": "Optional JSON payload string to emit."
+                    },
+                    "listen_event": {
+                        "type": "string",
+                        "description": "Event name to listen for. Defaults to 'message'."
+                    },
+                    "listen_ms": {
+                        "type": "integer",
+                        "description": "Listening duration in milliseconds. Defaults to 2000 (max 10000)."
+                    }
+                },
+                "required": ["url"]
             }
         })
     ]
@@ -2532,6 +2722,307 @@ fn execute_mcp_tool(name: &str, args: &JsonValue) -> Result<String, String> {
             };
             serde_json::to_string_pretty(&res).map_err(|e| e.to_string())
         }
+        "blitz_websocket_send" => {
+            let url = args
+                .get("url")
+                .and_then(|u| u.as_str())
+                .ok_or_else(|| "Missing required parameter 'url'".to_string())?;
+            let msg_opt = args.get("message").and_then(|m| m.as_str());
+            let timeout_ms = args
+                .get("timeout_ms")
+                .and_then(|t| t.as_u64())
+                .unwrap_or(2000)
+                .min(10_000);
+            let max_msgs = args
+                .get("max_messages")
+                .and_then(|m| m.as_u64())
+                .unwrap_or(5)
+                .min(50) as usize;
+
+            let sess = ws_connect_session(url).map_err(|e| format!("Connect: {e}"))?;
+            let start = Instant::now();
+            let mut opened = false;
+            let handshake_limit = Duration::from_millis(timeout_ms.min(2000));
+            while start.elapsed() < handshake_limit {
+                let evs = sess.events_snapshot();
+                if evs.iter().any(|e| matches!(e, WsSessionEvent::Opened)) {
+                    opened = true;
+                    break;
+                }
+                if let Some(err) = evs.iter().find_map(|e| match e {
+                    WsSessionEvent::Error(s) => Some(s.clone()),
+                    _ => None,
+                }) {
+                    sess.close();
+                    return Err(format!("WebSocket error: {err}"));
+                }
+                std::thread::sleep(Duration::from_millis(25));
+            }
+
+            if !opened {
+                let evs = sess.events_snapshot();
+                sess.close();
+                let err_msg = evs
+                    .into_iter()
+                    .find_map(|e| match e {
+                        WsSessionEvent::Error(s) => Some(s),
+                        _ => None,
+                    })
+                    .unwrap_or_else(|| "Connection timed out during handshake".to_string());
+                return Err(format!("WebSocket failed: {err_msg}"));
+            }
+
+            if let Some(msg) = msg_opt {
+                sess.send_text(msg).map_err(|e| format!("Send text: {e}"))?;
+            }
+
+            let mut messages = Vec::new();
+            let collect_limit = Duration::from_millis(timeout_ms);
+            while start.elapsed() < collect_limit && messages.len() < max_msgs {
+                let evs = sess.events_snapshot();
+                for ev in evs {
+                    if let WsSessionEvent::Message(m) = ev {
+                        if !messages.contains(&m) {
+                            messages.push(m);
+                        }
+                    }
+                }
+                std::thread::sleep(Duration::from_millis(25));
+            }
+
+            sess.close();
+
+            let res = json!({
+                "status": "ok",
+                "url": url,
+                "sent": msg_opt,
+                "messages": messages,
+                "count": messages.len(),
+                "elapsed_ms": start.elapsed().as_millis()
+            });
+            serde_json::to_string_pretty(&res).map_err(|e| e.to_string())
+        }
+        "blitz_grpc_unary" => {
+            let endpoint = args
+                .get("endpoint")
+                .and_then(|e| e.as_str())
+                .ok_or_else(|| "Missing required parameter 'endpoint'".to_string())?;
+            let method = args
+                .get("method")
+                .and_then(|m| m.as_str())
+                .ok_or_else(|| "Missing required parameter 'method'".to_string())?;
+            let body_val = args
+                .get("body")
+                .ok_or_else(|| "Missing required parameter 'body'".to_string())?;
+            let body_str = match body_val {
+                JsonValue::String(s) => s.clone(),
+                other => other.to_string(),
+            };
+
+            let res = grpc_unary(endpoint, method, &body_str);
+            let parsed_body: JsonValue = serde_json::from_str(&res.body_json)
+                .unwrap_or(JsonValue::String(res.body_json));
+
+            let out = json!({
+                "status": res.status,
+                "grpc_status": res.grpc_status,
+                "grpc_message": res.grpc_message,
+                "response": parsed_body,
+                "elapsed_ms": res.elapsed_ms,
+                "error": res.error,
+                "log": res.log
+            });
+            serde_json::to_string_pretty(&out).map_err(|e| e.to_string())
+        }
+        "blitz_sse_listen" => {
+            let url = args
+                .get("url")
+                .and_then(|u| u.as_str())
+                .ok_or_else(|| "Missing required parameter 'url'".to_string())?;
+            let max_events = args
+                .get("max_events")
+                .and_then(|m| m.as_u64())
+                .unwrap_or(5)
+                .min(50) as usize;
+            let timeout_ms = args
+                .get("timeout_ms")
+                .and_then(|t| t.as_u64())
+                .unwrap_or(3000)
+                .min(15_000);
+
+            let mut headers_vec = Vec::new();
+            if let Some(headers_map) = args.get("headers").and_then(|h| h.as_object()) {
+                for (k, v) in headers_map {
+                    if let Some(v_str) = v.as_str() {
+                        headers_vec.push((k.clone(), v_str.to_string()));
+                    }
+                }
+            }
+
+            let (log, events) = sse_listen(url, &headers_vec, max_events, timeout_ms)
+                .map_err(|e| format!("SSE error: {e}"))?;
+
+            let events_json: Vec<JsonValue> = events
+                .into_iter()
+                .map(|e| {
+                    json!({
+                        "event": e.event,
+                        "data": e.data,
+                        "id": e.id
+                    })
+                })
+                .collect();
+
+            let out = json!({
+                "status": "ok",
+                "url": url,
+                "events": events_json,
+                "count": events_json.len(),
+                "log": log
+            });
+            serde_json::to_string_pretty(&out).map_err(|e| e.to_string())
+        }
+        "blitz_mqtt_publish" => {
+            let broker_url = args
+                .get("broker_url")
+                .and_then(|b| b.as_str())
+                .ok_or_else(|| "Missing required parameter 'broker_url'".to_string())?;
+            let topic = args
+                .get("topic")
+                .and_then(|t| t.as_str())
+                .ok_or_else(|| "Missing required parameter 'topic'".to_string())?;
+            let payload = args
+                .get("payload")
+                .and_then(|p| p.as_str())
+                .ok_or_else(|| "Missing required parameter 'payload'".to_string())?;
+            let default_client_id = format!("blitz-mcp-{}", &Uuid::new_v4().to_string()[..8]);
+            let client_id = args
+                .get("client_id")
+                .and_then(|c| c.as_str())
+                .unwrap_or(&default_client_id);
+
+            let res = mqtt_publish(broker_url, client_id, topic, payload);
+            let out = json!({
+                "ok": res.ok,
+                "topic": topic,
+                "messages": res.messages,
+                "elapsed_ms": res.elapsed_ms,
+                "error": res.error
+            });
+            serde_json::to_string_pretty(&out).map_err(|e| e.to_string())
+        }
+        "blitz_mqtt_subscribe" => {
+            let broker_url = args
+                .get("broker_url")
+                .and_then(|b| b.as_str())
+                .ok_or_else(|| "Missing required parameter 'broker_url'".to_string())?;
+            let topic = args
+                .get("topic")
+                .and_then(|t| t.as_str())
+                .ok_or_else(|| "Missing required parameter 'topic'".to_string())?;
+            let default_client_id = format!("blitz-mcp-{}", &Uuid::new_v4().to_string()[..8]);
+            let client_id = args
+                .get("client_id")
+                .and_then(|c| c.as_str())
+                .unwrap_or(&default_client_id);
+            let timeout_secs = args
+                .get("timeout_seconds")
+                .and_then(|t| t.as_u64())
+                .unwrap_or(3)
+                .min(10);
+
+            let res = mqtt_subscribe_once(
+                broker_url,
+                client_id,
+                topic,
+                Duration::from_secs(timeout_secs),
+            );
+            let out = json!({
+                "ok": res.ok,
+                "topic": topic,
+                "messages": res.messages,
+                "elapsed_ms": res.elapsed_ms,
+                "error": res.error
+            });
+            serde_json::to_string_pretty(&out).map_err(|e| e.to_string())
+        }
+        "blitz_graphql_ws_subscribe" => {
+            let ws_url = args
+                .get("ws_url")
+                .and_then(|u| u.as_str())
+                .ok_or_else(|| "Missing required parameter 'ws_url'".to_string())?;
+            let query = args
+                .get("query")
+                .and_then(|q| q.as_str())
+                .ok_or_else(|| "Missing required parameter 'query'".to_string())?;
+            let vars_str = match args.get("variables") {
+                Some(JsonValue::String(s)) => s.clone(),
+                Some(other) => other.to_string(),
+                None => "{}".to_string(),
+            };
+            let max_events = args
+                .get("max_events")
+                .and_then(|m| m.as_u64())
+                .unwrap_or(3)
+                .min(20) as usize;
+            let timeout_ms = args
+                .get("timeout_ms")
+                .and_then(|t| t.as_u64())
+                .unwrap_or(3000)
+                .min(10_000);
+
+            let events = graphql_ws_subscribe(ws_url, query, &vars_str, max_events, timeout_ms)
+                .map_err(|e| format!("GraphQL WS error: {e}"))?;
+
+            let out = json!({
+                "status": "ok",
+                "ws_url": ws_url,
+                "events": events,
+                "count": events.len()
+            });
+            serde_json::to_string_pretty(&out).map_err(|e| e.to_string())
+        }
+        "blitz_socketio_emit" => {
+            let url = args
+                .get("url")
+                .and_then(|u| u.as_str())
+                .ok_or_else(|| "Missing required parameter 'url'".to_string())?;
+            let emit_event = args
+                .get("emit_event")
+                .and_then(|e| e.as_str())
+                .unwrap_or("");
+            let emit_payload_str = match args.get("emit_payload") {
+                Some(JsonValue::String(s)) => s.clone(),
+                Some(other) => other.to_string(),
+                None => "{}".to_string(),
+            };
+            let listen_event = args
+                .get("listen_event")
+                .and_then(|l| l.as_str())
+                .unwrap_or("message");
+            let listen_ms = args
+                .get("listen_ms")
+                .and_then(|l| l.as_u64())
+                .unwrap_or(2000)
+                .min(10_000);
+
+            let events = socketio_session(
+                url,
+                emit_event,
+                &emit_payload_str,
+                listen_event,
+                listen_ms,
+            )
+            .map_err(|e| format!("Socket.IO error: {e}"))?;
+
+            let out = json!({
+                "status": "ok",
+                "url": url,
+                "events": events,
+                "count": events.len()
+            });
+            serde_json::to_string_pretty(&out).map_err(|e| e.to_string())
+        }
         _ => Err(format!("Unknown tool: {name}")),
     }
 }
@@ -2985,7 +3476,14 @@ mod tests {
         assert!(tools.iter().any(|t| t["name"] == "blitz_clear_history"));
         assert!(tools.iter().any(|t| t["name"] == "blitz_import_har"));
         assert!(tools.iter().any(|t| t["name"] == "blitz_manage_cookies"));
-        assert_eq!(tools.len(), 30);
+        assert!(tools.iter().any(|t| t["name"] == "blitz_websocket_send"));
+        assert!(tools.iter().any(|t| t["name"] == "blitz_grpc_unary"));
+        assert!(tools.iter().any(|t| t["name"] == "blitz_sse_listen"));
+        assert!(tools.iter().any(|t| t["name"] == "blitz_mqtt_publish"));
+        assert!(tools.iter().any(|t| t["name"] == "blitz_mqtt_subscribe"));
+        assert!(tools.iter().any(|t| t["name"] == "blitz_graphql_ws_subscribe"));
+        assert!(tools.iter().any(|t| t["name"] == "blitz_socketio_emit"));
+        assert_eq!(tools.len(), 37);
     }
 
     #[test]
@@ -3403,6 +3901,85 @@ mod tests {
         let hist_text = hist_res["result"]["content"][0]["text"].as_str().unwrap();
         let hist_val: JsonValue = serde_json::from_str(hist_text).unwrap();
         assert_eq!(hist_val["status"], "cleared");
+    }
+
+    #[test]
+    fn test_protocol_tools_validation_and_execution() {
+        // Missing required 'url' on blitz_websocket_send
+        let ws_req = json!({
+            "jsonrpc": "2.0",
+            "id": 301,
+            "method": "tools/call",
+            "params": {
+                "name": "blitz_websocket_send",
+                "arguments": {}
+            }
+        });
+        let ws_res = handle_mcp_message(&ws_req).expect("response");
+        assert_eq!(ws_res["result"]["isError"], true);
+
+        // Missing required 'endpoint' on blitz_grpc_unary
+        let grpc_req = json!({
+            "jsonrpc": "2.0",
+            "id": 302,
+            "method": "tools/call",
+            "params": {
+                "name": "blitz_grpc_unary",
+                "arguments": {
+                    "method": "test.Service/Method",
+                    "body": "{}"
+                }
+            }
+        });
+        let grpc_res = handle_mcp_message(&grpc_req).expect("response");
+        assert_eq!(grpc_res["result"]["isError"], true);
+
+        // Missing required 'url' on blitz_sse_listen
+        let sse_req = json!({
+            "jsonrpc": "2.0",
+            "id": 303,
+            "method": "tools/call",
+            "params": {
+                "name": "blitz_sse_listen",
+                "arguments": {}
+            }
+        });
+        let sse_res = handle_mcp_message(&sse_req).expect("response");
+        assert_eq!(sse_res["result"]["isError"], true);
+
+        // Missing required 'topic' on blitz_mqtt_publish
+        let mqtt_req = json!({
+            "jsonrpc": "2.0",
+            "id": 304,
+            "method": "tools/call",
+            "params": {
+                "name": "blitz_mqtt_publish",
+                "arguments": {
+                    "broker_url": "127.0.0.1:1883"
+                }
+            }
+        });
+        let mqtt_res = handle_mcp_message(&mqtt_req).expect("response");
+        assert_eq!(mqtt_res["result"]["isError"], true);
+
+        // gRPC unary against non-existent port (handled cleanly without panic)
+        let grpc_call_req = json!({
+            "jsonrpc": "2.0",
+            "id": 305,
+            "method": "tools/call",
+            "params": {
+                "name": "blitz_grpc_unary",
+                "arguments": {
+                    "endpoint": "http://127.0.0.1:59999",
+                    "method": "test.Service/Method",
+                    "body": "{\"user_id\": 1}"
+                }
+            }
+        });
+        let grpc_call_res = handle_mcp_message(&grpc_call_req).expect("response");
+        let grpc_text = grpc_call_res["result"]["content"][0]["text"].as_str().unwrap();
+        let grpc_val: JsonValue = serde_json::from_str(grpc_text).unwrap();
+        assert_eq!(grpc_val["status"], "ERROR");
     }
 
     #[test]
