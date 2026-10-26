@@ -16,10 +16,11 @@ use crate::core::codegen::{generate_snippet_resolved, snippet_languages};
 use crate::core::collection::{
     find_request_across, flatten_collections, remove_across, Collection, CollectionItem, Folder,
 };
+use crate::core::doc_gen::{generate_static_doc_html, generate_swagger_ui_html};
 use crate::core::environment::{EnvVar, Environment};
 use crate::core::history::{push_history, HistoryEntry, HISTORY_MAX};
 use crate::core::impex::{
-    export_collection_v21, export_openapi3, import_curl, import_openapi3,
+    export_collection_v21, export_openapi3, import_curl, import_har, import_openapi3,
     reconcile_openapi3_collection,
 };
 use crate::core::mock_server::{routes_from_collections, start_mock, MockHandle, MockRoute};
@@ -751,6 +752,136 @@ fn list_mcp_tools() -> Vec<JsonValue> {
                     }
                 },
                 "required": ["collection"]
+            }
+        }),
+        json!({
+            "name": "blitz_generate_docs",
+            "description": "Compiles a Blitz collection into standalone, self-contained HTML API documentation (choice of responsive static interactive docs website or Swagger UI). Can return raw HTML or write directly to a local file path.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "collection": {
+                        "type": "string",
+                        "description": "UUID or name of the collection to generate docs for."
+                    },
+                    "format": {
+                        "type": "string",
+                        "enum": ["static", "swagger_ui"],
+                        "description": "Documentation format: 'static' (default, single-file glassmorphic doc site with search & code snippets) or 'swagger_ui'."
+                    },
+                    "file_path": {
+                        "type": "string",
+                        "description": "Optional destination file path to write HTML output directly (e.g. 'docs/api.html')."
+                    }
+                },
+                "required": ["collection"]
+            }
+        }),
+        json!({
+            "name": "blitz_create_folder",
+            "description": "Creates a new organizational folder inside a Blitz collection (optionally nested under a parent folder) with an optional description.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "collection": {
+                        "type": "string",
+                        "description": "UUID or name of the collection to add the folder to."
+                    },
+                    "name": {
+                        "type": "string",
+                        "description": "Name for the new folder (e.g. 'Auth', 'Users', 'Payments')."
+                    },
+                    "parent_folder": {
+                        "type": "string",
+                        "description": "Optional parent folder name or path to nest under."
+                    },
+                    "description": {
+                        "type": "string",
+                        "description": "Optional description of the folder's purpose."
+                    }
+                },
+                "required": ["collection", "name"]
+            }
+        }),
+        json!({
+            "name": "blitz_delete_folder",
+            "description": "Deletes a folder and all requests contained inside it from a Blitz collection.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "collection": {
+                        "type": "string",
+                        "description": "UUID or name of the collection containing the folder."
+                    },
+                    "folder": {
+                        "type": "string",
+                        "description": "Name or path of the folder to delete (e.g. 'Users' or 'Users/Auth')."
+                    }
+                },
+                "required": ["collection", "folder"]
+            }
+        }),
+        json!({
+            "name": "blitz_delete_environment",
+            "description": "Deletes an environment by its name or UUID.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "environment": {
+                        "type": "string",
+                        "description": "UUID or name of the environment to delete."
+                    }
+                },
+                "required": ["environment"]
+            }
+        }),
+        json!({
+            "name": "blitz_clear_history",
+            "description": "Clears saved request execution history (optionally filtered to only entries for a specific request ID).",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "request_id": {
+                        "type": "string",
+                        "description": "Optional request UUID to selectively clear only history for that request. If omitted, clears all execution history."
+                    }
+                }
+            }
+        }),
+        json!({
+            "name": "blitz_import_har",
+            "description": "Imports HTTP requests and responses from an HTTP Archive (.har) JSON string or file path into a Blitz collection.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "har": {
+                        "type": "string",
+                        "description": "Raw HAR JSON content or absolute file path to a .har file."
+                    },
+                    "collection": {
+                        "type": "string",
+                        "description": "Optional name for the imported collection. Defaults to 'HAR Import'."
+                    }
+                },
+                "required": ["har"]
+            }
+        }),
+        json!({
+            "name": "blitz_manage_cookies",
+            "description": "Inspects or clears session cookies stored in Blitz's global cookie jar.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "action": {
+                        "type": "string",
+                        "enum": ["list", "clear"],
+                        "description": "Action to perform: 'list' (default) to inspect stored cookies, or 'clear' to wipe all cookies."
+                    },
+                    "domain": {
+                        "type": "string",
+                        "description": "Optional domain filter (e.g. 'api.example.com') when listing cookies."
+                    }
+                }
             }
         })
     ]
@@ -2142,6 +2273,265 @@ fn execute_mcp_tool(name: &str, args: &JsonValue) -> Result<String, String> {
             });
             serde_json::to_string_pretty(&res).map_err(|e| e.to_string())
         }
+        "blitz_generate_docs" => {
+            let col_query = args
+                .get("collection")
+                .and_then(|c| c.as_str())
+                .ok_or_else(|| "Missing required parameter 'collection'".to_string())?;
+            let format_arg = args
+                .get("format")
+                .and_then(|f| f.as_str())
+                .unwrap_or("static")
+                .to_lowercase();
+            let file_path_opt = args.get("file_path").and_then(|p| p.as_str());
+
+            let target_col = snapshot
+                .collections
+                .iter()
+                .find(|c| c.name.eq_ignore_ascii_case(col_query) || c.id.to_string() == col_query)
+                .ok_or_else(|| format!("Collection '{col_query}' not found"))?;
+
+            let html_content = if format_arg == "swagger_ui" {
+                generate_swagger_ui_html(target_col)
+                    .map_err(|e| format!("Generate Swagger UI: {e}"))?
+            } else {
+                generate_static_doc_html(target_col)
+            };
+
+            let written_to = if let Some(path_str) = file_path_opt {
+                std::fs::write(path_str, &html_content)
+                    .map_err(|e| format!("Write to file '{path_str}': {e}"))?;
+                Some(path_str.to_string())
+            } else {
+                None
+            };
+
+            let res = json!({
+                "status": "ok",
+                "collection": target_col.name,
+                "format": format_arg,
+                "written_to_file": written_to,
+                "html": if written_to.is_some() { JsonValue::Null } else { JsonValue::String(html_content) }
+            });
+            serde_json::to_string_pretty(&res).map_err(|e| e.to_string())
+        }
+        "blitz_create_folder" => {
+            let col_query = args
+                .get("collection")
+                .and_then(|c| c.as_str())
+                .ok_or_else(|| "Missing required parameter 'collection'".to_string())?;
+            let folder_name = args
+                .get("name")
+                .and_then(|n| n.as_str())
+                .ok_or_else(|| "Missing required parameter 'name'".to_string())?;
+            let parent_folder_opt = args.get("parent_folder").and_then(|p| p.as_str());
+            let desc_opt = args.get("description").and_then(|d| d.as_str()).unwrap_or("");
+
+            let mut snapshot = snapshot;
+            let col = snapshot
+                .collections
+                .iter_mut()
+                .find(|c| c.name.eq_ignore_ascii_case(col_query) || c.id.to_string() == col_query)
+                .ok_or_else(|| format!("Collection '{col_query}' not found"))?;
+
+            let mut new_folder = Folder::new(folder_name);
+            new_folder.description = desc_opt.to_string();
+            let new_folder_id = new_folder.id;
+
+            let path_result = if let Some(parent_query) = parent_folder_opt {
+                let parent = find_folder_by_path_or_name_mut(&mut col.items, parent_query)
+                    .ok_or_else(|| format!("Parent folder '{parent_query}' not found"))?;
+                let path = format!("{}/{}", parent.name, folder_name);
+                parent.items.push(CollectionItem::Folder(new_folder));
+                path
+            } else {
+                col.items.push(CollectionItem::Folder(new_folder));
+                folder_name.to_string()
+            };
+
+            let col_name = col.name.clone();
+            store.save(&snapshot).map_err(|e| format!("Save snapshot: {e}"))?;
+
+            let res = json!({
+                "status": "ok",
+                "id": new_folder_id.to_string(),
+                "name": folder_name,
+                "collection": col_name,
+                "path": path_result
+            });
+            serde_json::to_string_pretty(&res).map_err(|e| e.to_string())
+        }
+        "blitz_delete_folder" => {
+            let col_query = args
+                .get("collection")
+                .and_then(|c| c.as_str())
+                .ok_or_else(|| "Missing required parameter 'collection'".to_string())?;
+            let folder_query = args
+                .get("folder")
+                .and_then(|f| f.as_str())
+                .ok_or_else(|| "Missing required parameter 'folder'".to_string())?;
+
+            let mut snapshot = snapshot;
+            let col = snapshot
+                .collections
+                .iter_mut()
+                .find(|c| c.name.eq_ignore_ascii_case(col_query) || c.id.to_string() == col_query)
+                .ok_or_else(|| format!("Collection '{col_query}' not found"))?;
+
+            let folder_id = {
+                let f = find_folder_by_path_or_name(&col.items, folder_query)
+                    .ok_or_else(|| format!("Folder '{folder_query}' not found in collection '{}'", col.name))?;
+                f.id
+            };
+
+            let col_name = col.name.clone();
+            let removed = col.remove_by_id(folder_id);
+            if !removed {
+                return Err(format!("Failed to delete folder '{folder_query}'"));
+            }
+
+            store.save(&snapshot).map_err(|e| format!("Save snapshot: {e}"))?;
+
+            let res = json!({
+                "status": "deleted",
+                "folder": folder_query,
+                "folder_id": folder_id.to_string(),
+                "collection": col_name
+            });
+            serde_json::to_string_pretty(&res).map_err(|e| e.to_string())
+        }
+        "blitz_delete_environment" => {
+            let env_query = args
+                .get("environment")
+                .and_then(|e| e.as_str())
+                .ok_or_else(|| "Missing required parameter 'environment'".to_string())?;
+
+            let mut snapshot = snapshot;
+            let pos = snapshot
+                .environments
+                .iter()
+                .position(|e| e.name.eq_ignore_ascii_case(env_query) || e.id.to_string() == env_query)
+                .ok_or_else(|| format!("Environment '{env_query}' not found"))?;
+
+            let removed = snapshot.environments.remove(pos);
+            if snapshot.active_environment_id == Some(removed.id) {
+                snapshot.active_environment_id = None;
+                snapshot.active_environment.clear();
+            }
+
+            store.save(&snapshot).map_err(|e| format!("Save snapshot: {e}"))?;
+
+            let res = json!({
+                "status": "deleted",
+                "environment_id": removed.id.to_string(),
+                "name": removed.name
+            });
+            serde_json::to_string_pretty(&res).map_err(|e| e.to_string())
+        }
+        "blitz_clear_history" => {
+            let req_id_opt = args.get("request_id").and_then(|r| r.as_str());
+
+            let mut snapshot = snapshot;
+            let initial_len = snapshot.history.len();
+
+            if let Some(req_id) = req_id_opt {
+                snapshot.history.retain(|h| {
+                    h.draft.id.to_string() != req_id && h.url != req_id
+                });
+            } else {
+                snapshot.history.clear();
+            }
+
+            let cleared = initial_len - snapshot.history.len();
+            store.save(&snapshot).map_err(|e| format!("Save snapshot: {e}"))?;
+
+            let res = json!({
+                "status": "cleared",
+                "cleared_count": cleared,
+                "remaining_count": snapshot.history.len()
+            });
+            serde_json::to_string_pretty(&res).map_err(|e| e.to_string())
+        }
+        "blitz_import_har" => {
+            let har_arg = args
+                .get("har")
+                .and_then(|h| h.as_str())
+                .ok_or_else(|| "Missing required parameter 'har'".to_string())?;
+            let col_name_opt = args.get("collection").and_then(|c| c.as_str());
+
+            let har_content = if std::path::Path::new(har_arg).exists() {
+                std::fs::read_to_string(har_arg)
+                    .map_err(|e| format!("Failed to read HAR file '{har_arg}': {e}"))?
+            } else {
+                har_arg.to_string()
+            };
+
+            let mut col = import_har(&har_content).map_err(|e| format!("Import HAR: {e}"))?;
+            if let Some(custom_name) = col_name_opt {
+                col.name = custom_name.to_string();
+            }
+
+            let col_name = col.name.clone();
+            let req_count = count_requests_in_items(&col.items);
+            let mut snapshot = snapshot;
+            snapshot.collections.push(col);
+            store.save(&snapshot).map_err(|e| format!("Save snapshot: {e}"))?;
+
+            let res = json!({
+                "status": "ok",
+                "collection": col_name,
+                "request_count": req_count
+            });
+            serde_json::to_string_pretty(&res).map_err(|e| e.to_string())
+        }
+        "blitz_manage_cookies" => {
+            let action = args
+                .get("action")
+                .and_then(|a| a.as_str())
+                .unwrap_or("list")
+                .to_lowercase();
+            let domain_filter = args.get("domain").and_then(|d| d.as_str()).map(|d| d.to_lowercase());
+
+            let mut snapshot = snapshot;
+            let res = match action.as_str() {
+                "clear" => {
+                    let count = snapshot.cookies.cookies.len();
+                    snapshot.cookies.clear();
+                    store.save(&snapshot).map_err(|e| format!("Save snapshot: {e}"))?;
+                    json!({
+                        "status": "cleared",
+                        "cleared_count": count
+                    })
+                }
+                _ => {
+                    let filtered: Vec<JsonValue> = snapshot
+                        .cookies
+                        .cookies
+                        .iter()
+                        .filter(|c| {
+                            if let Some(ref d) = domain_filter {
+                                c.domain.to_lowercase().contains(d)
+                            } else {
+                                true
+                            }
+                        })
+                        .map(|c| {
+                            json!({
+                                "domain": c.domain,
+                                "name": c.name,
+                                "value": c.value,
+                                "path": c.path
+                            })
+                        })
+                        .collect();
+                    json!({
+                        "count": filtered.len(),
+                        "cookies": filtered
+                    })
+                }
+            };
+            serde_json::to_string_pretty(&res).map_err(|e| e.to_string())
+        }
         _ => Err(format!("Unknown tool: {name}")),
     }
 }
@@ -2161,6 +2551,23 @@ fn find_request_in_items_mut<'a>(
                 if let Some(found) = find_request_in_items_mut(&mut f.items, id_or_name) {
                     return Some(found);
                 }
+            }
+        }
+    }
+    None
+}
+
+fn find_folder_by_path_or_name_mut<'a>(
+    items: &'a mut [CollectionItem],
+    query: &str,
+) -> Option<&'a mut Folder> {
+    for item in items.iter_mut() {
+        if let CollectionItem::Folder(f) = item {
+            if f.name.eq_ignore_ascii_case(query) {
+                return Some(f);
+            }
+            if let Some(child) = find_folder_by_path_or_name_mut(&mut f.items, query) {
+                return Some(child);
             }
         }
     }
@@ -2519,6 +2926,7 @@ fn find_env_by_name_or_id<'a>(envs: &'a [Environment], query: &str) -> Option<&'
 #[cfg(test)]
 mod tests {
     use super::*;
+    static MCP_TEST_LOCK: Mutex<()> = Mutex::new(());
 
     #[test]
     fn test_initialize_handshake() {
@@ -2570,7 +2978,14 @@ mod tests {
         assert!(tools.iter().any(|t| t["name"] == "blitz_export_collection"));
         assert!(tools.iter().any(|t| t["name"] == "blitz_diff_responses"));
         assert!(tools.iter().any(|t| t["name"] == "blitz_delete_collection"));
-        assert_eq!(tools.len(), 23);
+        assert!(tools.iter().any(|t| t["name"] == "blitz_generate_docs"));
+        assert!(tools.iter().any(|t| t["name"] == "blitz_create_folder"));
+        assert!(tools.iter().any(|t| t["name"] == "blitz_delete_folder"));
+        assert!(tools.iter().any(|t| t["name"] == "blitz_delete_environment"));
+        assert!(tools.iter().any(|t| t["name"] == "blitz_clear_history"));
+        assert!(tools.iter().any(|t| t["name"] == "blitz_import_har"));
+        assert!(tools.iter().any(|t| t["name"] == "blitz_manage_cookies"));
+        assert_eq!(tools.len(), 30);
     }
 
     #[test]
@@ -2613,6 +3028,7 @@ mod tests {
 
     #[test]
     fn test_tool_import_curl() {
+        let _guard = MCP_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let req = json!({
             "jsonrpc": "2.0",
             "id": 5,
@@ -2768,10 +3184,12 @@ mod tests {
 
     #[test]
     fn test_tool_sync_openapi_creates_collection() {
+        let _guard = MCP_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let unique_title = format!("Petstore Minimal {}", Uuid::new_v4());
         let minimal_spec = json!({
             "openapi": "3.0.0",
             "info": {
-                "title": "Petstore Minimal",
+                "title": unique_title,
                 "version": "1.0.0"
             },
             "paths": {
@@ -2829,6 +3247,7 @@ mod tests {
 
     #[test]
     fn test_tool_start_and_stop_mock() {
+        let _guard = MCP_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let start_req = json!({
             "jsonrpc": "2.0",
             "id": 14,
@@ -2861,6 +3280,129 @@ mod tests {
         let stop_text = stop_resp["result"]["content"][0]["text"].as_str().unwrap();
         let stop_val: JsonValue = serde_json::from_str(stop_text).unwrap();
         assert_eq!(stop_val["status"], "stopped");
+    }
+
+    #[test]
+    fn test_tool_folder_lifecycle_and_docs() {
+        let _guard = MCP_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let unique_col = format!("DocFolderCol_{}", Uuid::new_v4());
+
+        // 1. Create collection with blitz_import_curl
+        let import_req = json!({
+            "jsonrpc": "2.0",
+            "id": 101,
+            "method": "tools/call",
+            "params": {
+                "name": "blitz_import_curl",
+                "arguments": {
+                    "curl": "curl -X GET https://api.example.com/items",
+                    "collection": unique_col
+                }
+            }
+        });
+        let import_res = handle_mcp_message(&import_req).expect("response");
+        assert_eq!(import_res["id"], 101);
+
+        // 2. Create folder
+        let create_fold_req = json!({
+            "jsonrpc": "2.0",
+            "id": 102,
+            "method": "tools/call",
+            "params": {
+                "name": "blitz_create_folder",
+                "arguments": {
+                    "collection": unique_col,
+                    "name": "Auth API"
+                }
+            }
+        });
+        let fold_res = handle_mcp_message(&create_fold_req).expect("response");
+        let fold_text = fold_res["result"]["content"][0]["text"].as_str().unwrap();
+        let fold_val: JsonValue = serde_json::from_str(fold_text).unwrap();
+        assert_eq!(fold_val["status"], "ok");
+
+        // 3. Generate Docs (static)
+        let docs_req = json!({
+            "jsonrpc": "2.0",
+            "id": 103,
+            "method": "tools/call",
+            "params": {
+                "name": "blitz_generate_docs",
+                "arguments": {
+                    "collection": unique_col,
+                    "format": "static"
+                }
+            }
+        });
+        let docs_res = handle_mcp_message(&docs_req).expect("response");
+        let docs_text = docs_res["result"]["content"][0]["text"].as_str().unwrap();
+        assert!(docs_text.contains(&unique_col) || docs_text.contains("<!DOCTYPE html>"));
+
+        // 4. Delete folder
+        let del_fold_req = json!({
+            "jsonrpc": "2.0",
+            "id": 104,
+            "method": "tools/call",
+            "params": {
+                "name": "blitz_delete_folder",
+                "arguments": {
+                    "collection": unique_col,
+                    "folder": "Auth API"
+                }
+            }
+        });
+        let del_res = handle_mcp_message(&del_fold_req).expect("response");
+        let del_text = del_res["result"]["content"][0]["text"].as_str().unwrap();
+        let del_val: JsonValue = serde_json::from_str(del_text).unwrap();
+        assert_eq!(del_val["status"], "deleted");
+
+        // 5. Cleanup collection
+        let del_col_req = json!({
+            "jsonrpc": "2.0",
+            "id": 105,
+            "method": "tools/call",
+            "params": {
+                "name": "blitz_delete_collection",
+                "arguments": {
+                    "collection": unique_col
+                }
+            }
+        });
+        let _ = handle_mcp_message(&del_col_req);
+    }
+
+    #[test]
+    fn test_tool_manage_cookies_and_clear_history() {
+        let _guard = MCP_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let cookie_req = json!({
+            "jsonrpc": "2.0",
+            "id": 201,
+            "method": "tools/call",
+            "params": {
+                "name": "blitz_manage_cookies",
+                "arguments": {
+                    "action": "clear"
+                }
+            }
+        });
+        let cookie_res = handle_mcp_message(&cookie_req).expect("response");
+        let cookie_text = cookie_res["result"]["content"][0]["text"].as_str().unwrap();
+        let cookie_val: JsonValue = serde_json::from_str(cookie_text).unwrap();
+        assert_eq!(cookie_val["status"], "cleared");
+
+        let hist_req = json!({
+            "jsonrpc": "2.0",
+            "id": 202,
+            "method": "tools/call",
+            "params": {
+                "name": "blitz_clear_history",
+                "arguments": {}
+            }
+        });
+        let hist_res = handle_mcp_message(&hist_req).expect("response");
+        let hist_text = hist_res["result"]["content"][0]["text"].as_str().unwrap();
+        let hist_val: JsonValue = serde_json::from_str(hist_text).unwrap();
+        assert_eq!(hist_val["status"], "cleared");
     }
 
     #[test]

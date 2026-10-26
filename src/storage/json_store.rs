@@ -161,7 +161,7 @@ impl JsonStore {
 
     pub fn save(&self, snapshot: &AppSnapshot) -> Result<(), StorageError> {
         let path = self.snapshot_path();
-        let tmp_path = self.root.join("snapshot.json.tmp");
+        let tmp_path = self.root.join(format!("snapshot.json.tmp.{}", uuid::Uuid::new_v4()));
         let text = serde_json::to_string_pretty(snapshot)?;
         fs::write(&tmp_path, text)?;
         fs::rename(&tmp_path, &path)?;
