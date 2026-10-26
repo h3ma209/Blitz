@@ -7,6 +7,7 @@
 use std::collections::HashMap;
 use std::io::{self, BufRead, Write};
 
+use std::sync::Mutex;
 use serde_json::{json, Value as JsonValue};
 use uuid::Uuid;
 
@@ -17,12 +18,19 @@ use crate::core::collection::{
 };
 use crate::core::environment::{EnvVar, Environment};
 use crate::core::history::{push_history, HistoryEntry, HISTORY_MAX};
-use crate::core::impex::{import_curl, import_openapi3, reconcile_openapi3_collection};
+use crate::core::impex::{
+    export_collection_v21, export_openapi3, import_curl, import_openapi3,
+    reconcile_openapi3_collection,
+};
+use crate::core::mock_server::{routes_from_collections, start_mock, MockHandle, MockRoute};
 use crate::core::perf_runner::run_performance;
-use crate::core::request::{HttpMethod, KeyValue, RequestDraft};
+use crate::core::request::{HttpMethod, KeyValue, RequestDraft, SavedExample};
+use crate::core::response_diff::{diff_bodies, DiffLine};
 use crate::runtime::pipeline::{send_request_with_options, SendOptions};
 use crate::runtime::runner::{run_collection_with_config, RunnerConfig};
 use crate::storage::{AppSnapshot, JsonStore};
+
+static ACTIVE_MOCK: Mutex<Option<MockHandle>> = Mutex::new(None);
 
 /// Entry point to start the Blitz MCP server on stdio.
 /// Reads JSON-RPC requests line-by-line from stdin and writes responses to stdout.
@@ -652,6 +660,97 @@ fn list_mcp_tools() -> Vec<JsonValue> {
                     }
                 },
                 "required": ["request_id"]
+            }
+        }),
+        json!({
+            "name": "blitz_start_mock",
+            "description": "Starts a local HTTP mock server on localhost (127.0.0.1) serving responses matched against saved examples or route definitions from Blitz collections. Returns the bound port and mock URL.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "collection": {
+                        "type": "string",
+                        "description": "Optional collection name or UUID to limit mock routes to. If omitted, routes from all collections with examples are served."
+                    },
+                    "port": {
+                        "type": "integer",
+                        "description": "Optional port to bind on (e.g. 8080). Defaults to 0 for automatic ephemeral port assignment."
+                    }
+                }
+            }
+        }),
+        json!({
+            "name": "blitz_stop_mock",
+            "description": "Stops the currently running Blitz local mock HTTP server.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {}
+            }
+        }),
+        json!({
+            "name": "blitz_export_collection",
+            "description": "Exports a Blitz collection into Postman Collection v2.1 or OpenAPI 3.0 specification format. Optionally writes directly to a destination file path.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "collection": {
+                        "type": "string",
+                        "description": "UUID or name of the collection to export."
+                    },
+                    "format": {
+                        "type": "string",
+                        "enum": ["postman", "openapi"],
+                        "description": "Export format: 'postman' (default) for Postman v2.1 JSON, or 'openapi' for OpenAPI 3.0.3 specification JSON."
+                    },
+                    "file_path": {
+                        "type": "string",
+                        "description": "Optional destination file path to write exported content directly."
+                    }
+                },
+                "required": ["collection"]
+            }
+        }),
+        json!({
+            "name": "blitz_diff_responses",
+            "description": "Performs line-by-line canonical diff comparison between two response bodies, or executes a saved request across two different environments (e.g. staging vs local) and diffs their status, headers, and bodies.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "body_a": {
+                        "type": "string",
+                        "description": "First response body text to compare."
+                    },
+                    "body_b": {
+                        "type": "string",
+                        "description": "Second response body text to compare."
+                    },
+                    "request_id": {
+                        "type": "string",
+                        "description": "Optional request UUID or name to execute live across two environments for comparison."
+                    },
+                    "environment_a": {
+                        "type": "string",
+                        "description": "First environment name or UUID (when using request_id)."
+                    },
+                    "environment_b": {
+                        "type": "string",
+                        "description": "Second environment name or UUID (when using request_id)."
+                    }
+                }
+            }
+        }),
+        json!({
+            "name": "blitz_delete_collection",
+            "description": "Permanently deletes an entire collection by its name or UUID.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "collection": {
+                        "type": "string",
+                        "description": "UUID or name of the collection to delete."
+                    }
+                },
+                "required": ["collection"]
             }
         })
     ]
@@ -1812,6 +1911,237 @@ fn execute_mcp_tool(name: &str, args: &JsonValue) -> Result<String, String> {
             });
             serde_json::to_string_pretty(&res).map_err(|e| e.to_string())
         }
+        "blitz_start_mock" => {
+            let col_name_opt = args.get("collection").and_then(|c| c.as_str());
+            let port = args.get("port").and_then(|p| p.as_u64()).unwrap_or(0) as u16;
+
+            let cols: Vec<Collection> = if let Some(col_query) = col_name_opt {
+                let col = snapshot
+                    .collections
+                    .iter()
+                    .find(|c| c.name.eq_ignore_ascii_case(col_query) || c.id.to_string() == col_query)
+                    .ok_or_else(|| format!("Collection '{col_query}' not found"))?;
+                vec![col.clone()]
+            } else {
+                snapshot.collections.clone()
+            };
+
+            let mut routes = routes_from_collections(&cols);
+            if routes.is_empty() {
+                for col in &cols {
+                    for item in flatten_collections(std::slice::from_ref(col)) {
+                        if let Some((_, req)) = find_request_across(&cols, item.id) {
+                            let path_str = if let Some((_, p)) = req.url.split_once("://") {
+                                p.split_once('/').map(|(_, rest)| format!("/{rest}")).unwrap_or_else(|| "/".into())
+                            } else if req.url.starts_with('/') {
+                                req.url.clone()
+                            } else {
+                                format!("/{}", req.url)
+                            };
+                            let clean_path = path_str.split('?').next().unwrap_or(&path_str).to_string();
+                            routes.push(MockRoute {
+                                method: req.method,
+                                path: clean_path,
+                                example: SavedExample {
+                                    id: Uuid::new_v4(),
+                                    name: "Default Mock".to_string(),
+                                    status: 200,
+                                    status_text: "OK".to_string(),
+                                    headers: vec![("content-type".to_string(), "application/json".to_string())],
+                                    body: if !req.body.is_empty() { req.body.clone() } else { format!("{{\"mock\": true, \"name\": \"{}\"}}", req.name) },
+                                },
+                                match_header: None,
+                            });
+                        }
+                    }
+                }
+            }
+
+            if routes.is_empty() {
+                return Err("No requests found in collections to mock".to_string());
+            }
+
+            let route_summaries: Vec<JsonValue> = routes
+                .iter()
+                .map(|r| {
+                    json!({
+                        "method": r.method.as_str(),
+                        "path": r.path,
+                        "example": r.example.name,
+                        "status": r.example.status
+                    })
+                })
+                .collect();
+
+            if let Ok(mut lock) = ACTIVE_MOCK.lock() {
+                if let Some(old_handle) = lock.take() {
+                    old_handle.stop();
+                }
+            }
+
+            let handle = start_mock(routes, port).map_err(|e| format!("Failed to start mock: {e}"))?;
+            let bound_port = handle.port;
+            let mock_url = format!("http://127.0.0.1:{bound_port}");
+
+            if let Ok(mut lock) = ACTIVE_MOCK.lock() {
+                *lock = Some(handle);
+            }
+
+            let res = json!({
+                "status": "running",
+                "port": bound_port,
+                "mock_url": mock_url,
+                "routes_count": route_summaries.len(),
+                "routes": route_summaries
+            });
+            serde_json::to_string_pretty(&res).map_err(|e| e.to_string())
+        }
+        "blitz_stop_mock" => {
+            let was_running = if let Ok(mut lock) = ACTIVE_MOCK.lock() {
+                if let Some(handle) = lock.take() {
+                    handle.stop();
+                    true
+                } else {
+                    false
+                }
+            } else {
+                false
+            };
+
+            let res = json!({
+                "status": if was_running { "stopped" } else { "not_running" },
+                "message": if was_running { "Mock server stopped successfully" } else { "No mock server was currently running" }
+            });
+            serde_json::to_string_pretty(&res).map_err(|e| e.to_string())
+        }
+        "blitz_export_collection" => {
+            let col_query = args
+                .get("collection")
+                .and_then(|c| c.as_str())
+                .ok_or_else(|| "Missing required parameter 'collection'".to_string())?;
+            let format_arg = args
+                .get("format")
+                .and_then(|f| f.as_str())
+                .unwrap_or("postman")
+                .to_lowercase();
+            let file_path_opt = args.get("file_path").and_then(|p| p.as_str());
+
+            let target_col = snapshot
+                .collections
+                .iter()
+                .find(|c| c.name.eq_ignore_ascii_case(col_query) || c.id.to_string() == col_query)
+                .ok_or_else(|| format!("Collection '{col_query}' not found"))?;
+
+            let exported_content = if format_arg == "openapi" {
+                export_openapi3(target_col).map_err(|e| format!("Export OpenAPI: {e}"))?
+            } else {
+                export_collection_v21(target_col).map_err(|e| format!("Export Postman: {e}"))?
+            };
+
+            let written_to = if let Some(path_str) = file_path_opt {
+                std::fs::write(path_str, &exported_content)
+                    .map_err(|e| format!("Write to file '{path_str}': {e}"))?;
+                Some(path_str.to_string())
+            } else {
+                None
+            };
+
+            let res = json!({
+                "status": "ok",
+                "collection": target_col.name,
+                "format": format_arg,
+                "written_to_file": written_to,
+                "content": if written_to.is_some() { JsonValue::Null } else { serde_json::from_str::<JsonValue>(&exported_content).unwrap_or(JsonValue::String(exported_content)) }
+            });
+            serde_json::to_string_pretty(&res).map_err(|e| e.to_string())
+        }
+        "blitz_diff_responses" => {
+            let body_a_opt = args.get("body_a").and_then(|b| b.as_str());
+            let body_b_opt = args.get("body_b").and_then(|b| b.as_str());
+            let req_id_opt = args.get("request_id").and_then(|r| r.as_str());
+
+            let (label_a, label_b, body_a, body_b, status_comp) = if let (Some(a), Some(b)) = (body_a_opt, body_b_opt) {
+                ("Payload A".to_string(), "Payload B".to_string(), a.to_string(), b.to_string(), None)
+            } else if let Some(req_id) = req_id_opt {
+                let (_, req_draft) = find_request_by_id_or_name(&snapshot.collections, req_id, None)?;
+                let env_a_name = args.get("environment_a").and_then(|e| e.as_str()).unwrap_or("Env A");
+                let env_b_name = args.get("environment_b").and_then(|e| e.as_str()).unwrap_or("Env B");
+
+                let mut ctx_a = snapshot.variables.clone();
+                if let Some(env_a) = find_env_by_name_or_id(&snapshot.environments, env_a_name) {
+                    ctx_a.environment = env_a.to_map();
+                }
+                let mut jar_a = snapshot.cookies.clone();
+                let view_a = send_request_with_options(&req_draft, &mut ctx_a, SendOptions { cookie_jar: Some(&mut jar_a), ..Default::default() })
+                    .map_err(|e| format!("Execution in {env_a_name}: {e}"))?;
+
+                let mut ctx_b = snapshot.variables.clone();
+                if let Some(env_b) = find_env_by_name_or_id(&snapshot.environments, env_b_name) {
+                    ctx_b.environment = env_b.to_map();
+                }
+                let mut jar_b = snapshot.cookies.clone();
+                let view_b = send_request_with_options(&req_draft, &mut ctx_b, SendOptions { cookie_jar: Some(&mut jar_b), ..Default::default() })
+                    .map_err(|e| format!("Execution in {env_b_name}: {e}"))?;
+
+                let comp = json!({
+                    "status_a": view_a.status,
+                    "status_b": view_b.status,
+                    "status_match": view_a.status == view_b.status,
+                    "latency_a_ms": view_a.timing.total_ms,
+                    "latency_b_ms": view_b.timing.total_ms
+                });
+                (env_a_name.to_string(), env_b_name.to_string(), view_a.body, view_b.body, Some(comp))
+            } else {
+                return Err("Missing comparison inputs: provide 'body_a' and 'body_b', or 'request_id' with 'environment_a' and 'environment_b'".to_string());
+            };
+
+            let (diff_lines, stats) = diff_bodies(&body_a, &body_b);
+            let formatted_lines: Vec<String> = diff_lines
+                .iter()
+                .map(|line| match line {
+                    DiffLine::Same(s) => format!("  {s}"),
+                    DiffLine::Add(s) => format!("+ {s}"),
+                    DiffLine::Del(s) => format!("- {s}"),
+                })
+                .collect();
+
+            let res = json!({
+                "target_a": label_a,
+                "target_b": label_b,
+                "stats": {
+                    "added_lines": stats.added,
+                    "removed_lines": stats.removed,
+                    "unchanged_lines": stats.unchanged,
+                    "identical": stats.added == 0 && stats.removed == 0
+                },
+                "status_comparison": status_comp,
+                "diff": formatted_lines
+            });
+            serde_json::to_string_pretty(&res).map_err(|e| e.to_string())
+        }
+        "blitz_delete_collection" => {
+            let col_query = args
+                .get("collection")
+                .and_then(|c| c.as_str())
+                .ok_or_else(|| "Missing required parameter 'collection'".to_string())?;
+
+            let mut snapshot = snapshot;
+            let pos = snapshot
+                .collections
+                .iter()
+                .position(|c| c.name.eq_ignore_ascii_case(col_query) || c.id.to_string() == col_query)
+                .ok_or_else(|| format!("Collection '{col_query}' not found"))?;
+
+            let removed_col = snapshot.collections.remove(pos);
+            store.save(&snapshot).map_err(|e| format!("Save snapshot: {e}"))?;
+
+            let res = json!({
+                "status": "deleted",
+                "collection_id": removed_col.id.to_string(),
+                "name": removed_col.name
+            });
+            serde_json::to_string_pretty(&res).map_err(|e| e.to_string())
+        }
         _ => Err(format!("Unknown tool: {name}")),
     }
 }
@@ -2235,7 +2565,12 @@ mod tests {
         assert!(tools.iter().any(|t| t["name"] == "blitz_get_collection"));
         assert!(tools.iter().any(|t| t["name"] == "blitz_create_environment"));
         assert!(tools.iter().any(|t| t["name"] == "blitz_delete_request"));
-        assert_eq!(tools.len(), 18);
+        assert!(tools.iter().any(|t| t["name"] == "blitz_start_mock"));
+        assert!(tools.iter().any(|t| t["name"] == "blitz_stop_mock"));
+        assert!(tools.iter().any(|t| t["name"] == "blitz_export_collection"));
+        assert!(tools.iter().any(|t| t["name"] == "blitz_diff_responses"));
+        assert!(tools.iter().any(|t| t["name"] == "blitz_delete_collection"));
+        assert_eq!(tools.len(), 23);
     }
 
     #[test]
@@ -2468,6 +2803,64 @@ mod tests {
         assert_eq!(val["status"], "ok");
         assert_eq!(val["created_new"], true);
         assert_eq!(val["added_routes"], 1);
+    }
+
+    #[test]
+    fn test_tool_diff_responses_direct_bodies() {
+        let req = json!({
+            "jsonrpc": "2.0",
+            "id": 13,
+            "method": "tools/call",
+            "params": {
+                "name": "blitz_diff_responses",
+                "arguments": {
+                    "body_a": "{\"status\": \"ok\", \"count\": 1}",
+                    "body_b": "{\"status\": \"ok\", \"count\": 2}"
+                }
+            }
+        });
+        let resp = handle_mcp_message(&req).expect("response expected");
+        assert_eq!(resp["id"], 13);
+        let text = resp["result"]["content"][0]["text"].as_str().unwrap();
+        let val: JsonValue = serde_json::from_str(text).unwrap();
+        assert_eq!(val["stats"]["identical"], false);
+        assert!(val["stats"]["added_lines"].as_u64().unwrap() > 0);
+    }
+
+    #[test]
+    fn test_tool_start_and_stop_mock() {
+        let start_req = json!({
+            "jsonrpc": "2.0",
+            "id": 14,
+            "method": "tools/call",
+            "params": {
+                "name": "blitz_start_mock",
+                "arguments": {
+                    "port": 0
+                }
+            }
+        });
+        let start_resp = handle_mcp_message(&start_req).expect("response expected");
+        assert_eq!(start_resp["id"], 14);
+        let start_text = start_resp["result"]["content"][0]["text"].as_str().unwrap();
+        let start_val: JsonValue = serde_json::from_str(start_text).unwrap();
+        assert_eq!(start_val["status"], "running");
+        assert!(start_val["port"].as_u64().unwrap() > 0);
+
+        let stop_req = json!({
+            "jsonrpc": "2.0",
+            "id": 15,
+            "method": "tools/call",
+            "params": {
+                "name": "blitz_stop_mock",
+                "arguments": {}
+            }
+        });
+        let stop_resp = handle_mcp_message(&stop_req).expect("response expected");
+        assert_eq!(stop_resp["id"], 15);
+        let stop_text = stop_resp["result"]["content"][0]["text"].as_str().unwrap();
+        let stop_val: JsonValue = serde_json::from_str(stop_text).unwrap();
+        assert_eq!(stop_val["status"], "stopped");
     }
 
     #[test]

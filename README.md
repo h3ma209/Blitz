@@ -14,7 +14,7 @@
   <a href="https://github.com/h3ma209/Blitz/actions/workflows/build.yml"><img src="https://img.shields.io/github/actions/workflow/status/h3ma209/Blitz/build.yml?branch=master&label=build" alt="CI Build"></a>
   <img src="https://img.shields.io/badge/rust-1.83%2B-orange.svg?logo=rust" alt="Rust 1.83+">
   <img src="https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20Windows-blue" alt="Cross-Platform">
-  <img src="https://img.shields.io/badge/MCP-18%20Tools%20Active-brightgreen" alt="Model Context Protocol">
+  <img src="https://img.shields.io/badge/MCP-23%20Tools%20Active-brightgreen" alt="Model Context Protocol">
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT%20%2F%20Apache--2.0-blue" alt="License"></a>
   <a href="https://h3ma209.github.io/Blitz/"><img src="https://img.shields.io/badge/docs-GitHub%20Pages-brightgreen" alt="Docs"></a>
 </p>
@@ -312,6 +312,11 @@ If you prefer manual setup, add Blitz to your IDE's `mcpServers` configuration:
 - **`blitz_get_collection`**: Retrieve the full collection configuration tree (folders, requests, scripts, variables, auth) in a single call.
 - **`blitz_create_environment`**: Create a new named environment with initial key-value variables and optional instant activation.
 - **`blitz_delete_request`**: Delete an existing request from a collection by ID or name.
+- **`blitz_start_mock`**: Spin up a local HTTP mock server (`127.0.0.1:<port>`) serving saved request examples or routes.
+- **`blitz_stop_mock`**: Stop the active local mock HTTP server.
+- **`blitz_export_collection`**: Export any collection as Postman v2.1 JSON or OpenAPI 3.0 specification.
+- **`blitz_diff_responses`**: Compare two response payloads or compare live execution across two environments (`staging` vs `local`).
+- **`blitz_delete_collection`**: Delete a collection by ID or name.
 
 #### Exposed MCP Resources:
 - `blitz://collections`: Hierarchy of all collections, folders, and requests.
