@@ -178,11 +178,11 @@
       </div>
 
       <div>
-        <div class="font-bold uppercase tracking-wider text-spot-bright text-[11px] mb-2 font-mono">5. Scripting & Test Sandbox</div>
+        <div class="font-bold uppercase tracking-wider text-spot-bright text-[11px] mb-2 font-mono">5. Scripting &amp; Test Sandbox</div>
         <ul class="space-y-1 text-spot-muted">
-          <li><a href="#sandbox-api" class="block py-1 hover:text-white transition-colors">Postman pm.* Sandbox API</a></li>
-          <li><a href="#assertions" class="block py-1 hover:text-white transition-colors">Assertions &amp; pm.expect</a></li>
-          <li><a href="#visualizer" class="block py-1 hover:text-white transition-colors">Visualizer (pm.visualizer)</a></li>
+          <li><a href="#sandbox-api" class="block py-1 hover:text-white transition-colors">blitz.* Native Sandbox API</a></li>
+          <li><a href="#assertions" class="block py-1 hover:text-white transition-colors">Assertions &amp; blitz.expect</a></li>
+          <li><a href="#visualizer" class="block py-1 hover:text-white transition-colors">Visualizer (blitz.visualizer)</a></li>
           <li><a href="#workflows" class="block py-1 hover:text-white transition-colors">Workflow Control (setNextRequest)</a></li>
         </ul>
       </div>
@@ -564,39 +564,43 @@
       <!-- SECTION: JAVASCRIPT SANDBOX -->
       <section id="sandbox-api" class="scroll-mt-24 space-y-4">
         <h2 class="text-2xl font-bold tracking-tight text-white border-b border-white/10 pb-2">
-          Scripting &amp; Test Sandbox (Postman pm.* API)
+          Scripting &amp; Test Sandbox (blitz.* Native API)
         </h2>
         <p class="text-slate-300 text-sm leading-relaxed">
-          Blitz includes an embedded JavaScript engine (Boa) that executes pre-request and test scripts with complete <code>pm.*</code> API parity:
+          Blitz includes an embedded JavaScript engine (Boa) that executes pre-request and test scripts. The native namespace is <strong><code>blitz.*</code></strong>, with <strong><code>pm.*</code></strong> and <strong><code>epm.*</code></strong> fully aliased for 100% backward compatibility with imported Postman collections:
         </p>
 
         <div class="p-4 rounded-xl bg-black/80 font-mono text-xs text-slate-300 border border-white/10 space-y-2">
-          <div class="text-spot-faint">// Sample Blitz / Postman test script</div>
-          <div><span class="text-purple-400">pm</span>.test(<span class="text-emerald-300">"Status code is 200"</span>, <span class="text-blue-400">function</span>() {</div>
-          <div class="pl-4"><span class="text-purple-400">pm</span>.response.to.have.status(<span class="text-amber-400">200</span>);</div>
+          <div class="text-spot-faint">// Native Blitz test script (also supports legacy pm.* syntax)</div>
+          <div><span class="text-purple-400">blitz</span>.test(<span class="text-emerald-300">"Status code is 200"</span>, <span class="text-blue-400">function</span>() {</div>
+          <div class="pl-4"><span class="text-purple-400">blitz</span>.response.to.have.status(<span class="text-amber-400">200</span>);</div>
           <div>});</div>
           <br/>
-          <div><span class="text-purple-400">pm</span>.test(<span class="text-emerald-300">"Payload schema and latency validation"</span>, <span class="text-blue-400">function</span>() {</div>
-          <div class="pl-4"><span class="text-blue-400">var</span> data = <span class="text-purple-400">pm</span>.response.json();</div>
-          <div class="pl-4"><span class="text-purple-400">pm</span>.expect(data).to.have.property(<span class="text-emerald-300">"token"</span>);</div>
-          <div class="pl-4"><span class="text-purple-400">pm</span>.expect(<span class="text-purple-400">pm</span>.response.responseTime).to.be.below(<span class="text-amber-400">500</span>);</div>
-          <div class="pl-4"><span class="text-spot-faint">// Set extracted token for subsequent requests</span></div>
-          <div class="pl-4"><span class="text-purple-400">pm</span>.environment.set(<span class="text-emerald-300">"authToken"</span>, data.token);</div>
+          <div><span class="text-purple-400">blitz</span>.test(<span class="text-emerald-300">"Payload schema and latency validation"</span>, <span class="text-blue-400">function</span>() {</div>
+          <div class="pl-4"><span class="text-blue-400">var</span> data = <span class="text-purple-400">blitz</span>.response.json();</div>
+          <div class="pl-4"><span class="text-purple-400">blitz</span>.expect(data).to.have.property(<span class="text-emerald-300">"token"</span>);</div>
+          <div class="pl-4"><span class="text-purple-400">blitz</span>.expect(<span class="text-purple-400">blitz</span>.response.responseTime).to.be.below(<span class="text-amber-400">500</span>);</div>
+          <div class="pl-4"><span class="text-spot-faint">// Set extracted token into active environment</span></div>
+          <div class="pl-4"><span class="text-purple-400">blitz</span>.environment.set(<span class="text-emerald-300">"authToken"</span>, data.token);</div>
           <div>});</div>
         </div>
 
-        <h3 id="assertions" class="text-lg font-bold text-white pt-2">Available pm.* Sandbox Objects</h3>
+        <h3 id="assertions" class="text-lg font-bold text-white pt-2">Available blitz.* Sandbox Objects</h3>
+        <p class="text-slate-400 text-xs leading-relaxed">
+          All objects below are available under <code>blitz.*</code> (and aliased as <code>pm.*</code>):
+        </p>
         <ul class="list-disc pl-5 text-xs text-slate-300 space-y-1.5 font-mono">
-          <li><code>pm.environment.get(k)</code> / <code>.set(k, v)</code> / <code>.unset(k)</code> / <code>.clear()</code></li>
-          <li><code>pm.collectionVariables.get(k)</code> / <code>.set(k, v)</code></li>
-          <li><code>pm.globals.get(k)</code> / <code>.set(k, v)</code></li>
-          <li><code>pm.variables.get(k)</code>: Resolves across all scopes including dynamic <code>$guid</code>.</li>
-          <li><code>pm.variables.replaceIn(str)</code>: Replaces <code>{{variables}}</code> in a string.</li>
-          <li><code>pm.response.code</code>: HTTP status integer (e.g. 200).</li>
-          <li><code>pm.response.json()</code>: Parsed response JSON object.</li>
-          <li><code>pm.response.text()</code>: Raw response body string.</li>
-          <li><code>pm.response.headers.get("Content-Type")</code>: Response header inspection.</li>
-          <li><code>pm.sendRequest(url, callback)</code>: Execute sub-requests inside pre-request scripts.</li>
+          <li><code>blitz.environment.get(k)</code> / <code>.set(k, v)</code> / <code>.unset(k)</code> / <code>.clear()</code></li>
+          <li><code>blitz.collectionVariables.get(k)</code> / <code>.set(k, v)</code></li>
+          <li><code>blitz.globals.get(k)</code> / <code>.set(k, v)</code></li>
+          <li><code>blitz.variables.get(k)</code>: Resolves across all scopes including dynamic <code>$guid</code>.</li>
+          <li><code>blitz.variables.replaceIn(str)</code>: Replaces <code>{{variables}}</code> in a string.</li>
+          <li><code>blitz.response.code</code>: HTTP status integer (e.g. 200).</li>
+          <li><code>blitz.response.json()</code>: Parsed response JSON object.</li>
+          <li><code>blitz.response.text()</code>: Raw response body string.</li>
+          <li><code>blitz.response.headers.get("Content-Type")</code>: Response header inspection.</li>
+          <li><code>blitz.sendRequest(url, callback)</code>: Execute sub-requests inside pre-request scripts.</li>
+          <li><code>blitz.visualizer.set(template, data)</code>: Render interactive HTML response visualizers.</li>
           <li><code>require("crypto-js")</code>: Native SHA-256 and HMAC-SHA256 crypto support.</li>
         </ul>
       </section>
@@ -896,7 +900,7 @@
       <a href="#protocols" class="block hover:text-spot-bright transition-colors">Protocols</a>
       <a href="#variables-scope" class="block hover:text-spot-bright transition-colors">Variables</a>
       <a href="#faker-variables" class="block hover:text-spot-bright transition-colors">Dynamic ($faker)</a>
-      <a href="#sandbox-api" class="block hover:text-spot-bright transition-colors">pm.* Sandbox</a>
+      <a href="#sandbox-api" class="block hover:text-spot-bright transition-colors">blitz.* Sandbox</a>
       <a href="#mcp-overview" class="block hover:text-yellow-300 transition-colors">AI MCP Server</a>
       <a href="#mcp-tools" class="block hover:text-yellow-300 transition-colors">37 Tools Reference</a>
       <a href="#git-sync" class="block hover:text-spot-bright transition-colors">Git Sync</a>

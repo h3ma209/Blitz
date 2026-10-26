@@ -599,25 +599,25 @@
               <!-- Right: Generated Test Assertions -->
               <div class="p-4 rounded-xl bg-black/60 border border-white/5 flex flex-col">
                 <div class="flex items-center justify-between pb-2 mb-3 border-b border-white/5">
-                  <span class="text-spot-faint text-[10px]">GENERATED TEST SCRIPT (pm.test)</span>
+                  <span class="text-spot-faint text-[10px]">GENERATED TEST SCRIPT (blitz.test)</span>
                   <span id="autoassert-badge" class="text-spot-bright text-[10px] font-bold">✓ 4 Tests Ready</span>
                 </div>
                 <pre id="autoassert-code" class="text-emerald-300 leading-relaxed overflow-x-auto flex-1"><code>// 1. Status Code Assertion
-pm.test("Status code is 200", () => {
-  pm.response.to.have.status(200);
+blitz.test("Status code is 200", () => {
+  blitz.response.to.have.status(200);
 });
 
 // 2. Latency Threshold
-pm.test("Response time is under 150ms", () => {
-  pm.expect(pm.response.responseTime).to.be.below(150);
+blitz.test("Response time is under 150ms", () => {
+  blitz.expect(blitz.response.responseTime).to.be.below(150);
 });
 
 // 3. Schema & Type Validations
-pm.test("Response payload contains user_id", () => {
-  const json = pm.response.json();
-  pm.expect(json.status).to.eql("success");
-  pm.expect(json.data.user_id).to.be.a("number");
-  pm.expect(json.data.roles).to.include("admin");
+blitz.test("Response payload contains user_id", () => {
+  const json = blitz.response.json();
+  blitz.expect(json.status).to.eql("success");
+  blitz.expect(json.data.user_id).to.be.a("number");
+  blitz.expect(json.data.roles).to.include("admin");
 });</code></pre>
               </div>
             </div>
@@ -2391,26 +2391,26 @@ make run</code></pre>
         badge.innerText = '✓ 4 Tests Inferred & Passing';
         badge.className = 'text-spot-bright text-[10px] font-bold animate-pulse';
         code.innerHTML = `<code>// 1. Status Code Assertion
-pm.test("Status code is 200", () => {
-  pm.response.to.have.status(200);
+blitz.test("Status code is 200", () => {
+  blitz.response.to.have.status(200);
 });
 
 // 2. Latency Threshold (<150ms SLA)
-pm.test("Response time is under 150ms", () => {
-  pm.expect(pm.response.responseTime).to.be.below(150);
+blitz.test("Response time is under 150ms", () => {
+  blitz.expect(blitz.response.responseTime).to.be.below(150);
 });
 
 // 3. Schema & Key Existence
-pm.test("Payload has valid user_id and email", () => {
-  const json = pm.response.json();
-  pm.expect(json.status).to.eql("success");
-  pm.expect(json.data.user_id).to.be.a("number");
-  pm.expect(json.data.email).to.include("@blitz.rs");
+blitz.test("Payload has valid user_id and email", () => {
+  const json = blitz.response.json();
+  blitz.expect(json.status).to.eql("success");
+  blitz.expect(json.data.user_id).to.be.a("number");
+  blitz.expect(json.data.email).to.include("@blitz.rs");
 });
 
 // 4. Role Permissions
-pm.test("Admin role authorized", () => {
-  pm.expect(pm.response.json().data.roles).to.include("admin");
+blitz.test("Admin role authorized", () => {
+  blitz.expect(blitz.response.json().data.roles).to.include("admin");
 });</code>`;
       }, 350);
     }

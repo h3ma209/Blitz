@@ -451,7 +451,7 @@ pub fn ResponseViewer(
                             div { class: "visualizer-pane",
                                 if resp.visualizer_html.is_empty() {
                                     p { class: "hint",
-                                        "No visualizer output. In Tests: pm.visualizer.set(\"<h1>{{{{title}}}}</h1>\", {{title:\"Hello\"}}) — or return HTML body."
+                                        "No visualizer output. In Tests: blitz.visualizer.set(\"<h1>{{{{title}}}}</h1>\", {{title:\"Hello\"}}) — or return HTML body."
                                     }
                                 } else {
                                     div { class: "visualizer-toolbar", style: "display: flex; gap: 8px; margin-bottom: 8px; align-items: center;",
