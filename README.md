@@ -16,10 +16,11 @@
   <img src="https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20Windows-blue" alt="Cross-Platform">
   <img src="https://img.shields.io/badge/MCP-37%20Tools%20Active-brightgreen" alt="Model Context Protocol">
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT%20%2F%20Apache--2.0-blue" alt="License"></a>
-  <a href="https://h3ma209.github.io/Blitz/"><img src="https://img.shields.io/badge/docs-GitHub%20Pages-brightgreen" alt="Docs"></a>
+  <a href="https://h3ma209.github.io/Blitz/docs.html"><img src="https://img.shields.io/badge/docs-GitHub%20Pages-brightgreen" alt="Docs"></a>
 </p>
 
 <p align="center">
+  <a href="https://h3ma209.github.io/Blitz/docs.html">Documentation</a> •
   <a href="#downloads--installation">Downloads</a> •
   <a href="#-interface-preview">Interface</a> •
   <a href="#why-blitz-vs-the-alternatives">Comparison</a> •

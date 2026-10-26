@@ -1,0 +1,937 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Documentation — Blitz API Client (Local-First, Rust, Postman Alternative)</title>
+  <meta name="description"
+    content="Comprehensive documentation for Blitz API client: multi-protocol execution, Postman JS sandbox, 37 MCP tools for AI agents, Git sync, dynamic faker variables, and headless CLI runner.">
+  <meta name="keywords"
+    content="blitz docs, blitz documentation, postman alternative docs, mcp tools reference, api testing documentation, rust api client guide">
+  <meta name="author" content="h3ma209">
+  <meta name="robots" content="index, follow">
+  <link rel="canonical" href="https://h3ma209.github.io/Blitz/docs.html">
+  <link rel="icon" type="image/png" href="logo-64.png">
+
+  <!-- Open Graph -->
+  <meta property="og:type" content="article">
+  <meta property="og:url" content="https://h3ma209.github.io/Blitz/docs.html">
+  <meta property="og:title" content="Blitz Documentation — Complete Reference Guide">
+  <meta property="og:description"
+    content="Complete documentation for Blitz: architecture, 8 protocols, scripting sandbox, 37 MCP tools, Git sync, and CLI runner.">
+  <meta property="og:image" content="https://raw.githubusercontent.com/h3ma209/Blitz/master/docs/app-screenshot.png">
+
+  <!-- Fonts: Inter & JetBrains Mono -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link
+    href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap"
+    rel="stylesheet">
+
+  <!-- Tailwind CSS Play CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Inter', '-apple-system', 'BlinkMacSystemFont', 'Segoe UI', 'Roboto', 'sans-serif'],
+            mono: ['"JetBrains Mono"', 'ui-monospace', 'SFMono-Regular', 'Menlo', 'monospace'],
+          },
+          colors: {
+            spot: {
+              void: '#0b0c10',
+              black: '#12141a',
+              elevated: '#171922',
+              highlight: '#202430',
+              muted: '#94a3b8',
+              faint: '#475569',
+              green: '#22c55e',
+              bright: '#4ade80',
+              dim: '#16a34a',
+            }
+          }
+        }
+      }
+    }
+  </script>
+
+  <style type="text/tailwindcss">
+    @layer utilities {
+      .glass {
+        background: #12141a;
+        border: 1px solid rgba(255, 255, 255, 0.08);
+      }
+      .glass-elevated {
+        background: #171922;
+        border: 1px solid rgba(255, 255, 255, 0.1);
+      }
+      .table-border {
+        border: 1px solid rgba(255, 255, 255, 0.08);
+      }
+    }
+    /* Custom scrollbars */
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: #0b0c10;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #202430;
+      border-radius: 3px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: #334155;
+    }
+  </style>
+</head>
+
+<body class="bg-spot-void text-gray-100 font-sans antialiased selection:bg-spot-green selection:text-black">
+
+  <!-- TOP HEADER -->
+  <header class="sticky top-0 z-50 backdrop-blur-md bg-spot-void/90 border-b border-white/10">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-4">
+      <div class="flex items-center gap-3">
+        <a href="index.html" class="flex items-center gap-2 group">
+          <img src="logo-64.png" alt="Blitz Logo" class="w-8 h-8 rounded group-hover:scale-105 transition-transform" />
+          <span class="font-extrabold text-lg tracking-tight bg-gradient-to-r from-white via-slate-100 to-spot-bright bg-clip-text text-transparent">Blitz</span>
+        </a>
+        <span class="text-xs px-2 py-0.5 rounded bg-spot-green/10 text-spot-bright border border-spot-green/20 font-mono font-semibold">Docs v0.2.0</span>
+      </div>
+
+      <!-- Quick Search Bar -->
+      <div class="hidden md:flex flex-1 max-w-md mx-4 relative">
+        <input id="doc-search" type="text" placeholder="Search documentation... (press / to focus)"
+          class="w-full bg-spot-black border border-white/10 rounded-lg px-3.5 py-1.5 text-xs text-white placeholder-spot-faint focus:outline-none focus:border-spot-bright font-mono transition-colors" />
+        <span class="absolute right-2.5 top-2 text-[10px] text-spot-faint font-mono border border-white/10 px-1 rounded">/</span>
+      </div>
+
+      <!-- Header Links -->
+      <div class="flex items-center gap-3 sm:gap-4 text-xs font-medium">
+        <a href="index.html" class="text-spot-muted hover:text-white transition-colors">Home</a>
+        <a href="index.html#features" class="text-spot-muted hover:text-white transition-colors hidden sm:inline">Features</a>
+        <a href="https://github.com/h3ma209/Blitz" target="_blank" rel="noopener"
+          class="flex items-center gap-1.5 text-slate-300 hover:text-white transition-colors">
+          <svg class="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
+            <path
+              d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z" />
+          </svg>
+          <span class="hidden sm:inline">GitHub</span>
+        </a>
+        <a href="https://github.com/h3ma209/Blitz/releases" target="_blank" rel="noopener"
+          class="bg-spot-bright hover:bg-emerald-300 text-spot-void font-bold px-3 py-1.5 rounded-md transition-all shadow-sm">
+          Download
+        </a>
+      </div>
+    </div>
+  </header>
+
+  <!-- MAIN WRAPPER -->
+  <div class="max-w-7xl mx-auto px-4 sm:px-6 flex gap-8 py-8 relative">
+
+    <!-- LEFT SIDEBAR NAVIGATION -->
+    <aside id="doc-sidebar"
+      class="w-64 shrink-0 hidden lg:block sticky top-24 self-start max-h-[calc(100vh-7rem)] overflow-y-auto pr-3 text-xs space-y-6">
+      
+      <div>
+        <div class="font-bold uppercase tracking-wider text-spot-bright text-[11px] mb-2 font-mono">1. Overview</div>
+        <ul class="space-y-1 text-spot-muted">
+          <li><a href="#intro" class="block py-1 hover:text-white transition-colors">Introduction & Philosophy</a></li>
+          <li><a href="#architecture" class="block py-1 hover:text-white transition-colors">Core Architecture</a></li>
+          <li><a href="#installation" class="block py-1 hover:text-white transition-colors">Installation & Builds</a></li>
+          <li><a href="#benchmarks" class="block py-1 hover:text-white transition-colors">Performance Benchmarks</a></li>
+        </ul>
+      </div>
+
+      <div>
+        <div class="font-bold uppercase tracking-wider text-spot-bright text-[11px] mb-2 font-mono">2. Workspaces & Requests</div>
+        <ul class="space-y-1 text-spot-muted">
+          <li><a href="#collections" class="block py-1 hover:text-white transition-colors">Collections & Folders</a></li>
+          <li><a href="#request-builder" class="block py-1 hover:text-white transition-colors">Request Builder & Bodies</a></li>
+          <li><a href="#auth" class="block py-1 hover:text-white transition-colors">Authentication (8 Schemes)</a></li>
+          <li><a href="#cookies" class="block py-1 hover:text-white transition-colors">Cookie Jar Management</a></li>
+        </ul>
+      </div>
+
+      <div>
+        <div class="font-bold uppercase tracking-wider text-spot-bright text-[11px] mb-2 font-mono">3. Multi-Protocol Engine</div>
+        <ul class="space-y-1 text-spot-muted">
+          <li><a href="#proto-ws" class="block py-1 hover:text-white transition-colors">WebSockets (ws:// &amp; wss://)</a></li>
+          <li><a href="#proto-grpc" class="block py-1 hover:text-white transition-colors">gRPC Unary &amp; Protobuf</a></li>
+          <li><a href="#proto-sse" class="block py-1 hover:text-white transition-colors">Server-Sent Events (SSE)</a></li>
+          <li><a href="#proto-mqtt" class="block py-1 hover:text-white transition-colors">MQTT Publish / Subscribe</a></li>
+          <li><a href="#proto-socketio" class="block py-1 hover:text-white transition-colors">Socket.IO Client</a></li>
+          <li><a href="#proto-graphql" class="block py-1 hover:text-white transition-colors">GraphQL &amp; WS Subscriptions</a></li>
+        </ul>
+      </div>
+
+      <div>
+        <div class="font-bold uppercase tracking-wider text-spot-bright text-[11px] mb-2 font-mono">4. Variables & Dynamic Data</div>
+        <ul class="space-y-1 text-spot-muted">
+          <li><a href="#variables-scope" class="block py-1 hover:text-white transition-colors">5-Tier Variable Scopes</a></li>
+          <li><a href="#faker-variables" class="block py-1 hover:text-white transition-colors">Postman Dynamic ($faker)</a></li>
+          <li><a href="#vault-secrets" class="block py-1 hover:text-white transition-colors">OS Keychain Secrets / Vault</a></li>
+        </ul>
+      </div>
+
+      <div>
+        <div class="font-bold uppercase tracking-wider text-spot-bright text-[11px] mb-2 font-mono">5. Scripting & Test Sandbox</div>
+        <ul class="space-y-1 text-spot-muted">
+          <li><a href="#sandbox-api" class="block py-1 hover:text-white transition-colors">Postman pm.* Sandbox API</a></li>
+          <li><a href="#assertions" class="block py-1 hover:text-white transition-colors">Assertions &amp; pm.expect</a></li>
+          <li><a href="#visualizer" class="block py-1 hover:text-white transition-colors">Visualizer (pm.visualizer)</a></li>
+          <li><a href="#workflows" class="block py-1 hover:text-white transition-colors">Workflow Control (setNextRequest)</a></li>
+        </ul>
+      </div>
+
+      <div>
+        <div class="font-bold uppercase tracking-wider text-yellow-300 text-[11px] mb-2 font-mono">6. AI Agent MCP Server</div>
+        <ul class="space-y-1 text-spot-muted">
+          <li><a href="#mcp-overview" class="block py-1 hover:text-white transition-colors">Model Context Protocol (Stdio)</a></li>
+          <li><a href="#mcp-setup" class="block py-1 hover:text-white transition-colors">blitz mcp setup (Auto-Config)</a></li>
+          <li><a href="#mcp-tools" class="block py-1 hover:text-white transition-colors">All 37 Tools Reference</a></li>
+          <li><a href="#mcp-resources" class="block py-1 hover:text-white transition-colors">MCP Resources URI Scheme</a></li>
+        </ul>
+      </div>
+
+      <div>
+        <div class="font-bold uppercase tracking-wider text-spot-bright text-[11px] mb-2 font-mono">7. Git Sync &amp; CI/CD</div>
+        <ul class="space-y-1 text-spot-muted">
+          <li><a href="#git-sync" class="block py-1 hover:text-white transition-colors">Branch-Based Git Workspaces</a></li>
+          <li><a href="#cli-runner" class="block py-1 hover:text-white transition-colors">Headless CLI Runner (blitz run)</a></li>
+          <li><a href="#load-testing" class="block py-1 hover:text-white transition-colors">Performance &amp; Load Testing</a></li>
+          <li><a href="#impex" class="block py-1 hover:text-white transition-colors">Import &amp; Export (Postman/OpenAPI/HAR)</a></li>
+        </ul>
+      </div>
+    </aside>
+
+    <!-- MAIN CONTENT AREA -->
+    <main class="flex-1 min-w-0 max-w-4xl space-y-14">
+
+      <!-- SECTION 1: INTRO -->
+      <section id="intro" class="scroll-mt-24 space-y-4">
+        <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-spot-green/10 text-spot-bright text-xs font-mono font-medium border border-spot-green/20">
+          <span>⚡</span> Open Source • Local-First • 100% Offline
+        </div>
+        <h1 class="text-3xl sm:text-4xl font-extrabold tracking-tight text-white">
+          Blitz Documentation &amp; Reference Guide
+        </h1>
+        <p class="text-slate-300 text-base leading-relaxed">
+          <strong>Blitz</strong> is an ultra-fast, local-first API client and testing platform built with <strong>Rust</strong> and <strong>Dioxus</strong>. It delivers sub-150ms native startup, a ~10MB memory footprint, multi-protocol execution (HTTP, WebSockets, gRPC, MQTT, SSE, GraphQL, Socket.IO), native OS keychain encryption, branch-based Git synchronization, and a built-in <strong>37-tool Model Context Protocol (MCP) server</strong> for AI coding agents.
+        </p>
+
+        <div class="p-4 rounded-xl bg-white/[0.03] border border-white/10 text-xs text-slate-300 space-y-2">
+          <div class="font-bold text-white flex items-center gap-2">
+            <span>💡</span> Why Blitz exists:
+          </div>
+          <p>
+            Mainstream API clients increasingly force cloud logins, upload proprietary company payloads to remote servers, charge hefty per-seat subscription invoices, and consume hundreds of megabytes of RAM running Electron/Node.js runtimes. Blitz runs completely on your own hardware, saves data as clean JSON on disk, uses your own Git repositories for team sync, and exposes a native stdio MCP server for autonomous AI agents (Cursor, Claude, Antigravity, Windsurf).
+          </p>
+        </div>
+      </section>
+
+      <!-- SECTION: ARCHITECTURE -->
+      <section id="architecture" class="scroll-mt-24 space-y-4">
+        <h2 class="text-2xl font-bold tracking-tight text-white border-b border-white/10 pb-2">
+          Core Architecture
+        </h2>
+        <p class="text-slate-300 text-sm leading-relaxed">
+          Blitz avoids Electron entirely. It is written 100% in safe Rust, compiling to a lean native binary with zero webview overhead in headless mode.
+        </p>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs font-mono">
+          <div class="p-4 rounded-xl glass space-y-2">
+            <div class="text-spot-bright font-bold">Frontend / GUI</div>
+            <p class="text-slate-400 font-sans">Dioxus Native 0.6 with cross-platform renderer. Renders at 60+ FPS with minimal GPU/CPU load.</p>
+          </div>
+          <div class="p-4 rounded-xl glass space-y-2">
+            <div class="text-spot-bright font-bold">Execution Engine</div>
+            <p class="text-slate-400 font-sans">Tokio asynchronous runtime + Reqwest (HTTP/1.1 &amp; HTTP/2) + Hyper-util client.</p>
+          </div>
+          <div class="p-4 rounded-xl glass space-y-2">
+            <div class="text-spot-bright font-bold">JavaScript Sandbox</div>
+            <p class="text-slate-400 font-sans">Embedded Boa engine for Postman-compatible pre-request and test script execution.</p>
+          </div>
+          <div class="p-4 rounded-xl glass space-y-2">
+            <div class="text-spot-bright font-bold">Protocols &amp; MCP</div>
+            <p class="text-slate-400 font-sans">tokio-tungstenite (WS), hyper/prost (gRPC), rumqttc (MQTT), JSON-RPC 2.0 stdio (MCP).</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- SECTION: INSTALLATION -->
+      <section id="installation" class="scroll-mt-24 space-y-4">
+        <h2 class="text-2xl font-bold tracking-tight text-white border-b border-white/10 pb-2">
+          Installation &amp; Builds
+        </h2>
+
+        <div class="space-y-4 text-xs">
+          <div>
+            <div class="font-bold text-slate-200 mb-1.5">macOS (Apple Silicon &amp; Intel)</div>
+            <div class="p-3.5 rounded-xl bg-black/80 font-mono text-spot-bright border border-white/10 overflow-x-auto">
+              # Download prebuilt DMG or universal release binary from GitHub Releases:<br/>
+              curl -L -O https://github.com/h3ma209/Blitz/releases/latest/download/Blitz-macOS.dmg
+            </div>
+          </div>
+
+          <div>
+            <div class="font-bold text-slate-200 mb-1.5">Linux (x86_64 &amp; aarch64)</div>
+            <div class="p-3.5 rounded-xl bg-black/80 font-mono text-spot-bright border border-white/10 overflow-x-auto">
+              curl -L -O https://github.com/h3ma209/Blitz/releases/latest/download/blitz-linux-x86_64.tar.gz<br/>
+              tar -xzf blitz-linux-x86_64.tar.gz && sudo mv blitz /usr/local/bin/
+            </div>
+          </div>
+
+          <div>
+            <div class="font-bold text-slate-200 mb-1.5">Build from Source (Rust 1.83+)</div>
+            <div class="p-3.5 rounded-xl bg-black/80 font-mono text-spot-bright border border-white/10 overflow-x-auto">
+              git clone https://github.com/h3ma209/Blitz.git<br/>
+              cd Blitz<br/>
+              cargo build --release<br/>
+              # Binary available at target/release/blitz
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- SECTION: COLLECTIONS & WORKSPACES -->
+      <section id="collections" class="scroll-mt-24 space-y-4">
+        <h2 class="text-2xl font-bold tracking-tight text-white border-b border-white/10 pb-2">
+          Collections &amp; Request Workspace
+        </h2>
+        <p class="text-slate-300 text-sm leading-relaxed">
+          Blitz organizes API suites into nested trees of Collections, Folders, Subfolders, and Request items. All items support custom headers, query parameters, authorization schemes, pre-request scripts, and test scripts.
+        </p>
+
+        <h3 id="request-builder" class="text-lg font-bold text-white pt-2">Request Body Modes</h3>
+        <p class="text-slate-300 text-xs leading-relaxed">
+          Select from standard request formats in the body tab:
+        </p>
+        <ul class="list-disc pl-5 text-xs text-slate-300 space-y-1.5">
+          <li><strong>none</strong>: No body sent (standard GET/HEAD).</li>
+          <li><strong>raw</strong>: Payload with automatic <code>Content-Type</code> headers for <code>JSON</code>, <code>Text</code>, <code>JavaScript</code>, <code>HTML</code>, or <code>XML</code>.</li>
+          <li><strong>form-urlencoded</strong>: Key-value parameters encoded into URL percent-escaped format.</li>
+          <li><strong>form-data</strong>: Multipart upload supporting text values and binary file uploads.</li>
+          <li><strong>graphql</strong>: Dual-pane editor for GraphQL query document and JSON variables.</li>
+        </ul>
+
+        <h3 id="auth" class="text-lg font-bold text-white pt-2">Supported Authentication Schemes (8 Methods)</h3>
+        <p class="text-slate-300 text-xs leading-relaxed">
+          Authorization can be defined at the request level or inherited hierarchically from parent collections:
+        </p>
+        <div class="overflow-x-auto">
+          <table class="w-full text-left text-xs table-border border-collapse rounded-lg overflow-hidden font-mono">
+            <thead class="bg-spot-black text-slate-300">
+              <tr>
+                <th class="p-3 border-b border-white/10">Scheme</th>
+                <th class="p-3 border-b border-white/10">Parameters</th>
+                <th class="p-3 border-b border-white/10">Header Generated</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-white/5 text-slate-400">
+              <tr>
+                <td class="p-3 text-spot-bright">Inherit Auth</td>
+                <td class="p-3">None</td>
+                <td class="p-3 font-sans">Uses parent collection / folder authorization</td>
+              </tr>
+              <tr>
+                <td class="p-3 text-spot-bright">Bearer Token</td>
+                <td class="p-3">token, prefix</td>
+                <td class="p-3">Authorization: Bearer &lt;token&gt;</td>
+              </tr>
+              <tr>
+                <td class="p-3 text-spot-bright">Basic Auth</td>
+                <td class="p-3">username, password</td>
+                <td class="p-3">Authorization: Basic &lt;base64&gt;</td>
+              </tr>
+              <tr>
+                <td class="p-3 text-spot-bright">API Key</td>
+                <td class="p-3">key, value, in (Header/Query)</td>
+                <td class="p-3">X-API-Key: &lt;value&gt;</td>
+              </tr>
+              <tr>
+                <td class="p-3 text-spot-bright">OAuth 2.0</td>
+                <td class="p-3">access_token, token_type</td>
+                <td class="p-3">Authorization: Bearer &lt;access_token&gt;</td>
+              </tr>
+              <tr>
+                <td class="p-3 text-spot-bright">AWS Signature v4</td>
+                <td class="p-3">access_key, secret_key, region, service</td>
+                <td class="p-3">Authorization: AWS4-HMAC-SHA256 ...</td>
+              </tr>
+              <tr>
+                <td class="p-3 text-spot-bright">Hawk Authentication</td>
+                <td class="p-3">auth_id, auth_key, algorithm</td>
+                <td class="p-3">Authorization: Hawk id=... ts=...</td>
+              </tr>
+              <tr>
+                <td class="p-3 text-spot-bright">Digest Auth</td>
+                <td class="p-3">username, password, realm, nonce</td>
+                <td class="p-3">Authorization: Digest username=...</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- SECTION: MULTI-PROTOCOL ENGINE -->
+      <section id="protocols" class="scroll-mt-24 space-y-4">
+        <h2 class="text-2xl font-bold tracking-tight text-white border-b border-white/10 pb-2">
+          Multi-Protocol Execution Engine
+        </h2>
+        <p class="text-slate-300 text-sm leading-relaxed">
+          Blitz is engineered from the ground up for modern microservices and real-time architectures:
+        </p>
+
+        <div class="space-y-4 text-xs font-mono">
+          <div id="proto-ws" class="p-4 rounded-xl glass space-y-2">
+            <div class="text-spot-bright font-bold flex items-center justify-between">
+              <span>WebSockets (ws:// &amp; wss://)</span>
+              <span class="text-slate-400 font-normal">tokio-tungstenite</span>
+            </div>
+            <p class="text-slate-300 font-sans leading-relaxed">
+              Full bi-directional frame streaming with live connection log, automatic UTF-8 string/binary frame decoding, and manual or script-driven frame transmission.
+            </p>
+          </div>
+
+          <div id="proto-grpc" class="p-4 rounded-xl glass space-y-2">
+            <div class="text-spot-bright font-bold flex items-center justify-between">
+              <span>gRPC (HTTP/2 Unary &amp; Streaming)</span>
+              <span class="text-slate-400 font-normal">hyper + prost-types</span>
+            </div>
+            <p class="text-slate-300 font-sans leading-relaxed">
+              Native gRPC unary RPC calls using <code>google.protobuf.Struct</code> JSON serialization. Returns exact gRPC status codes (0=OK, 1=CANCELLED, 14=UNAVAILABLE, etc.), status messages, and latency.
+            </p>
+          </div>
+
+          <div id="proto-sse" class="p-4 rounded-xl glass space-y-2">
+            <div class="text-spot-bright font-bold flex items-center justify-between">
+              <span>Server-Sent Events (SSE / EventSource)</span>
+              <span class="text-slate-400 font-normal">HTTP stream reader</span>
+            </div>
+            <p class="text-slate-300 font-sans leading-relaxed">
+              Connect to event streaming APIs (e.g. OpenAI / Anthropic streaming responses). Collects <code>event:</code>, <code>data:</code>, and <code>id:</code> lines into structured timelines.
+            </p>
+          </div>
+
+          <div id="proto-mqtt" class="p-4 rounded-xl glass space-y-2">
+            <div class="text-spot-bright font-bold flex items-center justify-between">
+              <span>MQTT (IoT Broker Publish / Subscribe)</span>
+              <span class="text-slate-400 font-normal">rumqttc v0.24</span>
+            </div>
+            <p class="text-slate-300 font-sans leading-relaxed">
+              Connects to standard brokers (Mosquitto, EMQX, HiveMQ) over TCP. Supports QoS 0, 1, and 2 publish operations and timeout-bounded topic subscriptions.
+            </p>
+          </div>
+
+          <div id="proto-socketio" class="p-4 rounded-xl glass space-y-2">
+            <div class="text-spot-bright font-bold flex items-center justify-between">
+              <span>Socket.IO Client</span>
+              <span class="text-slate-400 font-normal">rust_socketio</span>
+            </div>
+            <p class="text-slate-300 font-sans leading-relaxed">
+              Performs Engine.IO engine handshake, executes custom event emits with JSON arguments, and listens for targeted inbound server events.
+            </p>
+          </div>
+
+          <div id="proto-graphql" class="p-4 rounded-xl glass space-y-2">
+            <div class="text-spot-bright font-bold flex items-center justify-between">
+              <span>GraphQL Subscriptions over WebSocket</span>
+              <span class="text-slate-400 font-normal">graphql-transport-ws</span>
+            </div>
+            <p class="text-slate-300 font-sans leading-relaxed">
+              Connects to modern GraphQL subscription servers with <code>connection_init</code> handshake, executes subscription queries, and streams real-time updates.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <!-- SECTION: VARIABLES & FAKER -->
+      <section id="variables-scope" class="scroll-mt-24 space-y-4">
+        <h2 class="text-2xl font-bold tracking-tight text-white border-b border-white/10 pb-2">
+          Variables &amp; Dynamic Faker System
+        </h2>
+        <p class="text-slate-300 text-sm leading-relaxed">
+          Variables can be referenced anywhere in URLs, parameters, headers, or body payloads using <code>{{variable_name}}</code> syntax.
+        </p>
+
+        <h3 class="text-lg font-bold text-white pt-2">Variable Precedence Hierarchy</h3>
+        <p class="text-slate-300 text-xs leading-relaxed">
+          When resolving a variable token, Blitz inspects scopes in the following strict order (matching Postman convention):
+        </p>
+        <div class="p-3.5 rounded-xl bg-black/60 font-mono text-xs text-spot-bright border border-white/10">
+          Local / Script Scope &gt; Data Iteration File &gt; Active Environment &gt; Collection Scope &gt; Global Scope &gt; Dynamic Faker &gt; Unresolved
+        </div>
+
+        <h3 id="faker-variables" class="text-lg font-bold text-white pt-2">Postman-Compatible Dynamic Variables ($faker)</h3>
+        <p class="text-slate-300 text-xs leading-relaxed">
+          Blitz includes native evaluation for Postman dynamic pseudo-variables. These can be used in templates or generated inside scripts via <code>pm.variables.replaceIn("{{$guid}}")</code> or <code>pm.variables.get("$guid")</code>:
+        </p>
+
+        <div class="overflow-x-auto">
+          <table class="w-full text-left text-xs table-border border-collapse rounded-lg overflow-hidden font-mono">
+            <thead class="bg-spot-black text-slate-300">
+              <tr>
+                <th class="p-3 border-b border-white/10">Variable</th>
+                <th class="p-3 border-b border-white/10">Output Example</th>
+                <th class="p-3 border-b border-white/10">Description</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-white/5 text-slate-400">
+              <tr>
+                <td class="p-3 text-spot-bright">{{$guid}}</td>
+                <td class="p-3">d3b07384-d113-467f-9488-34863f684cf0</td>
+                <td class="p-3 font-sans">Fresh random UUID v4 string</td>
+              </tr>
+              <tr>
+                <td class="p-3 text-spot-bright">{{$timestamp}}</td>
+                <td class="p-3">1749281023</td>
+                <td class="p-3 font-sans">Current Unix epoch timestamp in seconds</td>
+              </tr>
+              <tr>
+                <td class="p-3 text-spot-bright">{{$isoTimestamp}}</td>
+                <td class="p-3">2026-10-26T14:30:00.000Z</td>
+                <td class="p-3 font-sans">Current UTC timestamp in ISO-8601 format</td>
+              </tr>
+              <tr>
+                <td class="p-3 text-spot-bright">{{$randomInt}}</td>
+                <td class="p-3">482</td>
+                <td class="p-3 font-sans">Random integer between 1 and 1000</td>
+              </tr>
+              <tr>
+                <td class="p-3 text-spot-bright">{{$randomEmail}}</td>
+                <td class="p-3">user_b7a9f1c2@example.com</td>
+                <td class="p-3 font-sans">Realistic random email address</td>
+              </tr>
+              <tr>
+                <td class="p-3 text-spot-bright">{{$randomFullName}}</td>
+                <td class="p-3">Emma Williams</td>
+                <td class="p-3 font-sans">Random first and last name combination</td>
+              </tr>
+              <tr>
+                <td class="p-3 text-spot-bright">{{$randomCity}}</td>
+                <td class="p-3">San Francisco</td>
+                <td class="p-3 font-sans">Random world city name</td>
+              </tr>
+              <tr>
+                <td class="p-3 text-spot-bright">{{$randomCountry}}</td>
+                <td class="p-3">Canada</td>
+                <td class="p-3 font-sans">Random country name</td>
+              </tr>
+              <tr>
+                <td class="p-3 text-spot-bright">{{$randomIP}}</td>
+                <td class="p-3">192.168.1.42</td>
+                <td class="p-3 font-sans">Random IPv4 address</td>
+              </tr>
+              <tr>
+                <td class="p-3 text-spot-bright">{{$randomBoolean}}</td>
+                <td class="p-3">true</td>
+                <td class="p-3 font-sans">Random boolean string ("true" / "false")</td>
+              </tr>
+              <tr>
+                <td class="p-3 text-spot-bright">{{$randomPrice}}</td>
+                <td class="p-3">49.99</td>
+                <td class="p-3 font-sans">Random price currency float string</td>
+              </tr>
+              <tr>
+                <td class="p-3 text-spot-bright">{{$randomAlphaNumeric}}</td>
+                <td class="p-3">k9x2m4p8q1</td>
+                <td class="p-3 font-sans">Random 10-character alphanumeric token</td>
+              </tr>
+              <tr>
+                <td class="p-3 text-spot-bright">{{$randomPhoneNumber}}</td>
+                <td class="p-3">+1-555-0199</td>
+                <td class="p-3 font-sans">Random formatted phone number</td>
+              </tr>
+              <tr>
+                <td class="p-3 text-spot-bright">{{$randomColor}}</td>
+                <td class="p-3">#3b82f6</td>
+                <td class="p-3 font-sans">Random hex color code</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h3 id="vault-secrets" class="text-lg font-bold text-white pt-2">OS Keychain Secrets / Vault ({{vault:key}})</h3>
+        <p class="text-slate-300 text-xs leading-relaxed">
+          Sensitive tokens or passwords can be kept out of Git collection repositories entirely by prefixing them with <code>{{vault:key}}</code>. Blitz encrypts and resolves these directly from macOS Keychain, Linux Secret Service (libsecret), or Windows Credential Manager.
+        </p>
+      </section>
+
+      <!-- SECTION: JAVASCRIPT SANDBOX -->
+      <section id="sandbox-api" class="scroll-mt-24 space-y-4">
+        <h2 class="text-2xl font-bold tracking-tight text-white border-b border-white/10 pb-2">
+          Scripting &amp; Test Sandbox (Postman pm.* API)
+        </h2>
+        <p class="text-slate-300 text-sm leading-relaxed">
+          Blitz includes an embedded JavaScript engine (Boa) that executes pre-request and test scripts with complete <code>pm.*</code> API parity:
+        </p>
+
+        <div class="p-4 rounded-xl bg-black/80 font-mono text-xs text-slate-300 border border-white/10 space-y-2">
+          <div class="text-spot-faint">// Sample Blitz / Postman test script</div>
+          <div><span class="text-purple-400">pm</span>.test(<span class="text-emerald-300">"Status code is 200"</span>, <span class="text-blue-400">function</span>() {</div>
+          <div class="pl-4"><span class="text-purple-400">pm</span>.response.to.have.status(<span class="text-amber-400">200</span>);</div>
+          <div>});</div>
+          <br/>
+          <div><span class="text-purple-400">pm</span>.test(<span class="text-emerald-300">"Payload schema and latency validation"</span>, <span class="text-blue-400">function</span>() {</div>
+          <div class="pl-4"><span class="text-blue-400">var</span> data = <span class="text-purple-400">pm</span>.response.json();</div>
+          <div class="pl-4"><span class="text-purple-400">pm</span>.expect(data).to.have.property(<span class="text-emerald-300">"token"</span>);</div>
+          <div class="pl-4"><span class="text-purple-400">pm</span>.expect(<span class="text-purple-400">pm</span>.response.responseTime).to.be.below(<span class="text-amber-400">500</span>);</div>
+          <div class="pl-4"><span class="text-spot-faint">// Set extracted token for subsequent requests</span></div>
+          <div class="pl-4"><span class="text-purple-400">pm</span>.environment.set(<span class="text-emerald-300">"authToken"</span>, data.token);</div>
+          <div>});</div>
+        </div>
+
+        <h3 id="assertions" class="text-lg font-bold text-white pt-2">Available pm.* Sandbox Objects</h3>
+        <ul class="list-disc pl-5 text-xs text-slate-300 space-y-1.5 font-mono">
+          <li><code>pm.environment.get(k)</code> / <code>.set(k, v)</code> / <code>.unset(k)</code> / <code>.clear()</code></li>
+          <li><code>pm.collectionVariables.get(k)</code> / <code>.set(k, v)</code></li>
+          <li><code>pm.globals.get(k)</code> / <code>.set(k, v)</code></li>
+          <li><code>pm.variables.get(k)</code>: Resolves across all scopes including dynamic <code>$guid</code>.</li>
+          <li><code>pm.variables.replaceIn(str)</code>: Replaces <code>{{variables}}</code> in a string.</li>
+          <li><code>pm.response.code</code>: HTTP status integer (e.g. 200).</li>
+          <li><code>pm.response.json()</code>: Parsed response JSON object.</li>
+          <li><code>pm.response.text()</code>: Raw response body string.</li>
+          <li><code>pm.response.headers.get("Content-Type")</code>: Response header inspection.</li>
+          <li><code>pm.sendRequest(url, callback)</code>: Execute sub-requests inside pre-request scripts.</li>
+          <li><code>require("crypto-js")</code>: Native SHA-256 and HMAC-SHA256 crypto support.</li>
+        </ul>
+      </section>
+
+      <!-- SECTION: MODEL CONTEXT PROTOCOL (MCP) -->
+      <section id="mcp-overview" class="scroll-mt-24 space-y-4">
+        <div class="flex items-center gap-2">
+          <span class="text-xs px-2.5 py-0.5 rounded-full bg-yellow-400/10 text-yellow-300 border border-yellow-400/20 font-mono font-bold">NEW</span>
+          <h2 class="text-2xl font-bold tracking-tight text-white">
+            Model Context Protocol (MCP) Server for AI Agents
+          </h2>
+        </div>
+        <p class="text-slate-300 text-sm leading-relaxed">
+          Blitz includes a built-in <strong>Model Context Protocol (MCP)</strong> server over standard input/output (<code>blitz mcp</code>). Autonomous AI coding assistants (<strong>Cursor</strong>, <strong>Claude Desktop</strong>, <strong>Antigravity / Gemini</strong>, <strong>Windsurf</strong>, <strong>VS Code</strong>, and <strong>Zed</strong>) can query collection schemas, execute HTTP and multi-protocol endpoints, run load benchmarks, extract environment variables, and manage cookies locally without cloud dependencies.
+        </p>
+
+        <h3 id="mcp-setup" class="text-lg font-bold text-white pt-2">Automatic IDE Configuration (blitz mcp setup)</h3>
+        <p class="text-slate-300 text-xs leading-relaxed">
+          Blitz can scan your machine for installed AI IDEs and automatically inject the MCP server configuration:
+        </p>
+        <div class="p-3.5 rounded-xl bg-black/80 font-mono text-xs text-spot-bright border border-white/10 space-y-1">
+          <div><span class="text-spot-faint"># Interactive scanner &amp; configuration tool:</span></div>
+          <div>blitz mcp setup</div>
+          <br/>
+          <div><span class="text-spot-faint"># Configure all detected IDEs automatically:</span></div>
+          <div>blitz mcp setup --all</div>
+        </div>
+
+        <h3 id="mcp-tools" class="text-lg font-bold text-white pt-4">Complete MCP Tools Reference (37 Tools)</h3>
+        <p class="text-slate-300 text-xs leading-relaxed">
+          The Blitz MCP server exposes 37 atomic tools via JSON-RPC 2.0 stdio:
+        </p>
+
+        <div class="overflow-x-auto">
+          <table class="w-full text-left text-xs table-border border-collapse rounded-lg overflow-hidden font-mono">
+            <thead class="bg-spot-black text-slate-300">
+              <tr>
+                <th class="p-3 border-b border-white/10">Tool Name</th>
+                <th class="p-3 border-b border-white/10">Parameters</th>
+                <th class="p-3 border-b border-white/10">Description</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-white/5 text-slate-400 text-[11px]">
+              <!-- Collection & Workspace -->
+              <tr>
+                <td class="p-3 text-spot-bright font-bold">blitz_list_collections</td>
+                <td class="p-3">filter (optional)</td>
+                <td class="p-3 font-sans">Lists all collections, folders, and request names with breadcrumb paths.</td>
+              </tr>
+              <tr>
+                <td class="p-3 text-spot-bright font-bold">blitz_get_collection</td>
+                <td class="p-3">collection (required)</td>
+                <td class="p-3 font-sans">Retrieves complete collection tree (requests, scripts, variables, auth).</td>
+              </tr>
+              <tr>
+                <td class="p-3 text-spot-bright font-bold">blitz_create_folder</td>
+                <td class="p-3">collection, name, parent_folder, description</td>
+                <td class="p-3 font-sans">Creates nested organizational folders inside a collection.</td>
+              </tr>
+              <tr>
+                <td class="p-3 text-spot-bright font-bold">blitz_delete_folder</td>
+                <td class="p-3">collection, folder</td>
+                <td class="p-3 font-sans">Recursively deletes a folder and all contained requests.</td>
+              </tr>
+              <tr>
+                <td class="p-3 text-spot-bright font-bold">blitz_delete_collection</td>
+                <td class="p-3">collection (required)</td>
+                <td class="p-3 font-sans">Permanently deletes a collection by ID or name.</td>
+              </tr>
+              <tr>
+                <td class="p-3 text-spot-bright font-bold">blitz_export_collection</td>
+                <td class="p-3">collection, format, file_path</td>
+                <td class="p-3 font-sans">Exports collection as Postman v2.1 or OpenAPI 3.0.</td>
+              </tr>
+              <tr>
+                <td class="p-3 text-spot-bright font-bold">blitz_generate_docs</td>
+                <td class="p-3">collection, format, file_path</td>
+                <td class="p-3 font-sans">Generates standalone HTML documentation (static single-file or Swagger UI).</td>
+              </tr>
+
+              <!-- Requests & Execution -->
+              <tr>
+                <td class="p-3 text-spot-bright font-bold">blitz_get_request</td>
+                <td class="p-3">request_id, collection, name</td>
+                <td class="p-3 font-sans">Retrieves full definition (URL, method, headers, params, body, auth).</td>
+              </tr>
+              <tr>
+                <td class="p-3 text-spot-bright font-bold">blitz_upsert_request</td>
+                <td class="p-3">collection, name, method, url, headers, body, folder</td>
+                <td class="p-3 font-sans">Creates or updates a request in a collection or subfolder.</td>
+              </tr>
+              <tr>
+                <td class="p-3 text-spot-bright font-bold">blitz_delete_request</td>
+                <td class="p-3">collection, request_id</td>
+                <td class="p-3 font-sans">Deletes an existing request from a collection.</td>
+              </tr>
+              <tr>
+                <td class="p-3 text-spot-bright font-bold">blitz_send_request</td>
+                <td class="p-3">request_id, environment, save_to_env</td>
+                <td class="p-3 font-sans">Executes a saved request through the pipeline with variable extraction.</td>
+              </tr>
+              <tr>
+                <td class="p-3 text-spot-bright font-bold">blitz_execute_http</td>
+                <td class="p-3">url, method, headers, body, environment, save_to_env</td>
+                <td class="p-3 font-sans">Executes an ad-hoc HTTP request through the Blitz engine.</td>
+              </tr>
+              <tr>
+                <td class="p-3 text-spot-bright font-bold">blitz_run_collection</td>
+                <td class="p-3">collection, environment, iterations, delay_ms, bail</td>
+                <td class="p-3 font-sans">Runs an entire collection test suite headless and returns pass/fail metrics.</td>
+              </tr>
+
+              <!-- Multi-Protocol Tools -->
+              <tr>
+                <td class="p-3 text-yellow-300 font-bold">blitz_websocket_send</td>
+                <td class="p-3">url, message, timeout_ms, max_messages</td>
+                <td class="p-3 font-sans">Connects to WebSocket (ws:// / wss://), transmits frame, collects streaming inbound messages.</td>
+              </tr>
+              <tr>
+                <td class="p-3 text-yellow-300 font-bold">blitz_grpc_unary</td>
+                <td class="p-3">endpoint, method, body</td>
+                <td class="p-3 font-sans">Executes gRPC unary call over HTTP/2 with JSON Protobuf encoding and latency stats.</td>
+              </tr>
+              <tr>
+                <td class="p-3 text-yellow-300 font-bold">blitz_sse_listen</td>
+                <td class="p-3">url, headers, max_events, timeout_ms</td>
+                <td class="p-3 font-sans">Captures Server-Sent Events stream (event, data, id) from HTTP endpoint.</td>
+              </tr>
+              <tr>
+                <td class="p-3 text-yellow-300 font-bold">blitz_mqtt_publish</td>
+                <td class="p-3">broker_url, topic, payload, client_id</td>
+                <td class="p-3 font-sans">Publishes a message to an MQTT broker topic with QoS 1 confirmation.</td>
+              </tr>
+              <tr>
+                <td class="p-3 text-yellow-300 font-bold">blitz_mqtt_subscribe</td>
+                <td class="p-3">broker_url, topic, client_id, timeout_seconds</td>
+                <td class="p-3 font-sans">Subscribes to an MQTT topic on a broker and awaits inbound message.</td>
+              </tr>
+              <tr>
+                <td class="p-3 text-yellow-300 font-bold">blitz_graphql_ws_subscribe</td>
+                <td class="p-3">ws_url, query, variables, max_events, timeout_ms</td>
+                <td class="p-3 font-sans">Executes GraphQL subscription over WebSocket protocol and streams responses.</td>
+              </tr>
+              <tr>
+                <td class="p-3 text-yellow-300 font-bold">blitz_socketio_emit</td>
+                <td class="p-3">url, emit_event, emit_payload, listen_event, listen_ms</td>
+                <td class="p-3 font-sans">Connects to Socket.IO server, emits event, and captures reply events.</td>
+              </tr>
+
+              <!-- Environments & Variables -->
+              <tr>
+                <td class="p-3 text-spot-bright font-bold">blitz_list_environments</td>
+                <td class="p-3">none</td>
+                <td class="p-3 font-sans">Lists configured environments, active flag, and variable names.</td>
+              </tr>
+              <tr>
+                <td class="p-3 text-spot-bright font-bold">blitz_set_env_var</td>
+                <td class="p-3">key, value, environment</td>
+                <td class="p-3 font-sans">Sets or updates an environment variable directly from agent actions.</td>
+              </tr>
+              <tr>
+                <td class="p-3 text-spot-bright font-bold">blitz_set_active_environment</td>
+                <td class="p-3">environment</td>
+                <td class="p-3 font-sans">Switches active variable environment.</td>
+              </tr>
+              <tr>
+                <td class="p-3 text-spot-bright font-bold">blitz_create_environment</td>
+                <td class="p-3">name, variables, set_active</td>
+                <td class="p-3 font-sans">Creates a new environment with key-value dictionary.</td>
+              </tr>
+              <tr>
+                <td class="p-3 text-spot-bright font-bold">blitz_delete_environment</td>
+                <td class="p-3">environment</td>
+                <td class="p-3 font-sans">Deletes a named environment.</td>
+              </tr>
+
+              <!-- Imports & Sync -->
+              <tr>
+                <td class="p-3 text-spot-bright font-bold">blitz_import_curl</td>
+                <td class="p-3">curl, collection</td>
+                <td class="p-3 font-sans">Parses raw cURL command into an executable request.</td>
+              </tr>
+              <tr>
+                <td class="p-3 text-spot-bright font-bold">blitz_import_har</td>
+                <td class="p-3">har, collection</td>
+                <td class="p-3 font-sans">Ingests HTTP Archive (.har) JSON or file path into collection items.</td>
+              </tr>
+              <tr>
+                <td class="p-3 text-spot-bright font-bold">blitz_sync_openapi</td>
+                <td class="p-3">spec, collection</td>
+                <td class="p-3 font-sans">Non-destructively reconciles OpenAPI 3.0 spec while preserving custom tests &amp; auth.</td>
+              </tr>
+
+              <!-- Testing & Diagnostics -->
+              <tr>
+                <td class="p-3 text-spot-bright font-bold">blitz_suggest_assertions</td>
+                <td class="p-3">status, headers, body, elapsed_ms</td>
+                <td class="p-3 font-sans">Analyzes response payload and generates automated Postman test scripts.</td>
+              </tr>
+              <tr>
+                <td class="p-3 text-spot-bright font-bold">blitz_perf_test</td>
+                <td class="p-3">url, method, request_id, vus, duration_seconds</td>
+                <td class="p-3 font-sans">Runs local load benchmark with concurrent virtual users, RPS, and latency p50/p95/p99.</td>
+              </tr>
+              <tr>
+                <td class="p-3 text-spot-bright font-bold">blitz_diff_responses</td>
+                <td class="p-3">body_a, body_b, request_id, env_a, env_b</td>
+                <td class="p-3 font-sans">Calculates line-by-line diff and semantic comparison between two response payloads.</td>
+              </tr>
+              <tr>
+                <td class="p-3 text-spot-bright font-bold">blitz_list_history</td>
+                <td class="p-3">limit</td>
+                <td class="p-3 font-sans">Returns recent execution history logs.</td>
+              </tr>
+              <tr>
+                <td class="p-3 text-spot-bright font-bold">blitz_clear_history</td>
+                <td class="p-3">request_id (optional)</td>
+                <td class="p-3 font-sans">Clears request execution history globally or for a specific request.</td>
+              </tr>
+              <tr>
+                <td class="p-3 text-spot-bright font-bold">blitz_manage_cookies</td>
+                <td class="p-3">action ('list'/'clear'), domain</td>
+                <td class="p-3 font-sans">Inspects or purges persistent session cookies in Blitz's global cookie jar.</td>
+              </tr>
+
+              <!-- Mocks & Code Generation -->
+              <tr>
+                <td class="p-3 text-spot-bright font-bold">blitz_start_mock</td>
+                <td class="p-3">port</td>
+                <td class="p-3 font-sans">Spins up local mock HTTP server serving collection examples.</td>
+              </tr>
+              <tr>
+                <td class="p-3 text-spot-bright font-bold">blitz_stop_mock</td>
+                <td class="p-3">none</td>
+                <td class="p-3 font-sans">Terminates the active local mock HTTP server.</td>
+              </tr>
+              <tr>
+                <td class="p-3 text-spot-bright font-bold">blitz_generate_code</td>
+                <td class="p-3">language, url, method, headers, body</td>
+                <td class="p-3 font-sans">Generates production snippets in Python, TypeScript, Rust, Go, Java, or C#.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- SECTION: GIT SYNC & CI/CD -->
+      <section id="git-sync" class="scroll-mt-24 space-y-4">
+        <h2 class="text-2xl font-bold tracking-tight text-white border-b border-white/10 pb-2">
+          Git Sync &amp; Headless CI/CD Automation
+        </h2>
+        <p class="text-slate-300 text-sm leading-relaxed">
+          Blitz treats Git as a first-class storage provider. Workspaces can be synchronized directly to GitHub, GitLab, Gitea, or self-hosted remotes without proprietary cloud intermediaries.
+        </p>
+
+        <h3 id="cli-runner" class="text-lg font-bold text-white pt-2">Headless CLI Runner (blitz run)</h3>
+        <p class="text-slate-300 text-xs leading-relaxed">
+          Execute test suites directly inside GitHub Actions, GitLab CI, or local terminals:
+        </p>
+        <div class="p-3.5 rounded-xl bg-black/80 font-mono text-xs text-spot-bright border border-white/10 space-y-2">
+          <div><span class="text-spot-faint"># Run collection with staging environment:</span></div>
+          <div>blitz run ./collections/api.json --env ./environments/staging.json</div>
+          <br/>
+          <div><span class="text-spot-faint"># Run with 10 iterations, data CSV, and JUnit report output:</span></div>
+          <div>blitz run ./collections/api.json -d ./test_data.csv -n 10 --reporters cli,junit --reporter-junit-export ./report.xml</div>
+        </div>
+
+        <h3 class="text-lg font-bold text-white pt-2">Exit Codes</h3>
+        <ul class="list-disc pl-5 text-xs text-slate-300 space-y-1 font-mono">
+          <li><code>0</code>: All requests and assertions passed.</li>
+          <li><code>1</code>: One or more assertions failed or request network error occurred.</li>
+        </ul>
+      </section>
+
+      <!-- FOOTER -->
+      <footer class="pt-10 border-t border-white/10 text-xs text-spot-muted flex flex-col sm:flex-row items-center justify-between gap-4">
+        <div>
+          Blitz — Open source under MIT / Apache-2.0 License.
+        </div>
+        <div class="flex items-center gap-4">
+          <a href="index.html" class="hover:text-white">Home</a>
+          <a href="https://github.com/h3ma209/Blitz" target="_blank" class="hover:text-white">GitHub</a>
+          <a href="https://github.com/h3ma209/Blitz/releases" target="_blank" class="hover:text-white">Releases</a>
+        </div>
+      </footer>
+
+    </main>
+
+    <!-- RIGHT TABLE OF CONTENTS (ON THIS PAGE) -->
+    <aside class="w-48 shrink-0 hidden xl:block sticky top-24 self-start text-[11px] space-y-3 font-mono text-slate-400 border-l border-white/5 pl-4">
+      <div class="font-bold uppercase tracking-wider text-white text-xs mb-2">On this page</div>
+      <a href="#intro" class="block hover:text-spot-bright transition-colors">Overview</a>
+      <a href="#architecture" class="block hover:text-spot-bright transition-colors">Architecture</a>
+      <a href="#installation" class="block hover:text-spot-bright transition-colors">Installation</a>
+      <a href="#collections" class="block hover:text-spot-bright transition-colors">Collections</a>
+      <a href="#auth" class="block hover:text-spot-bright transition-colors">Authentication</a>
+      <a href="#protocols" class="block hover:text-spot-bright transition-colors">Protocols</a>
+      <a href="#variables-scope" class="block hover:text-spot-bright transition-colors">Variables</a>
+      <a href="#faker-variables" class="block hover:text-spot-bright transition-colors">Dynamic ($faker)</a>
+      <a href="#sandbox-api" class="block hover:text-spot-bright transition-colors">pm.* Sandbox</a>
+      <a href="#mcp-overview" class="block hover:text-yellow-300 transition-colors">AI MCP Server</a>
+      <a href="#mcp-tools" class="block hover:text-yellow-300 transition-colors">37 Tools Reference</a>
+      <a href="#git-sync" class="block hover:text-spot-bright transition-colors">Git Sync</a>
+      <a href="#cli-runner" class="block hover:text-spot-bright transition-colors">CLI Runner</a>
+    </aside>
+
+  </div>
+
+  <!-- SEARCH SCRIPT -->
+  <script>
+    const searchInput = document.getElementById('doc-search');
+    window.addEventListener('keydown', (e) => {
+      if (e.key === '/' && document.activeElement !== searchInput) {
+        e.preventDefault();
+        searchInput.focus();
+      }
+    });
+
+    searchInput.addEventListener('input', (e) => {
+      const q = e.target.value.toLowerCase().trim();
+      const rows = document.querySelectorAll('main section, tbody tr');
+      if (!q) {
+        rows.forEach(r => r.style.opacity = '1');
+        return;
+      }
+      rows.forEach(r => {
+        const text = r.textContent.toLowerCase();
+        if (text.includes(q)) {
+          r.style.opacity = '1';
+        } else {
+          r.style.opacity = '0.25';
+        }
+      });
+    });
+  </script>
+
+</body>
+</html>
