@@ -990,7 +990,7 @@ pub fn send_request_with_options(
                 resolved.method,
                 HttpMethod::Post | HttpMethod::Put | HttpMethod::Patch | HttpMethod::Delete
             ) && !has_header(&resolved, "Content-Length") {
-                resolved.headers.push(KeyValue::new("Content-Length", &b.len().to_string()));
+                resolved.headers.push(KeyValue::new("Content-Length", b.len().to_string()));
                 log.push(format!("headers: default Content-Length {}", b.len()));
             }
         }
