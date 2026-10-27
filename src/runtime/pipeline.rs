@@ -983,6 +983,19 @@ pub fn send_request_with_options(
         }
     }
 
+    // 4d. Content-Length for bodies if missing
+    if !use_formdata {
+        if let Some(b) = &body_bytes {
+            if matches!(
+                resolved.method,
+                HttpMethod::Post | HttpMethod::Put | HttpMethod::Patch | HttpMethod::Delete
+            ) && !has_header(&resolved, "Content-Length") {
+                resolved.headers.push(KeyValue::new("Content-Length", &b.len().to_string()));
+                log.push(format!("headers: default Content-Length {}", b.len()));
+            }
+        }
+    }
+
     // 5. HTTP client
     check_cancelled(&opts.cancel)?;
     let client = build_client(&resolved.settings, opts.app_settings, &mut log)?;

@@ -133,8 +133,8 @@ pub enum BodyMode {
 #[serde(rename_all = "snake_case")]
 pub enum AuthType {
     #[default]
-    NoAuth,
     Inherit,
+    NoAuth,
     Bearer,
     Basic,
     ApiKey,
@@ -395,7 +395,10 @@ impl Default for RequestDraft {
             url: "https://httpbin.org/get".into(),
             params: vec![KeyValue::new("", "")],
             headers: vec![
-                KeyValue::new("Accept", "application/json"),
+                KeyValue::new("User-Agent", "PostmanRuntime/7.43.0"),
+                KeyValue::new("Accept", "*/*"),
+                KeyValue::new("Accept-Encoding", "gzip, deflate, br"),
+                KeyValue::new("Connection", "keep-alive"),
                 KeyValue::new("", ""),
             ],
             body_mode: BodyMode::None,

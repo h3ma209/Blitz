@@ -1,10 +1,6 @@
 //! Postman Runtime default / system headers + JSON body prep.
 //! Observed in Postman.app ASAR (`postman-runtime`): User-Agent PostmanRuntime/*,
-//! Accept */*, Cache-Control, Postman-Token, Connection.
-//!
-//! Deliberately omits `Accept-Encoding`: setting it manually disables reqwest's
-//! auto-decompress, which leaves gzip/br bodies as binary garbage in the UI.
-//! With reqwest `gzip`/`deflate`/`brotli` features, the client negotiates encodings.
+//! Accept */*, Accept-Encoding, Cache-Control, Postman-Token, Connection, Host.
 
 use uuid::Uuid;
 
@@ -15,6 +11,7 @@ pub fn inject_postman_system_headers(draft: &mut RequestDraft, log: &mut Vec<Str
     let defaults = [
         ("User-Agent", "PostmanRuntime/7.43.0"),
         ("Accept", "*/*"),
+        ("Accept-Encoding", "gzip, deflate, br"),
         ("Connection", "keep-alive"),
         ("Cache-Control", "no-cache"),
     ];
@@ -22,6 +19,29 @@ pub fn inject_postman_system_headers(draft: &mut RequestDraft, log: &mut Vec<Str
         if !has_header(draft, key) {
             draft.headers.push(KeyValue::new(key, value));
             log.push(format!("headers: default {key}"));
+        }
+    }
+    // Host header derived from URL if not already present
+    if !has_header(draft, "Host") && !draft.url.is_empty() {
+        if let Ok(parsed) = reqwest::Url::parse(&draft.url) {
+            if let Some(host) = parsed.host_str() {
+                let host_val = if let Some(port) = parsed.port() {
+                    format!("{host}:{port}")
+                } else {
+                    host.to_string()
+                };
+                draft.headers.push(KeyValue::new("Host", &host_val));
+                log.push(format!("headers: default Host {host_val}"));
+            }
+        } else {
+            // Fallback parse without scheme
+            let rest = draft.url.split("://").nth(1).unwrap_or(&draft.url);
+            let host_part = rest.split('/').next().unwrap_or(rest);
+            let host_only = host_part.split('?').next().unwrap_or(host_part).trim();
+            if !host_only.is_empty() && !host_only.contains("{{") {
+                draft.headers.push(KeyValue::new("Host", host_only));
+                log.push(format!("headers: default Host {host_only}"));
+            }
         }
     }
     if !has_header(draft, "Postman-Token") {
@@ -122,6 +142,17 @@ pub fn prepare_raw_body_for_send(draft: &mut RequestDraft, log: &mut Vec<String>
                 .push(KeyValue::new("Content-Type", "application/json"));
             log.push("headers: default Content-Type application/json".into());
         }
+    }
+    if draft.body_mode == BodyMode::Urlencoded && !has_header(draft, "Content-Type") {
+        draft
+            .headers
+            .push(KeyValue::new("Content-Type", "application/x-www-form-urlencoded"));
+        log.push("headers: default Content-Type application/x-www-form-urlencoded".into());
+    } else if draft.body_mode == BodyMode::Graphql && !has_header(draft, "Content-Type") {
+        draft
+            .headers
+            .push(KeyValue::new("Content-Type", "application/json"));
+        log.push("headers: default Content-Type application/json".into());
     }
     Ok(())
 }
@@ -271,10 +302,9 @@ mod tests {
         assert!(has_header(&d, "Accept"));
         assert!(has_header(&d, "Cache-Control"));
         assert!(has_header(&d, "Postman-Token"));
-        assert!(
-            !has_header(&d, "Accept-Encoding"),
-            "Accept-Encoding must not be injected (breaks reqwest decompress)"
-        );
+        assert!(has_header(&d, "Accept-Encoding"));
+        assert!(has_header(&d, "Connection"));
+        assert!(has_header(&d, "Host"));
         // Don't override
         d.headers
             .iter_mut()

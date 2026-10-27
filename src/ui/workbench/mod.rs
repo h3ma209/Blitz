@@ -204,6 +204,7 @@ pub fn Workbench() -> Element {
         if tabs.is_empty() {
             active_request_id.set(None);
             response.set(None);
+            draft.set(RequestDraft::default());
             open_tabs.set(tabs);
             status_msg.set("tab closed".into());
             return;
@@ -1460,6 +1461,24 @@ pub fn Workbench() -> Element {
                                 st.persist();
                                 editing_collection_id.set(None);
                             },
+                        }
+                    } else if open_tabs().is_empty() {
+                        div {
+                            class: "workbench-empty-page",
+                            div {
+                                class: "workbench-empty-content",
+                                div { class: "workbench-empty-icon", "⚡" }
+                                h2 { class: "workbench-empty-title", "No Open Requests" }
+                                p { class: "workbench-empty-subtitle", "Select a request from the sidebar or click below to create a new tab." }
+                                div {
+                                    class: "workbench-empty-actions",
+                                    button {
+                                        class: "btn btn-primary",
+                                        onclick: move |_| do_new_tab(()),
+                                        "+ New Request (⌘T)"
+                                    }
+                                }
+                            }
                         }
                     } else {
                         div {

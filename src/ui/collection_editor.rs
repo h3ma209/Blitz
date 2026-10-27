@@ -4,6 +4,7 @@ use uuid::Uuid;
 use crate::core::{AuthConfig, Collection, KeyValue, VariableContext};
 use crate::runtime::{run_collection_with_config, RunnerConfig, RunnerReport};
 use crate::ui::request_builder::{AuthEditor, ScriptsEditor};
+use crate::ui::var_hover::VarHoverInput;
 use crate::ui::CommentableTextarea;
 use crate::ui::loading::{SkeletonBars, Spinner};
 
@@ -236,6 +237,7 @@ pub fn CollectionEditor(
                                 AuthEditor {
                                     auth: collection.auth.clone(),
                                     ancestor_origin: None,
+                                    vars: Some(vars.clone()),
                                     on_edit_parent_auth: move |_| {},
                                     on_change: {
                                         let collection = collection.clone();
@@ -310,19 +312,23 @@ pub fn CollectionEditor(
                                                         }
                                                     }
                                                     td {
-                                                        input {
-                                                            value: "{v}",
-                                                            placeholder: "Initial value (synced)",
-                                                            oninput: {
+                                                        VarHoverInput {
+                                                            class: "kv-var-input".to_string(),
+                                                            value: v.clone(),
+                                                            placeholder: "Initial value (synced)".to_string(),
+                                                            input_id: format!("col-var-{col_id}-{i}"),
+                                                            vars: vars.clone(),
+                                                            on_input: {
                                                                 let collection = collection.clone();
-                                                                move |evt: Event<FormData>| {
+                                                                move |val: String| {
                                                                     let mut c = collection.clone();
                                                                     if let Some(r) = c.variables.get_mut(i) {
-                                                                        r.value = evt.value();
+                                                                        r.value = val;
                                                                     }
                                                                     on_change.call(c);
                                                                 }
-                                                            }
+                                                            },
+                                                            on_var_edit: move |_| {},
                                                         }
                                                     }
                                                     td {

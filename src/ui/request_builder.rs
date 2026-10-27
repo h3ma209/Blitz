@@ -259,6 +259,8 @@ pub fn RequestBuilder(
                     AuthEditor {
                         auth: draft.auth.clone(),
                         ancestor_origin: ancestor_origin.clone(),
+                        vars: Some(vars.clone()),
+                        on_var_edit: Some(on_var_edit),
                         on_edit_parent_auth,
                         on_change: {
                             let draft = draft.clone();
@@ -1195,10 +1197,14 @@ fn ensure_trailing_form(rows: &mut Vec<FormDataField>) {
 pub(crate) fn AuthEditor(
     auth: AuthConfig,
     ancestor_origin: Option<crate::core::AncestorAuthOrigin>,
+    #[props(default)] vars: Option<VariableContext>,
+    #[props(default)] on_var_edit: Option<EventHandler<VarEditEvent>>,
     on_edit_parent_auth: EventHandler<uuid::Uuid>,
     on_change: EventHandler<AuthConfig>,
 ) -> Element {
     let auth_type = auth.auth_type;
+    let vctx_opt = vars.clone();
+    let token_ph = if auth_type == AuthType::ApiKey { "API key" } else { "Token (or secret://…)" };
     rsx! {
         select {
             value: "{auth_type_str(auth_type)}",
@@ -1223,55 +1229,140 @@ pub(crate) fn AuthEditor(
             option { value: "edgegrid", "Akamai EdgeGrid" }
         }
         if matches!(auth_type, AuthType::Bearer | AuthType::ApiKey) {
-            input {
-                r#type: "text",
-                placeholder: if auth_type == AuthType::ApiKey { "API key" } else { "Token (or secret://…)" },
-                value: "{auth.token}",
-                oninput: {
-                    let mut a = auth.clone();
-                    move |evt: Event<FormData>| {
-                        a.token = evt.value();
-                        on_change.call(a.clone());
+            if let Some(vctx) = &vctx_opt {
+                VarHoverInput {
+                    class: "kv-var-input".to_string(),
+                    value: auth.token.clone(),
+                    placeholder: token_ph.to_string(),
+                    input_id: "auth-token-input".to_string(),
+                    vars: vctx.clone(),
+                    on_input: {
+                        let mut a = auth.clone();
+                        move |val: String| {
+                            a.token = val;
+                            on_change.call(a.clone());
+                        }
+                    },
+                    on_var_edit: move |evt| {
+                        if let Some(h) = on_var_edit {
+                            h.call(evt);
+                        }
+                    },
+                }
+            } else {
+                input {
+                    r#type: "text",
+                    placeholder: if auth_type == AuthType::ApiKey { "API key" } else { "Token (or secret://…)" },
+                    value: "{auth.token}",
+                    oninput: {
+                        let mut a = auth.clone();
+                        move |evt: Event<FormData>| {
+                            a.token = evt.value();
+                            on_change.call(a.clone());
+                        }
                     }
                 }
             }
         }
         if auth_type == AuthType::ApiKey {
-            input {
-                r#type: "text",
-                placeholder: "Header name (default X-Api-Key)",
-                value: "{auth.api_key_header}",
-                oninput: {
-                    let mut a = auth.clone();
-                    move |evt: Event<FormData>| {
-                        a.api_key_header = evt.value();
-                        on_change.call(a.clone());
+            if let Some(vctx) = &vctx_opt {
+                VarHoverInput {
+                    class: "kv-var-input".to_string(),
+                    value: auth.api_key_header.clone(),
+                    placeholder: "Header name (default X-Api-Key)".to_string(),
+                    input_id: "auth-apikey-header-input".to_string(),
+                    vars: vctx.clone(),
+                    on_input: {
+                        let mut a = auth.clone();
+                        move |val: String| {
+                            a.api_key_header = val;
+                            on_change.call(a.clone());
+                        }
+                    },
+                    on_var_edit: move |evt| {
+                        if let Some(h) = on_var_edit {
+                            h.call(evt);
+                        }
+                    },
+                }
+            } else {
+                input {
+                    r#type: "text",
+                    placeholder: "Header name (default X-Api-Key)",
+                    value: "{auth.api_key_header}",
+                    oninput: {
+                        let mut a = auth.clone();
+                        move |evt: Event<FormData>| {
+                            a.api_key_header = evt.value();
+                            on_change.call(a.clone());
+                        }
                     }
                 }
             }
         }
         if matches!(auth_type, AuthType::Basic | AuthType::Digest) {
-            input {
-                r#type: "text",
-                placeholder: "Username",
-                value: "{auth.username}",
-                oninput: {
-                    let mut a = auth.clone();
-                    move |evt: Event<FormData>| {
-                        a.username = evt.value();
-                        on_change.call(a.clone());
+            if let Some(vctx) = &vctx_opt {
+                VarHoverInput {
+                    class: "kv-var-input".to_string(),
+                    value: auth.username.clone(),
+                    placeholder: "Username".to_string(),
+                    input_id: "auth-username-input".to_string(),
+                    vars: vctx.clone(),
+                    on_input: {
+                        let mut a = auth.clone();
+                        move |val: String| {
+                            a.username = val;
+                            on_change.call(a.clone());
+                        }
+                    },
+                    on_var_edit: move |evt| {
+                        if let Some(h) = on_var_edit {
+                            h.call(evt);
+                        }
+                    },
+                }
+                VarHoverInput {
+                    class: "kv-var-input".to_string(),
+                    value: auth.password.clone(),
+                    placeholder: "Password".to_string(),
+                    input_id: "auth-password-input".to_string(),
+                    vars: vctx.clone(),
+                    on_input: {
+                        let mut a = auth.clone();
+                        move |val: String| {
+                            a.password = val;
+                            on_change.call(a.clone());
+                        }
+                    },
+                    on_var_edit: move |evt| {
+                        if let Some(h) = on_var_edit {
+                            h.call(evt);
+                        }
+                    },
+                }
+            } else {
+                input {
+                    r#type: "text",
+                    placeholder: "Username",
+                    value: "{auth.username}",
+                    oninput: {
+                        let mut a = auth.clone();
+                        move |evt: Event<FormData>| {
+                            a.username = evt.value();
+                            on_change.call(a.clone());
+                        }
                     }
                 }
-            }
-            input {
-                r#type: "password",
-                placeholder: "Password",
-                value: "{auth.password}",
-                oninput: {
-                    let mut a = auth.clone();
-                    move |evt: Event<FormData>| {
-                        a.password = evt.value();
-                        on_change.call(a.clone());
+                input {
+                    r#type: "password",
+                    placeholder: "Password",
+                    value: "{auth.password}",
+                    oninput: {
+                        let mut a = auth.clone();
+                        move |evt: Event<FormData>| {
+                            a.password = evt.value();
+                            on_change.call(a.clone());
+                        }
                     }
                 }
             }
@@ -1293,63 +1384,161 @@ pub(crate) fn AuthEditor(
                 option { value: "client_creds", "Client Credentials" }
                 option { value: "auth_code", "Authorization Code" }
             }
-            input {
-                r#type: "text",
-                placeholder: "Auth URL",
-                value: "{auth.oauth2.auth_url}",
-                oninput: {
-                    let mut a = auth.clone();
-                    move |evt: Event<FormData>| {
-                        a.oauth2.auth_url = evt.value();
-                        on_change.call(a.clone());
+            if let Some(vctx) = &vctx_opt {
+                VarHoverInput {
+                    class: "kv-var-input".to_string(),
+                    value: auth.oauth2.auth_url.clone(),
+                    placeholder: "Auth URL".to_string(),
+                    input_id: "auth-oauth2-authurl-input".to_string(),
+                    vars: vctx.clone(),
+                    on_input: {
+                        let mut a = auth.clone();
+                        move |val: String| {
+                            a.oauth2.auth_url = val;
+                            on_change.call(a.clone());
+                        }
+                    },
+                    on_var_edit: move |evt| {
+                        if let Some(h) = on_var_edit {
+                            h.call(evt);
+                        }
+                    },
+                }
+                VarHoverInput {
+                    class: "kv-var-input".to_string(),
+                    value: auth.oauth2.token_url.clone(),
+                    placeholder: "Token URL".to_string(),
+                    input_id: "auth-oauth2-tokenurl-input".to_string(),
+                    vars: vctx.clone(),
+                    on_input: {
+                        let mut a = auth.clone();
+                        move |val: String| {
+                            a.oauth2.token_url = val;
+                            on_change.call(a.clone());
+                        }
+                    },
+                    on_var_edit: move |evt| {
+                        if let Some(h) = on_var_edit {
+                            h.call(evt);
+                        }
+                    },
+                }
+                VarHoverInput {
+                    class: "kv-var-input".to_string(),
+                    value: auth.oauth2.client_id.clone(),
+                    placeholder: "Client ID".to_string(),
+                    input_id: "auth-oauth2-clientid-input".to_string(),
+                    vars: vctx.clone(),
+                    on_input: {
+                        let mut a = auth.clone();
+                        move |val: String| {
+                            a.oauth2.client_id = val;
+                            on_change.call(a.clone());
+                        }
+                    },
+                    on_var_edit: move |evt| {
+                        if let Some(h) = on_var_edit {
+                            h.call(evt);
+                        }
+                    },
+                }
+                VarHoverInput {
+                    class: "kv-var-input".to_string(),
+                    value: auth.oauth2.client_secret.clone(),
+                    placeholder: "Client Secret".to_string(),
+                    input_id: "auth-oauth2-clientsecret-input".to_string(),
+                    vars: vctx.clone(),
+                    on_input: {
+                        let mut a = auth.clone();
+                        move |val: String| {
+                            a.oauth2.client_secret = val;
+                            on_change.call(a.clone());
+                        }
+                    },
+                    on_var_edit: move |evt| {
+                        if let Some(h) = on_var_edit {
+                            h.call(evt);
+                        }
+                    },
+                }
+                VarHoverInput {
+                    class: "kv-var-input".to_string(),
+                    value: auth.oauth2.scope.clone(),
+                    placeholder: "Scope".to_string(),
+                    input_id: "auth-oauth2-scope-input".to_string(),
+                    vars: vctx.clone(),
+                    on_input: {
+                        let mut a = auth.clone();
+                        move |val: String| {
+                            a.oauth2.scope = val;
+                            on_change.call(a.clone());
+                        }
+                    },
+                    on_var_edit: move |evt| {
+                        if let Some(h) = on_var_edit {
+                            h.call(evt);
+                        }
+                    },
+                }
+            } else {
+                input {
+                    r#type: "text",
+                    placeholder: "Auth URL",
+                    value: "{auth.oauth2.auth_url}",
+                    oninput: {
+                        let mut a = auth.clone();
+                        move |evt: Event<FormData>| {
+                            a.oauth2.auth_url = evt.value();
+                            on_change.call(a.clone());
+                        }
                     }
                 }
-            }
-            input {
-                r#type: "text",
-                placeholder: "Token URL",
-                value: "{auth.oauth2.token_url}",
-                oninput: {
-                    let mut a = auth.clone();
-                    move |evt: Event<FormData>| {
-                        a.oauth2.token_url = evt.value();
-                        on_change.call(a.clone());
+                input {
+                    r#type: "text",
+                    placeholder: "Token URL",
+                    value: "{auth.oauth2.token_url}",
+                    oninput: {
+                        let mut a = auth.clone();
+                        move |evt: Event<FormData>| {
+                            a.oauth2.token_url = evt.value();
+                            on_change.call(a.clone());
+                        }
                     }
                 }
-            }
-            input {
-                r#type: "text",
-                placeholder: "Client ID",
-                value: "{auth.oauth2.client_id}",
-                oninput: {
-                    let mut a = auth.clone();
-                    move |evt: Event<FormData>| {
-                        a.oauth2.client_id = evt.value();
-                        on_change.call(a.clone());
+                input {
+                    r#type: "text",
+                    placeholder: "Client ID",
+                    value: "{auth.oauth2.client_id}",
+                    oninput: {
+                        let mut a = auth.clone();
+                        move |evt: Event<FormData>| {
+                            a.oauth2.client_id = evt.value();
+                            on_change.call(a.clone());
+                        }
                     }
                 }
-            }
-            input {
-                r#type: "password",
-                placeholder: "Client Secret",
-                value: "{auth.oauth2.client_secret}",
-                oninput: {
-                    let mut a = auth.clone();
-                    move |evt: Event<FormData>| {
-                        a.oauth2.client_secret = evt.value();
-                        on_change.call(a.clone());
+                input {
+                    r#type: "password",
+                    placeholder: "Client Secret",
+                    value: "{auth.oauth2.client_secret}",
+                    oninput: {
+                        let mut a = auth.clone();
+                        move |evt: Event<FormData>| {
+                            a.oauth2.client_secret = evt.value();
+                            on_change.call(a.clone());
+                        }
                     }
                 }
-            }
-            input {
-                r#type: "text",
-                placeholder: "Scope",
-                value: "{auth.oauth2.scope}",
-                oninput: {
-                    let mut a = auth.clone();
-                    move |evt: Event<FormData>| {
-                        a.oauth2.scope = evt.value();
-                        on_change.call(a.clone());
+                input {
+                    r#type: "text",
+                    placeholder: "Scope",
+                    value: "{auth.oauth2.scope}",
+                    oninput: {
+                        let mut a = auth.clone();
+                        move |evt: Event<FormData>| {
+                            a.oauth2.scope = evt.value();
+                            on_change.call(a.clone());
+                        }
                     }
                 }
             }

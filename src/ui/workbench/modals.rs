@@ -15,6 +15,7 @@ use crate::runtime::{run_collection_with_config, RunnerConfig};
 use crate::storage::JsonStore;
 use crate::ui::loading::Spinner;
 use crate::ui::runner_panel::{RunnerEvent, RunnerPanel};
+use crate::ui::var_hover::VarHoverInput;
 use crate::ui::workbench::cloud::switch_to_env;
 use crate::ui::workbench::state::{
     execute_tree_delete, sync_env_vars, ImpexModal, WorkbenchState,
@@ -208,34 +209,41 @@ pub fn VarsPage(st: WorkbenchState) -> Element {
                                                             }
                                                         }
                                                         td {
-                                                            input {
-                                                                value: "{env.values.get(i).map(|r| r.initial_value.clone()).unwrap_or_default()}",
-                                                                placeholder: "Initial value (synced)",
-                                                                oninput: {
+                                                            VarHoverInput {
+                                                                class: "kv-var-input".to_string(),
+                                                                value: env.values.get(i).map(|r| r.initial_value.clone()).unwrap_or_default(),
+                                                                placeholder: "Initial value (synced)".to_string(),
+                                                                input_id: format!("env-init-val-{env_id}-{i}"),
+                                                                vars: vars(),
+                                                                on_input: {
                                                                     let idx = i;
-                                                                    move |evt: Event<FormData>| {
+                                                                    move |val: String| {
                                                                         let mut envs = environments();
                                                                         if let Some(e) = envs.iter_mut().find(|e| e.id == env_id) {
                                                                             if let Some(r) = e.values.get_mut(idx) {
-                                                                                r.initial_value = evt.value();
+                                                                                r.initial_value = val;
                                                                             }
                                                                         }
                                                                         environments.set(envs);
                                                                     }
-                                                                }
+                                                                },
+                                                                on_var_edit: move |_| {},
                                                             }
                                                         }
                                                         td {
-                                                            input {
-                                                                value: "{env.values.get(i).map(|r| r.current_value.clone()).unwrap_or_default()}",
-                                                                placeholder: "Current value (active)",
-                                                                oninput: {
+                                                            VarHoverInput {
+                                                                class: "kv-var-input".to_string(),
+                                                                value: env.values.get(i).map(|r| r.current_value.clone()).unwrap_or_default(),
+                                                                placeholder: "Current value (active)".to_string(),
+                                                                input_id: format!("env-cur-val-{env_id}-{i}"),
+                                                                vars: vars(),
+                                                                on_input: {
                                                                     let idx = i;
-                                                                    move |evt: Event<FormData>| {
+                                                                    move |val: String| {
                                                                         let mut envs = environments();
                                                                         if let Some(e) = envs.iter_mut().find(|e| e.id == env_id) {
                                                                             if let Some(r) = e.values.get_mut(idx) {
-                                                                                r.current_value = evt.value();
+                                                                                r.current_value = val;
                                                                             }
                                                                         }
                                                                         environments.set(envs);
@@ -245,7 +253,8 @@ pub fn VarsPage(st: WorkbenchState) -> Element {
                                                                             vars.set(v);
                                                                         }
                                                                     }
-                                                                }
+                                                                },
+                                                                on_var_edit: move |_| {},
                                                             }
                                                         }
                                                         td {
@@ -1543,13 +1552,17 @@ pub fn ColVarEditor(
                             }
                         }
                         td {
-                            input {
-                                value: "{row.value}",
-                                oninput: move |evt: Event<FormData>| {
+                            VarHoverInput {
+                                class: "kv-var-input".to_string(),
+                                value: row.value.clone(),
+                                placeholder: "Value".to_string(),
+                                input_id: format!("modal-col-var-{cid}-{i}"),
+                                vars: vars(),
+                                on_input: move |val: String| {
                                     let mut cols = collections();
                                     if let Some(col) = cols.iter_mut().find(|c| c.id == cid) {
                                         if let Some(r) = col.variables.get_mut(i) {
-                                            r.value = evt.value();
+                                            r.value = val;
                                         }
                                         if sync_active {
                                             let mut v = vars();
@@ -1558,7 +1571,8 @@ pub fn ColVarEditor(
                                         }
                                     }
                                     collections.set(cols);
-                                }
+                                },
+                                on_var_edit: move |_| {},
                             }
                         }
                         td {

@@ -10,7 +10,8 @@ use uuid::Uuid;
 
 use super::collection::{Collection, CollectionItem, Folder};
 use super::request::{
-    AuthConfig, AuthType, BodyMode, HttpMethod, KeyValue, RequestDraft,
+    AuthConfig, AuthType, BodyMode, FormDataField, HttpMethod, KeyValue, RequestDraft,
+    SavedExample,
 };
 
 #[derive(Debug, Clone, thiserror::Error)]
@@ -44,13 +45,31 @@ pub fn import_collection_v21(text: &str) -> Result<Collection, ImpexError> {
         .unwrap_or("")
         .to_string();
 
+    let col_headers = extract_headers(root.get("header").or_else(|| root.get("headers")));
     let items_val = root.get("item").cloned().unwrap_or(Value::Array(vec![]));
-    let items = import_items(&items_val)?;
+    let items = import_items(&items_val, &col_headers)?;
 
     let mut col = Collection::new(name);
     col.description = description;
     col.items = items;
-    col.auth = import_auth(root.get("auth"));
+    col.auth = root
+        .get("auth")
+        .map(|a| import_auth(Some(a)))
+        .unwrap_or_else(|| AuthConfig {
+            auth_type: AuthType::NoAuth,
+            ..Default::default()
+        });
+    if let Some(events) = root.get("event").and_then(|v| v.as_array()) {
+        for ev in events {
+            let listen = ev.get("listen").and_then(|v| v.as_str()).unwrap_or("");
+            let exec = extract_script_exec(ev);
+            match listen {
+                "prerequest" => col.pre_request_script = exec,
+                "test" => col.test_script = exec,
+                _ => {}
+            }
+        }
+    }
     if let Some(vars) = root.get("variable").and_then(|v| v.as_array()) {
         col.variables = vars
             .iter()
@@ -73,14 +92,64 @@ pub fn import_collection_v21(text: &str) -> Result<Collection, ImpexError> {
     Ok(col)
 }
 
-fn import_items(val: &Value) -> Result<Vec<CollectionItem>, ImpexError> {
+fn extract_headers(val: Option<&Value>) -> Vec<KeyValue> {
+    let Some(val) = val else { return vec![]; };
+    if let Some(arr) = val.as_array() {
+        arr.iter()
+            .filter_map(|h| {
+                let key = h.get("key").and_then(|k| k.as_str())?.to_string();
+                if key.is_empty() {
+                    return None;
+                }
+                let value = h.get("value").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                let disabled = h.get("disabled").and_then(|v| v.as_bool()).unwrap_or(false);
+                Some(KeyValue {
+                    key,
+                    value,
+                    enabled: !disabled,
+                })
+            })
+            .collect()
+    } else if let Some(s) = val.as_str() {
+        s.lines()
+            .filter_map(|line| {
+                let line = line.trim();
+                if line.is_empty() {
+                    return None;
+                }
+                let (k, v) = line.split_once(':')?;
+                Some(KeyValue {
+                    key: k.trim().to_string(),
+                    value: v.trim().to_string(),
+                    enabled: !k.trim().starts_with("//"),
+                })
+            })
+            .collect()
+    } else {
+        vec![]
+    }
+}
+
+fn extract_script_exec(ev: &Value) -> String {
+    if let Some(lines) = ev.pointer("/script/exec").and_then(|v| v.as_array()) {
+        lines.iter().filter_map(|l| l.as_str()).collect::<Vec<_>>().join("\n")
+    } else if let Some(s) = ev.pointer("/script/exec").and_then(|v| v.as_str()) {
+        s.to_string()
+    } else if let Some(s) = ev.pointer("/script/src").and_then(|v| v.as_str()) {
+        s.to_string()
+    } else {
+        String::new()
+    }
+}
+
+fn import_items(val: &Value, inherited_headers: &[KeyValue]) -> Result<Vec<CollectionItem>, ImpexError> {
     let arr = val
         .as_array()
         .ok_or_else(|| ImpexError::Json("item must be array".into()))?;
     let mut out = Vec::new();
     for item in arr {
         if item.get("request").is_some() {
-            out.push(CollectionItem::Request(import_request(item)?));
+            out.push(CollectionItem::Request(import_request_with_inheritance(item, inherited_headers)?));
         } else if item.get("item").is_some() {
             let name = item
                 .get("name")
@@ -88,17 +157,69 @@ fn import_items(val: &Value) -> Result<Vec<CollectionItem>, ImpexError> {
                 .unwrap_or("Folder")
                 .to_string();
             let mut folder = Folder::new(name);
-            folder.items = import_items(item.get("item").unwrap())?;
+            if let Some(id_str) = item.get("id").or_else(|| item.get("_postman_id")).and_then(|v| v.as_str()) {
+                if let Ok(u) = Uuid::parse_str(id_str) {
+                    folder.id = u;
+                }
+            }
+            if let Some(desc) = item.get("description").and_then(|v| v.as_str()) {
+                folder.description = desc.to_string();
+            }
+            folder.auth = import_auth(item.get("auth"));
+            if let Some(events) = item.get("event").and_then(|v| v.as_array()) {
+                for ev in events {
+                    let listen = ev.get("listen").and_then(|v| v.as_str()).unwrap_or("");
+                    let exec = extract_script_exec(ev);
+                    match listen {
+                        "prerequest" => folder.pre_request_script = exec,
+                        "test" => folder.test_script = exec,
+                        _ => {}
+                    }
+                }
+            }
+            let folder_headers = extract_headers(item.get("header").or_else(|| item.get("headers")));
+            let mut combined = inherited_headers.to_vec();
+            for fh in folder_headers {
+                if !combined.iter().any(|h| h.key.eq_ignore_ascii_case(&fh.key)) {
+                    combined.push(fh);
+                }
+            }
+            folder.items = import_items(item.get("item").unwrap(), &combined)?;
             out.push(CollectionItem::Folder(folder));
         }
     }
     Ok(out)
 }
 
+fn import_request_with_inheritance(item: &Value, inherited_headers: &[KeyValue]) -> Result<RequestDraft, ImpexError> {
+    let mut draft = import_request(item)?;
+    for inh in inherited_headers {
+        if !draft.headers.iter().any(|h| !h.key.is_empty() && h.key.eq_ignore_ascii_case(&inh.key)) {
+            let insert_pos = if draft.headers.last().map(|h| h.key.is_empty()).unwrap_or(false) {
+                draft.headers.len() - 1
+            } else {
+                draft.headers.len()
+            };
+            draft.headers.insert(insert_pos, inh.clone());
+        }
+    }
+    Ok(draft)
+}
+
 fn import_request(item: &Value) -> Result<RequestDraft, ImpexError> {
-    let req = item
+    let req_val = item
         .get("request")
         .ok_or_else(|| ImpexError::Json("missing request".into()))?;
+
+    let req_is_str = req_val.is_string();
+    let empty_obj = serde_json::json!({});
+    let req = if req_is_str { &empty_obj } else { req_val };
+
+    let url_str = if req_is_str {
+        req_val.as_str().unwrap_or("").to_string()
+    } else {
+        url_from_postman(req.get("url"))
+    };
 
     let mut draft = RequestDraft {
         id: item
@@ -125,17 +246,18 @@ fn import_request(item: &Value) -> Result<RequestDraft, ImpexError> {
                 .and_then(|v| v.as_str())
                 .unwrap_or("GET"),
         ),
-        url: url_from_postman(req.get("url")),
+        url: url_str,
         ..Default::default()
     };
 
-    if let Some(headers) = req.get("header").and_then(|v| v.as_array()) {
-        draft.headers = headers
+    // Query parameters from Postman URL
+    if let Some(query_arr) = req.pointer("/url/query").and_then(|v| v.as_array()) {
+        let params: Vec<KeyValue> = query_arr
             .iter()
-            .filter_map(|h| {
-                let key = h.get("key")?.as_str()?.to_string();
-                let value = h.get("value").and_then(|v| v.as_str()).unwrap_or("").to_string();
-                let disabled = h.get("disabled").and_then(|v| v.as_bool()).unwrap_or(false);
+            .filter_map(|q| {
+                let key = q.get("key")?.as_str()?.to_string();
+                let value = q.get("value").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                let disabled = q.get("disabled").and_then(|v| v.as_bool()).unwrap_or(false);
                 Some(KeyValue {
                     key,
                     value,
@@ -143,6 +265,20 @@ fn import_request(item: &Value) -> Result<RequestDraft, ImpexError> {
                 })
             })
             .collect();
+        if !params.is_empty() {
+            draft.params = params;
+            draft.params.push(KeyValue::new("", ""));
+        }
+    }
+
+    let parsed_hdrs = extract_headers(
+        req.get("header")
+            .or_else(|| req.get("headers"))
+            .or_else(|| item.get("header"))
+            .or_else(|| item.get("headers")),
+    );
+    if !parsed_hdrs.is_empty() {
+        draft.headers = parsed_hdrs;
         draft.headers.push(KeyValue::new("", ""));
     }
 
@@ -156,7 +292,6 @@ fn import_request(item: &Value) -> Result<RequestDraft, ImpexError> {
                     .and_then(|v| v.as_str())
                     .unwrap_or("")
                     .to_string();
-                // Postman UI: body.options.raw.language === "json" ⇒ Content-Type
                 let lang = body
                     .pointer("/options/raw/language")
                     .and_then(|v| v.as_str())
@@ -194,7 +329,35 @@ fn import_request(item: &Value) -> Result<RequestDraft, ImpexError> {
             }
             "formdata" => {
                 draft.body_mode = BodyMode::FormData;
-                draft.body = String::new();
+                if let Some(arr) = body.get("formdata").and_then(|v| v.as_array()) {
+                    draft.body_formdata = arr
+                        .iter()
+                        .filter_map(|f| {
+                            let key = f.get("key")?.as_str()?.to_string();
+                            let is_file = f.get("type").and_then(|v| v.as_str()) == Some("file");
+                            let value = if is_file {
+                                f.get("src").and_then(|v| v.as_str()).unwrap_or("").to_string()
+                            } else {
+                                f.get("value").and_then(|v| v.as_str()).unwrap_or("").to_string()
+                            };
+                            let disabled = f.get("disabled").and_then(|v| v.as_bool()).unwrap_or(false);
+                            Some(FormDataField {
+                                key,
+                                value,
+                                enabled: !disabled,
+                                is_file,
+                            })
+                        })
+                        .collect();
+                    draft.body_formdata.push(FormDataField::default());
+                }
+            }
+            "graphql" => {
+                draft.body_mode = BodyMode::Graphql;
+                if let Some(g) = body.get("graphql") {
+                    draft.graphql_query = g.get("query").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                    draft.graphql_variables = g.get("variables").and_then(|v| v.as_str()).unwrap_or("{}").to_string();
+                }
             }
             "file" | "binary" => {
                 draft.body_mode = BodyMode::Binary;
@@ -211,29 +374,59 @@ fn import_request(item: &Value) -> Result<RequestDraft, ImpexError> {
         }
     }
 
-    draft.auth = import_auth(req.get("auth"));
+    draft.auth = import_auth(req.get("auth").or_else(|| item.get("auth")));
 
     // events: prerequest / test
-    if let Some(events) = item.get("event").and_then(|v| v.as_array()) {
+    let events_opt = item.get("event").or_else(|| req.get("event"));
+    if let Some(events) = events_opt.and_then(|v| v.as_array()) {
         for ev in events {
             let listen = ev.get("listen").and_then(|v| v.as_str()).unwrap_or("");
-            let exec = ev
-                .pointer("/script/exec")
-                .and_then(|v| v.as_array())
-                .map(|lines| {
-                    lines
-                        .iter()
-                        .filter_map(|l| l.as_str())
-                        .collect::<Vec<_>>()
-                        .join("\n")
-                })
-                .unwrap_or_default();
+            let exec = extract_script_exec(ev);
             match listen {
                 "prerequest" => draft.pre_request_script = exec,
                 "test" => draft.test_script = exec,
                 _ => {}
             }
         }
+    }
+
+    // Protocol Profile Behavior
+    if let Some(proto) = item.get("protocolProfileBehavior").or_else(|| req.get("protocolProfileBehavior")) {
+        if let Some(fr) = proto.get("followRedirects").and_then(|v| v.as_bool()) {
+            draft.settings.follow_redirects = fr;
+        }
+        if let Some(ssl) = proto.get("strictSSL").and_then(|v| v.as_bool()) {
+            draft.settings.ssl_verify = ssl;
+        }
+        if let Some(to) = proto.get("timeout").and_then(|v| v.as_u64()) {
+            draft.settings.timeout_ms = to;
+        }
+    }
+
+    // Saved response examples (for mock / reference)
+    if let Some(resps) = item.get("response").and_then(|v| v.as_array()) {
+        draft.examples = resps
+            .iter()
+            .map(|r| {
+                let name = r.get("name").and_then(|v| v.as_str()).unwrap_or("Response").to_string();
+                let status = r.get("code").and_then(|v| v.as_u64()).unwrap_or(200) as u16;
+                let status_text = r.get("status").and_then(|v| v.as_str()).unwrap_or("OK").to_string();
+                let body = r.get("body").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                let headers = extract_headers(r.get("header").or_else(|| r.get("headers")))
+                    .into_iter()
+                    .filter(|h| !h.key.is_empty())
+                    .map(|h| (h.key, h.value))
+                    .collect();
+                SavedExample {
+                    id: Uuid::new_v4(),
+                    name,
+                    status,
+                    status_text,
+                    headers,
+                    body,
+                }
+            })
+            .collect();
     }
 
     if let Some(arr) = item.pointer("/x-blitz/assertions") {
@@ -362,7 +555,26 @@ pub fn export_collection_v21(col: &Collection) -> Result<String, ImpexError> {
             })
         })
         .collect();
-    let doc = json!({
+    let mut events = Vec::new();
+    if !col.pre_request_script.is_empty() {
+        events.push(json!({
+            "listen": "prerequest",
+            "script": {
+                "type": "text/javascript",
+                "exec": col.pre_request_script.lines().collect::<Vec<_>>(),
+            }
+        }));
+    }
+    if !col.test_script.is_empty() {
+        events.push(json!({
+            "listen": "test",
+            "script": {
+                "type": "text/javascript",
+                "exec": col.test_script.lines().collect::<Vec<_>>(),
+            }
+        }));
+    }
+    let mut doc = json!({
         "info": {
             "name": col.name,
             "description": col.description,
@@ -373,6 +585,9 @@ pub fn export_collection_v21(col: &Collection) -> Result<String, ImpexError> {
         "variable": variables,
         "item": export_items(&col.items),
     });
+    if !events.is_empty() {
+        doc["event"] = Value::Array(events);
+    }
     serde_json::to_string_pretty(&doc).map_err(|e| ImpexError::Json(e.to_string()))
 }
 
@@ -492,10 +707,39 @@ fn export_items(items: &[CollectionItem]) -> Vec<Value> {
     items
         .iter()
         .map(|item| match item {
-            CollectionItem::Folder(f) => json!({
-                "name": f.name,
-                "item": export_items(&f.items),
-            }),
+            CollectionItem::Folder(f) => {
+                let mut events = Vec::new();
+                if !f.pre_request_script.is_empty() {
+                    events.push(json!({
+                        "listen": "prerequest",
+                        "script": {
+                            "type": "text/javascript",
+                            "exec": f.pre_request_script.lines().collect::<Vec<_>>(),
+                        }
+                    }));
+                }
+                if !f.test_script.is_empty() {
+                    events.push(json!({
+                        "listen": "test",
+                        "script": {
+                            "type": "text/javascript",
+                            "exec": f.test_script.lines().collect::<Vec<_>>(),
+                        }
+                    }));
+                }
+                let mut folder_json = json!({
+                    "id": f.id.to_string(),
+                    "_postman_id": f.id.to_string(),
+                    "name": f.name,
+                    "description": f.description,
+                    "auth": export_auth(&f.auth),
+                    "item": export_items(&f.items),
+                });
+                if !events.is_empty() {
+                    folder_json["event"] = Value::Array(events);
+                }
+                folder_json
+            }
             CollectionItem::Request(r) => export_request(r),
         })
         .collect()
@@ -526,7 +770,29 @@ fn export_request(r: &RequestDraft) -> Value {
             body = json!({ "mode": "urlencoded", "urlencoded": pairs });
         }
         BodyMode::FormData => {
-            body = json!({ "mode": "formdata", "formdata": [] });
+            let fields: Vec<Value> = r
+                .body_formdata
+                .iter()
+                .filter(|f| !f.key.is_empty())
+                .map(|f| {
+                    if f.is_file {
+                        json!({
+                            "key": f.key,
+                            "type": "file",
+                            "src": f.value,
+                            "disabled": !f.enabled,
+                        })
+                    } else {
+                        json!({
+                            "key": f.key,
+                            "type": "text",
+                            "value": f.value,
+                            "disabled": !f.enabled,
+                        })
+                    }
+                })
+                .collect();
+            body = json!({ "mode": "formdata", "formdata": fields });
         }
         BodyMode::Graphql => {
             body = json!({
@@ -578,6 +844,46 @@ fn export_request(r: &RequestDraft) -> Value {
         }));
     }
 
+    let url_val = if r.params.iter().any(|p| !p.key.is_empty()) {
+        let query_pairs: Vec<Value> = r
+            .params
+            .iter()
+            .filter(|p| !p.key.is_empty())
+            .map(|p| {
+                json!({
+                    "key": p.key,
+                    "value": p.value,
+                    "disabled": !p.enabled,
+                })
+            })
+            .collect();
+        json!({
+            "raw": r.url,
+            "query": query_pairs,
+        })
+    } else {
+        json!(r.url)
+    };
+
+    let responses: Vec<Value> = r
+        .examples
+        .iter()
+        .map(|ex| {
+            let hdrs: Vec<Value> = ex
+                .headers
+                .iter()
+                .map(|(k, v)| json!({ "key": k, "value": v }))
+                .collect();
+            json!({
+                "name": ex.name,
+                "status": ex.status_text,
+                "code": ex.status,
+                "header": hdrs,
+                "body": ex.body,
+            })
+        })
+        .collect();
+
     let mut item = json!({
         "id": r.id.to_string(),
         "_postman_id": r.id.to_string(),
@@ -586,11 +892,12 @@ fn export_request(r: &RequestDraft) -> Value {
             "method": r.method.as_str(),
             "header": headers,
             "body": body,
-            "url": r.url,
+            "url": url_val,
             "auth": export_auth(&r.auth),
             "description": r.description,
         },
         "event": events,
+        "response": responses,
     });
     // Blitz extension (ignored by Postman): no-code assertions survive Git sync.
     if !r.assertions.is_empty() {
@@ -1169,5 +1476,127 @@ mod tests {
         // No assertions => no extension key written (clean Postman output).
         let plain = export_request_item(&RequestDraft::default());
         assert!(plain.get("x-blitz").is_none());
+    }
+
+    #[test]
+    fn test_import_postman_comprehensive_features() {
+        let sample = r#"{
+            "info": {
+                "name": "Comprehensive Collection",
+                "description": "Full feature test",
+                "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+            },
+            "header": [
+                { "key": "X-Col-Header", "value": "col-val" }
+            ],
+            "event": [
+                {
+                    "listen": "prerequest",
+                    "script": { "exec": ["console.log('col prerequest');"] }
+                },
+                {
+                    "listen": "test",
+                    "script": { "exec": ["pm.test('col test', () => {});"] }
+                }
+            ],
+            "item": [
+                {
+                    "name": "Admin Folder",
+                    "description": "Admin APIs",
+                    "header": [
+                        { "key": "x-auth-host", "value": "snbhakkiportal.rcell.me" }
+                    ],
+                    "event": [
+                        {
+                            "listen": "prerequest",
+                            "script": { "exec": ["console.log('folder prerequest');"] }
+                        }
+                    ],
+                    "item": [
+                        {
+                            "name": "Login",
+                            "request": {
+                                "method": "POST",
+                                "url": {
+                                    "raw": "https://api.rcell.me/login?org=rcell",
+                                    "query": [
+                                        { "key": "org", "value": "rcell" }
+                                    ]
+                                },
+                                "header": [
+                                    { "key": "Content-Type", "value": "application/json" }
+                                ],
+                                "body": {
+                                    "mode": "formdata",
+                                    "formdata": [
+                                        { "key": "username", "value": "admin", "type": "text" },
+                                        { "key": "avatar", "src": "/path/to/img.png", "type": "file" }
+                                    ]
+                                },
+                                "protocolProfileBehavior": {
+                                    "followRedirects": false,
+                                    "strictSSL": true
+                                }
+                            },
+                            "response": [
+                                {
+                                    "name": "Success Example",
+                                    "code": 200,
+                                    "status": "OK",
+                                    "body": "{\"token\":\"xyz\"}",
+                                    "header": [
+                                        { "key": "Content-Type", "value": "application/json" }
+                                    ]
+                                }
+                            ]
+                        }
+                    ]
+                }
+            ]
+        }"#;
+
+        let col = import_collection_v21(sample).unwrap();
+        assert_eq!(col.name, "Comprehensive Collection");
+        assert_eq!(col.pre_request_script, "console.log('col prerequest');");
+        assert_eq!(col.test_script, "pm.test('col test', () => {});");
+
+        assert_eq!(col.items.len(), 1);
+        let folder = match &col.items[0] {
+            CollectionItem::Folder(f) => f,
+            _ => panic!("expected folder"),
+        };
+        assert_eq!(folder.name, "Admin Folder");
+        assert_eq!(folder.description, "Admin APIs");
+        assert_eq!(folder.pre_request_script, "console.log('folder prerequest');");
+
+        assert_eq!(folder.items.len(), 1);
+        let req = match &folder.items[0] {
+            CollectionItem::Request(r) => r,
+            _ => panic!("expected request"),
+        };
+        assert_eq!(req.name, "Login");
+        // Verify folder header inherited into request!
+        assert!(req.headers.iter().any(|h| h.key.eq_ignore_ascii_case("x-auth-host") && h.value == "snbhakkiportal.rcell.me"));
+        // Verify collection header inherited into request!
+        assert!(req.headers.iter().any(|h| h.key.eq_ignore_ascii_case("X-Col-Header") && h.value == "col-val"));
+        // Verify request's own header
+        assert!(req.headers.iter().any(|h| h.key.eq_ignore_ascii_case("Content-Type") && h.value == "application/json"));
+
+        // Verify query params imported
+        assert!(req.params.iter().any(|p| p.key == "org" && p.value == "rcell"));
+
+        // Verify form-data imported
+        assert_eq!(req.body_mode, BodyMode::FormData);
+        assert!(req.body_formdata.iter().any(|f| f.key == "username" && f.value == "admin" && !f.is_file));
+        assert!(req.body_formdata.iter().any(|f| f.key == "avatar" && f.value == "/path/to/img.png" && f.is_file));
+
+        // Verify protocol profile settings imported
+        assert!(!req.settings.follow_redirects);
+        assert!(req.settings.ssl_verify);
+
+        // Verify saved response examples imported
+        assert_eq!(req.examples.len(), 1);
+        assert_eq!(req.examples[0].status, 200);
+        assert_eq!(req.examples[0].body, "{\"token\":\"xyz\"}");
     }
 }
