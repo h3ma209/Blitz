@@ -1,6 +1,7 @@
 //! Postman Runtime default / system headers + JSON body prep.
 //! Observed in Postman.app ASAR (`postman-runtime`): User-Agent PostmanRuntime/*,
-//! Accept */*, Accept-Encoding, Cache-Control, Postman-Token, Connection, Host.
+//! Accept */*, Accept-Encoding, Cache-Control, Postman-Token, Connection.
+//! (Note: Host is dynamically managed per hop by the HTTP client / transport).
 
 use uuid::Uuid;
 
@@ -19,29 +20,6 @@ pub fn inject_postman_system_headers(draft: &mut RequestDraft, log: &mut Vec<Str
         if !has_header(draft, key) {
             draft.headers.push(KeyValue::new(key, value));
             log.push(format!("headers: default {key}"));
-        }
-    }
-    // Host header derived from URL if not already present
-    if !has_header(draft, "Host") && !draft.url.is_empty() {
-        if let Ok(parsed) = reqwest::Url::parse(&draft.url) {
-            if let Some(host) = parsed.host_str() {
-                let host_val = if let Some(port) = parsed.port() {
-                    format!("{host}:{port}")
-                } else {
-                    host.to_string()
-                };
-                draft.headers.push(KeyValue::new("Host", &host_val));
-                log.push(format!("headers: default Host {host_val}"));
-            }
-        } else {
-            // Fallback parse without scheme
-            let rest = draft.url.split("://").nth(1).unwrap_or(&draft.url);
-            let host_part = rest.split('/').next().unwrap_or(rest);
-            let host_only = host_part.split('?').next().unwrap_or(host_part).trim();
-            if !host_only.is_empty() && !host_only.contains("{{") {
-                draft.headers.push(KeyValue::new("Host", host_only));
-                log.push(format!("headers: default Host {host_only}"));
-            }
         }
     }
     if !has_header(draft, "Postman-Token") {
@@ -173,7 +151,7 @@ fn uncomment_full_lines(raw: &str) -> String {
         .join("\n")
 }
 
-fn strip_json_comments(input: &str) -> String {
+pub fn strip_json_comments(input: &str) -> String {
     let mut out = String::with_capacity(input.len());
     let chars: Vec<char> = input.chars().collect();
     let mut i = 0;
@@ -304,7 +282,6 @@ mod tests {
         assert!(has_header(&d, "Postman-Token"));
         assert!(has_header(&d, "Accept-Encoding"));
         assert!(has_header(&d, "Connection"));
-        assert!(has_header(&d, "Host"));
         // Don't override
         d.headers
             .iter_mut()

@@ -124,6 +124,7 @@ pub fn RequestBuilder(
                         } else if !d.params.is_empty() && !url.ends_with('?') {
                             d.params.clear();
                         }
+                        d.path_params = crate::core::sync_path_params(&url, &d.path_params);
                         d.url = url;
                         on_change.call(d);
                     }
@@ -196,18 +197,80 @@ pub fn RequestBuilder(
 
         div { class: "builder-pane",
             match tab() {
-                BuilderTab::Params => rsx! {
-                    KvEditor {
-                        rows: draft.params.clone(),
-                        vars: vars.clone(),
-                        on_var_edit,
-                        on_change: {
-                            let draft = draft.clone();
-                            move |rows| {
-                                let mut d = draft.clone();
-                                d.params = rows;
-                                d.url = crate::core::build_url_with_params(&d.url, &d.params);
-                                on_change.call(d);
+                BuilderTab::Params => {
+                    let path_vars = if draft.path_params.is_empty() {
+                        crate::core::sync_path_params(&draft.url, &draft.path_params)
+                    } else {
+                        draft.path_params.clone()
+                    };
+                    rsx! {
+                        div { class: "params-section",
+                            if !path_vars.is_empty() {
+                                div { class: "section-subtitle", "Query Params" }
+                            }
+                            KvEditor {
+                                rows: draft.params.clone(),
+                                vars: vars.clone(),
+                                on_var_edit,
+                                on_change: {
+                                    let draft = draft.clone();
+                                    move |rows| {
+                                        let mut d = draft.clone();
+                                        d.params = rows;
+                                        d.url = crate::core::build_url_with_params(&d.url, &d.params);
+                                        on_change.call(d);
+                                    }
+                                }
+                            }
+                        }
+                        if !path_vars.is_empty() {
+                            div { class: "params-section", style: "margin-top: 18px;",
+                                div { class: "section-subtitle", "Path Variables" }
+                                table { class: "kv-table",
+                                    thead {
+                                        tr {
+                                            th { "Key" }
+                                            th { "Value" }
+                                        }
+                                    }
+                                    tbody {
+                                        for (i, row) in path_vars.iter().enumerate() {
+                                            tr {
+                                                td {
+                                                    input {
+                                                        r#type: "text",
+                                                        readonly: true,
+                                                        value: ":{row.key}",
+                                                        style: "color: #ff9800; font-weight: 600; background: transparent;",
+                                                    }
+                                                }
+                                                td {
+                                                    VarHoverInput {
+                                                        class: "kv-var-input".to_string(),
+                                                        value: row.value.clone(),
+                                                        placeholder: "Value".to_string(),
+                                                        input_id: format!("np-path-val-{i}"),
+                                                        vars: vars.clone(),
+                                                        on_input: {
+                                                            let draft = draft.clone();
+                                                            let path_vars = path_vars.clone();
+                                                            move |val: String| {
+                                                                let mut d = draft.clone();
+                                                                let mut updated = path_vars.clone();
+                                                                if let Some(r) = updated.get_mut(i) {
+                                                                    r.value = val;
+                                                                }
+                                                                d.path_params = updated;
+                                                                on_change.call(d);
+                                                            }
+                                                        },
+                                                        on_var_edit,
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
                             }
                         }
                     }
@@ -216,6 +279,7 @@ pub fn RequestBuilder(
                     KvEditor {
                         rows: draft.headers.clone(),
                         vars: vars.clone(),
+                        is_headers: true,
                         on_var_edit,
                         on_change: {
                             let draft = draft.clone();
@@ -696,60 +760,187 @@ fn ProtocolFields(
     }
 }
 
+fn key_values_to_raw(rows: &[KeyValue]) -> String {
+    let mut out = String::new();
+    for r in rows {
+        if r.key.is_empty() && r.value.is_empty() {
+            continue;
+        }
+        if !r.enabled {
+            out.push_str("// ");
+        }
+        out.push_str(&r.key);
+        out.push_str(": ");
+        out.push_str(&r.value);
+        out.push('\n');
+    }
+    out
+}
+
+fn raw_to_key_values(raw: &str) -> Vec<KeyValue> {
+    let mut rows = Vec::new();
+    for line in raw.lines() {
+        let t = line.trim();
+        if t.is_empty() {
+            continue;
+        }
+        let (enabled, text) = if let Some(stripped) = t.strip_prefix("//") {
+            (false, stripped.trim_start())
+        } else {
+            (true, t)
+        };
+        let (k, v) = if let Some((k, v)) = text.split_once(':') {
+            (k.trim(), v.trim())
+        } else if let Some((k, v)) = text.split_once('=') {
+            (k.trim(), v.trim())
+        } else {
+            (text.trim(), "")
+        };
+        let mut kv = KeyValue::new(k, v);
+        kv.enabled = enabled;
+        rows.push(kv);
+    }
+    ensure_trailing_empty(&mut rows);
+    rows
+}
+
 #[component]
 fn KvEditor(
     rows: Vec<KeyValue>,
     vars: VariableContext,
+    #[props(default)] is_headers: bool,
     on_var_edit: EventHandler<VarEditEvent>,
     on_change: EventHandler<Vec<KeyValue>>,
 ) -> Element {
+    let mut bulk_mode = use_signal(|| false);
+    let mut bulk_text = use_signal(String::new);
+    let mut show_system_headers = use_signal(|| false);
+
     rsx! {
-        table { class: "kv-table",
-            thead {
-                tr {
-                    th { "Key" }
-                    th { "Value" }
+        div { class: "kv-toolbar",
+            div { style: "display: flex; gap: 8px; align-items: center;",
+                button {
+                    class: "btn btn-sm btn-ghost",
+                    r#type: "button",
+                    onclick: {
+                        let rows = rows.clone();
+                        move |_| {
+                            if !bulk_mode() {
+                                bulk_text.set(key_values_to_raw(&rows));
+                                bulk_mode.set(true);
+                            } else {
+                                let next = raw_to_key_values(&bulk_text());
+                                on_change.call(next);
+                                bulk_mode.set(false);
+                            }
+                        }
+                    },
+                    if bulk_mode() { "Table Edit" } else { "Bulk Edit" }
+                }
+                if is_headers {
+                    button {
+                        class: "system-headers-toggle",
+                        r#type: "button",
+                        onclick: move |_| show_system_headers.set(!show_system_headers()),
+                        if show_system_headers() {
+                            "▾ Hide auto-generated headers (6)"
+                        } else {
+                            "▸ 6 auto-generated headers hidden"
+                        }
+                    }
                 }
             }
-            tbody {
-                for (i, row) in rows.iter().enumerate() {
+        }
+        if bulk_mode() {
+            textarea {
+                class: "bulk-edit-textarea",
+                rows: 8,
+                placeholder: "key: value\n// disabled_key: value",
+                value: "{bulk_text()}",
+                oninput: move |evt: Event<FormData>| {
+                    let val = evt.value();
+                    bulk_text.set(val.clone());
+                    let next = raw_to_key_values(&val);
+                    on_change.call(next);
+                }
+            }
+        } else {
+            table { class: "kv-table",
+                thead {
                     tr {
-                        td {
-                            input {
-                                r#type: "text",
-                                value: "{row.key}",
-                                oninput: {
-                                    let rows = rows.clone();
-                                    move |evt: Event<FormData>| {
-                                        let mut next = rows.clone();
-                                        if let Some(r) = next.get_mut(i) {
-                                            r.key = evt.value();
-                                        }
-                                        ensure_trailing_empty(&mut next);
-                                        on_change.call(next);
+                        th { "Key" }
+                        th { "Value" }
+                    }
+                }
+                tbody {
+                    if is_headers && show_system_headers() {
+                        for (k, v) in [
+                            ("User-Agent", "PostmanRuntime/7.43.0"),
+                            ("Accept", "*/*"),
+                            ("Accept-Encoding", "gzip, deflate, br"),
+                            ("Connection", "keep-alive"),
+                            ("Cache-Control", "no-cache"),
+                            ("Postman-Token", "<calculated at runtime>"),
+                        ] {
+                            tr { class: "system-header-row",
+                                td {
+                                    input {
+                                        r#type: "text",
+                                        readonly: true,
+                                        value: "{k}",
+                                        title: "Auto-generated Postman system header",
+                                    }
+                                }
+                                td {
+                                    input {
+                                        r#type: "text",
+                                        readonly: true,
+                                        value: "{v}",
+                                        title: "Auto-generated Postman system header",
                                     }
                                 }
                             }
                         }
-                        td {
-                            VarHoverInput {
-                                class: "kv-var-input".to_string(),
-                                value: row.value.clone(),
-                                placeholder: String::new(),
-                                input_id: format!("np-kv-val-{i}"),
-                                vars: vars.clone(),
-                                on_input: {
-                                    let rows = rows.clone();
-                                    move |val: String| {
-                                        let mut next = rows.clone();
-                                        if let Some(r) = next.get_mut(i) {
-                                            r.value = val;
+                    }
+                    for (i, row) in rows.iter().enumerate() {
+                        tr {
+                            td {
+                                input {
+                                    r#type: "text",
+                                    value: "{row.key}",
+                                    oninput: {
+                                        let rows = rows.clone();
+                                        move |evt: Event<FormData>| {
+                                            let mut next = rows.clone();
+                                            if let Some(r) = next.get_mut(i) {
+                                                r.key = evt.value();
+                                            }
+                                            ensure_trailing_empty(&mut next);
+                                            on_change.call(next);
                                         }
-                                        ensure_trailing_empty(&mut next);
-                                        on_change.call(next);
                                     }
-                                },
-                                on_var_edit,
+                                }
+                            }
+                            td {
+                                VarHoverInput {
+                                    class: "kv-var-input".to_string(),
+                                    value: row.value.clone(),
+                                    placeholder: String::new(),
+                                    input_id: format!("np-kv-val-{i}"),
+                                    vars: vars.clone(),
+                                    on_input: {
+                                        let rows = rows.clone();
+                                        move |val: String| {
+                                            let mut next = rows.clone();
+                                            if let Some(r) = next.get_mut(i) {
+                                                r.value = val;
+                                            }
+                                            ensure_trailing_empty(&mut next);
+                                            on_change.call(next);
+                                        }
+                                    },
+                                    on_var_edit,
+                                }
                             }
                         }
                     }
@@ -839,6 +1030,54 @@ fn BodyEditor(
             option { value: "binary", "binary (file)" }
         }
         if mode == BodyMode::Raw {
+            div { class: "body-editor-toolbar",
+                button {
+                    class: "btn btn-sm btn-ghost",
+                    r#type: "button",
+                    title: "Format and indent JSON body",
+                    onclick: {
+                        let body = body.clone();
+                        let binary_path = binary_path.clone();
+                        let urlencoded = urlencoded.clone();
+                        let formdata = formdata.clone();
+                        let graphql_query = graphql_query.clone();
+                        let graphql_variables = graphql_variables.clone();
+                        move |_| {
+                            let clean = crate::runtime::postman_defaults::strip_json_comments(&body);
+                            if let Ok(val) = serde_json::from_str::<serde_json::Value>(&clean) {
+                                if let Ok(pretty) = serde_json::to_string_pretty(&val) {
+                                    on_change.call((
+                                        mode,
+                                        pretty,
+                                        binary_path.clone(),
+                                        urlencoded.clone(),
+                                        formdata.clone(),
+                                        graphql_query.clone(),
+                                        graphql_variables.clone(),
+                                    ));
+                                }
+                            }
+                        }
+                    },
+                    "✨ Beautify JSON"
+                }
+                {
+                    let trimmed = body.trim();
+                    if trimmed.is_empty() {
+                        rsx! {}
+                    } else {
+                        let clean = crate::runtime::postman_defaults::strip_json_comments(trimmed);
+                        match serde_json::from_str::<serde_json::Value>(&clean) {
+                            Ok(_) => rsx! {
+                                span { class: "json-lint-badge json-lint-ok", "✓ Valid JSON" }
+                            },
+                            Err(e) => rsx! {
+                                span { class: "json-lint-badge json-lint-err", title: "{e}", "⚠ Invalid JSON" }
+                            },
+                        }
+                    }
+                }
+            }
             MultilineCodeField {
                 class: "body-editor".to_string(),
                 value: body.clone(),

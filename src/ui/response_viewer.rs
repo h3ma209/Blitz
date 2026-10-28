@@ -44,6 +44,7 @@ pub fn ResponseViewer(
 ) -> Element {
     let mut tab = use_signal(|| resp_tab_from_default(default_tab));
     let mut search_query = use_signal(String::new);
+    let mut current_match_idx = use_signal(|| 0usize);
     let mut search_open = use_signal(|| false);
     let mut copied_body = use_signal(|| false);
     let render_mode = use_signal(|| true);
@@ -96,11 +97,45 @@ pub fn ResponseViewer(
                                     );
                                     spawn(async move {
                                         let _ = document::eval(&script).await;
+                                        tokio::time::sleep(std::time::Duration::from_millis(2000)).await;
+                                        copied_body.set(false);
                                     });
                                     copied_body.set(true);
                                 }
                             },
                             if copied_body() { "✓ Copied" } else { "📋 Copy" }
+                        }
+                        button {
+                            class: "btn btn-ghost",
+                            title: "Save response body to disk",
+                            onclick: {
+                                let body = resp.body.clone();
+                                let status = resp.status;
+                                move |_| {
+                                    let filename = format!("response-{status}.json");
+                                    let script = format!(
+                                        r#"(() => {{
+                                            const blob = new Blob([{}], {{ type: 'application/json' }});
+                                            const url = URL.createObjectURL(blob);
+                                            const a = document.createElement('a');
+                                            a.href = url;
+                                            a.download = {};
+                                            document.body.appendChild(a);
+                                            a.click();
+                                            setTimeout(() => {{
+                                                document.body.removeChild(a);
+                                                URL.revokeObjectURL(url);
+                                            }}, 100);
+                                        }})()"#,
+                                        serde_json::to_string(&body).unwrap_or_else(|_| "\"\"".into()),
+                                        serde_json::to_string(&filename).unwrap_or_else(|_| "\"response.json\"".into())
+                                    );
+                                    spawn(async move {
+                                        let _ = document::eval(&script).await;
+                                    });
+                                }
+                            },
+                            "💾 Save"
                         }
                         button {
                             class: if search_open() { "btn btn-ghost active" } else { "btn btn-ghost" },
@@ -124,35 +159,65 @@ pub fn ResponseViewer(
                 }
 
                 if search_open() {
-                    div { class: "response-search-bar",
-                        input {
-                            class: "response-search-input",
-                            placeholder: "Search response body…",
-                            value: "{search_query()}",
-                            oninput: move |evt: Event<FormData>| search_query.set(evt.value()),
-                        }
-                        if !search_query().is_empty() {
-                            {
-                                let count = count_matches(&resp.body, &search_query());
-                                let text = if count == 0 {
-                                    "No matches".to_string()
-                                } else if count == 1 {
-                                    "1 match".to_string()
-                                } else {
-                                    format!("{count} matches")
-                                };
-                                rsx! { span { class: "hint", "{text}" } }
+                    {
+                        let count = count_matches(&resp.body, &search_query());
+                        rsx! {
+                            div { class: "response-search-bar",
+                                input {
+                                    class: "response-search-input",
+                                    placeholder: "Search response body…",
+                                    value: "{search_query()}",
+                                    oninput: move |evt: Event<FormData>| {
+                                        search_query.set(evt.value());
+                                        current_match_idx.set(0);
+                                    },
+                                    onkeydown: move |evt: KeyboardEvent| {
+                                        if evt.key() == Key::Enter && count > 0 {
+                                            if evt.modifiers().shift() {
+                                                current_match_idx.set((current_match_idx() + count - 1) % count);
+                                            } else {
+                                                current_match_idx.set((current_match_idx() + 1) % count);
+                                            }
+                                        }
+                                    },
+                                }
+                                if !search_query().is_empty() {
+                                    if count == 0 {
+                                        span { class: "hint", "No matches" }
+                                    } else {
+                                        span { class: "hint", "{current_match_idx() + 1} of {count}" }
+                                        button {
+                                            class: "btn btn-ghost",
+                                            style: "padding: 0 4px;",
+                                            title: "Previous match (Shift+Enter)",
+                                            onclick: move |_| {
+                                                current_match_idx.set((current_match_idx() + count - 1) % count);
+                                            },
+                                            "▲"
+                                        }
+                                        button {
+                                            class: "btn btn-ghost",
+                                            style: "padding: 0 4px;",
+                                            title: "Next match (Enter)",
+                                            onclick: move |_| {
+                                                current_match_idx.set((current_match_idx() + 1) % count);
+                                            },
+                                            "▼"
+                                        }
+                                    }
+                                }
+                                button {
+                                    class: "btn btn-ghost",
+                                    style: "padding: 0 6px;",
+                                    title: "Close search",
+                                    onclick: move |_| {
+                                        search_query.set(String::new());
+                                        current_match_idx.set(0);
+                                        search_open.set(false);
+                                    },
+                                    "✕"
+                                }
                             }
-                        }
-                        button {
-                            class: "btn btn-ghost",
-                            style: "padding: 0 6px;",
-                            title: "Close search",
-                            onclick: move |_| {
-                                search_query.set(String::new());
-                                search_open.set(false);
-                            },
-                            "✕"
                         }
                     }
                 }

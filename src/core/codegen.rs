@@ -73,7 +73,7 @@ fn enabled_headers(draft: &RequestDraft) -> Vec<(&str, &str)> {
 }
 
 fn url_with_params(draft: &RequestDraft) -> String {
-    let mut url = draft.url.clone();
+    let mut url = crate::core::substitute_path_params(&draft.url, &draft.path_params);
     let qs: Vec<_> = draft
         .params
         .iter()

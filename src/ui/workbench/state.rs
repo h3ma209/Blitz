@@ -7,14 +7,14 @@ use uuid::Uuid;
 use dioxus::prelude::*;
 
 use crate::core::{
-    ensure_default_environments, find_environment, find_request_across, remove_across,
-    sync_on_save, trash_collection, AppSettings, CaptureProxyHandle, Collection, CollectionItem,
-    ConsoleLine, CookieJar, Environment, HistoryEntry, MockHandle, PerfReport, RequestDraft,
-    ResponseView, TeamActivity, UpdateInfo, VariableContext, VaultStore, WsSession,
+    collect_all_subtree_ids, ensure_default_environments, find_environment, find_request_across,
+    remove_across, sync_on_save, trash_collection, AppSettings, CaptureProxyHandle, Collection,
+    CollectionItem, ConsoleLine, CookieJar, Environment, HistoryEntry, MockHandle, PerfReport,
+    RequestDraft, ResponseView, TeamActivity, UpdateInfo, VariableContext, VaultStore, WsSession,
 };
 use crate::runtime::RunnerReport;
 use crate::storage::{AppSnapshot, JsonStore};
-use crate::ui::ConflictState;
+use crate::ui::{push_toast, ConflictState, Toast, ToastLevel};
 
 pub static MOCK_HANDLE: Mutex<Option<MockHandle>> = Mutex::new(None);
 pub static WS_SESSION: Mutex<Option<WsSession>> = Mutex::new(None);
@@ -31,7 +31,33 @@ pub enum PaneDrag {
 #[derive(Clone, PartialEq)]
 pub struct PendingDelete {
     pub id: Uuid,
+    pub ids: Vec<Uuid>,
     pub label: String,
+}
+
+impl PendingDelete {
+    pub fn single(id: Uuid, label: String) -> Self {
+        Self {
+            id,
+            ids: vec![id],
+            label,
+        }
+    }
+
+    pub fn batch(ids: Vec<Uuid>, label: String) -> Self {
+        Self {
+            id: ids.first().copied().unwrap_or_default(),
+            ids,
+            label,
+        }
+    }
+}
+
+/// Pending close confirmation for tabs with unsaved changes.
+#[derive(Clone, PartialEq)]
+pub struct PendingCloseTab {
+    pub tab_id: Uuid,
+    pub draft: RequestDraft,
 }
 
 /// In-app clipboard for collection tree cut/copy/paste (folder/request items).
@@ -119,10 +145,15 @@ pub struct WorkbenchState {
     pub cloud_busy: Signal<bool>,
     pub team_syncing: Signal<bool>,
     pub pending_delete: Signal<Option<PendingDelete>>,
+    pub pending_batch_move: Signal<Option<Vec<Uuid>>>,
+    pub pending_close_tab: Signal<Option<PendingCloseTab>>,
     pub tree_clipboard: Signal<Option<TreeClipboard>>,
     pub available_update: Signal<Option<UpdateInfo>>,
     pub checking_update: Signal<bool>,
     pub installing_update: Signal<bool>,
+    pub toasts: Signal<Vec<Toast>>,
+    pub drag_tab_idx: Signal<Option<usize>>,
+    pub show_tab_menu: Signal<bool>,
 }
 
 impl WorkbenchState {
@@ -202,14 +233,28 @@ impl WorkbenchState {
             cloud_busy: use_signal(|| false),
             team_syncing: use_signal(|| false),
             pending_delete: use_signal(|| None::<PendingDelete>),
+            pending_batch_move: use_signal(|| None::<Vec<Uuid>>),
+            pending_close_tab: use_signal(|| None::<PendingCloseTab>),
             tree_clipboard: use_signal(|| None::<TreeClipboard>),
             available_update: use_signal(|| None::<UpdateInfo>),
             checking_update: use_signal(|| false),
             installing_update: use_signal(|| false),
+            toasts: use_signal(Vec::<Toast>::new),
+            drag_tab_idx: use_signal(|| None::<usize>),
+            show_tab_menu: use_signal(|| false),
         }
     }
 
+    pub fn notify(&self, msg: impl Into<String>, level: ToastLevel) {
+        push_toast(self.toasts, Toast::new(msg, level));
+    }
+
     pub fn build_snapshot(&self, settings: AppSettings, active_environment: String) -> AppSnapshot {
+        let mut tabs = (self.open_tabs)();
+        let cur = (self.draft)();
+        if let Some(slot) = tabs.iter_mut().find(|t| t.id == cur.id) {
+            *slot = cur;
+        }
         AppSnapshot {
             collections: (self.collections)(),
             variables: (self.vars)(),
@@ -222,7 +267,7 @@ impl WorkbenchState {
             active_request_id: (self.active_request_id)(),
             settings,
             trash: (self.trash)(),
-            open_tabs: (self.open_tabs)(),
+            open_tabs: tabs,
             responses: (self.responses)(),
             show_vars: (self.show_vars)(),
             show_settings: (self.show_settings)(),
@@ -364,6 +409,52 @@ pub fn execute_tree_delete(
         }
         None
     }
+}
+
+/// Remove multiple items from the tree in batch, closing associated tabs and handling trash.
+pub fn execute_batch_delete(
+    ids: &[Uuid],
+    collections: &mut Vec<Collection>,
+    trash: &mut Vec<Collection>,
+    active_collection_id: &mut Option<Uuid>,
+    active_request_id: &mut Option<Uuid>,
+    draft: &mut RequestDraft,
+    open_tabs: &mut Vec<RequestDraft>,
+) -> usize {
+    let mut total_deleted = 0;
+    let mut all_removed_ids = std::collections::HashSet::new();
+
+    for &id in ids {
+        let sub = collect_all_subtree_ids(collections, id);
+        all_removed_ids.extend(sub);
+        if trash_collection(collections, trash, id) || remove_across(collections, id) {
+            total_deleted += 1;
+        }
+    }
+
+    if let Some(col_id) = *active_collection_id {
+        if all_removed_ids.contains(&col_id) {
+            *active_collection_id = collections.first().map(|c| c.id);
+        }
+    }
+
+    if let Some(req_id) = *active_request_id {
+        if all_removed_ids.contains(&req_id) {
+            *active_request_id = None;
+            *draft = RequestDraft::default();
+        }
+    }
+
+    open_tabs.retain(|t| !all_removed_ids.contains(&t.id));
+
+    if active_request_id.is_none() && !open_tabs.is_empty() {
+        if let Some(last) = open_tabs.last() {
+            *active_request_id = Some(last.id);
+            *draft = last.clone();
+        }
+    }
+
+    total_deleted
 }
 
 pub fn ensure_cloud_defaults(mut st: WorkbenchState) {

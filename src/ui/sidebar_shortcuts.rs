@@ -89,6 +89,7 @@ pub fn CtxMenuItem(
 }
 
 /// Postman-like tree shortcuts when the sidebar tree has focus and a row is selected.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TreeKeyAction {
     Delete,
     Duplicate,
@@ -97,6 +98,10 @@ pub enum TreeKeyAction {
     Cut,
     Paste,
     Open,
+    NavUp,
+    NavDown,
+    NavLeft,
+    NavRight,
 }
 
 /// Map a keydown on the tree to an action, if any.
@@ -108,6 +113,10 @@ pub fn tree_key_action(evt: &Event<KeyboardData>) -> Option<TreeKeyAction> {
     match evt.key() {
         Key::Enter => Some(TreeKeyAction::Open),
         Key::F2 => Some(TreeKeyAction::Rename),
+        Key::ArrowUp => Some(TreeKeyAction::NavUp),
+        Key::ArrowDown => Some(TreeKeyAction::NavDown),
+        Key::ArrowLeft => Some(TreeKeyAction::NavLeft),
+        Key::ArrowRight => Some(TreeKeyAction::NavRight),
         Key::Backspace if meta => Some(TreeKeyAction::Delete),
         Key::Delete if meta => Some(TreeKeyAction::Delete),
         Key::Delete if !meta && !shift => Some(TreeKeyAction::Delete),

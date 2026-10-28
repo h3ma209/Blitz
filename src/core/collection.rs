@@ -658,6 +658,149 @@ pub fn duplicate_across(collections: &mut Vec<Collection>, id: Uuid) -> Option<U
     None
 }
 
+/// Duplicate multiple items in place. Returns list of new IDs created.
+pub fn batch_duplicate_across(collections: &mut Vec<Collection>, ids: &[Uuid]) -> Vec<Uuid> {
+    let mut new_ids = Vec::new();
+    for &id in ids {
+        if let Some(new_id) = duplicate_across(collections, id) {
+            new_ids.push(new_id);
+        }
+    }
+    new_ids
+}
+
+/// Destination option for moving tree items.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MoveDestination {
+    pub id: Uuid,
+    pub name: String,
+    pub is_collection: bool,
+    pub depth: usize,
+}
+
+/// Recursively collect all valid move targets (collections and folders),
+/// excluding `exclude_ids` and any of their descendants.
+pub fn valid_move_destinations(collections: &[Collection], exclude_ids: &[Uuid]) -> Vec<MoveDestination> {
+    let exclude_set: std::collections::HashSet<Uuid> = exclude_ids.iter().copied().collect();
+    let mut out = Vec::new();
+
+    fn collect_folders(
+        items: &[CollectionItem],
+        depth: usize,
+        exclude_set: &std::collections::HashSet<Uuid>,
+        out: &mut Vec<MoveDestination>,
+    ) {
+        for item in items {
+            if let CollectionItem::Folder(folder) = item {
+                if exclude_set.contains(&folder.id) {
+                    continue;
+                }
+                out.push(MoveDestination {
+                    id: folder.id,
+                    name: folder.name.clone(),
+                    is_collection: false,
+                    depth,
+                });
+                collect_folders(&folder.items, depth + 1, exclude_set, out);
+            }
+        }
+    }
+
+    for col in collections {
+        if exclude_set.contains(&col.id) {
+            continue;
+        }
+        out.push(MoveDestination {
+            id: col.id,
+            name: col.name.clone(),
+            is_collection: true,
+            depth: 0,
+        });
+
+        collect_folders(&col.items, 1, &exclude_set, &mut out);
+    }
+
+    out
+}
+
+/// Collects an item ID and all nested descendant IDs (folders and requests).
+pub fn collect_all_subtree_ids(collections: &[Collection], root_id: Uuid) -> std::collections::HashSet<Uuid> {
+    let mut ids = std::collections::HashSet::new();
+    ids.insert(root_id);
+
+    fn collect_items(items: &[CollectionItem], ids: &mut std::collections::HashSet<Uuid>) {
+        for item in items {
+            ids.insert(item.id());
+            if let CollectionItem::Folder(f) = item {
+                collect_items(&f.items, ids);
+            }
+        }
+    }
+
+    if let Some(col) = collections.iter().find(|c| c.id == root_id) {
+        collect_items(&col.items, &mut ids);
+        return ids;
+    }
+
+    for col in collections {
+        if let Some(items) = find_folder_items(&col.items, root_id) {
+            collect_items(items, &mut ids);
+            return ids;
+        }
+    }
+
+    ids
+}
+
+/// Move multiple items to a target collection or folder.
+/// Automatically skips items whose ancestor is already being moved,
+/// and prevents moving into self or descendants.
+pub fn batch_move_items(
+    collections: &mut [Collection],
+    ids: &[Uuid],
+    target_id: Uuid,
+) -> usize {
+    if collections.is_empty() || ids.is_empty() {
+        return 0;
+    }
+    if !is_valid_drop_target(collections, target_id) {
+        return 0;
+    }
+    for &id in ids {
+        if id == target_id || item_contains_id(collections, id, target_id) {
+            return 0;
+        }
+    }
+
+    let ids_set: std::collections::HashSet<Uuid> = ids.iter().copied().collect();
+    let mut to_move = Vec::new();
+    for &id in ids {
+        if collections.iter().any(|c| c.id == id) {
+            continue; // collections cannot be nested
+        }
+        let mut curr = parent_of(collections, id);
+        let mut has_ancestor_in_set = false;
+        while let Some(pid) = curr {
+            if ids_set.contains(&pid) {
+                has_ancestor_in_set = true;
+                break;
+            }
+            curr = parent_of(collections, pid);
+        }
+        if !has_ancestor_in_set {
+            to_move.push(id);
+        }
+    }
+
+    let mut moved_count = 0;
+    for id in to_move {
+        if move_item_to(collections, id, target_id) {
+            moved_count += 1;
+        }
+    }
+    moved_count
+}
+
 /// True when `needle` is `folder_id` itself or nested under that folder.
 pub fn item_contains_id(collections: &[Collection], folder_id: Uuid, needle: Uuid) -> bool {
     for col in collections {
@@ -1008,6 +1151,21 @@ pub fn find_request_across(
         }
     }
     None
+}
+
+/// Returns true if the draft has unsaved modifications compared to collections,
+/// or if it is a new untitled draft that has content entered.
+pub fn is_draft_dirty(draft: &RequestDraft, collections: &[Collection]) -> bool {
+    if let Some((_, saved_req)) = find_request_across(collections, draft.id) {
+        draft != saved_req
+    } else {
+        let def = RequestDraft {
+            id: draft.id,
+            sort_key: draft.sort_key,
+            ..Default::default()
+        };
+        draft != &def
+    }
 }
 
 /// Tab / chrome label: `request name | parent folder name` (parent = direct folder or collection root).
@@ -1608,5 +1766,93 @@ mod tests {
         assert!(row.favorite);
         assert!(!row.name.starts_with('★'));
         assert_eq!(row.name, cols[0].name);
+    }
+
+    #[test]
+    fn test_batch_operations() {
+        let mut cols = Vec::new();
+        let mut col_a = Collection::new("Collection A");
+        let col_a_id = col_a.id;
+        let mut f1 = Folder::new("Folder 1");
+        let f1_id = f1.id;
+        let r1 = RequestDraft::default();
+        let r1_id = r1.id;
+        f1.add_request(r1);
+        col_a.add_folder(f1);
+
+        let r2 = RequestDraft::default();
+        let r2_id = r2.id;
+        col_a.add_request(r2);
+
+        let mut col_b = Collection::new("Collection B");
+        let col_b_id = col_b.id;
+        let f2 = Folder::new("Folder 2");
+        let f2_id = f2.id;
+        col_b.add_folder(f2);
+
+        cols.push(col_a);
+        cols.push(col_b);
+
+        // 1. collect_all_subtree_ids
+        let sub_ids = collect_all_subtree_ids(&cols, f1_id);
+        assert!(sub_ids.contains(&f1_id));
+        assert!(sub_ids.contains(&r1_id));
+        assert_eq!(sub_ids.len(), 2);
+
+        // 2. valid_move_destinations
+        let dests = valid_move_destinations(&cols, &[f1_id]);
+        assert!(dests.iter().any(|d| d.id == col_a_id));
+        assert!(dests.iter().any(|d| d.id == col_b_id));
+        assert!(dests.iter().any(|d| d.id == f2_id));
+        assert!(!dests.iter().any(|d| d.id == f1_id)); // excluded
+
+        // 3. batch_duplicate_across
+        let dup_ids = batch_duplicate_across(&mut cols, &[r1_id, r2_id]);
+        assert_eq!(dup_ids.len(), 2);
+
+        // 4. batch_move_items
+        let moved = batch_move_items(&mut cols, &[f1_id, r2_id], f2_id);
+        assert_eq!(moved, 2);
+        // Verify f1 and r2 are now under f2
+        assert_eq!(parent_of(&cols, f1_id), Some(f2_id));
+        assert_eq!(parent_of(&cols, r2_id), Some(f2_id));
+    }
+
+    #[test]
+    fn test_is_draft_dirty_behavior() {
+        let mut cols = Vec::new();
+        let mut col = Collection::new("API");
+        let req = RequestDraft {
+            name: "Get Users".into(),
+            url: "https://example.com/users".into(),
+            ..Default::default()
+        };
+        col.add_request(req.clone());
+        cols.push(col);
+
+        // Identical to saved request -> clean
+        assert!(!is_draft_dirty(&req, &cols));
+
+        // URL edited -> dirty
+        let mut modified = req.clone();
+        modified.url = "https://example.com/users?page=2".into();
+        assert!(is_draft_dirty(&modified, &cols));
+
+        // Method edited -> dirty
+        let mut mod_method = req.clone();
+        mod_method.method = HttpMethod::Post;
+        assert!(is_draft_dirty(&mod_method, &cols));
+
+        // Brand new untitled empty draft -> clean
+        let untitled = RequestDraft {
+            name: "Untitled Request".into(),
+            ..Default::default()
+        };
+        assert!(!is_draft_dirty(&untitled, &cols));
+
+        // Untitled draft with content entered -> dirty
+        let mut untitled_with_url = untitled.clone();
+        untitled_with_url.url = "https://example.com/custom".into();
+        assert!(is_draft_dirty(&untitled_with_url, &cols));
     }
 }

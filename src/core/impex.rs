@@ -271,6 +271,28 @@ fn import_request(item: &Value) -> Result<RequestDraft, ImpexError> {
         }
     }
 
+    // Path variables from Postman URL
+    if let Some(var_arr) = req.pointer("/url/variable").and_then(|v| v.as_array()) {
+        let path_params: Vec<KeyValue> = var_arr
+            .iter()
+            .filter_map(|q| {
+                let key = q.get("key")?.as_str()?.to_string();
+                let value = q.get("value").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                let disabled = q.get("disabled").and_then(|v| v.as_bool()).unwrap_or(false);
+                Some(KeyValue {
+                    key,
+                    value,
+                    enabled: !disabled,
+                })
+            })
+            .collect();
+        if !path_params.is_empty() {
+            draft.path_params = path_params;
+        }
+    } else {
+        draft.path_params = crate::core::sync_path_params(&draft.url, &[]);
+    }
+
     let parsed_hdrs = extract_headers(
         req.get("header")
             .or_else(|| req.get("headers"))
@@ -844,7 +866,9 @@ fn export_request(r: &RequestDraft) -> Value {
         }));
     }
 
-    let url_val = if r.params.iter().any(|p| !p.key.is_empty()) {
+    let has_query = r.params.iter().any(|p| !p.key.is_empty());
+    let has_path = r.path_params.iter().any(|p| !p.key.is_empty());
+    let url_val = if has_query || has_path {
         let query_pairs: Vec<Value> = r
             .params
             .iter()
@@ -857,10 +881,26 @@ fn export_request(r: &RequestDraft) -> Value {
                 })
             })
             .collect();
-        json!({
+        let var_pairs: Vec<Value> = r
+            .path_params
+            .iter()
+            .filter(|p| !p.key.is_empty())
+            .map(|p| {
+                json!({
+                    "key": p.key,
+                    "value": p.value,
+                    "disabled": !p.enabled,
+                })
+            })
+            .collect();
+        let mut u = json!({
             "raw": r.url,
             "query": query_pairs,
-        })
+        });
+        if !var_pairs.is_empty() {
+            u["variable"] = Value::Array(var_pairs);
+        }
+        u
     } else {
         json!(r.url)
     };

@@ -317,7 +317,11 @@ pub fn VarHoverInput(
                     let scope_label = info.scope.label();
                     let left = state.left;
                     let top = state.top;
-                    let token = format!("{{{{{}}}}}", info.name);
+                    let token = if info.scope == VarResolveScope::Path {
+                        format!(":{}", info.name)
+                    } else {
+                        format!("{{{{{}}}}}", info.name)
+                    };
                     rsx! {
                         DismissBackdrop {
                             z_index: 48,

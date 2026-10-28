@@ -5,8 +5,8 @@ use crate::core::{
     export_environment_json, generate_static_doc_html, generate_swagger_ui_html,
     import_collection_v21, import_environment_texts, import_har, import_openapi3,
     interceptor_limits_blurb, open_browser_url, push_history, routes_from_collections,
-    start_capture_proxy, start_mock, HistoryEntry, HttpMethod, RequestDraft, UiTheme,
-    WorkbenchLayout, HISTORY_MAX,
+    start_capture_proxy, start_mock, HistoryEntry, HttpMethod, RequestDraft, UiSettings,
+    UiTheme, WorkbenchLayout, default_zoom_percent, HISTORY_MAX,
 };
 use crate::ui::env_selector::EnvSelector;
 use crate::ui::theme_selector::ThemeSelector;
@@ -585,6 +585,53 @@ pub fn TopBar(st: WorkbenchState) -> Element {
                                     show_trash.set(true);
                                 },
                                 "Trash…"
+                            }
+                            button {
+                                class: "menu-item",
+                                onclick: move |_| {
+                                    tools_menu_open.set(false);
+                                    let mut s = app_settings();
+                                    let old_z = s.ui.zoom_percent;
+                                    let new_z = UiSettings::clamp_zoom_percent(old_z.saturating_add(UiSettings::ZOOM_STEP_PERCENT));
+                                    if new_z != old_z {
+                                        s.ui.zoom_percent = new_z;
+                                        app_settings.set(s);
+                                        st.persist_local();
+                                    }
+                                    status_msg.set(format!("Zoom: {new_z}%"));
+                                },
+                                "Zoom In (⌘+)"
+                            }
+                            button {
+                                class: "menu-item",
+                                onclick: move |_| {
+                                    tools_menu_open.set(false);
+                                    let mut s = app_settings();
+                                    let old_z = s.ui.zoom_percent;
+                                    let new_z = UiSettings::clamp_zoom_percent(old_z.saturating_sub(UiSettings::ZOOM_STEP_PERCENT));
+                                    if new_z != old_z {
+                                        s.ui.zoom_percent = new_z;
+                                        app_settings.set(s);
+                                        st.persist_local();
+                                    }
+                                    status_msg.set(format!("Zoom: {new_z}%"));
+                                },
+                                "Zoom Out (⌘-)"
+                            }
+                            button {
+                                class: "menu-item",
+                                onclick: move |_| {
+                                    tools_menu_open.set(false);
+                                    let mut s = app_settings();
+                                    let new_z = default_zoom_percent();
+                                    if s.ui.zoom_percent != new_z {
+                                        s.ui.zoom_percent = new_z;
+                                        app_settings.set(s);
+                                        st.persist_local();
+                                    }
+                                    status_msg.set(format!("Zoom reset: {new_z}%"));
+                                },
+                                "Reset Zoom (⌘0 · {app_settings().ui.zoom_percent}%)"
                             }
                             button {
                                 class: "menu-item",

@@ -35,6 +35,7 @@ pub fn SettingsPanel(
     let mut cert_path = use_signal(|| settings.client_cert.cert_path.clone());
     let mut cert_pass = use_signal(|| settings.client_cert.passphrase.clone());
     let mut cert_enabled = use_signal(|| settings.client_cert.enabled);
+    let mut zoom = use_signal(|| settings.ui.zoom_percent);
     let mut ui_font = use_signal(|| settings.ui.ui_font_size_px);
     let mut editor_font = use_signal(|| settings.ui.editor_font_size_px);
     let mut sidebar_w = use_signal(|| settings.ui.sidebar_width_px);
@@ -70,6 +71,7 @@ pub fn SettingsPanel(
     };
     let theme_str = match theme() {
         UiTheme::Spotify => "spotify",
+        UiTheme::NotPostman => "not_postman",
         UiTheme::Obsidian => "obsidian",
         UiTheme::Blueprint => "blueprint",
         UiTheme::BlueprintLight => "blueprint_light",
@@ -163,6 +165,7 @@ pub fn SettingsPanel(
                                             value: "{theme_str}",
                                             onchange: move |evt: Event<FormData>| {
                                                 theme.set(match evt.value().as_str() {
+                                                    "not_postman" => UiTheme::NotPostman,
                                                     "obsidian" => UiTheme::Obsidian,
                                                     "blueprint" => UiTheme::Blueprint,
                                                     "blueprint_light" => UiTheme::BlueprintLight,
@@ -173,6 +176,7 @@ pub fn SettingsPanel(
                                                 });
                                             },
                                             option { value: "spotify", "Spotify (Dark & Green)" }
+                                            option { value: "not_postman", "notPostman (Dark & Orange)" }
                                             option { value: "obsidian", "Obsidian Ember (Dark & Amber)" }
                                             option { value: "blueprint", "Hardware Blueprint (Industrial & Tactile)" }
                                             option { value: "blueprint_light", "Hardware Blueprint Light (Drafting Paper)" }
@@ -203,9 +207,27 @@ pub fn SettingsPanel(
                             div { class: "settings-card",
                                 div { class: "settings-card-head",
                                     h4 { "Typography & Zoom" }
-                                    p { class: "hint", "Adjust font sizes. Tip: Use ⌘+ / ⌘- in workbench to scale on the fly." }
+                                    p { class: "hint", "Adjust zoom and font sizes. Tip: Use ⌘+ / ⌘- in workbench to zoom UI (⌘0 resets)." }
                                 }
                                 div { class: "settings-slider-group",
+                                    div { class: "settings-slider-row",
+                                        div { class: "slider-label-wrap",
+                                            span { class: "slider-name", "UI Zoom" }
+                                            span { class: "slider-badge", "{zoom()}%" }
+                                        }
+                                        input {
+                                            r#type: "range",
+                                            min: "{UiSettings::ZOOM_MIN_PERCENT}",
+                                            max: "{UiSettings::ZOOM_MAX_PERCENT}",
+                                            step: "{UiSettings::ZOOM_STEP_PERCENT}",
+                                            value: "{zoom()}",
+                                            oninput: move |evt| {
+                                                if let Ok(v) = evt.value().parse::<u32>() {
+                                                    zoom.set(UiSettings::clamp_zoom_percent(v));
+                                                }
+                                            },
+                                        }
+                                    }
                                     div { class: "settings-slider-row",
                                         div { class: "slider-label-wrap",
                                             span { class: "slider-name", "UI Font Size" }
@@ -430,6 +452,7 @@ pub fn SettingsPanel(
                                         class: "btn btn-ghost",
                                         onclick: move |_| {
                                             let d = UiSettings::default();
+                                            zoom.set(d.zoom_percent);
                                             ui_font.set(d.ui_font_size_px);
                                             editor_font.set(d.editor_font_size_px);
                                             sidebar_w.set(d.sidebar_width_px);
@@ -635,6 +658,7 @@ pub fn SettingsPanel(
                                 default_response_tab: default_resp_tab(),
                                 layout: workbench_layout(),
                                 splash_min_ms: splash_ms(),
+                                zoom_percent: zoom(),
                                 history_collapsed,
                             }
                             .clamped(),

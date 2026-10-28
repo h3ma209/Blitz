@@ -420,6 +420,9 @@ fn build_url(draft: &RequestDraft) -> Result<String, SendError> {
         return Err(SendError::InvalidUrl("empty URL".into()));
     }
 
+    // Substitute path variables (e.g. :cabinetID -> 123)
+    url = crate::core::substitute_path_params(&url, &draft.path_params);
+
     let enabled: Vec<_> = draft
         .params
         .iter()
@@ -484,7 +487,38 @@ fn has_header(draft: &RequestDraft, name: &str) -> bool {
 
 fn build_headers(draft: &RequestDraft) -> Result<HeaderMap, SendError> {
     let mut map = HeaderMap::new();
+    let url_host = reqwest::Url::parse(&draft.url).ok().and_then(|u| {
+        let h = u.host_str()?.to_string();
+        if let Some(p) = u.port() {
+            Some(format!("{h}:{p}"))
+        } else {
+            Some(h)
+        }
+    });
+
     for kv in draft.headers.iter().filter(|h| h.enabled && !h.key.is_empty()) {
+        // If Host header simply matches the URL's target host, let reqwest / hyper
+        // manage the Host header dynamically so redirects (e.g. facebook.com -> www.facebook.com)
+        // do not get stuck in infinite redirect loops with a stale Host header.
+        if kv.key.eq_ignore_ascii_case("host") {
+            if let Some(ref uh) = url_host {
+                let kv_host = kv.value.trim();
+                let kv_host_clean = kv_host
+                    .strip_suffix(":80")
+                    .or_else(|| kv_host.strip_suffix(":443"))
+                    .unwrap_or(kv_host);
+                let uh_clean = uh
+                    .strip_suffix(":80")
+                    .or_else(|| uh.strip_suffix(":443"))
+                    .unwrap_or(uh);
+                if kv_host.eq_ignore_ascii_case(uh)
+                    || kv_host_clean.eq_ignore_ascii_case(uh_clean)
+                {
+                    continue;
+                }
+            }
+        }
+
         let name = HeaderName::from_bytes(kv.key.as_bytes())
             .map_err(|e| SendError::Header(format!("{}: {e}", kv.key)))?;
         let value = HeaderValue::from_str(&kv.value)
@@ -576,8 +610,8 @@ fn build_client(
     }
 
     if settings.follow_redirects {
-        builder = builder.redirect(Policy::limited(10));
-        log.push("settings: follow_redirects=true".into());
+        builder = builder.redirect(Policy::limited(50));
+        log.push("settings: follow_redirects=true (max=50)".into());
     } else {
         builder = builder.redirect(Policy::none());
         log.push("settings: follow_redirects=false".into());
@@ -1408,5 +1442,29 @@ mod tests {
         // Missing var → "" → "/auth/login"; message must keep raw template hint.
         assert!(msg.contains("endpoint_rcell_auth") || msg.contains("not an absolute"), "{msg}");
         assert!(!msg.contains("HTTP client error: builder error"), "{msg}");
+    }
+
+    #[test]
+    fn build_headers_skips_matching_host_to_prevent_redirect_loops() {
+        let mut draft = RequestDraft {
+            url: "https://facebook.com/".into(),
+            ..Default::default()
+        };
+        draft.headers.push(KeyValue::new("Host", "facebook.com"));
+        draft.headers.push(KeyValue::new("X-Custom", "val"));
+
+        let headers = build_headers(&draft).unwrap();
+        // Matching host is skipped so hyper manages dynamic host across redirects (e.g. to www.facebook.com)
+        assert!(!headers.contains_key("host"));
+        assert_eq!(headers.get("x-custom").unwrap(), "val");
+
+        // Custom override host (e.g. virtual host / IP routing) IS preserved
+        let mut custom_draft = RequestDraft {
+            url: "http://127.0.0.1:8080/".into(),
+            ..Default::default()
+        };
+        custom_draft.headers.push(KeyValue::new("Host", "internal.api.local"));
+        let custom_headers = build_headers(&custom_draft).unwrap();
+        assert_eq!(custom_headers.get("host").unwrap(), "internal.api.local");
     }
 }

@@ -5,11 +5,12 @@ use uuid::Uuid;
 use dioxus::prelude::*;
 
 use crate::core::{
-    apply_collection_map, apply_environment_map, detect_git_conflicts, find_environment,
-    generate_snippet_resolved, get_team_activity, import_collection_v21, import_curl, import_har,
-    import_openapi3, limitations_blurb, pull_workspace, purge_from_trash, push_console,
-    push_workspace, restore_from_trash, run_performance, snippet_languages, Collection,
-    ConsoleLine, Cookie, EnvVar, Environment, KeyValue, VariableContext,
+    apply_collection_map, apply_environment_map, batch_move_items, detect_git_conflicts,
+    find_environment, generate_snippet_resolved, get_team_activity, import_collection_v21,
+    import_curl, import_har, import_openapi3, limitations_blurb, pull_workspace, purge_from_trash,
+    push_console, push_workspace, restore_from_trash, run_performance, save_request_to_collections,
+    snippet_languages, valid_move_destinations, Collection, ConsoleLine, Cookie, EnvVar,
+    Environment, KeyValue, RequestDraft, VariableContext,
 };
 use crate::runtime::{run_collection_with_config, RunnerConfig};
 use crate::storage::JsonStore;
@@ -18,7 +19,7 @@ use crate::ui::runner_panel::{RunnerEvent, RunnerPanel};
 use crate::ui::var_hover::VarHoverInput;
 use crate::ui::workbench::cloud::switch_to_env;
 use crate::ui::workbench::state::{
-    execute_tree_delete, sync_env_vars, ImpexModal, WorkbenchState,
+    execute_batch_delete, execute_tree_delete, sync_env_vars, ImpexModal, WorkbenchState,
 };
 use crate::ui::{CommentableTextarea, ConflictState, ModalShell, TeamModal};
 
@@ -572,6 +573,8 @@ pub fn WorkbenchModals(
 ) -> Element {
     let mut show_palette = st.show_palette;
     let mut pending_delete = st.pending_delete;
+    let mut pending_batch_move = st.pending_batch_move;
+    let mut pending_close_tab = st.pending_close_tab;
     let mut show_trash = st.show_trash;
     let mut show_snippets = st.show_snippets;
     let mut snippet_lang = st.snippet_lang;
@@ -623,13 +626,25 @@ pub fn WorkbenchModals(
         if let Some(del) = pending_delete() {
             {
                 let del_id = del.id;
+                let del_ids = del.ids.clone();
                 let del_label = del.label.clone();
+                let is_batch = del_ids.len() > 1;
+                let title = if is_batch {
+                    format!("Delete {} items?", del_ids.len())
+                } else {
+                    "Delete item?".to_string()
+                };
+                let prompt = if is_batch {
+                    format!("Delete {} selected items? This cannot be undone.", del_ids.len())
+                } else {
+                    format!("Delete “{del_label}”? This cannot be undone.")
+                };
                 rsx! {
                     ModalShell {
-                        title: "Delete item?".to_string(),
+                        title,
                         on_close: move |_| pending_delete.set(None),
                         div { class: "modal-body",
-                            p { "Delete “{del_label}”? This cannot be undone." }
+                            p { "{prompt}" }
                         }
                         div { class: "modal-actions",
                             button {
@@ -647,15 +662,30 @@ pub fn WorkbenchModals(
                                     let mut col_id = active_collection_id();
                                     let mut req_id = active_request_id();
                                     let mut d = draft();
-                                    if let Some(msg) = execute_tree_delete(
-                                        del_id,
-                                        &mut cols,
-                                        &mut tr,
-                                        &mut col_id,
-                                        &mut req_id,
-                                        &mut d,
-                                    ) {
-                                        status_msg.set(msg);
+                                    if is_batch {
+                                        let mut tabs = (st.open_tabs)();
+                                        let count = execute_batch_delete(
+                                            &del_ids,
+                                            &mut cols,
+                                            &mut tr,
+                                            &mut col_id,
+                                            &mut req_id,
+                                            &mut d,
+                                            &mut tabs,
+                                        );
+                                        st.open_tabs.set(tabs);
+                                        status_msg.set(format!("Deleted {count} items"));
+                                    } else {
+                                        if let Some(msg) = execute_tree_delete(
+                                            del_id,
+                                            &mut cols,
+                                            &mut tr,
+                                            &mut col_id,
+                                            &mut req_id,
+                                            &mut d,
+                                        ) {
+                                            status_msg.set(msg);
+                                        }
                                     }
                                     trash.set(tr);
                                     collections.set(cols);
@@ -665,6 +695,189 @@ pub fn WorkbenchModals(
                                     st.persist();
                                 },
                                 "Delete"
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        if let Some(move_ids) = pending_batch_move() {
+            {
+                let cols = collections();
+                let destinations = valid_move_destinations(&cols, &move_ids);
+                let count = move_ids.len();
+                let title = format!("Move {count} item{} to...", if count == 1 { "" } else { "s" });
+                rsx! {
+                    ModalShell {
+                        title,
+                        on_close: move |_| pending_batch_move.set(None),
+                        div { class: "modal-body move-modal-body",
+                            if destinations.is_empty() {
+                                p { class: "hint", "No available destination folders or collections." }
+                            } else {
+                                for dest in destinations {
+                                    {
+                                        let did = dest.id;
+                                        let pad = dest.depth * 14 + 10;
+                                        let icon = if dest.is_collection { "📦" } else { "📁" };
+                                        rsx! {
+                                            button {
+                                                key: "{did}",
+                                                class: "move-target-row",
+                                                style: "padding-left: {pad}px;",
+                                                onclick: {
+                                                    let move_ids = move_ids.clone();
+                                                    move |_| {
+                                                        let mut st = st;
+                                                        pending_batch_move.set(None);
+                                                        let mut cols = collections();
+                                                        let count = batch_move_items(&mut cols, &move_ids, did);
+                                                        if count > 0 {
+                                                            collections.set(cols);
+                                                            status_msg.set(format!(
+                                                                "moved {} item{}",
+                                                                count,
+                                                                if count == 1 { "" } else { "s" }
+                                                            ));
+                                                            st.persist();
+                                                        } else {
+                                                            status_msg.set("cannot move there".into());
+                                                        }
+                                                    }
+                                                },
+                                                span { class: "move-target-icon", "{icon}" }
+                                                span { class: "move-target-name", "{dest.name}" }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        div { class: "modal-actions",
+                            button {
+                                class: "btn btn-ghost",
+                                onclick: move |_| pending_batch_move.set(None),
+                                "Cancel"
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        if let Some(pending) = pending_close_tab() {
+            {
+                let req_name = if pending.draft.name.trim().is_empty() {
+                    "Untitled Request".to_string()
+                } else {
+                    pending.draft.name.clone()
+                };
+                rsx! {
+                    ModalShell {
+                        title: "Save Changes?".to_string(),
+                        on_close: move |_| pending_close_tab.set(None),
+                        div { class: "modal-body",
+                            p {
+                                "Do you want to save the changes you made to "
+                                strong { "“{req_name}”" }
+                                "?"
+                            }
+                            p { class: "hint", "Your changes will be lost if you discard them." }
+                        }
+                        div { class: "modal-actions",
+                            button {
+                                class: "btn btn-ghost",
+                                onclick: move |_| pending_close_tab.set(None),
+                                "Cancel"
+                            }
+                            button {
+                                class: "btn btn-ghost danger",
+                                onclick: {
+                                    let tid = pending.tab_id;
+                                    move |_| {
+                                        pending_close_tab.set(None);
+                                        let mut tabs = (st.open_tabs)();
+                                        let cur = (st.draft)();
+                                        let Some(idx) = tabs.iter().position(|t| t.id == tid) else {
+                                            return;
+                                        };
+                                        let closing_active = cur.id == tid;
+                                        tabs.remove(idx);
+                                        if tabs.is_empty() {
+                                            let mut st = st;
+                                            st.active_request_id.set(None);
+                                            st.response.set(None);
+                                            st.draft.set(RequestDraft::default());
+                                            st.open_tabs.set(tabs);
+                                            st.status_msg.set("tab closed".into());
+                                            return;
+                                        }
+                                        if closing_active {
+                                            let mut st = st;
+                                            let next_idx = if idx < tabs.len() { idx } else { tabs.len() - 1 };
+                                            let next = tabs[next_idx].clone();
+                                            st.draft.set(next.clone());
+                                            st.active_request_id.set(Some(next.id));
+                                            let resp_map = (st.responses)();
+                                            if let Some(cached) = resp_map.get(&next.id).cloned() {
+                                                st.response.set(Some(cached));
+                                            } else {
+                                                st.response.set(None);
+                                            }
+                                        }
+                                        let mut st = st;
+                                        st.open_tabs.set(tabs);
+                                        st.status_msg.set("changes discarded".into());
+                                    }
+                                },
+                                "Discard Changes"
+                            }
+                            button {
+                                class: "btn btn-send",
+                                onclick: {
+                                    let pd = pending.draft.clone();
+                                    let tid = pending.tab_id;
+                                    move |_| {
+                                        let mut st = st;
+                                        pending_close_tab.set(None);
+                                        let mut cols = collections();
+                                        let owner = save_request_to_collections(&mut cols, active_collection_id(), pd.clone());
+                                        collections.set(cols);
+                                        active_collection_id.set(Some(owner));
+                                        st.persist();
+                                        let mut tabs = (st.open_tabs)();
+                                        let cur = (st.draft)();
+                                        let Some(idx) = tabs.iter().position(|t| t.id == tid) else {
+                                            return;
+                                        };
+                                        let closing_active = cur.id == tid;
+                                        tabs.remove(idx);
+                                        if tabs.is_empty() {
+                                            st.active_request_id.set(None);
+                                            st.response.set(None);
+                                            st.draft.set(RequestDraft::default());
+                                            st.open_tabs.set(tabs);
+                                            st.status_msg.set(format!("saved & closed '{}'", pd.name));
+                                            return;
+                                        }
+                                        if closing_active {
+                                            let next_idx = if idx < tabs.len() { idx } else { tabs.len() - 1 };
+                                            let next = tabs[next_idx].clone();
+                                            st.draft.set(next.clone());
+                                            st.active_request_id.set(Some(next.id));
+                                            let resp_map = (st.responses)();
+                                            if let Some(cached) = resp_map.get(&next.id).cloned() {
+                                                st.response.set(Some(cached));
+                                            } else {
+                                                st.response.set(None);
+                                            }
+                                        }
+                                        st.open_tabs.set(tabs);
+                                        st.status_msg.set(format!("saved & closed '{}'", pd.name));
+                                    }
+                                },
+                                "Save & Close"
                             }
                         }
                     }

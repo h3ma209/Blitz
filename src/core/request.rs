@@ -309,6 +309,9 @@ pub struct RequestDraft {
     pub url: String,
     #[serde(default)]
     pub params: Vec<KeyValue>,
+    /// Path parameters (e.g. `:cabinetID` in `/cabinets/:cabinetID/stats`).
+    #[serde(default)]
+    pub path_params: Vec<KeyValue>,
     #[serde(default)]
     pub headers: Vec<KeyValue>,
     #[serde(default)]
@@ -394,6 +397,7 @@ impl Default for RequestDraft {
             method: HttpMethod::Get,
             url: "https://httpbin.org/get".into(),
             params: vec![KeyValue::new("", "")],
+            path_params: Vec::new(),
             headers: vec![
                 KeyValue::new("User-Agent", "PostmanRuntime/7.43.0"),
                 KeyValue::new("Accept", "*/*"),
@@ -650,6 +654,85 @@ pub fn build_url_with_params(base_url: &str, params: &[KeyValue]) -> String {
     }
 }
 
+/// Extract the path portion of a URL (excluding scheme, host:port, query string, and fragment).
+pub fn extract_url_path(url: &str) -> &str {
+    let without_query = match url.split_once('?') {
+        Some((b, _)) => b,
+        None => match url.split_once('#') {
+            Some((b, _)) => b,
+            None => url,
+        },
+    };
+    if let Some(pos) = without_query.find("://") {
+        let after_scheme = &without_query[pos + 3..];
+        if let Some(slash_pos) = after_scheme.find('/') {
+            &after_scheme[slash_pos..]
+        } else {
+            ""
+        }
+    } else if let Some(slash_pos) = without_query.find('/') {
+        &without_query[slash_pos..]
+    } else {
+        without_query
+    }
+}
+
+/// Extract path variable keys from a URL (e.g. `/cabinets/:cabinetID/stats` -> `["cabinetID"]`).
+pub fn extract_path_param_keys(url: &str) -> Vec<String> {
+    let path = extract_url_path(url);
+    static RE: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
+    let re = RE.get_or_init(|| {
+        regex::Regex::new(r"/(?P<token>:(?P<name>[a-zA-Z_][a-zA-Z0-9_]*))").unwrap()
+    });
+    let mut keys = Vec::new();
+    for cap in re.captures_iter(path) {
+        if let Some(m) = cap.name("name") {
+            let key = m.as_str().to_string();
+            if !keys.contains(&key) {
+                keys.push(key);
+            }
+        }
+    }
+    keys
+}
+
+/// Synchronize a list of path parameter key-values with the path variables found in the URL.
+/// Preserves existing values and enabled flags for matching keys.
+pub fn sync_path_params(url: &str, existing: &[KeyValue]) -> Vec<KeyValue> {
+    let keys = extract_path_param_keys(url);
+    keys.into_iter()
+        .map(|k| {
+            if let Some(found) = existing.iter().find(|e| e.key == k) {
+                found.clone()
+            } else {
+                KeyValue::new(k, "")
+            }
+        })
+        .collect()
+}
+
+/// Substitute path parameter values into the URL (e.g. `/cabinets/:cabinetID/stats` -> `/cabinets/123/stats`).
+pub fn substitute_path_params(url: &str, path_params: &[KeyValue]) -> String {
+    if path_params.is_empty() {
+        return url.to_string();
+    }
+    let mut result = url.to_string();
+    for p in path_params {
+        if !p.enabled || p.key.trim().is_empty() || p.value.trim().is_empty() {
+            continue;
+        }
+        let target = format!("/:{}", p.key.trim());
+        let replacement = format!("/{}", p.value.trim());
+        result = result.replace(&target, &replacement);
+
+        let target_start = format!(":{}", p.key.trim());
+        if result.starts_with(&target_start) {
+            result = format!("{}{}", p.value.trim(), &result[target_start.len()..]);
+        }
+    }
+    result
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -684,5 +767,37 @@ mod tests {
         assert_eq!(base, url);
         assert!(params.is_empty());
         assert_eq!(build_url_with_params(&base, &params), url);
+    }
+
+    #[test]
+    fn test_path_params_lifecycle() {
+        let url = "https://api.example.com:8080/cabinets/:cabinetID/stats";
+        let keys = extract_path_param_keys(url);
+        assert_eq!(keys, vec!["cabinetID"]);
+
+        let synced = sync_path_params(url, &[]);
+        assert_eq!(synced.len(), 1);
+        assert_eq!(synced[0].key, "cabinetID");
+        assert_eq!(synced[0].value, "");
+
+        let populated = vec![KeyValue::new("cabinetID", "123")];
+        let substituted = substitute_path_params(url, &populated);
+        assert_eq!(
+            substituted,
+            "https://api.example.com:8080/cabinets/123/stats"
+        );
+
+        // Multiple path params
+        let url2 = "/api/:version/users/:userId/posts/:postId?sort=desc";
+        let keys2 = extract_path_param_keys(url2);
+        assert_eq!(keys2, vec!["version", "userId", "postId"]);
+
+        let populated2 = vec![
+            KeyValue::new("version", "v1"),
+            KeyValue::new("userId", "42"),
+            KeyValue::new("postId", "999"),
+        ];
+        let sub2 = substitute_path_params(url2, &populated2);
+        assert_eq!(sub2, "/api/v1/users/42/posts/999?sort=desc");
     }
 }

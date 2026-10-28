@@ -23,11 +23,13 @@ mod theme_selector;
 mod sidebar;
 mod sidebar_shortcuts;
 mod team_modal;
+mod toast;
 mod var_hover;
 mod workbench;
 
 pub(crate) use assertions_editor::AssertionsEditor;
 pub(crate) use team_modal::TeamModal;
+pub(crate) use toast::{push_toast, Toast, ToastContainer, ToastLevel};
 
 pub(crate) use collection_editor::CollectionEditor;
 pub(crate) use conflict_resolver::{ConflictResolver, ConflictState};

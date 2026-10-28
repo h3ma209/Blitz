@@ -7,8 +7,8 @@ use uuid::Uuid;
 
 use crate::core::{
     ancestor_ids_for_request, collapsible_tree_ids, collapsed_except_expanded, filter_tree_rows,
-    flatten_collections_filtered, paste_target_parent_id, Collection, HistoryEntry, HttpMethod,
-    TreeRowKind,
+    flatten_collections_filtered, paste_target_parent_id, Collection,
+    HistoryEntry, HttpMethod, TreeRowKind,
 };
 
 use super::sidebar_shortcuts::{
@@ -30,6 +30,9 @@ pub enum SidebarAction {
     Favorite,
     Sort,
     MoveItem,
+    BatchDelete,
+    BatchMove,
+    BatchDuplicate,
     CopyId,
     Copy,
     Cut,
@@ -47,8 +50,9 @@ pub enum SidebarAction {
 pub struct SidebarEvent {
     pub action: SidebarAction,
     pub id: Option<Uuid>,
+    pub ids: Vec<Uuid>,
     pub collection_id: Option<Uuid>,
-    /// Drop target (collection or folder) for [`SidebarAction::MoveItem`].
+    /// Drop target (collection or folder) for [`SidebarAction::MoveItem`] or [`SidebarAction::BatchMove`].
     pub target_id: Option<Uuid>,
     /// New name for [`SidebarAction::Rename`] (set on Enter confirm).
     pub name: Option<String>,
@@ -59,8 +63,20 @@ impl SidebarEvent {
         Self {
             action,
             id,
+            ids: id.map(|i| vec![i]).unwrap_or_default(),
             collection_id,
             target_id: None,
+            name: None,
+        }
+    }
+
+    pub fn batch(action: SidebarAction, ids: Vec<Uuid>, target_id: Option<Uuid>) -> Self {
+        Self {
+            action,
+            id: ids.first().copied(),
+            ids,
+            collection_id: None,
+            target_id,
             name: None,
         }
     }
@@ -69,6 +85,7 @@ impl SidebarEvent {
         Self {
             action: SidebarAction::Rename,
             id: Some(id),
+            ids: vec![id],
             collection_id: Some(collection_id),
             target_id: None,
             name: Some(name),
@@ -110,6 +127,9 @@ pub fn Sidebar(
     let mut rename_draft = use_signal(String::new);
     let mut search = use_signal(String::new);
     let mut focused_row = use_signal(|| None::<TreeSelection>);
+    let mut selected_ids = use_signal(HashSet::<Uuid>::new);
+    let mut last_selected_id = use_signal(|| None::<Uuid>);
+    let mut last_scrolled_req = use_signal(|| None::<Uuid>);
 
     let rows = {
         let query = search();
@@ -128,12 +148,18 @@ pub fn Sidebar(
         filter_tree_rows(flat, &query)
     };
     // Auto-track and reveal active request (expand ancestor folders/collections and scroll into view)
+    // Redirection ONLY happens when switching between request files, NOT when clicking or opening folders/collections.
     let collections_for_track = collections.clone();
     use_effect(move || {
-        if let Some(req_id) = active_request_id {
+        let cur_req = active_request_id;
+        if cur_req == last_scrolled_req() {
+            return;
+        }
+        last_scrolled_req.set(cur_req);
+        if let Some(req_id) = cur_req {
             let ancestors = ancestor_ids_for_request(&collections_for_track, req_id);
             if !ancestors.is_empty() {
-                let mut set = expanded();
+                let mut set = expanded.peek().clone();
                 let mut changed = false;
                 for aid in ancestors {
                     if set.insert(aid) {
@@ -163,17 +189,32 @@ pub fn Sidebar(
     });
 
     let empty = collections.is_empty();
+    let all_rows = rows.clone();
 
     rsx! {
         aside {
             class: "sidebar",
             tabindex: "0",
-            onkeydown: move |evt| {
-                if evt.key() == Key::Escape {
-                    ctx_menu.set(None);
-                    if renaming_id().is_some() {
-                        renaming_id.set(None);
-                        rename_draft.set(String::new());
+            onkeydown: {
+                let all_rows_for_key = all_rows.clone();
+                move |evt| {
+                    if evt.key() == Key::Escape {
+                        ctx_menu.set(None);
+                        if !selected_ids().is_empty() {
+                            selected_ids.set(HashSet::new());
+                        }
+                        if renaming_id().is_some() {
+                            renaming_id.set(None);
+                            rename_draft.set(String::new());
+                        }
+                    } else if (evt.modifiers().meta() || evt.modifiers().ctrl())
+                        && !evt.modifiers().shift()
+                        && renaming_id().is_none()
+                        && (evt.code() == Code::KeyA
+                            || matches!(evt.key(), Key::Character(ref c) if c.eq_ignore_ascii_case("a")))
+                    {
+                        evt.prevent_default();
+                        selected_ids.set(all_rows_for_key.iter().map(|r| r.id).collect());
                     }
                 }
             },
@@ -255,6 +296,110 @@ pub fn Sidebar(
                 oninput: move |evt: Event<FormData>| search.set(evt.value()),
             }
 
+            if !selected_ids().is_empty() {
+                {
+                    let sel_count = selected_ids().len();
+                    let sel_ids_del: Vec<Uuid> = selected_ids().into_iter().collect();
+                    let sel_ids_dup: Vec<Uuid> = selected_ids().into_iter().collect();
+                    let sel_ids_move: Vec<Uuid> = selected_ids().into_iter().collect();
+                    let all_row_ids: Vec<Uuid> = rows.iter().map(|r| r.id).collect();
+                    let all_selected = !all_row_ids.is_empty() && all_row_ids.iter().all(|id| selected_ids().contains(id));
+                    rsx! {
+                        div { class: "sidebar-multiselect-bar",
+                            div { class: "sidebar-multiselect-count",
+                                input {
+                                    r#type: "checkbox",
+                                    class: "tree-checkbox multiselect-master-check",
+                                    checked: all_selected,
+                                    title: if all_selected { "Deselect all" } else { "Select all" },
+                                    onclick: {
+                                        let all_row_ids = all_row_ids.clone();
+                                        move |evt| {
+                                            evt.stop_propagation();
+                                            if all_selected {
+                                                selected_ids.set(HashSet::new());
+                                            } else {
+                                                selected_ids.set(all_row_ids.iter().copied().collect());
+                                            }
+                                        }
+                                    },
+                                }
+                                span { class: "multiselect-badge", "{sel_count}" }
+                                span { "selected" }
+                            }
+                            div { class: "sidebar-multiselect-actions",
+                                button {
+                                    class: "sidebar-multiselect-btn",
+                                    title: if all_selected { "Deselect all items" } else { "Select all visible items (⌘A)" },
+                                    onclick: {
+                                        let all_row_ids = all_row_ids.clone();
+                                        move |evt| {
+                                            evt.stop_propagation();
+                                            if all_selected {
+                                                selected_ids.set(HashSet::new());
+                                            } else {
+                                                selected_ids.set(all_row_ids.iter().copied().collect());
+                                            }
+                                        }
+                                    },
+                                    if all_selected { "Deselect All" } else { "Select All" }
+                                }
+                                button {
+                                    class: "sidebar-multiselect-btn",
+                                    title: "Move selected items to a folder or collection",
+                                    onclick: move |evt| {
+                                        evt.stop_propagation();
+                                        on_event.call(SidebarEvent::batch(
+                                            SidebarAction::BatchMove,
+                                            sel_ids_move.clone(),
+                                            None,
+                                        ));
+                                    },
+                                    "Move"
+                                }
+                                button {
+                                    class: "sidebar-multiselect-btn",
+                                    title: "Duplicate selected items",
+                                    onclick: move |evt| {
+                                        evt.stop_propagation();
+                                        on_event.call(SidebarEvent::batch(
+                                            SidebarAction::BatchDuplicate,
+                                            sel_ids_dup.clone(),
+                                            None,
+                                        ));
+                                        selected_ids.set(HashSet::new());
+                                    },
+                                    "Duplicate"
+                                }
+                                button {
+                                    class: "sidebar-multiselect-btn danger",
+                                    title: "Delete selected items",
+                                    onclick: move |evt| {
+                                        evt.stop_propagation();
+                                        on_event.call(SidebarEvent::batch(
+                                            SidebarAction::BatchDelete,
+                                            sel_ids_del.clone(),
+                                            None,
+                                        ));
+                                        selected_ids.set(HashSet::new());
+                                    },
+                                    "Delete"
+                                }
+                                button {
+                                    class: "sidebar-multiselect-btn btn-clear",
+                                    title: "Clear selection (Esc)",
+                                    onclick: move |evt| {
+                                        evt.stop_propagation();
+                                        selected_ids.set(HashSet::new());
+                                    },
+                                    "✕"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
             if empty {
                 div {
                     class: "empty-state",
@@ -289,71 +434,235 @@ pub fn Sidebar(
                 }
             } else {
                 div {
-                    class: "tree",
+                    class: if !selected_ids().is_empty() { "tree multi-selecting" } else { "tree" },
                     tabindex: "0",
                     onkeydown: {
                         let collections = collections.clone();
+                        let all_rows = all_rows.clone();
                         move |evt| {
-                        let Some(sel) = focused_row() else {
-                            return;
-                        };
+                        if !selected_ids().is_empty() {
+                            if let Some(action) = tree_key_action(&evt) {
+                                match action {
+                                    TreeKeyAction::Delete => {
+                                        evt.prevent_default();
+                                        evt.stop_propagation();
+                                        let ids: Vec<Uuid> = selected_ids().into_iter().collect();
+                                        on_event.call(SidebarEvent::batch(
+                                            SidebarAction::BatchDelete,
+                                            ids,
+                                            None,
+                                        ));
+                                        selected_ids.set(HashSet::new());
+                                        return;
+                                    }
+                                    TreeKeyAction::Duplicate => {
+                                        evt.prevent_default();
+                                        evt.stop_propagation();
+                                        let ids: Vec<Uuid> = selected_ids().into_iter().collect();
+                                        on_event.call(SidebarEvent::batch(
+                                            SidebarAction::BatchDuplicate,
+                                            ids,
+                                            None,
+                                        ));
+                                        selected_ids.set(HashSet::new());
+                                        return;
+                                    }
+                                    _ => {}
+                                }
+                            }
+                        }
                         let Some(action) = tree_key_action(&evt) else {
                             return;
                         };
                         evt.prevent_default();
                         evt.stop_propagation();
                         match action {
+                            TreeKeyAction::NavDown => {
+                                let next_row = if let Some(sel) = focused_row() {
+                                    if let Some(pos) = all_rows.iter().position(|r| r.id == sel.id) {
+                                        all_rows.get(pos + 1).cloned()
+                                    } else {
+                                        all_rows.first().cloned()
+                                    }
+                                } else {
+                                    all_rows.first().cloned()
+                                };
+                                if let Some(row) = next_row {
+                                    focused_row.set(Some(TreeSelection {
+                                        id: row.id,
+                                        collection_id: row.collection_id,
+                                        kind: row.kind,
+                                    }));
+                                    let rid = row.id;
+                                    let script = format!(
+                                        r#"setTimeout(() => {{
+                                            const el = document.getElementById("tree-row-" + {id});
+                                            if (el) el.scrollIntoView({{ behavior: 'smooth', block: 'nearest' }});
+                                        }}, 10);"#,
+                                        id = serde_json::to_string(&rid.to_string()).unwrap_or_else(|_| "\"\"".into())
+                                    );
+                                    spawn(async move {
+                                        let _ = document::eval(&script).await;
+                                    });
+                                }
+                            }
+                            TreeKeyAction::NavUp => {
+                                let prev_row = if let Some(sel) = focused_row() {
+                                    if let Some(pos) = all_rows.iter().position(|r| r.id == sel.id) {
+                                        if pos > 0 {
+                                            all_rows.get(pos - 1).cloned()
+                                        } else {
+                                            None
+                                        }
+                                    } else {
+                                        all_rows.first().cloned()
+                                    }
+                                } else {
+                                    all_rows.first().cloned()
+                                };
+                                if let Some(row) = prev_row {
+                                    focused_row.set(Some(TreeSelection {
+                                        id: row.id,
+                                        collection_id: row.collection_id,
+                                        kind: row.kind,
+                                    }));
+                                    let rid = row.id;
+                                    let script = format!(
+                                        r#"setTimeout(() => {{
+                                            const el = document.getElementById("tree-row-" + {id});
+                                            if (el) el.scrollIntoView({{ behavior: 'smooth', block: 'nearest' }});
+                                        }}, 10);"#,
+                                        id = serde_json::to_string(&rid.to_string()).unwrap_or_else(|_| "\"\"".into())
+                                    );
+                                    spawn(async move {
+                                        let _ = document::eval(&script).await;
+                                    });
+                                }
+                            }
+                            TreeKeyAction::NavRight => {
+                                if let Some(sel) = focused_row() {
+                                    if matches!(sel.kind, TreeRowKind::Collection | TreeRowKind::Folder) {
+                                        if !expanded().contains(&sel.id) {
+                                            let mut set = expanded();
+                                            set.insert(sel.id);
+                                            expanded.set(set);
+                                            on_event.call(SidebarEvent::new(
+                                                SidebarAction::ToggleExpand,
+                                                Some(sel.id),
+                                                Some(sel.collection_id),
+                                            ));
+                                        } else if let Some(pos) = all_rows.iter().position(|r| r.id == sel.id) {
+                                            if let Some(child) = all_rows.get(pos + 1) {
+                                                focused_row.set(Some(TreeSelection {
+                                                    id: child.id,
+                                                    collection_id: child.collection_id,
+                                                    kind: child.kind.clone(),
+                                                }));
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            TreeKeyAction::NavLeft => {
+                                if let Some(sel) = focused_row() {
+                                    if matches!(sel.kind, TreeRowKind::Collection | TreeRowKind::Folder) && expanded().contains(&sel.id) {
+                                        let mut set = expanded();
+                                        set.remove(&sel.id);
+                                        expanded.set(set);
+                                        on_event.call(SidebarEvent::new(
+                                            SidebarAction::ToggleExpand,
+                                            Some(sel.id),
+                                            Some(sel.collection_id),
+                                        ));
+                                    } else if let Some(parent_id) = paste_target_parent_id(&collections, sel.id) {
+                                        if let Some(parent_row) = all_rows.iter().find(|r| r.id == parent_id) {
+                                            focused_row.set(Some(TreeSelection {
+                                                id: parent_row.id,
+                                                collection_id: parent_row.collection_id,
+                                                kind: parent_row.kind.clone(),
+                                            }));
+                                        }
+                                    }
+                                }
+                            }
                             TreeKeyAction::Delete => {
-                                on_event.call(SidebarEvent::new(
-                                    SidebarAction::Delete,
-                                    Some(sel.id),
-                                    Some(sel.collection_id),
-                                ));
-                            }
-                            TreeKeyAction::Duplicate => {
-                                on_event.call(SidebarEvent::new(
-                                    SidebarAction::Duplicate,
-                                    Some(sel.id),
-                                    Some(sel.collection_id),
-                                ));
-                            }
-                            TreeKeyAction::Copy => {
-                                on_event.call(SidebarEvent::new(
-                                    SidebarAction::Copy,
-                                    Some(sel.id),
-                                    Some(sel.collection_id),
-                                ));
-                            }
-                            TreeKeyAction::Cut => {
-                                on_event.call(SidebarEvent::new(
-                                    SidebarAction::Cut,
-                                    Some(sel.id),
-                                    Some(sel.collection_id),
-                                ));
-                            }
-                            TreeKeyAction::Paste => {
-                                if let Some(parent) =
-                                    paste_target_parent_id(&collections, sel.id)
-                                {
+                                if let Some(sel) = focused_row() {
                                     on_event.call(SidebarEvent::new(
-                                        SidebarAction::Paste,
-                                        Some(parent),
+                                        SidebarAction::Delete,
+                                        Some(sel.id),
                                         Some(sel.collection_id),
                                     ));
                                 }
                             }
-                            TreeKeyAction::Rename => {
-                                let current = tree_row_name(&collections, sel.id);
-                                renaming_id.set(Some(sel.id));
-                                rename_draft.set(current);
-                            }
-                            TreeKeyAction::Open => {
-                                if matches!(sel.kind, TreeRowKind::Request { .. }) {
+                            TreeKeyAction::Duplicate => {
+                                if let Some(sel) = focused_row() {
                                     on_event.call(SidebarEvent::new(
-                                        SidebarAction::SelectRequest,
+                                        SidebarAction::Duplicate,
                                         Some(sel.id),
                                         Some(sel.collection_id),
                                     ));
+                                }
+                            }
+                            TreeKeyAction::Copy => {
+                                if let Some(sel) = focused_row() {
+                                    on_event.call(SidebarEvent::new(
+                                        SidebarAction::Copy,
+                                        Some(sel.id),
+                                        Some(sel.collection_id),
+                                    ));
+                                }
+                            }
+                            TreeKeyAction::Cut => {
+                                if let Some(sel) = focused_row() {
+                                    on_event.call(SidebarEvent::new(
+                                        SidebarAction::Cut,
+                                        Some(sel.id),
+                                        Some(sel.collection_id),
+                                    ));
+                                }
+                            }
+                            TreeKeyAction::Paste => {
+                                if let Some(sel) = focused_row() {
+                                    if let Some(parent) =
+                                        paste_target_parent_id(&collections, sel.id)
+                                    {
+                                        on_event.call(SidebarEvent::new(
+                                            SidebarAction::Paste,
+                                            Some(parent),
+                                            Some(sel.collection_id),
+                                        ));
+                                    }
+                                }
+                            }
+                            TreeKeyAction::Rename => {
+                                if let Some(sel) = focused_row() {
+                                    let current = tree_row_name(&collections, sel.id);
+                                    renaming_id.set(Some(sel.id));
+                                    rename_draft.set(current);
+                                }
+                            }
+                            TreeKeyAction::Open => {
+                                if let Some(sel) = focused_row() {
+                                    if matches!(sel.kind, TreeRowKind::Request { .. }) {
+                                        on_event.call(SidebarEvent::new(
+                                            SidebarAction::SelectRequest,
+                                            Some(sel.id),
+                                            Some(sel.collection_id),
+                                        ));
+                                    } else if matches!(sel.kind, TreeRowKind::Collection | TreeRowKind::Folder) {
+                                        let mut set = expanded();
+                                        if set.contains(&sel.id) {
+                                            set.remove(&sel.id);
+                                        } else {
+                                            set.insert(sel.id);
+                                        }
+                                        expanded.set(set);
+                                        on_event.call(SidebarEvent::new(
+                                            SidebarAction::ToggleExpand,
+                                            Some(sel.id),
+                                            Some(sel.collection_id),
+                                        ));
+                                    }
                                 }
                             }
                         }
@@ -396,9 +705,13 @@ pub fn Sidebar(
                             let kind_for_ctx = kind.clone();
                             let kind_for_click = kind.clone();
 
+                            let is_selected_multi = selected_ids().contains(&row_id);
                             let mut row_class = String::from("tree-row");
                             if row_active {
                                 row_class.push_str(" active");
+                            }
+                            if is_selected_multi {
+                                row_class.push_str(" tree-selected-multi");
                             }
                             if is_drop && can_drop {
                                 row_class.push_str(" drop-target");
@@ -420,6 +733,9 @@ pub fn Sidebar(
                                         if !is_col {
                                             evt.stop_propagation();
                                             dragging.set(Some(row_id));
+                                            if !selected_ids().contains(&row_id) {
+                                                selected_ids.set(HashSet::from([row_id]));
+                                            }
                                             let _ = evt.data.data_transfer().set_data(
                                                 "text/plain",
                                                 &row_id.to_string(),
@@ -433,7 +749,7 @@ pub fn Sidebar(
                                     ondragover: move |evt| {
                                         if can_drop {
                                             if let Some(src) = dragging() {
-                                                if src != row_id {
+                                                if src != row_id && !selected_ids().contains(&row_id) {
                                                     evt.prevent_default();
                                                     drop_target.set(Some(row_id));
                                                 }
@@ -450,13 +766,25 @@ pub fn Sidebar(
                                         evt.stop_propagation();
                                         if can_drop {
                                             if let Some(src) = dragging() {
-                                                on_event.call(SidebarEvent {
-                                                    action: SidebarAction::MoveItem,
-                                                    id: Some(src),
-                                                    collection_id: Some(col_id),
-                                                    target_id: Some(row_id),
-                                                    name: None,
-                                                });
+                                                let sel = selected_ids();
+                                                if sel.contains(&src) && sel.len() > 1 {
+                                                    let ids: Vec<Uuid> = sel.into_iter().collect();
+                                                    on_event.call(SidebarEvent::batch(
+                                                        SidebarAction::BatchMove,
+                                                        ids,
+                                                        Some(row_id),
+                                                    ));
+                                                    selected_ids.set(HashSet::new());
+                                                } else {
+                                                    on_event.call(SidebarEvent {
+                                                        action: SidebarAction::MoveItem,
+                                                        id: Some(src),
+                                                        ids: vec![src],
+                                                        collection_id: Some(col_id),
+                                                        target_id: Some(row_id),
+                                                        name: None,
+                                                    });
+                                                }
                                             }
                                         }
                                         dragging.set(None);
@@ -466,6 +794,10 @@ pub fn Sidebar(
                                         evt.prevent_default();
                                         evt.stop_propagation();
                                         let coords = evt.client_coordinates();
+                                        let sel = selected_ids();
+                                        if !sel.contains(&row_id) {
+                                            selected_ids.set(HashSet::from([row_id]));
+                                        }
                                         ctx_menu.set(Some(ContextMenuState {
                                             x: coords.x,
                                             y: coords.y,
@@ -476,39 +808,143 @@ pub fn Sidebar(
                                     },
                                     div {
                                         class: "tree-main",
-                                        onclick: move |evt| {
-                                            if is_renaming {
+                                        onclick: {
+                                            let rows_clone = all_rows.clone();
+                                            move |evt| {
+                                                if is_renaming {
+                                                    evt.stop_propagation();
+                                                    return;
+                                                }
                                                 evt.stop_propagation();
-                                                return;
+                                                ctx_menu.set(None);
+
+                                                let is_meta = evt.modifiers().meta() || evt.modifiers().ctrl();
+                                                let is_shift = evt.modifiers().shift();
+
+                                                if is_meta {
+                                                    let mut set = selected_ids();
+                                                    if set.contains(&row_id) {
+                                                        set.remove(&row_id);
+                                                    } else {
+                                                        set.insert(row_id);
+                                                    }
+                                                    last_selected_id.set(Some(row_id));
+                                                    selected_ids.set(set);
+                                                    focused_row.set(Some(TreeSelection {
+                                                        id: row_id,
+                                                        collection_id: col_id,
+                                                        kind: kind_for_click.clone(),
+                                                    }));
+                                                    return;
+                                                } else if is_shift {
+                                                    let mut set = selected_ids();
+                                                    if let Some(last_id) = last_selected_id() {
+                                                        let p1 = rows_clone.iter().position(|r| r.id == last_id);
+                                                        let p2 = rows_clone.iter().position(|r| r.id == row_id);
+                                                        if let (Some(a), Some(b)) = (p1, p2) {
+                                                            let (start, end) = if a < b { (a, b) } else { (b, a) };
+                                                            for r in &rows_clone[start..=end] {
+                                                                set.insert(r.id);
+                                                            }
+                                                        } else {
+                                                            set.insert(row_id);
+                                                        }
+                                                    } else {
+                                                        set.insert(row_id);
+                                                    }
+                                                    last_selected_id.set(Some(row_id));
+                                                    selected_ids.set(set);
+                                                    focused_row.set(Some(TreeSelection {
+                                                        id: row_id,
+                                                        collection_id: col_id,
+                                                        kind: kind_for_click.clone(),
+                                                    }));
+                                                    return;
+                                                } else {
+                                                    let sel = selected_ids();
+                                                    if !sel.is_empty() {
+                                                        if is_col || is_folder {
+                                                            // In multi-select mode, clicking a collection or folder
+                                                            // toggles expand/collapse WITHOUT exiting multi-select mode!
+                                                            let mut set = expanded();
+                                                            if set.contains(&row_id) {
+                                                                set.remove(&row_id);
+                                                            } else {
+                                                                set.insert(row_id);
+                                                            }
+                                                            expanded.set(set);
+                                                            on_event.call(SidebarEvent::new(
+                                                                SidebarAction::ToggleExpand,
+                                                                Some(row_id),
+                                                                Some(col_id),
+                                                            ));
+                                                            return;
+                                                        } else {
+                                                            // In multi-select mode, clicking a request row toggles
+                                                            // selection (prevents misclick off checkbox from dropping selection)
+                                                            let mut set = sel;
+                                                            if set.contains(&row_id) {
+                                                                set.remove(&row_id);
+                                                            } else {
+                                                                set.insert(row_id);
+                                                            }
+                                                            last_selected_id.set(Some(row_id));
+                                                            selected_ids.set(set);
+                                                            focused_row.set(Some(TreeSelection {
+                                                                id: row_id,
+                                                                collection_id: col_id,
+                                                                kind: kind_for_click.clone(),
+                                                            }));
+                                                            return;
+                                                        }
+                                                    }
+                                                    last_selected_id.set(Some(row_id));
+                                                }
+
+                                                focused_row.set(Some(TreeSelection {
+                                                    id: row_id,
+                                                    collection_id: col_id,
+                                                    kind: kind_for_click.clone(),
+                                                }));
+                                                if is_req {
+                                                    on_event.call(SidebarEvent::new(
+                                                        SidebarAction::SelectRequest,
+                                                        Some(row_id),
+                                                        Some(col_id),
+                                                    ));
+                                                } else if is_col || is_folder {
+                                                    let mut set = expanded();
+                                                    if set.contains(&row_id) {
+                                                        set.remove(&row_id);
+                                                    } else {
+                                                        set.insert(row_id);
+                                                    }
+                                                    expanded.set(set);
+                                                    on_event.call(SidebarEvent::new(
+                                                        SidebarAction::ToggleExpand,
+                                                        Some(row_id),
+                                                        Some(col_id),
+                                                    ));
+                                                }
                                             }
-                                            evt.stop_propagation();
-                                            ctx_menu.set(None);
-                                            focused_row.set(Some(TreeSelection {
-                                                id: row_id,
-                                                collection_id: col_id,
-                                                kind: kind_for_click.clone(),
-                                            }));
-                                            if is_req {
-                                                on_event.call(SidebarEvent::new(
-                                                    SidebarAction::SelectRequest,
-                                                    Some(row_id),
-                                                    Some(col_id),
-                                                ));
-                                            } else if is_col || is_folder {
-                                                let mut set = expanded();
+                                        },
+                                        input {
+                                            r#type: "checkbox",
+                                            class: "tree-checkbox",
+                                            checked: is_selected_multi,
+                                            title: "Select item",
+                                            onclick: move |evt| {
+                                                evt.stop_propagation();
+                                                let mut set = selected_ids();
                                                 if set.contains(&row_id) {
                                                     set.remove(&row_id);
                                                 } else {
                                                     set.insert(row_id);
                                                 }
-                                                expanded.set(set);
-                                                on_event.call(SidebarEvent::new(
-                                                    SidebarAction::ToggleExpand,
-                                                    Some(row_id),
-                                                    Some(col_id),
-                                                ));
-                                            }
-                                        },
+                                                last_selected_id.set(Some(row_id));
+                                                selected_ids.set(set);
+                                            },
+                                        }
                                         span {
                                             class: "tree-glyph",
                                             onclick: move |evt| {
@@ -580,7 +1016,9 @@ pub fn Sidebar(
                                                 },
                                             }
                                         } else {
-                                            span { class: "tree-label", "{label}" }
+                                            {
+                                                highlight_tree_label(&label, &search())
+                                            }
                                         }
                                     }
                                     div { class: "tree-row-actions",
@@ -734,11 +1172,22 @@ pub fn Sidebar(
                                             aria_label: "Delete",
                                             onclick: move |evt| {
                                                 evt.stop_propagation();
-                                                on_event.call(SidebarEvent::new(
-                                                    SidebarAction::Delete,
-                                                    Some(row_id),
-                                                    Some(col_id),
-                                                ));
+                                                let sel = selected_ids();
+                                                if sel.contains(&row_id) && sel.len() > 1 {
+                                                    let ids: Vec<Uuid> = sel.into_iter().collect();
+                                                    on_event.call(SidebarEvent::batch(
+                                                        SidebarAction::BatchDelete,
+                                                        ids,
+                                                        None,
+                                                    ));
+                                                    selected_ids.set(HashSet::new());
+                                                } else {
+                                                    on_event.call(SidebarEvent::new(
+                                                        SidebarAction::Delete,
+                                                        Some(row_id),
+                                                        Some(col_id),
+                                                    ));
+                                                }
                                             },
                                             span { class: "action-icon action-icon-delete", aria_hidden: "true" }
                                         }
@@ -852,6 +1301,60 @@ pub fn Sidebar(
                                             None,
                                         ));
                                     },
+                                }
+                            } else if selected_ids().len() > 1 {
+                                {
+                                    let sel_count = selected_ids().len();
+                                    let sel_ids_del: Vec<Uuid> = selected_ids().into_iter().collect();
+                                    let sel_ids_dup: Vec<Uuid> = selected_ids().into_iter().collect();
+                                    let sel_ids_move: Vec<Uuid> = selected_ids().into_iter().collect();
+                                    rsx! {
+                                        CtxMenuItem {
+                                            label: format!("Move ({sel_count} items) to..."),
+                                            onclick: move |_| {
+                                                ctx_menu.set(None);
+                                                on_event.call(SidebarEvent::batch(
+                                                    SidebarAction::BatchMove,
+                                                    sel_ids_move.clone(),
+                                                    None,
+                                                ));
+                                            },
+                                        }
+                                        CtxMenuItem {
+                                            label: format!("Duplicate ({sel_count} items)"),
+                                            shortcut: Some(label_duplicate()),
+                                            onclick: move |_| {
+                                                ctx_menu.set(None);
+                                                on_event.call(SidebarEvent::batch(
+                                                    SidebarAction::BatchDuplicate,
+                                                    sel_ids_dup.clone(),
+                                                    None,
+                                                ));
+                                                selected_ids.set(HashSet::new());
+                                            },
+                                        }
+                                        CtxMenuItem {
+                                            label: format!("Delete ({sel_count} items)"),
+                                            shortcut: Some(label_delete()),
+                                            danger: true,
+                                            onclick: move |_| {
+                                                ctx_menu.set(None);
+                                                on_event.call(SidebarEvent::batch(
+                                                    SidebarAction::BatchDelete,
+                                                    sel_ids_del.clone(),
+                                                    None,
+                                                ));
+                                                selected_ids.set(HashSet::new());
+                                            },
+                                        }
+                                        CtxMenuItem {
+                                            label: "Clear selection".to_string(),
+                                            onclick: move |_| {
+                                                ctx_menu.set(None);
+                                                selected_ids.set(HashSet::new());
+                                            },
+                                        }
+                                    }
                                 }
                             } else {
                                 match mkind {
@@ -1236,4 +1739,39 @@ fn method_class(m: HttpMethod) -> &'static str {
         HttpMethod::Head => "head",
         HttpMethod::Options => "options",
     }
+}
+
+fn highlight_tree_label(label: &str, query: &str) -> Element {
+    let q = query.trim();
+    if q.is_empty() {
+        return rsx! { span { class: "tree-label", "{label}" } };
+    }
+    let lower_q: Vec<char> = q.to_lowercase().chars().collect();
+    let label_chars: Vec<char> = label.chars().collect();
+    let mut match_range = None;
+    if !lower_q.is_empty() && label_chars.len() >= lower_q.len() {
+        for i in 0..=(label_chars.len() - lower_q.len()) {
+            if label_chars[i..i + lower_q.len()]
+                .iter()
+                .zip(lower_q.iter())
+                .all(|(a, b)| a.to_lowercase().eq(b.to_lowercase()))
+            {
+                match_range = Some((i, i + lower_q.len()));
+                break;
+            }
+        }
+    }
+    if let Some((start, end)) = match_range {
+        let before: String = label_chars[..start].iter().collect();
+        let matched: String = label_chars[start..end].iter().collect();
+        let after: String = label_chars[end..].iter().collect();
+        return rsx! {
+            span { class: "tree-label",
+                "{before}"
+                mark { class: "tree-search-match", "{matched}" }
+                "{after}"
+            }
+        };
+    }
+    rsx! { span { class: "tree-label", "{label}" } }
 }

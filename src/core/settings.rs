@@ -93,6 +93,10 @@ fn default_history_collapsed() -> bool {
     true
 }
 
+pub fn default_zoom_percent() -> u32 {
+    100
+}
+
 /// Padding density for workbench chrome.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "snake_case")]
@@ -109,6 +113,8 @@ pub enum UiTheme {
     /// Dark glass + Spotify green accent (default).
     #[default]
     Spotify,
+    /// Postman dark stage + signature orange accent ("notPostman").
+    NotPostman,
     /// Obsidian & Electric Amber / Cyberpunk minimal terminal dark stage.
     Obsidian,
     /// Swiss Blueprint / Industrial Hardware Studio (floating islands, 0px mechanical geometry, International Orange).
@@ -128,6 +134,7 @@ impl UiTheme {
     pub fn class_token(self) -> &'static str {
         match self {
             Self::Spotify => "theme-spotify",
+            Self::NotPostman => "theme-not-postman",
             Self::Obsidian => "theme-obsidian",
             Self::Blueprint => "theme-blueprint",
             Self::BlueprintLight => "theme-blueprint-light",
@@ -146,6 +153,7 @@ impl UiTheme {
     pub fn label(self) -> &'static str {
         match self {
             Self::Spotify => "Spotify (default)",
+            Self::NotPostman => "notPostman",
             Self::Obsidian => "Obsidian Ember",
             Self::Blueprint => "Hardware Blueprint",
             Self::BlueprintLight => "Hardware Blueprint Light",
@@ -159,6 +167,7 @@ impl UiTheme {
     pub fn all() -> &'static [UiTheme] {
         &[
             Self::Spotify,
+            Self::NotPostman,
             Self::Obsidian,
             Self::Blueprint,
             Self::BlueprintLight,
@@ -264,6 +273,9 @@ pub struct UiSettings {
     /// Minimum splash hold before fade starts (ms).
     #[serde(default = "default_splash_min_ms")]
     pub splash_min_ms: u32,
+    /// UI zoom percentage (default 100%, 50%..=200%, steps of 10% like Postman Cmd+/Cmd-).
+    #[serde(default = "default_zoom_percent")]
+    pub zoom_percent: u32,
     /// Sidebar History section collapsed (default on — Collections keep vertical space).
     #[serde(default = "default_history_collapsed")]
     pub history_collapsed: bool,
@@ -287,6 +299,7 @@ impl Default for UiSettings {
             show_status_bar: default_show_status_bar(),
             default_response_tab: DefaultResponseTab::default(),
             splash_min_ms: default_splash_min_ms(),
+            zoom_percent: default_zoom_percent(),
             history_collapsed: default_history_collapsed(),
         }
     }
@@ -303,6 +316,13 @@ impl UiSettings {
     pub const CONSOLE_MAX_PX: u32 = 420;
     pub const SPLASH_MIN_MS: u32 = 0;
     pub const SPLASH_MAX_MS: u32 = 2_000;
+    pub const ZOOM_MIN_PERCENT: u32 = 50;
+    pub const ZOOM_MAX_PERCENT: u32 = 200;
+    pub const ZOOM_STEP_PERCENT: u32 = 10;
+
+    pub fn clamp_zoom_percent(pct: u32) -> u32 {
+        pct.clamp(Self::ZOOM_MIN_PERCENT, Self::ZOOM_MAX_PERCENT)
+    }
 
     pub fn clamp_font_size(px: u32) -> u32 {
         px.clamp(Self::FONT_MIN_PX, Self::FONT_MAX_PX)
@@ -341,6 +361,7 @@ impl UiSettings {
         self.console_height_px = Self::clamp_console_height(self.console_height_px);
         self.tab_size = Self::clamp_tab_size(self.tab_size);
         self.splash_min_ms = Self::clamp_splash_min_ms(self.splash_min_ms);
+        self.zoom_percent = Self::clamp_zoom_percent(self.zoom_percent);
         self
     }
 
@@ -480,7 +501,11 @@ mod tests {
         assert!(ui.show_status_bar);
         assert_eq!(ui.default_response_tab, DefaultResponseTab::Pretty);
         assert_eq!(ui.splash_min_ms, 80);
+        assert_eq!(ui.zoom_percent, 100);
         assert!(ui.history_collapsed);
+        assert_eq!(UiSettings::clamp_zoom_percent(20), 50);
+        assert_eq!(UiSettings::clamp_zoom_percent(250), 200);
+        assert_eq!(UiSettings::clamp_zoom_percent(120), 120);
         assert_eq!(UiSettings::clamp_sidebar_width(100), 180);
         assert_eq!(UiSettings::clamp_sidebar_width(999), 480);
         assert_eq!(UiSettings::clamp_font_size(8), 10);
@@ -581,6 +606,9 @@ mod tests {
             Some("chassis-blueprint")
         );
         assert_eq!(UiTheme::Spotify.chassis_token(), None);
+        assert_eq!(UiTheme::NotPostman.chassis_token(), None);
+        assert_eq!(UiTheme::NotPostman.class_token(), "theme-not-postman");
+        assert_eq!(UiTheme::NotPostman.label(), "notPostman");
 
         let ui_light = UiSettings {
             theme: UiTheme::BlueprintLight,

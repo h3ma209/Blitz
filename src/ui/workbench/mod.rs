@@ -13,14 +13,16 @@ use dioxus::prelude::*;
 
 use crate::core::{
     add_folder_under, add_request_under, apply_collection_map, apply_collection_var_edit,
-    apply_env_var_edit, apply_environment_map, check_for_updates, delete_needs_confirmation,
-    detect_git_conflicts, duplicate_across, export_collection_v21, find_environment,
-    find_request_across, flatten_collections, generate_static_doc_html, generate_swagger_ui_html,
-    grpc_unary, insert_item_under, move_item_to, push_console, push_history, remint_pasted_item,
-    remove_across, rename_across, reorder_before, request_tab_display_name, resolve_ancestor_auth,
+    apply_env_var_edit, apply_environment_map, batch_duplicate_across, batch_move_items,
+    check_for_updates, delete_needs_confirmation, detect_git_conflicts, duplicate_across,
+    export_collection_v21, find_environment, find_request_across, flatten_collections,
+    generate_static_doc_html, generate_swagger_ui_html, grpc_unary, insert_item_under,
+    is_draft_dirty, move_item_to, push_console, push_history, remint_pasted_item, remove_across,
+    rename_across, reorder_before, request_tab_display_name, resolve_ancestor_auth,
     save_example_to_request, save_request_to_collections, snapshot_tree_item, sort_collections,
     Collection, CollectionItem, ConsoleLine, Folder, HistoryEntry, HttpMethod, RequestDraft,
     RequestProtocol, ResponseView, SavedExample, UiSettings, VarResolveScope, HISTORY_MAX,
+    default_zoom_percent,
 };
 use crate::runtime::{send_request_with_options, SendError, SendOptions};
 use crate::storage::JsonStore;
@@ -34,10 +36,10 @@ use crate::ui::workbench::modals::{VarsPage, WorkbenchModals};
 use crate::ui::workbench::protocol_actions::run_protocol_action;
 use crate::ui::workbench::state::{
     ensure_cloud_defaults, execute_tree_delete, sync_env_vars, ImpexModal, PaneDrag,
-    PendingDelete, TreeClipboard, WorkbenchState,
+    PendingCloseTab, PendingDelete, TreeClipboard, WorkbenchState,
 };
 use crate::ui::workbench::top_bar::TopBar;
-use crate::ui::{CollectionEditor, ConflictResolver, ConflictState, DismissBackdrop};
+use crate::ui::{CollectionEditor, ConflictResolver, ConflictState, DismissBackdrop, ToastContainer, ToastLevel};
 
 fn tree_item_label(collections: &[Collection], id: Uuid) -> String {
     flatten_collections(collections)
@@ -98,10 +100,15 @@ pub fn Workbench() -> Element {
     let mut pane_h = st.pane_h;
     let mut console_h = st.console_h;
     let mut pending_delete = st.pending_delete;
+    let mut pending_batch_move = st.pending_batch_move;
+    let mut pending_close_tab = st.pending_close_tab;
     let mut tree_clipboard = st.tree_clipboard;
     let mut available_update = st.available_update;
+    let mut show_tab_menu = st.show_tab_menu;
+    let mut drag_tab_idx = st.drag_tab_idx;
     let mut renaming_tab_id = use_signal(|| None::<Uuid>);
     let mut rename_tab_draft = use_signal(String::new);
+    let mut zoom_overlay = use_signal(|| None::<(u32, u64)>);
 
     use_effect(move || {
         if loaded() {
@@ -156,15 +163,149 @@ pub fn Workbench() -> Element {
         }
     });
 
+    use_effect(move || {
+        let zoom_pct = app_settings().ui.zoom_percent;
+        let factor = (zoom_pct as f64) / 100.0;
+        let script = format!(
+            r#"
+            (function() {{
+                const factor = {factor:.2};
+                if (document.documentElement) {{
+                    document.documentElement.style.zoom = factor;
+                }}
+                if (!window.__blitz_zoom_listener_installed) {{
+                    window.__blitz_zoom_listener_installed = true;
+                    window.addEventListener('keydown', function(e) {{
+                        const isMeta = e.metaKey || e.ctrlKey;
+                        if (!isMeta) return;
+
+                        if (e.code === 'Equal' || e.code === 'NumpadAdd' || e.key === '=' || e.key === '+') {{
+                            e.preventDefault();
+                            e.stopPropagation();
+                            const btn = document.getElementById('blitz-btn-zoom-in');
+                            if (btn) btn.click();
+                            return;
+                        }}
+
+                        if (e.code === 'Minus' || e.code === 'NumpadSubtract' || e.key === '-' || e.key === '_') {{
+                            e.preventDefault();
+                            e.stopPropagation();
+                            const btn = document.getElementById('blitz-btn-zoom-out');
+                            if (btn) btn.click();
+                            return;
+                        }}
+
+                        if (e.code === 'Digit0' || e.code === 'Numpad0' || e.key === '0') {{
+                            e.preventDefault();
+                            e.stopPropagation();
+                            const btn = document.getElementById('blitz-btn-zoom-reset');
+                            if (btn) btn.click();
+                            return;
+                        }}
+                    }}, {{ capture: true }});
+                }}
+            }})();
+            "#
+        );
+        spawn(async move {
+            let _ = document::eval(&script).await;
+        });
+    });
+
+    let do_zoom_in = use_callback(move |_| {
+        let st = st;
+        let mut s = app_settings();
+        let old_z = s.ui.zoom_percent;
+        let new_z = UiSettings::clamp_zoom_percent(old_z.saturating_add(UiSettings::ZOOM_STEP_PERCENT));
+        if new_z != old_z {
+            s.ui.zoom_percent = new_z;
+            app_settings.set(s);
+            st.persist_local();
+        }
+        status_msg.set(format!("Zoom: {new_z}%"));
+        let epoch = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis() as u64;
+        zoom_overlay.set(Some((new_z, epoch)));
+        spawn(async move {
+            tokio::time::sleep(Duration::from_millis(1500)).await;
+            if let Some((_, ep)) = zoom_overlay() {
+                if ep == epoch {
+                    zoom_overlay.set(None);
+                }
+            }
+        });
+    });
+
+    let do_zoom_out = use_callback(move |_| {
+        let st = st;
+        let mut s = app_settings();
+        let old_z = s.ui.zoom_percent;
+        let new_z = UiSettings::clamp_zoom_percent(old_z.saturating_sub(UiSettings::ZOOM_STEP_PERCENT));
+        if new_z != old_z {
+            s.ui.zoom_percent = new_z;
+            app_settings.set(s);
+            st.persist_local();
+        }
+        status_msg.set(format!("Zoom: {new_z}%"));
+        let epoch = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis() as u64;
+        zoom_overlay.set(Some((new_z, epoch)));
+        spawn(async move {
+            tokio::time::sleep(Duration::from_millis(1500)).await;
+            if let Some((_, ep)) = zoom_overlay() {
+                if ep == epoch {
+                    zoom_overlay.set(None);
+                }
+            }
+        });
+    });
+
+    let do_zoom_reset = use_callback(move |_| {
+        let st = st;
+        let mut s = app_settings();
+        let new_z = default_zoom_percent();
+        if s.ui.zoom_percent != new_z {
+            s.ui.zoom_percent = new_z;
+            app_settings.set(s);
+            st.persist_local();
+        }
+        status_msg.set(format!("Zoom reset: {new_z}%"));
+        let epoch = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis() as u64;
+        zoom_overlay.set(Some((new_z, epoch)));
+        spawn(async move {
+            tokio::time::sleep(Duration::from_millis(1500)).await;
+            if let Some((_, ep)) = zoom_overlay() {
+                if ep == epoch {
+                    zoom_overlay.set(None);
+                }
+            }
+        });
+    });
+
     let do_save = use_callback(move |_| {
         let mut st = st;
         let mut cols = collections();
-        let owner = save_request_to_collections(&mut cols, active_collection_id(), draft());
-        let req_id = draft().id;
+        let cur = draft();
+        let owner = save_request_to_collections(&mut cols, active_collection_id(), cur.clone());
+        let req_id = cur.id;
         collections.set(cols);
         active_collection_id.set(Some(owner));
         active_request_id.set(Some(req_id));
+        let mut tabs = open_tabs();
+        if let Some(slot) = tabs.iter_mut().find(|t| t.id == req_id) {
+            *slot = cur.clone();
+            open_tabs.set(tabs);
+        }
         st.persist();
+        status_msg.set(format!("saved '{}'", cur.name));
+        st.notify(format!("Saved '{}'", cur.name), ToastLevel::Success);
     });
 
     let do_new_tab = use_callback(move |_| {
@@ -187,14 +328,9 @@ pub fn Workbench() -> Element {
         status_msg.set("new tab (unsaved)".into());
     });
 
-    let do_close_tab = use_callback(move |tab_id: Uuid| {
+    let do_force_close_tab = use_callback(move |tab_id: Uuid| {
         let mut tabs = open_tabs();
         let cur = draft();
-        if let Some(slot) = tabs.iter_mut().find(|t| t.id == cur.id) {
-            *slot = cur.clone();
-        } else {
-            tabs.push(cur.clone());
-        }
         let Some(idx) = tabs.iter().position(|t| t.id == tab_id) else {
             return;
         };
@@ -228,6 +364,68 @@ pub fn Workbench() -> Element {
         }
         open_tabs.set(tabs);
         status_msg.set("tab closed".into());
+    });
+
+    let do_close_tab = use_callback(move |tab_id: Uuid| {
+        let tabs = open_tabs();
+        let cur = draft();
+        let target_draft = if cur.id == tab_id {
+            cur
+        } else if let Some(t) = tabs.iter().find(|t| t.id == tab_id) {
+            t.clone()
+        } else {
+            return;
+        };
+
+        if is_draft_dirty(&target_draft, &collections()) {
+            pending_close_tab.set(Some(PendingCloseTab {
+                tab_id,
+                draft: target_draft,
+            }));
+        } else {
+            do_force_close_tab(tab_id);
+        }
+    });
+
+    let do_switch_tab = use_callback(move |tid: Uuid| {
+        let mut tabs = open_tabs();
+        let cur = draft();
+        if let Some(slot) = tabs.iter_mut().find(|x| x.id == cur.id) {
+            *slot = cur;
+        }
+        if let Some(found) = tabs.iter().find(|x| x.id == tid).cloned() {
+            draft.set(found.clone());
+            active_request_id.set(Some(tid));
+            editing_collection_id.set(None);
+            if let Some((col_id, _)) = find_request_across(&collections(), tid) {
+                active_collection_id.set(Some(col_id));
+                if let Some(col) = collections().iter().find(|c| c.id == col_id) {
+                    let mut v = vars();
+                    v.collection = col.variables_map();
+                    vars.set(v);
+                }
+            }
+            let resp_map = responses();
+            if let Some(cached) = resp_map.get(&tid).cloned() {
+                response.set(Some(cached));
+            } else {
+                response.set(None);
+            }
+        }
+        open_tabs.set(tabs);
+    });
+
+    let do_reorder_tab = use_callback(move |(from_idx, to_idx): (usize, usize)| {
+        if from_idx == to_idx {
+            return;
+        }
+        let mut tabs = open_tabs();
+        if from_idx < tabs.len() && to_idx < tabs.len() {
+            let item = tabs.remove(from_idx);
+            tabs.insert(to_idx, item);
+            open_tabs.set(tabs);
+            st.persist();
+        }
     });
 
     let do_send = use_callback(move |_| {
@@ -591,13 +789,14 @@ pub fn Workbench() -> Element {
                                 *slot = cur;
                             }
                         }
-                        if let Some(slot) = tabs.iter_mut().find(|t| t.id == req.id) {
-                            *slot = req.clone();
+                        let target_draft = if let Some(existing) = tabs.iter().find(|t| t.id == req.id) {
+                            existing.clone()
                         } else {
                             tabs.push(req.clone());
-                        }
+                            req.clone()
+                        };
                         open_tabs.set(tabs);
-                        draft.set(req.clone());
+                        draft.set(target_draft);
                         active_request_id.set(Some(id));
                         active_collection_id.set(Some(col_id));
                         editing_collection_id.set(None);
@@ -714,10 +913,10 @@ pub fn Workbench() -> Element {
                 if let Some(id) = evt.id {
                     let cols = collections();
                     if delete_needs_confirmation(&cols, id) {
-                        pending_delete.set(Some(PendingDelete {
+                        pending_delete.set(Some(PendingDelete::single(
                             id,
-                            label: tree_item_label(&cols, id),
-                        }));
+                            tree_item_label(&cols, id),
+                        )));
                     } else {
                         let mut cols = cols;
                         let mut tr = trash();
@@ -741,6 +940,53 @@ pub fn Workbench() -> Element {
                         draft.set(d);
                         st.persist();
                     }
+                }
+            }
+            SidebarAction::BatchDelete => {
+                let ids = if !evt.ids.is_empty() {
+                    evt.ids
+                } else if let Some(id) = evt.id {
+                    vec![id]
+                } else {
+                    Vec::new()
+                };
+                if ids.len() == 1 {
+                    let id = ids[0];
+                    let cols = collections();
+                    if delete_needs_confirmation(&cols, id) {
+                        pending_delete.set(Some(PendingDelete::single(
+                            id,
+                            tree_item_label(&cols, id),
+                        )));
+                    } else {
+                        let mut cols = cols;
+                        let mut tr = trash();
+                        let mut col_id = active_collection_id();
+                        let mut req_id = active_request_id();
+                        let mut d = draft();
+                        if let Some(msg) = execute_tree_delete(
+                            id,
+                            &mut cols,
+                            &mut tr,
+                            &mut col_id,
+                            &mut req_id,
+                            &mut d,
+                        ) {
+                            status_msg.set(msg);
+                        }
+                        trash.set(tr);
+                        collections.set(cols);
+                        active_collection_id.set(col_id);
+                        active_request_id.set(req_id);
+                        draft.set(d);
+                        st.persist();
+                    }
+                } else if ids.len() > 1 {
+                    let count = ids.len();
+                    pending_delete.set(Some(PendingDelete::batch(
+                        ids,
+                        format!("{count} items"),
+                    )));
                 }
             }
             SidebarAction::Copy => {
@@ -808,6 +1054,16 @@ pub fn Workbench() -> Element {
                     }
                 }
             }
+            SidebarAction::BatchDuplicate => {
+                let mut cols = collections();
+                let new_ids = batch_duplicate_across(&mut cols, &evt.ids);
+                if !new_ids.is_empty() {
+                    sort_collections(&mut cols);
+                    collections.set(cols);
+                    status_msg.set(format!("duplicated {} item{}", new_ids.len(), if new_ids.len() == 1 { "" } else { "s" }));
+                    st.persist();
+                }
+            }
             SidebarAction::Favorite => {
                 if let Some(id) = evt.id {
                     let mut cols = collections();
@@ -837,6 +1093,21 @@ pub fn Workbench() -> Element {
                     } else {
                         status_msg.set("cannot move there".into());
                     }
+                }
+            }
+            SidebarAction::BatchMove => {
+                if let Some(target_id) = evt.target_id {
+                    let mut cols = collections();
+                    let count = batch_move_items(&mut cols, &evt.ids, target_id);
+                    if count > 0 {
+                        collections.set(cols);
+                        status_msg.set(format!("moved {} item{}", count, if count == 1 { "" } else { "s" }));
+                        st.persist();
+                    } else {
+                        status_msg.set("cannot move there".into());
+                    }
+                } else if !evt.ids.is_empty() {
+                    pending_batch_move.set(Some(evt.ids.clone()));
                 }
             }
             SidebarAction::CopyId => {
@@ -985,32 +1256,27 @@ pub fn Workbench() -> Element {
         live_sidebar_w,
         ui.tab_size
     );
-    let live_request_h = if matches!(pane_drag(), Some(PaneDrag::Request { .. })) {
-        pane_h()
-    } else {
-        ui.request_pane_height_px as f64
-    };
-    let live_console_h = if matches!(pane_drag(), Some(PaneDrag::Console { .. })) {
-        console_h()
-    } else {
-        ui.console_height_px as f64
-    };
+    let live_request_h = pane_h();
+    let live_console_h = console_h();
     let workbench_style = format!(
         "--request-h: {}px; --console-h: {}px;",
         live_request_h, live_console_h
     );
     let appearance_tokens = ui.shell_class_tokens();
+    let is_resizing_sidebar = sidebar_drag().is_some();
+    let is_resizing_pane = pane_drag().is_some();
     let shell_class = {
-        let base = if sidebar_drag().is_some() {
-            format!("app-shell sidebar-resizing {appearance_tokens}")
-        } else {
-            format!("app-shell {appearance_tokens}")
-        };
-        if show_settings() {
-            format!("{base} settings-open")
-        } else {
-            base
+        let mut classes = vec!["app-shell", &appearance_tokens];
+        if is_resizing_sidebar {
+            classes.push("sidebar-resizing");
         }
+        if is_resizing_pane {
+            classes.push("pane-resizing-v");
+        }
+        if show_settings() {
+            classes.push("settings-open");
+        }
+        classes.join(" ")
     };
     let workbench_class = match pane_drag() {
         Some(PaneDrag::Request { .. } | PaneDrag::Console { .. }) => "workbench pane-resizing-v",
@@ -1046,31 +1312,68 @@ pub fn Workbench() -> Element {
                 cloud_menu_open.set(false);
             },
             onmousemove: move |evt| {
-                let Some((start_x, start_w)) = sidebar_drag() else {
-                    return;
-                };
-                let delta = (evt.client_coordinates().x - start_x).round() as i32;
-                let new_w = UiSettings::clamp_sidebar_width(
-                    (start_w as i32 + delta).max(0) as u32,
-                );
-                sidebar_w.set(new_w as f64);
+                if let Some((start_x, start_w)) = sidebar_drag() {
+                    let delta = (evt.client_coordinates().x - start_x).round() as i32;
+                    let new_w = UiSettings::clamp_sidebar_width(
+                        (start_w as i32 + delta).max(0) as u32,
+                    );
+                    sidebar_w.set(new_w as f64);
+                } else if let Some(drag) = pane_drag() {
+                    let y = evt.client_coordinates().y;
+                    match drag {
+                        PaneDrag::Request { start_y, start_h } => {
+                            let delta = (y - start_y).round() as i32;
+                            let new_h = UiSettings::clamp_request_pane_height(
+                                (start_h as i32 + delta).max(0) as u32,
+                            );
+                            pane_h.set(new_h as f64);
+                        }
+                        PaneDrag::Console { start_y, start_h } => {
+                            let delta = (start_y - y).round() as i32;
+                            let new_h = UiSettings::clamp_console_height(
+                                (start_h as i32 + delta).max(0) as u32,
+                            );
+                            console_h.set(new_h as f64);
+                        }
+                    }
+                }
             },
             onmouseup: move |_| {
+                let mut changed = false;
                 if sidebar_drag().is_some() {
-                    let mut st = st;
                     sidebar_drag.set(None);
+                    changed = true;
+                }
+                if pane_drag().is_some() {
+                    pane_drag.set(None);
+                    changed = true;
+                }
+                if changed {
+                    let mut st = st;
                     let mut s = app_settings();
                     s.ui.sidebar_width_px = sidebar_w() as u32;
+                    s.ui.request_pane_height_px = pane_h() as u32;
+                    s.ui.console_height_px = console_h() as u32;
                     app_settings.set(s);
                     st.persist();
                 }
             },
             onmouseleave: move |_| {
+                let mut changed = false;
                 if sidebar_drag().is_some() {
-                    let mut st = st;
                     sidebar_drag.set(None);
+                    changed = true;
+                }
+                if pane_drag().is_some() {
+                    pane_drag.set(None);
+                    changed = true;
+                }
+                if changed {
+                    let mut st = st;
                     let mut s = app_settings();
                     s.ui.sidebar_width_px = sidebar_w() as u32;
+                    s.ui.request_pane_height_px = pane_h() as u32;
+                    s.ui.console_height_px = console_h() as u32;
                     app_settings.set(s);
                     st.persist();
                 }
@@ -1098,6 +1401,24 @@ pub fn Workbench() -> Element {
                     }
                     Key::Character(c)
                         if meta
+                            && !shift
+                            && !alt
+                            && c.len() == 1
+                            && c.chars().next().is_some_and(|ch| ch.is_ascii_digit()) =>
+                    {
+                        if let Some(digit) = c.chars().next().and_then(|ch| ch.to_digit(10)) {
+                            if (1..=9).contains(&digit) {
+                                evt.prevent_default();
+                                let target_idx = (digit - 1) as usize;
+                                let tabs = open_tabs();
+                                if let Some(target) = tabs.get(target_idx) {
+                                    do_switch_tab(target.id);
+                                }
+                            }
+                        }
+                    }
+                    Key::Character(c)
+                        if meta
                             && ((shift && c.eq_ignore_ascii_case("p"))
                                 || (!shift && c.eq_ignore_ascii_case("k"))) =>
                     {
@@ -1108,37 +1429,31 @@ pub fn Workbench() -> Element {
                         evt.prevent_default();
                         console_open.set(!console_open());
                     }
-                    Key::Character(c) if meta && (c == "+" || c == "=") => {
+                    _ if meta
+                        && (evt.code() == Code::Equal
+                            || evt.code() == Code::NumpadAdd
+                            || matches!(evt.key(), Key::ZoomIn)
+                            || matches!(evt.key(), Key::Character(ref c) if c == "+" || c == "=")) =>
+                    {
                         evt.prevent_default();
-                        let mut s = app_settings();
-                        let new_ui = UiSettings::clamp_font_size(s.ui.ui_font_size_px.saturating_add(1));
-                        let new_editor = UiSettings::clamp_font_size(s.ui.editor_font_size_px.saturating_add(1));
-                        s.ui.ui_font_size_px = new_ui;
-                        s.ui.editor_font_size_px = new_editor;
-                        app_settings.set(s);
-                        st.persist_local();
-                        status_msg.set(format!("UI scale: {new_ui}px"));
+                        do_zoom_in(());
                     }
-                    Key::Character(c) if meta && (c == "-" || c == "_") => {
+                    _ if meta
+                        && (evt.code() == Code::Minus
+                            || evt.code() == Code::NumpadSubtract
+                            || matches!(evt.key(), Key::ZoomOut)
+                            || matches!(evt.key(), Key::Character(ref c) if c == "-" || c == "_")) =>
+                    {
                         evt.prevent_default();
-                        let mut s = app_settings();
-                        let new_ui = UiSettings::clamp_font_size(s.ui.ui_font_size_px.saturating_sub(1));
-                        let new_editor = UiSettings::clamp_font_size(s.ui.editor_font_size_px.saturating_sub(1));
-                        s.ui.ui_font_size_px = new_ui;
-                        s.ui.editor_font_size_px = new_editor;
-                        app_settings.set(s);
-                        st.persist_local();
-                        status_msg.set(format!("UI scale: {new_ui}px"));
+                        do_zoom_out(());
                     }
-                    Key::Character(c) if meta && c == "0" => {
+                    _ if meta
+                        && (evt.code() == Code::Digit0
+                            || evt.code() == Code::Numpad0
+                            || matches!(evt.key(), Key::Character(ref c) if c == "0")) =>
+                    {
                         evt.prevent_default();
-                        let mut s = app_settings();
-                        let d = UiSettings::default();
-                        s.ui.ui_font_size_px = d.ui_font_size_px;
-                        s.ui.editor_font_size_px = d.editor_font_size_px;
-                        app_settings.set(s);
-                        st.persist_local();
-                        status_msg.set(format!("UI scale reset: {}px", d.ui_font_size_px));
+                        do_zoom_reset(());
                     }
                     _ => {}
                 }
@@ -1155,14 +1470,37 @@ pub fn Workbench() -> Element {
                 }
             }
 
+            button {
+                id: "blitz-btn-zoom-in",
+                style: "display:none;",
+                tabindex: "-1",
+                aria_hidden: "true",
+                onclick: move |_| do_zoom_in(()),
+            }
+            button {
+                id: "blitz-btn-zoom-out",
+                style: "display:none;",
+                tabindex: "-1",
+                aria_hidden: "true",
+                onclick: move |_| do_zoom_out(()),
+            }
+            button {
+                id: "blitz-btn-zoom-reset",
+                style: "display:none;",
+                tabindex: "-1",
+                aria_hidden: "true",
+                onclick: move |_| do_zoom_reset(()),
+            }
+
+            if let Some((pct, _)) = zoom_overlay() {
+                div {
+                    class: "zoom-overlay-indicator",
+                    "Zoom: {pct}%"
+                }
+            }
+
             TopBar { st }
             VarsPage { st }
-            WorkbenchModals {
-                st,
-                on_send: move |_| do_send(()),
-                on_save: move |_| do_save(()),
-                on_new_tab: move |_| do_new_tab(()),
-            }
 
             if !show_settings() {
                 div { class: "sidebar-slot",
@@ -1187,7 +1525,7 @@ pub fn Workbench() -> Element {
                             evt.stop_propagation();
                             sidebar_drag.set(Some((
                                 evt.client_coordinates().x,
-                                app_settings().ui.sidebar_width_px as f64,
+                                sidebar_w(),
                             )));
                         },
                     }
@@ -1201,55 +1539,6 @@ pub fn Workbench() -> Element {
                     workbench_class
                 },
                 style: "{workbench_style}",
-                onmousemove: move |evt| {
-                    if show_settings() {
-                        return;
-                    }
-                    let Some(drag) = pane_drag() else {
-                        return;
-                    };
-                    let y = evt.client_coordinates().y;
-                    match drag {
-                        PaneDrag::Request { start_y, start_h } => {
-                            let delta = (y - start_y).round() as i32;
-                            let new_h = UiSettings::clamp_request_pane_height(
-                                (start_h as i32 + delta).max(0) as u32,
-                            );
-                            pane_h.set(new_h as f64);
-                        }
-                        PaneDrag::Console { start_y, start_h } => {
-                            let delta = (start_y - y).round() as i32;
-                            let new_h = UiSettings::clamp_console_height(
-                                (start_h as i32 + delta).max(0) as u32,
-                            );
-                            console_h.set(new_h as f64);
-                        }
-                    }
-                },
-                onmouseup: move |_| {
-                    if show_settings() {
-                        return;
-                    }
-                    if pane_drag().is_some() {
-                        let mut st = st;
-                        pane_drag.set(None);
-                        let mut s = app_settings();
-                        s.ui.request_pane_height_px = pane_h() as u32;
-                        s.ui.console_height_px = console_h() as u32;
-                        app_settings.set(s);
-                        st.persist();
-                    }
-                },
-                onmouseleave: move |_| {
-                    if show_settings() {
-                        return;
-                    }
-                    if pane_drag().is_some() {
-                        let mut st = st;
-                        pane_drag.set(None);
-                        st.persist();
-                    }
-                },
                 if show_settings() {
                     SettingsPanel {
                         settings: app_settings(),
@@ -1268,7 +1557,7 @@ pub fn Workbench() -> Element {
                             }
                         }
                         div { class: "tab-strip-scrollable",
-                            for t in open_tabs() {
+                            for (idx, t) in open_tabs().into_iter().enumerate() {
                                 {
                                     let tid = t.id;
                                     let tname = request_tab_display_name(&collections(), tid);
@@ -1279,11 +1568,31 @@ pub fn Workbench() -> Element {
                                     } else {
                                         t.name.clone()
                                     };
+                                    let tab_draft = if active {
+                                        draft()
+                                    } else {
+                                        t.clone()
+                                    };
+                                    let is_dirty = is_draft_dirty(&tab_draft, &collections());
                                     rsx! {
                                         div {
                                             class: if active { "tab active" } else { "tab" },
                                             role: "button",
                                             tabindex: "0",
+                                            draggable: !is_tab_renaming,
+                                            ondragstart: move |_| {
+                                                drag_tab_idx.set(Some(idx));
+                                            },
+                                            ondragover: move |evt| {
+                                                evt.prevent_default();
+                                            },
+                                            ondrop: move |evt| {
+                                                evt.prevent_default();
+                                                if let Some(from) = drag_tab_idx() {
+                                                    do_reorder_tab((from, idx));
+                                                    drag_tab_idx.set(None);
+                                                }
+                                            },
                                             oncontextmenu: move |evt| {
                                                 evt.prevent_default();
                                                 evt.stop_propagation();
@@ -1294,31 +1603,7 @@ pub fn Workbench() -> Element {
                                                 if is_tab_renaming {
                                                     return;
                                                 }
-                                                let mut tabs = open_tabs();
-                                                let cur = draft();
-                                                if let Some(slot) = tabs.iter_mut().find(|x| x.id == cur.id) {
-                                                    *slot = cur;
-                                                }
-                                                if let Some(found) = tabs.iter().find(|x| x.id == tid).cloned() {
-                                                    draft.set(found.clone());
-                                                    active_request_id.set(Some(tid));
-                                                    editing_collection_id.set(None);
-                                                    if let Some((col_id, _)) = find_request_across(&collections(), tid) {
-                                                        active_collection_id.set(Some(col_id));
-                                                        if let Some(col) = collections().iter().find(|c| c.id == col_id) {
-                                                            let mut v = vars();
-                                                            v.collection = col.variables_map();
-                                                            vars.set(v);
-                                                        }
-                                                    }
-                                                    let resp_map = responses();
-                                                    if let Some(cached) = resp_map.get(&tid).cloned() {
-                                                        response.set(Some(cached));
-                                                    } else {
-                                                        response.set(None);
-                                                    }
-                                                }
-                                                open_tabs.set(tabs);
+                                                do_switch_tab(tid);
                                             },
                                             span {
                                                 class: "tab-method method-{method_class(t.method)}",
@@ -1394,6 +1679,13 @@ pub fn Workbench() -> Element {
                                             } else {
                                                 span { class: "tab-label", "{tname}" }
                                             }
+                                            if is_dirty {
+                                                span {
+                                                    class: "tab-dirty-dot",
+                                                    title: "Unsaved changes",
+                                                    "•"
+                                                }
+                                            }
                                             button {
                                                 class: "tab-close",
                                                 r#type: "button",
@@ -1413,6 +1705,50 @@ pub fn Workbench() -> Element {
                                 title: "New request tab (⌘T)",
                                 onclick: move |_| do_new_tab(()),
                                 "+"
+                            }
+                            if !open_tabs().is_empty() {
+                                button {
+                                    class: if show_tab_menu() { "tab tab-more active" } else { "tab tab-more" },
+                                    title: "All open tabs",
+                                    onclick: move |_| show_tab_menu.set(!show_tab_menu()),
+                                    "▼"
+                                }
+                            }
+                        }
+                        if show_tab_menu() {
+                            div {
+                                class: "tab-dropdown-menu",
+                                for (i, t) in open_tabs().into_iter().enumerate() {
+                                    {
+                                        let tid = t.id;
+                                        let tname = request_tab_display_name(&collections(), tid);
+                                        let active = draft().id == tid;
+                                        let tab_draft = if active { draft() } else { t.clone() };
+                                        let is_dirty = is_draft_dirty(&tab_draft, &collections());
+                                        let idx_label = if i < 9 { format!("⌘{}", i + 1) } else { String::new() };
+                                        rsx! {
+                                            div {
+                                                key: "{tid}",
+                                                class: if active { "tab-dropdown-item active" } else { "tab-dropdown-item" },
+                                                onclick: move |_| {
+                                                    show_tab_menu.set(false);
+                                                    do_switch_tab(tid);
+                                                },
+                                                span {
+                                                    class: "tab-method method-{method_class(t.method)}",
+                                                    "{t.method.as_str()}"
+                                                }
+                                                span { class: "tab-dropdown-name", "{tname}" }
+                                                if is_dirty {
+                                                    span { class: "tab-dirty-dot", title: "Unsaved changes", "•" }
+                                                }
+                                                if !idx_label.is_empty() {
+                                                    span { class: "tab-dropdown-idx", "{idx_label}" }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
                             }
                         }
                     }
@@ -1489,10 +1825,16 @@ pub fn Workbench() -> Element {
                                     let cols_snap = collections();
                                     let cur_draft = draft();
                                     let ancestor_origin = resolve_ancestor_auth(&cols_snap, cur_draft.id).map(|(_, o)| o);
+                                    let mut effective_vars = vars();
+                                    for p in &cur_draft.path_params {
+                                        if p.enabled {
+                                            effective_vars.path.insert(p.key.clone(), p.value.clone());
+                                        }
+                                    }
                                     rsx! {
                                         RequestBuilder {
                                             draft: cur_draft,
-                                            vars: vars(),
+                                            vars: effective_vars,
                                             data_root: data_root(),
                                             ancestor_origin,
                                             on_edit_parent_auth: move |origin_id: Uuid| {
@@ -1500,7 +1842,14 @@ pub fn Workbench() -> Element {
                                                 col_vars_all.set(true);
                                                 show_col_vars.set(true);
                                             },
-                                            on_change: move |d| draft.set(d),
+                                            on_change: move |d: RequestDraft| {
+                                                let mut tabs = open_tabs();
+                                                if let Some(slot) = tabs.iter_mut().find(|t| t.id == d.id) {
+                                                    *slot = d.clone();
+                                                    open_tabs.set(tabs);
+                                                }
+                                                draft.set(d);
+                                            },
                                             on_send: move |_| do_send(()),
                                             on_open_code: move |_| show_snippets.set(true),
                                             on_var_edit: move |evt: RequestVarEditEvent| {
@@ -1513,6 +1862,23 @@ pub fn Workbench() -> Element {
                                                         ..
                                                     } => {
                                                         match scope {
+                                                            VarResolveScope::Path => {
+                                                                let mut d = draft();
+                                                                if let Some(p) = d.path_params.iter_mut().find(|p| p.key == name) {
+                                                                    p.value = value.clone();
+                                                                } else {
+                                                                    d.path_params.push(crate::core::KeyValue::new(&name, &value));
+                                                                }
+                                                                let mut tabs = open_tabs();
+                                                                if let Some(slot) = tabs.iter_mut().find(|t| t.id == d.id) {
+                                                                    *slot = d.clone();
+                                                                    open_tabs.set(tabs);
+                                                                }
+                                                                draft.set(d);
+                                                                let mut v = vars();
+                                                                v.path.insert(name.clone(), value);
+                                                                vars.set(v);
+                                                            }
                                                             VarResolveScope::Environment => {
                                                                 let mut envs = environments();
                                                                 if let Some(id) = active_env_id() {
@@ -1597,7 +1963,7 @@ pub fn Workbench() -> Element {
                                     evt.stop_propagation();
                                     pane_drag.set(Some(PaneDrag::Request {
                                         start_y: evt.client_coordinates().y,
-                                        start_h: app_settings().ui.request_pane_height_px,
+                                        start_h: pane_h() as u32,
                                     }));
                                 },
                             }
@@ -1667,7 +2033,7 @@ pub fn Workbench() -> Element {
                             }
                             pane_drag.set(Some(PaneDrag::Console {
                                 start_y,
-                                start_h: app_settings().ui.console_height_px,
+                                start_h: console_h() as u32,
                             }));
                         },
                     }
@@ -1689,6 +2055,15 @@ pub fn Workbench() -> Element {
                     }
                 }
             }
+
+            WorkbenchModals {
+                st,
+                on_send: move |_| do_send(()),
+                on_save: move |_| do_save(()),
+                on_new_tab: move |_| do_new_tab(()),
+            }
+
+            ToastContainer { toasts: st.toasts }
 
             if splash_visible() {
                 div {

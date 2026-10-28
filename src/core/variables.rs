@@ -26,6 +26,7 @@ pub enum VariableScope {
 /// Scope shown in the variable hover popover (includes vault + unresolved).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum VarResolveScope {
+    Path,
     Local,
     Environment,
     Collection,
@@ -38,6 +39,7 @@ pub enum VarResolveScope {
 impl VarResolveScope {
     pub fn label(self) -> &'static str {
         match self {
+            Self::Path => "path",
             Self::Local => "local",
             Self::Environment => "environment",
             Self::Collection => "collection",
@@ -104,11 +106,57 @@ pub fn utf16_offset_to_byte_offset(text: &str, utf16_offset: usize) -> usize {
     text.len()
 }
 
-/// Find `{{name}}` / `{{vault:key}}` span containing byte `index`.
-/// Index may equal `end` (caret after closing `}}`).
+/// All non-empty `{{…}}` spans in `text` (left → right).
+pub fn iter_var_spans(text: &str) -> impl Iterator<Item = VarSpan> + '_ {
+    var_token_re().captures_iter(text).filter_map(|caps| {
+        let m = caps.get(0)?;
+        let raw = caps.get(1)?.as_str().trim().to_string();
+        if raw.is_empty() {
+            return None;
+        }
+        Some(VarSpan {
+            start: m.start(),
+            end: m.end(),
+            raw,
+        })
+    })
+}
+
+/// All variable spans in `text`, including `{{…}}` and path variables `/:paramName`.
+pub fn iter_all_var_spans(text: &str) -> Vec<VarSpan> {
+    let mut spans: Vec<VarSpan> = iter_var_spans(text).collect();
+
+    let path_end = text.find('?').unwrap_or(text.len());
+    let path_text = &text[..path_end];
+
+    static PATH_VAR_RE: OnceLock<Regex> = OnceLock::new();
+    let re = PATH_VAR_RE.get_or_init(|| {
+        Regex::new(r"/(?P<token>:(?P<name>[a-zA-Z_][a-zA-Z0-9_]*))").unwrap()
+    });
+
+    for cap in re.captures_iter(path_text) {
+        if let (Some(token_m), Some(name_m)) = (cap.name("token"), cap.name("name")) {
+            let start = token_m.start();
+            let end = token_m.end();
+            if !spans.iter().any(|s| (start >= s.start && start < s.end) || (end > s.start && end <= s.end)) {
+                spans.push(VarSpan {
+                    start,
+                    end,
+                    raw: name_m.as_str().to_string(),
+                });
+            }
+        }
+    }
+
+    spans.sort_by_key(|s| s.start);
+    spans
+}
+
+/// Find `{{name}}`, `{{vault:key}}`, or `:pathVar` span containing byte `index`.
+/// Index may equal `end` (caret after closing `}}` or param name).
 pub fn find_var_at(text: &str, index: usize) -> Option<VarSpan> {
     let index = snap_to_char_boundary(text, index);
-    iter_var_spans(text).find(|span| index >= span.start && index <= span.end)
+    iter_all_var_spans(text).into_iter().find(|span| index >= span.start && index <= span.end)
 }
 
 /// Caret is inside an incomplete `{{…}}` token → `(byte index of `{`, partial name)`.
@@ -137,22 +185,6 @@ pub fn apply_var_insert(text: &str, caret: usize, open: usize, insert_name: &str
     (out, new_caret)
 }
 
-/// All non-empty `{{…}}` spans in `text` (left → right).
-pub fn iter_var_spans(text: &str) -> impl Iterator<Item = VarSpan> + '_ {
-    var_token_re().captures_iter(text).filter_map(|caps| {
-        let m = caps.get(0)?;
-        let raw = caps.get(1)?.as_str().trim().to_string();
-        if raw.is_empty() {
-            return None;
-        }
-        Some(VarSpan {
-            start: m.start(),
-            end: m.end(),
-            raw,
-        })
-    })
-}
-
 fn escape_html(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
     for c in s.chars() {
@@ -169,25 +201,38 @@ fn escape_html(s: &str) -> String {
 }
 
 /// HTML for a highlight mirror: plain text escaped, `{{…}}` wrapped in
-/// `<span class="var-token">` (adds ` unresolved` when `vars` marks it unresolved).
+/// `<span class="var-token">` (adds ` unresolved` when `vars` marks it unresolved),
+/// and `:pathVar` wrapped in `<span class="var-token path-var-token">`.
 pub fn render_var_highlight_html(text: &str, vars: Option<&VariableContext>) -> String {
     let mut html = String::with_capacity(text.len().saturating_mul(2));
     let mut cursor = 0;
-    for span in iter_var_spans(text) {
+    for span in iter_all_var_spans(text) {
         if span.start > cursor {
             html.push_str(&escape_html(&text[cursor..span.start]));
         }
         let token = &text[span.start..span.end];
+        let is_path_var = token.starts_with(':');
         let (class, title) = match vars {
             Some(v) => {
                 let info = v.inspect_var(&span.raw);
-                if info.is_unresolved() {
+                if info.scope == VarResolveScope::Path {
+                    let val = if info.value.is_empty() { "(empty)" } else { &info.value };
+                    ("var-token path-var-token", format!("{}: {} (path)", span.raw, val))
+                } else if is_path_var {
+                    ("var-token path-var-token", format!("{}: (path)", span.raw))
+                } else if info.is_unresolved() {
                     ("var-token unresolved", format!("{}: (unresolved)", span.raw))
                 } else {
                     ("var-token", format!("{}: {} ({})", span.raw, info.value, info.scope.label()))
                 }
             }
-            None => ("var-token", span.raw.clone()),
+            None => {
+                if is_path_var {
+                    ("var-token path-var-token", format!("{}: (path)", span.raw))
+                } else {
+                    ("var-token", span.raw.clone())
+                }
+            }
         };
         html.push_str("<span class=\"");
         html.push_str(class);
@@ -215,6 +260,9 @@ pub struct VariableContext {
     pub environment: HashMap<String, String>,
     /// Script / request-local — persisted in app snapshot only; **never** written to git cloud tree.
     pub local: HashMap<String, String>,
+    /// Request URL path variables (e.g. `:cabinetID` -> `"123"`).
+    #[serde(default)]
+    pub path: HashMap<String, String>,
     /// In-memory vault keys (loaded from `vault.json` at startup).
     #[serde(default, skip)]
     pub vault: VaultStore,
@@ -345,9 +393,26 @@ impl VariableContext {
         }
     }
 
-    /// Inspect `{{…}}` inner raw for hover UI (value + owning scope).
+    /// Inspect `{{…}}` or `:param` inner raw for hover UI (value + owning scope).
     pub fn inspect_var(&self, raw: &str) -> VarHoverInfo {
         let raw = raw.trim();
+        let stripped_name = raw.strip_prefix(':').unwrap_or(raw);
+        if let Some(val) = self.path.get(stripped_name) {
+            return VarHoverInfo {
+                name: stripped_name.to_string(),
+                raw: raw.to_string(),
+                scope: VarResolveScope::Path,
+                value: val.clone(),
+            };
+        }
+        if raw.starts_with(':') {
+            return VarHoverInfo {
+                name: stripped_name.to_string(),
+                raw: raw.to_string(),
+                scope: VarResolveScope::Path,
+                value: String::new(),
+            };
+        }
         if raw.starts_with('$') {
             if let Some(dyn_val) = resolve_dynamic_var(raw) {
                 return VarHoverInfo {
@@ -424,6 +489,9 @@ impl VariableContext {
             }
             VarResolveScope::Global => {
                 self.global.insert(name.to_string(), value.to_string());
+            }
+            VarResolveScope::Path => {
+                self.path.insert(name.to_string(), value.to_string());
             }
             VarResolveScope::Vault => {
                 self.vault.set(name, value);
