@@ -1059,7 +1059,8 @@ fn BodyEditor(
                             }
                         }
                     },
-                    "✨ Beautify JSON"
+                    span { class: "action-icon action-icon-format", aria_hidden: "true" }
+                    span { "Beautify JSON" }
                 }
                 {
                     let trimmed = body.trim();

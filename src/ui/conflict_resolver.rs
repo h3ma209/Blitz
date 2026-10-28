@@ -35,7 +35,8 @@ pub fn ConflictResolver(
             div { class: "col-editor-header", style: "border-bottom: var(--glass-border); padding: 12px 20px; display: flex; justify-content: space-between; align-items: center; background: var(--bg-surface-elevated);",
                 div {
                     h3 { style: "margin: 0; font-size: 15px; font-weight: 700; display: flex; align-items: center; gap: 8px;",
-                        span { "⚔️ Git Merge Conflict Resolver" }
+                        span { class: "action-icon action-icon-git-merge", aria_hidden: "true" }
+                        span { "Git Merge Conflict Resolver" }
                         span { class: "status-chip status-err", style: "font-size: 11px;", "{files_len} conflicting files" }
                     }
                     p { class: "hint", style: "margin: 3px 0 0;",

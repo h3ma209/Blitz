@@ -81,15 +81,25 @@
   --glass-border: 1px solid rgba(255, 255, 255, 0.1);
   --glass-shine: inset 0 1px 0 rgba(255, 255, 255, 0.08);
 
-  /* Semantic — status */
-  --ok: #1ed760;
-  --ok-soft: rgba(30, 215, 96, 0.16);
-  --err: #f15e6c;
-  --err-soft: rgba(241, 94, 108, 0.16);
-  --warn: #f7b731;
-  --warn-soft: rgba(247, 183, 49, 0.14);
-  --info: #4ea1ff;
-  --info-soft: rgba(78, 161, 255, 0.14);
+  /* Semantic — status (calm status green separated from neon brand green) */
+  --ok: #10b981;
+  --ok-soft: rgba(16, 185, 129, 0.16);
+  --err: #ef4444;
+  --err-soft: rgba(239, 68, 68, 0.16);
+  --warn: #f59e0b;
+  --warn-soft: rgba(245, 158, 11, 0.14);
+  --info: #3b82f6;
+  --info-soft: rgba(59, 130, 246, 0.14);
+
+  /* Response code classes */
+  --status-2xx: #10b981;
+  --status-2xx-soft: rgba(16, 185, 129, 0.15);
+  --status-3xx: #3b82f6;
+  --status-3xx-soft: rgba(59, 130, 246, 0.15);
+  --status-4xx: #f59e0b;
+  --status-4xx-soft: rgba(245, 158, 11, 0.15);
+  --status-5xx: #ef4444;
+  --status-5xx-soft: rgba(239, 68, 68, 0.15);
 
   /* Semantic — HTTP methods */
   --method-get: #3b82f6;          /* Distinct clean blue */
@@ -999,6 +1009,40 @@ body {
   border-radius: var(--radius-sm);
   background: rgba(255, 255, 255, 0.04);
   border: var(--glass-border);
+  transition: border-color var(--ease), background var(--ease);
+}
+
+.env-selector-wrap.env-tier-stage {
+  border-color: rgba(245, 158, 11, 0.45);
+  background: rgba(245, 158, 11, 0.08);
+}
+
+.env-selector-wrap.env-tier-prod {
+  border-color: rgba(239, 68, 68, 0.55);
+  background: rgba(239, 68, 68, 0.12);
+}
+
+.env-indicator {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  display: inline-block;
+  margin-right: 2px;
+}
+
+.env-indicator.env-indicator-local {
+  background: var(--text-faint, #6e7681);
+}
+
+.env-indicator.env-indicator-stage {
+  background: #f59e0b;
+  box-shadow: 0 0 6px rgba(245, 158, 11, 0.6);
+}
+
+.env-indicator.env-indicator-prod {
+  background: #ef4444;
+  box-shadow: 0 0 7px rgba(239, 68, 68, 0.7);
 }
 
 .env-select-trigger {
@@ -1885,13 +1929,13 @@ button.env-menu-row:hover,
 }
 
 .tree-icon-folder {
-  color: var(--warn);
+  color: var(--text-muted, #8b949e);
   -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath fill='%23000' d='M1.5 3.25A.75.75 0 0 1 2.25 2.5h3.172a.75.75 0 0 1 .53.22l1.06 1.06a.75.75 0 0 0 .53.22H13.75a.75.75 0 0 1 .75.75v7.5a.75.75 0 0 1-.75.75H2.25a.75.75 0 0 1-.75-.75v-8.5z'/%3E%3C/svg%3E");
   mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath fill='%23000' d='M1.5 3.25A.75.75 0 0 1 2.25 2.5h3.172a.75.75 0 0 1 .53.22l1.06 1.06a.75.75 0 0 0 .53.22H13.75a.75.75 0 0 1 .75.75v7.5a.75.75 0 0 1-.75.75H2.25a.75.75 0 0 1-.75-.75v-8.5z'/%3E%3C/svg%3E");
 }
 
 .tree-icon-collection {
-  color: var(--spot-green-bright);
+  color: var(--text-muted, #8b949e);
   -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath fill='%23000' d='M2.25 2.5h11.5a.75.75 0 0 1 .75.75v1.5a.75.75 0 0 1-.75.75H2.25A.75.75 0 0 1 1.5 4.75v-1.5A.75.75 0 0 1 2.25 2.5zm0 4.5h11.5a.75.75 0 0 1 .75.75v4.5a.75.75 0 0 1-.75.75H2.25a.75.75 0 0 1-.75-.75v-4.5A.75.75 0 0 1 2.25 7z'/%3E%3C/svg%3E");
   mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath fill='%23000' d='M2.25 2.5h11.5a.75.75 0 0 1 .75.75v1.5a.75.75 0 0 1-.75.75H2.25A.75.75 0 0 1 1.5 4.75v-1.5A.75.75 0 0 1 2.25 2.5zm0 4.5h11.5a.75.75 0 0 1 .75.75v4.5a.75.75 0 0 1-.75.75H2.25a.75.75 0 0 1-.75-.75v-4.5A.75.75 0 0 1 2.25 7z'/%3E%3C/svg%3E");
 }
@@ -1984,6 +2028,46 @@ button.env-menu-row:hover,
 .action-icon-theme {
   -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath fill='%23000' d='M8 1a7 7 0 1 0 0 14A7 7 0 0 0 8 1zm0 1.5v11a5.5 5.5 0 0 1 0-11z'/%3E%3C/svg%3E");
   mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath fill='%23000' d='M8 1a7 7 0 1 0 0 14A7 7 0 0 0 8 1zm0 1.5v11a5.5 5.5 0 0 1 0-11z'/%3E%3C/svg%3E");
+}
+
+.action-icon-bolt {
+  -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpolygon points='9,1 3,9 8,9 7,15 13,7 8,7' fill='%23000'/%3E%3C/svg%3E");
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpolygon points='9,1 3,9 8,9 7,15 13,7 8,7' fill='%23000'/%3E%3C/svg%3E");
+}
+
+.action-icon-search {
+  -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath fill='%23000' d='M11.74 10.68a6 6 0 1 0-1.06 1.06l3.86 3.86 1.06-1.06-3.86-3.86zm-5.24.82a4.5 4.5 0 1 1 0-9 4.5 4.5 0 0 1 0 9z'/%3E%3C/svg%3E");
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath fill='%23000' d='M11.74 10.68a6 6 0 1 0-1.06 1.06l3.86 3.86 1.06-1.06-3.86-3.86zm-5.24.82a4.5 4.5 0 1 1 0-9 4.5 4.5 0 0 1 0 9z'/%3E%3C/svg%3E");
+}
+
+.action-icon-check {
+  -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath fill='%23000' d='M13.48 4.28a.75.75 0 0 1 0 1.06l-6.5 6.5a.75.75 0 0 1-1.06 0l-3.25-3.25a.75.75 0 1 1 1.06-1.06L6.45 10.3l5.97-5.97a.75.75 0 0 1 1.06 0z'/%3E%3C/svg%3E");
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath fill='%23000' d='M13.48 4.28a.75.75 0 0 1 0 1.06l-6.5 6.5a.75.75 0 0 1-1.06 0l-3.25-3.25a.75.75 0 1 1 1.06-1.06L6.45 10.3l5.97-5.97a.75.75 0 0 1 1.06 0z'/%3E%3C/svg%3E");
+}
+
+.action-icon-copy {
+  -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath fill='%23000' d='M4 2h7a1 1 0 0 1 1 1v1h1a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1v-1H4a1 1 0 0 1-1-1V3a1 1 0 0 1 1-1zm2 10v1h7V5H6v7zm-2-2h1V4h6V3H4v7z'/%3E%3C/svg%3E");
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath fill='%23000' d='M4 2h7a1 1 0 0 1 1 1v1h1a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1v-1H4a1 1 0 0 1-1-1V3a1 1 0 0 1 1-1zm2 10v1h7V5H6v7zm-2-2h1V4h6V3H4v7z'/%3E%3C/svg%3E");
+}
+
+.action-icon-format {
+  -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath fill='%23000' d='M8 1.5l1.2 2.8 2.8 1.2-2.8 1.2L8 9.5l-1.2-2.8-2.8-1.2 2.8-1.2L8 1.5zm4.5 7l.7 1.6 1.6.7-1.6.7-.7 1.6-.7-1.6-1.6-.7 1.6-.7.7-1.6zm-8 1l.6 1.4 1.4.6-1.4.6-.6 1.4-.6-1.4-1.4-.6 1.4-.6.6-1.4z'/%3E%3C/svg%3E");
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath fill='%23000' d='M8 1.5l1.2 2.8 2.8 1.2-2.8 1.2L8 9.5l-1.2-2.8-2.8-1.2 2.8-1.2L8 1.5zm4.5 7l.7 1.6 1.6.7-1.6.7-.7 1.6-.7-1.6-1.6-.7 1.6-.7.7-1.6zm-8 1l.6 1.4 1.4.6-1.4.6-.6 1.4-.6-1.4-1.4-.6 1.4-.6.6-1.4z'/%3E%3C/svg%3E");
+}
+
+.action-icon-git-merge {
+  -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath fill='%23000' d='M11.5 3a2.5 2.5 0 0 0-2.45 2H6.45A2.5 2.5 0 0 0 2 6.5v4.05A2.5 2.5 0 1 0 4.5 13V6.5A1 1 0 0 1 5.5 5.5h3.55A2.5 2.5 0 1 0 11.5 3z'/%3E%3C/svg%3E");
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath fill='%23000' d='M11.5 3a2.5 2.5 0 0 0-2.45 2H6.45A2.5 2.5 0 0 0 2 6.5v4.05A2.5 2.5 0 1 0 4.5 13V6.5A1 1 0 0 1 5.5 5.5h3.55A2.5 2.5 0 1 0 11.5 3z'/%3E%3C/svg%3E");
+}
+
+.action-icon-branch {
+  -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath fill='%23000' d='M11.5 2.5a2 2 0 1 0-1.74 3H6.5A2.5 2.5 0 0 0 4 8v3.09a2 2 0 1 0 1.5 0V8A1 1 0 0 1 6.5 7h3.26a2 2 0 1 0 1.74-4.5z'/%3E%3C/svg%3E");
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath fill='%23000' d='M11.5 2.5a2 2 0 1 0-1.74 3H6.5A2.5 2.5 0 0 0 4 8v3.09a2 2 0 1 0 1.5 0V8A1 1 0 0 1 6.5 7h3.26a2 2 0 1 0 1.74-4.5z'/%3E%3C/svg%3E");
+}
+
+.action-icon-commit {
+  -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath fill='%23000' d='M8 4.5a3.5 3.5 0 0 0-3.41 2.75H1.5v1.5h3.09A3.5 3.5 0 0 0 8 11.5a3.5 3.5 0 0 0 3.41-2.75h3.09v-1.5h-3.09A3.5 3.5 0 0 0 8 4.5zm0 1.5a2 2 0 1 1 0 4 2 2 0 0 1 0-4z'/%3E%3C/svg%3E");
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath fill='%23000' d='M8 4.5a3.5 3.5 0 0 0-3.41 2.75H1.5v1.5h3.09A3.5 3.5 0 0 0 8 11.5a3.5 3.5 0 0 0 3.41-2.75h3.09v-1.5h-3.09A3.5 3.5 0 0 0 8 4.5zm0 1.5a2 2 0 1 1 0 4 2 2 0 0 1 0-4z'/%3E%3C/svg%3E");
 }
 
 .theme-selector-wrap {
@@ -2207,16 +2291,30 @@ button.env-menu-row:hover,
   border-radius: var(--radius-pill);
 }
 
-.status-chip.status-ok {
-  color: var(--ok);
-  background: var(--ok-soft);
-  border-color: color-mix(in srgb, var(--ok) 30%, transparent);
+.status-chip.status-ok,
+.status-chip.status-2xx {
+  color: var(--status-2xx, #10b981);
+  background: var(--status-2xx-soft, rgba(16, 185, 129, 0.16));
+  border-color: color-mix(in srgb, var(--status-2xx, #10b981) 32%, transparent);
 }
 
-.status-chip.status-err {
-  color: var(--err);
-  background: var(--err-soft);
-  border-color: color-mix(in srgb, var(--err) 30%, transparent);
+.status-chip.status-3xx {
+  color: var(--status-3xx, #3b82f6);
+  background: var(--status-3xx-soft, rgba(59, 130, 246, 0.16));
+  border-color: color-mix(in srgb, var(--status-3xx, #3b82f6) 32%, transparent);
+}
+
+.status-chip.status-4xx {
+  color: var(--status-4xx, #f59e0b);
+  background: var(--status-4xx-soft, rgba(245, 158, 11, 0.16));
+  border-color: color-mix(in srgb, var(--status-4xx, #f59e0b) 32%, transparent);
+}
+
+.status-chip.status-err,
+.status-chip.status-5xx {
+  color: var(--status-5xx, #ef4444);
+  background: var(--status-5xx-soft, rgba(239, 68, 68, 0.16));
+  border-color: color-mix(in srgb, var(--status-5xx, #ef4444) 32%, transparent);
 }
 
 .status-chip .status-tag {
@@ -2228,11 +2326,11 @@ button.env-menu-row:hover,
 }
 
 .tree-row.active .tree-icon-collection {
-  color: var(--spot-green-bright);
+  color: var(--text, #e6edf3);
 }
 
 .tree-row.active .tree-icon-folder {
-  color: var(--warn);
+  color: var(--text, #e6edf3);
 }
 
 .tab-name {
@@ -2667,7 +2765,7 @@ textarea:focus {
 
 .btn-send {
   background: linear-gradient(180deg, var(--spot-green-bright), var(--spot-green));
-  color: var(--accent-ink, #000);
+  color: #060907 !important;
   font-weight: 700;
   min-width: 72px;
   height: 30px;
@@ -2676,8 +2774,14 @@ textarea:focus {
   box-shadow: 0 2px 10px rgba(0, 0, 0, 0.3), 0 0 12px color-mix(in srgb, var(--spot-green) 35%, transparent);
 }
 
+.btn-send *,
+.btn-send:hover,
+.btn-send:active {
+  color: #060907 !important;
+}
+
 .btn-send:hover {
-  filter: brightness(1.12);
+  filter: brightness(1.1);
   box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4), 0 0 16px color-mix(in srgb, var(--spot-green-bright) 50%, transparent);
   transform: translateY(-1px);
 }
@@ -2688,20 +2792,32 @@ textarea:focus {
 }
 
 .btn-save {
-  background: var(--bg-active);
-  border: 1px solid color-mix(in srgb, var(--spot-green) 35%, transparent);
-  color: var(--spot-green-bright);
-  font-weight: 600;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: var(--text-muted);
+  font-weight: 500;
   height: 28px;
-  padding: 0 12px;
+  padding: 0 10px;
+  border-radius: var(--radius-sm);
 }
 
 .btn-save:hover {
-  background: var(--bg-active);
-  border-color: color-mix(in srgb, var(--spot-green) 60%, transparent);
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.18);
+  color: var(--white);
+  transform: none;
+}
+
+.btn-save.is-dirty {
+  background: var(--accent-soft);
+  border-color: rgba(29, 185, 84, 0.45);
+  color: var(--spot-green-bright);
+}
+
+.btn-save.is-dirty:hover {
+  background: rgba(29, 185, 84, 0.22);
   color: #fff;
-  box-shadow: 0 0 10px color-mix(in srgb, var(--spot-green) 30%, transparent);
-  transform: translateY(-1px);
+  box-shadow: 0 0 8px rgba(29, 185, 84, 0.25);
 }
 
 .btn-save:active {

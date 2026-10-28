@@ -41,7 +41,10 @@ pub fn TeamModal(
                 div { class: "team-meta-bar",
                     div { class: "team-repo-info",
                         span { class: "team-badge", "Git Cloud" }
-                        span { class: "team-branch-pill", "🌿 {activity.branch}" }
+                        span { class: "team-branch-pill",
+                            span { class: "action-icon action-icon-branch", style: "margin-right: 4px;", aria_hidden: "true" }
+                            "{activity.branch}"
+                        }
                         if !activity.remote_url.is_empty() {
                             span { class: "team-remote-url", title: "{display_remote_url}", "{display_remote_url}" }
                         }
@@ -242,7 +245,10 @@ pub fn TeamModal(
                                                 div { class: "member-name", "{member.name}" }
                                                 div { class: "member-email", "{member.email}" }
                                                 div { class: "member-stats",
-                                                    span { class: "member-commits", "⚡ {member.commit_count} commits" }
+                                                    span { class: "member-commits",
+                                                        span { class: "action-icon action-icon-commit", style: "margin-right: 4px;", aria_hidden: "true" }
+                                                        "{member.commit_count} commits"
+                                                    }
                                                     span { class: "member-active", "Active {member.last_active}" }
                                                 }
                                             }

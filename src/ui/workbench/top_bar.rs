@@ -664,7 +664,7 @@ pub fn TopBar(st: WorkbenchState) -> Element {
 
                 div { class: "menu-file",
                     button {
-                        class: if cloud_menu_open() || app_settings().cloud_sync.enabled {
+                        class: if cloud_menu_open() {
                             "top-link top-link-active"
                         } else {
                             "top-link"
@@ -814,7 +814,8 @@ pub fn TopBar(st: WorkbenchState) -> Element {
                             active_request_id.set(None);
                             editing_collection_id.set(None);
                         },
-                        "⚔️ {conf.files.len()} Conflicts"
+                        span { class: "action-icon action-icon-git-merge", style: "margin-right: 4px;", aria_hidden: "true" }
+                        "{conf.files.len()} Conflicts"
                     }
                 }
                 button {

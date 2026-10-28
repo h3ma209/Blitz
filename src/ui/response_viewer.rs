@@ -67,9 +67,13 @@ pub fn ResponseViewer(
                         }
                     } else {
                         {
-                            let ok = resp.status >= 200 && resp.status < 400;
-                            let tag = if ok { "OK" } else { "Fail" };
-                            let cls = if ok { "status-chip status-ok" } else { "status-chip status-err" };
+                            let (cls, tag) = match resp.status {
+                                200..=299 => ("status-chip status-2xx", "OK"),
+                                300..=399 => ("status-chip status-3xx", "REDIR"),
+                                400..=499 => ("status-chip status-4xx", "CLIENT ERR"),
+                                500..=599 => ("status-chip status-5xx", "SERVER ERR"),
+                                _ => ("status-chip status-err", "ERR"),
+                            };
                             rsx! {
                                 span { class: "{cls}",
                                     span { class: "status-tag", "{tag}" }
@@ -103,7 +107,13 @@ pub fn ResponseViewer(
                                     copied_body.set(true);
                                 }
                             },
-                            if copied_body() { "✓ Copied" } else { "📋 Copy" }
+                            if copied_body() {
+                                span { class: "action-icon action-icon-check", aria_hidden: "true" }
+                                span { "Copied" }
+                            } else {
+                                span { class: "action-icon action-icon-copy", aria_hidden: "true" }
+                                span { "Copy" }
+                            }
                         }
                         button {
                             class: "btn btn-ghost",
@@ -135,25 +145,29 @@ pub fn ResponseViewer(
                                     });
                                 }
                             },
-                            "💾 Save"
+                            span { class: "action-icon action-icon-save", aria_hidden: "true" }
+                            span { "Save" }
                         }
                         button {
                             class: if search_open() { "btn btn-ghost active" } else { "btn btn-ghost" },
                             title: "Find in response (⌘F)",
                             onclick: move |_| search_open.set(!search_open()),
-                            "🔍 Find"
+                            span { class: "action-icon action-icon-search", aria_hidden: "true" }
+                            span { "Find" }
                         }
                         button {
                             class: "btn btn-ghost",
                             title: "Generate Tests from this response: status, content-type, JSON fields, time ceiling. Review them in the Tests tab.",
                             onclick: move |_| on_auto_assert.call(()),
-                            "✓ Auto-assert"
+                            span { class: "action-icon action-icon-check", aria_hidden: "true" }
+                            span { "Auto-assert" }
                         }
                         button {
                             class: "btn btn-ghost",
                             title: "Save response as mock route example (served by local Mock Server)",
                             onclick: move |_| on_save_example.call(()),
-                            "⚡ Save to Mock"
+                            span { class: "action-icon action-icon-bolt", aria_hidden: "true" }
+                            span { "Save to Mock" }
                         }
                     }
                 }
@@ -505,7 +519,7 @@ pub fn ResponseViewer(
                                     }
                                 } else {
                                     p { class: "hint",
-                                        "Send this request a second time or click '⚡ Save to Mock' to create a baseline for comparison."
+                                        "Send this request a second time or click 'Save to Mock' to create a baseline for comparison."
                                     }
                                 }
                             }

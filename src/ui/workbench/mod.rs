@@ -1550,7 +1550,11 @@ pub fn Workbench() -> Element {
                     div { class: "tab-strip",
                         div { class: "tab-strip-fixed",
                             button {
-                                class: "btn btn-save",
+                                class: if is_draft_dirty(&draft(), &collections()) {
+                                    "btn btn-save is-dirty"
+                                } else {
+                                    "btn btn-save"
+                                },
                                 title: "Save request (⌘S)",
                                 onclick: move |_| do_save(()),
                                 span { class: "action-icon action-icon-save", "aria-hidden": "true" }
@@ -1804,7 +1808,9 @@ pub fn Workbench() -> Element {
                             class: "workbench-empty-page",
                             div {
                                 class: "workbench-empty-content",
-                                div { class: "workbench-empty-icon", "⚡" }
+                                div { class: "workbench-empty-icon",
+                                    span { class: "action-icon action-icon-bolt", aria_hidden: "true" }
+                                }
                                 h2 { class: "workbench-empty-title", "No Open Requests" }
                                 p { class: "workbench-empty-subtitle", "Select a request from the sidebar or click below to create a new tab." }
                                 div {

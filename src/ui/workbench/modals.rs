@@ -338,7 +338,10 @@ pub fn VarsPage(st: WorkbenchState) -> Element {
             } else {
                 div { class: "vars-page-inner",
                     div { class: "vars-scope-banner",
-                        div { class: "vars-scope-banner-title", "⚡ Variable System & Scopes" }
+                        div { class: "vars-scope-banner-title",
+                            span { class: "action-icon action-icon-bolt", style: "margin-right: 6px;", aria_hidden: "true" }
+                            span { "Variable System & Scopes" }
+                        }
                         p { class: "vars-scope-banner-text",
                             "Variables parameterize URLs, headers, auth, and bodies via {{name}}. Scopes resolve from highest priority: Local → Environment → Collection → Global. Hardware & device secrets resolve via {{vault:key}}."
                         }

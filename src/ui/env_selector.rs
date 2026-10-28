@@ -4,6 +4,17 @@ use uuid::Uuid;
 use crate::core::Environment;
 use super::DismissBackdrop;
 
+fn env_tier(name: &str) -> &'static str {
+    let lower = name.trim().to_lowercase();
+    if lower.contains("prod") || lower.contains("live") {
+        "prod"
+    } else if lower.contains("stag") || lower.contains("uat") || lower.contains("qa") || lower.contains("test") {
+        "stage"
+    } else {
+        "local"
+    }
+}
+
 #[component]
 pub fn EnvSelector(
     environments: Vec<Environment>,
@@ -19,9 +30,10 @@ pub fn EnvSelector(
         .find(|e| Some(e.id) == active_id)
         .map(|e| e.name.clone())
         .unwrap_or_else(|| "No Environment".into());
+    let active_tier = if active_id.is_none() { "local" } else { env_tier(&active_name) };
 
     rsx! {
-        div { class: "env-selector-wrap",
+        div { class: "env-selector-wrap env-tier-{active_tier}",
             if menu_open() {
                 DismissBackdrop {
                     z_index: 900,
@@ -30,8 +42,9 @@ pub fn EnvSelector(
             }
             button {
                 class: "env-select-trigger",
-                title: "Select environment",
+                title: "Select environment ({active_tier})",
                 onclick: move |_| menu_open.set(!menu_open()),
+                span { class: "env-indicator env-indicator-{active_tier}", aria_hidden: "true" }
                 span { class: "env-select-label", "{active_name}" }
                 span { class: "env-select-caret", "▾" }
             }
@@ -74,12 +87,14 @@ pub fn EnvSelector(
                             menu_open.set(false);
                             on_change.call(None);
                         },
+                        span { class: "env-indicator env-indicator-local", aria_hidden: "true" }
                         span { class: "env-menu-name", "No Environment" }
                     }
                     for env in environments.iter() {
                         {
                             let id = env.id;
                             let name = env.name.clone();
+                            let tier = env_tier(&name);
                             let active = active_id == Some(id);
                             let row_class = if active {
                                 "env-menu-row env-menu-row-active"
@@ -89,11 +104,12 @@ pub fn EnvSelector(
                             rsx! {
                                 button {
                                     class: "{row_class}",
-                                    title: "Select {name}",
+                                    title: "Select {name} ({tier})",
                                     onclick: move |_| {
                                         menu_open.set(false);
                                         on_change.call(Some(id));
                                     },
+                                    span { class: "env-indicator env-indicator-{tier}", aria_hidden: "true" }
                                     span { class: "env-menu-name", "{name}" }
                                 }
                             }

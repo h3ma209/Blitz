@@ -622,7 +622,7 @@ pub fn SettingsPanel(
                                 }
                                 if !cloud_last_branch.is_empty() || !cloud_last_status.is_empty() {
                                     div { class: "settings-callout",
-                                        span { class: "callout-icon", "🌿" }
+                                        span { class: "action-icon action-icon-branch", style: "margin-right: 6px;", aria_hidden: "true" }
                                         p { class: "hint",
                                             "Current sync branch: {cloud_last_branch} · Status: {cloud_last_status}"
                                         }
