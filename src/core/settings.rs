@@ -97,6 +97,10 @@ pub fn default_zoom_percent() -> u32 {
     100
 }
 
+pub fn default_toolbar_height_px() -> u32 {
+    UiSettings::DEFAULT_TOOLBAR_HEIGHT_PX
+}
+
 /// Padding density for workbench chrome.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "snake_case")]
@@ -279,6 +283,9 @@ pub struct UiSettings {
     /// Sidebar History section collapsed (default on — Collections keep vertical space).
     #[serde(default = "default_history_collapsed")]
     pub history_collapsed: bool,
+    /// Top toolbar height in px (`--bar-h`).
+    #[serde(default = "default_toolbar_height_px")]
+    pub toolbar_height_px: u32,
 }
 
 impl Default for UiSettings {
@@ -301,6 +308,7 @@ impl Default for UiSettings {
             splash_min_ms: default_splash_min_ms(),
             zoom_percent: default_zoom_percent(),
             history_collapsed: default_history_collapsed(),
+            toolbar_height_px: default_toolbar_height_px(),
         }
     }
 }
@@ -314,11 +322,18 @@ impl UiSettings {
     pub const REQUEST_PANE_MAX_PX: u32 = 560;
     pub const CONSOLE_MIN_PX: u32 = 72;
     pub const CONSOLE_MAX_PX: u32 = 420;
+    pub const TOOLBAR_MIN_PX: u32 = 34;
+    pub const TOOLBAR_MAX_PX: u32 = 56;
+    pub const DEFAULT_TOOLBAR_HEIGHT_PX: u32 = 42;
     pub const SPLASH_MIN_MS: u32 = 0;
     pub const SPLASH_MAX_MS: u32 = 2_000;
     pub const ZOOM_MIN_PERCENT: u32 = 50;
     pub const ZOOM_MAX_PERCENT: u32 = 200;
     pub const ZOOM_STEP_PERCENT: u32 = 10;
+
+    pub fn clamp_toolbar_height(px: u32) -> u32 {
+        px.clamp(Self::TOOLBAR_MIN_PX, Self::TOOLBAR_MAX_PX)
+    }
 
     pub fn clamp_zoom_percent(pct: u32) -> u32 {
         pct.clamp(Self::ZOOM_MIN_PERCENT, Self::ZOOM_MAX_PERCENT)
@@ -362,6 +377,7 @@ impl UiSettings {
         self.tab_size = Self::clamp_tab_size(self.tab_size);
         self.splash_min_ms = Self::clamp_splash_min_ms(self.splash_min_ms);
         self.zoom_percent = Self::clamp_zoom_percent(self.zoom_percent);
+        self.toolbar_height_px = Self::clamp_toolbar_height(self.toolbar_height_px);
         self
     }
 
@@ -503,6 +519,9 @@ mod tests {
         assert_eq!(ui.splash_min_ms, 80);
         assert_eq!(ui.zoom_percent, 100);
         assert!(ui.history_collapsed);
+        assert_eq!(ui.toolbar_height_px, 42);
+        assert_eq!(UiSettings::clamp_toolbar_height(20), 34);
+        assert_eq!(UiSettings::clamp_toolbar_height(100), 56);
         assert_eq!(UiSettings::clamp_zoom_percent(20), 50);
         assert_eq!(UiSettings::clamp_zoom_percent(250), 200);
         assert_eq!(UiSettings::clamp_zoom_percent(120), 120);

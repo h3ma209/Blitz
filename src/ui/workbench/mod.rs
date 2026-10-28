@@ -1249,12 +1249,13 @@ pub fn Workbench() -> Element {
         ui.sidebar_width_px as f64
     };
     let shell_style = format!(
-        "--fs-base: {}px; --fs-body: {}px; --fs-editor: {}px; --sidebar-w: {}px; --editor-tab-size: {};",
+        "--fs-base: {}px; --fs-body: {}px; --fs-editor: {}px; --sidebar-w: {}px; --editor-tab-size: {}; --bar-h: {}px;",
         ui.ui_font_size_px,
         ui.ui_font_size_px,
         ui.editor_font_size_px,
         live_sidebar_w,
-        ui.tab_size
+        ui.tab_size,
+        ui.toolbar_height_px
     );
     let live_request_h = pane_h();
     let live_console_h = console_h();

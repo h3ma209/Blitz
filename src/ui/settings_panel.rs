@@ -41,6 +41,7 @@ pub fn SettingsPanel(
     let mut sidebar_w = use_signal(|| settings.ui.sidebar_width_px);
     let mut request_h = use_signal(|| settings.ui.request_pane_height_px);
     let mut console_h = use_signal(|| settings.ui.console_height_px);
+    let mut toolbar_h = use_signal(|| settings.ui.toolbar_height_px);
     let mut density = use_signal(|| settings.ui.density);
     let mut wrap_editor = use_signal(|| settings.ui.wrap_editor_text);
     let mut tab_size = use_signal(|| settings.ui.tab_size);
@@ -324,6 +325,23 @@ pub fn SettingsPanel(
                                     }
                                     div { class: "settings-slider-row",
                                         div { class: "slider-label-wrap",
+                                            span { class: "slider-name", "Toolbar Height" }
+                                            span { class: "slider-badge", "{toolbar_h()} px" }
+                                        }
+                                        input {
+                                            r#type: "range",
+                                            min: "{UiSettings::TOOLBAR_MIN_PX}",
+                                            max: "{UiSettings::TOOLBAR_MAX_PX}",
+                                            value: "{toolbar_h()}",
+                                            oninput: move |evt| {
+                                                if let Ok(v) = evt.value().parse::<u32>() {
+                                                    toolbar_h.set(UiSettings::clamp_toolbar_height(v));
+                                                }
+                                            },
+                                        }
+                                    }
+                                    div { class: "settings-slider-row",
+                                        div { class: "slider-label-wrap",
                                             span { class: "slider-name", "Splash Hold Duration" }
                                             span { class: "slider-badge", "{splash_ms()} ms" }
                                         }
@@ -467,6 +485,7 @@ pub fn SettingsPanel(
                                             show_status.set(d.show_status_bar);
                                             default_resp_tab.set(d.default_response_tab);
                                             splash_ms.set(d.splash_min_ms);
+                                            toolbar_h.set(d.toolbar_height_px);
                                         },
                                         "Reset appearance to defaults"
                                     }
@@ -660,6 +679,7 @@ pub fn SettingsPanel(
                                 splash_min_ms: splash_ms(),
                                 zoom_percent: zoom(),
                                 history_collapsed,
+                                toolbar_height_px: toolbar_h(),
                             }
                             .clamped(),
                             cloud_sync: CloudSyncSettings {
