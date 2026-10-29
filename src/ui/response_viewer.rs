@@ -3,7 +3,7 @@ use uuid::Uuid;
 
 use crate::core::{diff_bodies, DefaultResponseTab, DiffLine, ResponseView, SavedExample};
 use super::json_highlight::{render_json_highlight_html, should_highlight_json};
-use super::loading::{SkeletonBars, Spinner};
+use super::loading::SkeletonBars;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum RespTab {
@@ -54,8 +54,8 @@ pub fn ResponseViewer(
         section { class: "response-pane",
             if sending {
                 div { class: "response-sending",
-                    Spinner { }
-                    p { class: "hint", "Sending…" }
+                    span { class: "action-icon action-icon-bolt bolt-flight-pulse", style: "width: 28px; height: 28px; color: var(--spot-green-bright); margin-bottom: 8px;", aria_hidden: "true" }
+                    p { class: "hint", style: "font-weight: 600; font-size: 13px; color: var(--text); margin-bottom: 12px;", "Sending request…" }
                     SkeletonBars { n: 4 }
                 }
             } else if let Some(resp) = response.as_ref() {

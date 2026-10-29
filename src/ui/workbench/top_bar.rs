@@ -65,11 +65,9 @@ pub fn TopBar(st: WorkbenchState) -> Element {
         header { class: "{top_bar_class}",
             span {
                 class: "brand",
-                title: "⚡ Blitz · ⌘↵ Send/Cancel · ⌘S Save · ⌘T New · ⌘K Palette · ⌘+/- Zoom",
-                img {
-                    class: "brand-logo",
-                    src: "{crate::brand::LOGO_SRC.as_str()}",
-                    alt: "Blitz",
+                title: "Blitz · ⌘↵ Send/Cancel · ⌘S Save · ⌘T New · ⌘K Palette · ⌘+/- Zoom",
+                div { class: "brand-bolt-badge",
+                    span { class: "action-icon action-icon-bolt", aria_hidden: "true" }
                 }
                 span { class: "brand-name", "Blitz" }
             }

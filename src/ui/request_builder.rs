@@ -151,7 +151,8 @@ pub fn RequestBuilder(
                     } else if draft.protocol == RequestProtocol::Grpc {
                         "Invoke"
                     } else {
-                        "Send"
+                        span { class: "action-icon action-icon-bolt", style: "width: 12px; height: 12px; margin-right: 4px;", aria_hidden: "true" }
+                        span { "Send" }
                     }
                 }
             }
