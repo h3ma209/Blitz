@@ -15,8 +15,12 @@ pub fn ModalShell(
         format!("modal {class}")
     };
     rsx! {
-        div { class: "modal-backdrop",
-            div { class: "{modal_class}",
+        div {
+            class: "modal-backdrop",
+            onclick: move |_| on_close.call(()),
+            div {
+                class: "{modal_class}",
+                onclick: move |evt| evt.stop_propagation(),
                 div { class: "modal-header",
                     h3 { "{title}" }
                     button {

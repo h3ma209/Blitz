@@ -14,8 +14,12 @@ use super::var_autocomplete::{
 };
 use super::DismissBackdrop;
 
+/// Dwell time: mouse must hover on a variable token before popover appears (prevents rapid cursor flash).
+const HOVER_DWELL_MS: u64 = 160;
+/// Fast switch dwell when a popover is already visible and pointer moves to another token.
+const HOVER_SWITCH_MS: u64 = 50;
 /// Grace window so pointer can travel from token → popover without flicker.
-const DISMISS_GRACE_MS: u64 = 550;
+const DISMISS_GRACE_MS: u64 = 260;
 
 /// Edit applied from the hover popover.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -100,6 +104,7 @@ pub fn VarHoverInput(
     let mut editing = use_signal(|| false);
     let mut over_popover = use_signal(|| false);
     let mut dismiss_gen = use_signal(|| 0u64);
+    let mut hover_seq = use_signal(|| 0u64);
     let mut var_suggest = use_signal(|| None::<VarSuggestMenu>);
     let mirror_html = render_var_highlight_html(&value, Some(&vars));
     let input_class = format!("{class} var-highlight-input");
@@ -108,6 +113,7 @@ pub fn VarHoverInput(
         div {
             class: "var-hover-host var-highlight-host code-editor-host",
             onmouseleave: move |_| {
+                hover_seq.set(hover_seq() + 1);
                 schedule_dismiss(popover, dismiss_gen, editing, over_popover);
             },
             div {
@@ -264,19 +270,29 @@ pub fn VarHoverInput(
                             return;
                         }
                         let client_x = evt.client_coordinates().x;
+                        let next_seq = hover_seq() + 1;
+                        hover_seq.set(next_seq);
                         let input_id = input_id.clone();
                         let value = value.clone();
                         let vars = vars.clone();
                         spawn(async move {
+                            let already_open = popover.peek().is_some();
+                            let dwell = if already_open { HOVER_SWITCH_MS } else { HOVER_DWELL_MS };
+                            tokio::time::sleep(Duration::from_millis(dwell)).await;
+                            if *hover_seq.peek() != next_seq {
+                                return;
+                            }
                             if let Some((idx, left, top)) =
                                 read_hover_index_and_anchor(&input_id, client_x).await
                             {
+                                if *hover_seq.peek() != next_seq {
+                                    return;
+                                }
                                 if find_var_at(&value, idx).is_some() {
                                     try_open_popover(
                                         &value, &vars, idx, left, top, popover, draft, dismiss_gen,
                                     );
-                                } else if popover().is_some() {
-                                    // Pointer moved off token to other text: give generous grace window
+                                } else if popover.peek().is_some() {
                                     schedule_dismiss(popover, dismiss_gen, editing, over_popover);
                                 }
                             }
@@ -324,7 +340,7 @@ pub fn VarHoverInput(
                     };
                     rsx! {
                         DismissBackdrop {
-                            z_index: 48,
+                            z_index: 940,
                             on_dismiss: move |_| {
                                 dismiss_gen.set(dismiss_gen() + 1);
                                 editing.set(false);
@@ -488,7 +504,13 @@ async fn read_caret_and_anchor(input_id: &str) -> Option<(usize, f64, f64)> {
         const hr = host ? host.getBoundingClientRect() : rect;
         const caretChars = el.selectionStart ?? 0;
         const byteIdx = new TextEncoder().encode((el.value || '').slice(0, caretChars)).length;
-        return [byteIdx, 8, rect.bottom - hr.top + 4];
+        const boundaryEl = el.closest('.modal, .modal-dialog, .workbench-pane, #main') || document.body;
+        const boundary = boundaryEl.getBoundingClientRect();
+        const popWidth = 300;
+        const maxGlobalRight = Math.min(window.innerWidth - 12, boundary.right - 12);
+        const maxLeft = Math.max(8, maxGlobalRight - hr.left - popWidth);
+        const left = Math.max(8, Math.min(8, maxLeft));
+        return [byteIdx, left, rect.bottom - hr.top + 4];
         "#,
         id = serde_json::to_string(input_id).unwrap_or_else(|_| "\"\"".into())
     );
@@ -518,7 +540,14 @@ async fn read_hover_index_and_anchor(input_id: &str, client_x: f64) -> Option<(u
         const byteIdx = new TextEncoder().encode(text.slice(0, lo)).length;
         const host = el.closest('.var-hover-host');
         const hr = host ? host.getBoundingClientRect() : rect;
-        return [byteIdx, Math.max(8, {client_x} - hr.left - 40), rect.bottom - hr.top + 4];
+        const boundaryEl = el.closest('.modal, .modal-dialog, .workbench-pane, #main') || document.body;
+        const boundary = boundaryEl.getBoundingClientRect();
+        const popWidth = 300;
+        const maxGlobalRight = Math.min(window.innerWidth - 12, boundary.right - 12);
+        const rawLeft = {client_x} - hr.left - 40;
+        const maxLeft = Math.max(8, maxGlobalRight - hr.left - popWidth);
+        const left = Math.max(8, Math.min(rawLeft, maxLeft));
+        return [byteIdx, left, rect.bottom - hr.top + 4];
         "#,
         id = serde_json::to_string(input_id).unwrap_or_else(|_| "\"\"".into()),
         client_x = client_x

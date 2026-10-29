@@ -104,6 +104,8 @@ pub fn Workbench() -> Element {
     let mut pending_close_tab = st.pending_close_tab;
     let mut tree_clipboard = st.tree_clipboard;
     let mut available_update = st.available_update;
+    let mut show_runner = st.show_runner;
+    let mut show_env_manager = st.show_env_manager;
     let mut show_tab_menu = st.show_tab_menu;
     let mut drag_tab_idx = st.drag_tab_idx;
     let mut renaming_tab_id = use_signal(|| None::<Uuid>);
@@ -177,7 +179,33 @@ pub fn Workbench() -> Element {
                     window.__blitz_zoom_listener_installed = true;
                     window.addEventListener('keydown', function(e) {{
                         const isMeta = e.metaKey || e.ctrlKey;
+
+                        if (e.key === 'Escape') {{
+                            const pal = document.querySelector('.palette-search-input');
+                            if (pal && (document.activeElement === pal || pal.contains(document.activeElement))) {{
+                                setTimeout(function() {{
+                                    let target = window.__blitz_last_focused;
+                                    if (!target || !document.contains(target) || target.classList.contains('palette-search-input')) {{
+                                        target = document.getElementById('np-url-input') || document.querySelector('.url-input');
+                                    }}
+                                    if (target && typeof target.focus === 'function') {{
+                                        target.focus();
+                                        if (target.id === 'np-url-input' && typeof target.select === 'function') {{
+                                            target.select();
+                                        }}
+                                    }}
+                                }}, 10);
+                            }}
+                        }}
+
                         if (!isMeta) return;
+
+                        if (e.key === 'k' || e.key === 'K' || e.key === 'p' || e.key === 'P') {{
+                            const cur = document.activeElement;
+                            if (cur && cur !== document.body && !cur.classList.contains('palette-search-input')) {{
+                                window.__blitz_last_focused = cur;
+                            }}
+                        }}
 
                         if (e.code === 'Equal' || e.code === 'NumpadAdd' || e.key === '=' || e.key === '+') {{
                             e.preventDefault();
@@ -1804,21 +1832,147 @@ pub fn Workbench() -> Element {
                             },
                         }
                     } else if open_tabs().is_empty() {
-                        div {
-                            class: "workbench-empty-page",
-                            div {
-                                class: "workbench-empty-content",
-                                div { class: "workbench-empty-icon",
-                                    span { class: "action-icon action-icon-bolt", aria_hidden: "true" }
-                                }
-                                h2 { class: "workbench-empty-title", "No Open Requests" }
-                                p { class: "workbench-empty-subtitle", "Select a request from the sidebar or click below to create a new tab." }
+                        {
+                            let m_pfx = crate::ui::sidebar_shortcuts::mod_prefix();
+                            rsx! {
                                 div {
-                                    class: "workbench-empty-actions",
-                                    button {
-                                        class: "btn btn-primary",
-                                        onclick: move |_| do_new_tab(()),
-                                        "+ New Request (⌘T)"
+                                    class: "workbench-empty-page",
+                                    div {
+                                        class: "workbench-empty-content",
+                                        div { class: "workbench-empty-hero",
+                                            div { class: "workbench-empty-icon",
+                                                span { class: "action-icon action-icon-bolt", aria_hidden: "true" }
+                                            }
+                                            h2 { class: "workbench-empty-title", "Blitz Cockpit" }
+                                            p { class: "workbench-empty-subtitle",
+                                                "No open request tab. Pick a request from sidebar, trigger a command, or create a fresh draft."
+                                            }
+                                            div { class: "workbench-empty-actions",
+                                                button {
+                                                    class: "btn btn-primary workbench-hero-btn",
+                                                    onclick: move |_| do_new_tab(()),
+                                                    "+ New Request ("
+                                                    kbd { "{m_pfx}T" }
+                                                    ")"
+                                                }
+                                                button {
+                                                    class: "btn btn-secondary workbench-hero-btn",
+                                                    onclick: move |_| show_palette.set(true),
+                                                    "Command Palette ("
+                                                    kbd { "{m_pfx}K" }
+                                                    ")"
+                                                }
+                                            }
+                                        }
+
+                                        div { class: "workbench-empty-grid",
+                                            div {
+                                                class: "workbench-empty-card",
+                                                onclick: move |_| show_palette.set(true),
+                                                div { class: "empty-card-head",
+                                                    span { class: "empty-card-tag", "QUICK ACTION" }
+                                                    kbd { class: "empty-card-kbd", "{m_pfx}K" }
+                                                }
+                                                div { class: "empty-card-title", "Command Palette" }
+                                                div { class: "empty-card-desc", "Search requests, switch environments, toggle themes, or run tools instantly." }
+                                            }
+
+                                            div {
+                                                class: "workbench-empty-card",
+                                                onclick: move |_| do_new_tab(()),
+                                                div { class: "empty-card-head",
+                                                    span { class: "empty-card-tag", "DRAFT" }
+                                                    kbd { class: "empty-card-kbd", "{m_pfx}T" }
+                                                }
+                                                div { class: "empty-card-title", "New Request" }
+                                                div { class: "empty-card-desc", "Spawn a new tab to compose GET, POST, GraphQL, WebSocket or gRPC calls." }
+                                            }
+
+                                            div {
+                                                class: "workbench-empty-card",
+                                                onclick: move |_| impex_modal.set(Some(crate::ui::workbench::state::ImpexModal::Import { text: String::new() })),
+                                                div { class: "empty-card-head",
+                                                    span { class: "empty-card-tag", "IMPORT" }
+                                                    kbd { class: "empty-card-kbd", "{m_pfx}O" }
+                                                }
+                                                div { class: "empty-card-title", "Import cURL / Postman / OpenAPI" }
+                                                div { class: "empty-card-desc", "Paste raw cURL, drop Postman collections v2.1, or import OpenAPI 3.0 spec." }
+                                            }
+
+                                            div {
+                                                class: "workbench-empty-card",
+                                                onclick: move |_| show_env_manager.set(true),
+                                                div { class: "empty-card-head",
+                                                    span { class: "empty-card-tag", "VARS" }
+                                                    kbd { class: "empty-card-kbd", "{m_pfx}E" }
+                                                }
+                                                div { class: "empty-card-title", "Manage Environments" }
+                                                div { class: "empty-card-desc", "Configure Dev/Stage/Prod variable sets, auth tokens, and secret vaults." }
+                                            }
+
+                                            div {
+                                                class: "workbench-empty-card",
+                                                onclick: move |_| show_runner.set(true),
+                                                div { class: "empty-card-head",
+                                                    span { class: "empty-card-tag", "AUTOMATION" }
+                                                    kbd { class: "empty-card-kbd", "{m_pfx}⇧R" }
+                                                }
+                                                div { class: "empty-card-title", "Collection Runner" }
+                                                div { class: "empty-card-desc", "Execute automated multi-request batches with tests, scripts, and HTML reports." }
+                                            }
+
+                                            div {
+                                                class: "workbench-empty-card",
+                                                onclick: move |_| show_settings.set(true),
+                                                div { class: "empty-card-head",
+                                                    span { class: "empty-card-tag", "PREFERENCES" }
+                                                    kbd { class: "empty-card-kbd", "{m_pfx}," }
+                                                }
+                                                div { class: "empty-card-title", "Settings & Theme" }
+                                                div { class: "empty-card-desc", "Tweak theme, layout, timeouts, SSL cert verification, and proxy configurations." }
+                                            }
+                                        }
+
+                                        div { class: "workbench-empty-cheatsheet",
+                                            div { class: "cheatsheet-title", "KEYBOARD SHORTCUTS" }
+                                            div { class: "cheatsheet-rows",
+                                                div { class: "cheatsheet-row",
+                                                    span { class: "cs-label", "Send active request" }
+                                                    div { class: "cs-keys", kbd { "{m_pfx}Enter" } }
+                                                }
+                                                div { class: "cheatsheet-row",
+                                                    span { class: "cs-label", "Save request draft" }
+                                                    div { class: "cs-keys", kbd { "{m_pfx}S" } }
+                                                }
+                                                div { class: "cheatsheet-row",
+                                                    span { class: "cs-label", "Close active tab" }
+                                                    div { class: "cs-keys", kbd { "{m_pfx}W" } }
+                                                }
+                                                div { class: "cheatsheet-row",
+                                                    span { class: "cs-label", "Focus URL bar" }
+                                                    div { class: "cs-keys", kbd { "{m_pfx}L" } }
+                                                }
+                                                div { class: "cheatsheet-row",
+                                                    span { class: "cs-label", "Search sidebar collections" }
+                                                    div { class: "cs-keys", kbd { "{m_pfx}F" } }
+                                                }
+                                                div { class: "cheatsheet-row",
+                                                    span { class: "cs-label", "Documentation & Help" }
+                                                    div { class: "cs-keys",
+                                                        a {
+                                                            class: "cs-doc-link",
+                                                            href: "https://h3ma209.github.io/Blitz/docs.html",
+                                                            target: "_blank",
+                                                            onclick: move |evt| {
+                                                                evt.prevent_default();
+                                                                crate::core::open_browser_url("https://h3ma209.github.io/Blitz/docs.html");
+                                                            },
+                                                            "Online Docs ↗"
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
                                     }
                                 }
                             }

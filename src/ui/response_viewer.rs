@@ -587,7 +587,33 @@ pub fn ResponseViewer(
                     },
                 }
             } else {
-                p { class: "hint", "Response appears here after Send." }
+                div { class: "response-empty-hero",
+                    div { class: "response-empty-icon-wrap",
+                        span { class: "action-icon action-icon-bolt response-empty-bolt", aria_hidden: "true" }
+                    }
+                    h4 { class: "response-empty-title", "Ready to Send" }
+                    p { class: "response-empty-desc",
+                        "Enter a URL above and click "
+                        strong { "Send" }
+                        " or press "
+                        kbd { "⌘↵" }
+                        " to inspect response headers, body, and test results."
+                    }
+                    div { class: "response-empty-shortcuts",
+                        div { class: "empty-shortcut-chip",
+                            kbd { "⌘↵" }
+                            span { "Send Request" }
+                        }
+                        div { class: "empty-shortcut-chip",
+                            kbd { "⌘S" }
+                            span { "Save Draft" }
+                        }
+                        div { class: "empty-shortcut-chip",
+                            kbd { "⌘K" }
+                            span { "Command Palette" }
+                        }
+                    }
+                }
             }
         }
     }

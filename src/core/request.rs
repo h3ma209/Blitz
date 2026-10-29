@@ -496,7 +496,8 @@ impl RequestDraft {
     /// Used by the sidebar search box to match request *content*, not just the
     /// request's display name.
     pub fn search_text(&self) -> String {
-        let mut s = String::new();
+        let cap = self.name.len() + self.url.len() + 256;
+        let mut s = String::with_capacity(cap);
         s.push_str(&self.name.to_ascii_lowercase());
         s.push(' ');
         s.push_str(&self.url.to_ascii_lowercase());
@@ -515,29 +516,32 @@ impl RequestDraft {
             s.push_str(&kv.value.to_ascii_lowercase());
             s.push(' ');
         }
-        s.push_str(&self.body.to_ascii_lowercase());
-        s.push(' ');
-        s.push_str(&self.description.to_ascii_lowercase());
-        s.push(' ');
-        s.push_str(&self.pre_request_script.to_ascii_lowercase());
-        s.push(' ');
-        s.push_str(&self.test_script.to_ascii_lowercase());
-        s.push(' ');
-        s.push_str(&self.graphql_query.to_ascii_lowercase());
-        s.push(' ');
-        s.push_str(&self.graphql_variables.to_ascii_lowercase());
-        s.push(' ');
-        s.push_str(&self.ws_message.to_ascii_lowercase());
-        s.push(' ');
-        s.push_str(&self.grpc_method.to_ascii_lowercase());
-        s.push(' ');
-        s.push_str(&self.mqtt_topic.to_ascii_lowercase());
-        s.push(' ');
-        s.push_str(&self.mcp_command.to_ascii_lowercase());
-        s.push(' ');
-        s.push_str(&self.socketio_event.to_ascii_lowercase());
-        s.push(' ');
-        s.push_str(&self.graphql_ws_query.to_ascii_lowercase());
+        // Cap payload/scripts to 2048 bytes each to prevent UI freezes on massive payloads
+        const MAX_PAYLOAD_SEARCH: usize = 2048;
+        for text in [
+            &self.body,
+            &self.description,
+            &self.pre_request_script,
+            &self.test_script,
+            &self.graphql_query,
+            &self.graphql_variables,
+            &self.ws_message,
+            &self.grpc_method,
+            &self.mqtt_topic,
+            &self.mcp_command,
+            &self.socketio_event,
+            &self.graphql_ws_query,
+        ] {
+            if !text.is_empty() {
+                let slice = if text.len() > MAX_PAYLOAD_SEARCH {
+                    &text[..text.floor_char_boundary(MAX_PAYLOAD_SEARCH)]
+                } else {
+                    text.as_str()
+                };
+                s.push_str(&slice.to_ascii_lowercase());
+                s.push(' ');
+            }
+        }
         s
     }
 }

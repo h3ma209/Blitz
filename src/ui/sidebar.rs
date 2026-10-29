@@ -6,9 +6,9 @@ use super::DismissBackdrop;
 use uuid::Uuid;
 
 use crate::core::{
-    ancestor_ids_for_request, collapsible_tree_ids, collapsed_except_expanded, filter_tree_rows,
-    flatten_collections_filtered, paste_target_parent_id, Collection,
-    HistoryEntry, HttpMethod, TreeRowKind,
+    ancestor_ids_for_request, collapsed_except_expanded, filter_tree_rows,
+    flatten_collections_filtered, flatten_collections_searchable, paste_target_parent_id,
+    search_highlight_term, Collection, HistoryEntry, HttpMethod, TreeRowKind,
 };
 
 use super::sidebar_shortcuts::{
@@ -131,21 +131,23 @@ pub fn Sidebar(
     let mut last_selected_id = use_signal(|| None::<Uuid>);
     let mut last_scrolled_req = use_signal(|| None::<Uuid>);
 
-    let rows = {
-        let query = search();
-        let query_active = !query.trim().is_empty();
-        // While searching, flatten the whole tree (expand every collapsible node)
-        // so requests nested in collapsed folders/collections are reachable.
-        // This only overrides the *local* fold set used for flattening; the user's
-        // real `expanded` signal is untouched, so folds restore when the search clears.
-        let expanded = if query_active {
-            collapsible_tree_ids(&collections)
-        } else {
-            expanded()
-        };
-        let collapsed = collapsed_except_expanded(&collections, &expanded);
-        let flat = flatten_collections_filtered(&collections, &collapsed);
+    let query = search();
+    let query_active = !query.trim().is_empty();
+    let rows = if query_active {
+        // While searching, uncollapse all nodes with empty collapsed set and build search index
+        let flat = flatten_collections_searchable(&collections, &HashSet::new());
         filter_tree_rows(flat, &query)
+    } else {
+        let collapsed = collapsed_except_expanded(&collections, &expanded());
+        flatten_collections_filtered(&collections, &collapsed)
+    };
+
+    let total_matches = rows.len();
+    const MAX_SEARCH_RENDER: usize = 150;
+    let (rendered_rows, truncated_search) = if query_active && total_matches > MAX_SEARCH_RENDER {
+        (rows[..MAX_SEARCH_RENDER].to_vec(), true)
+    } else {
+        (rows.clone(), false)
     };
     // Auto-track and reveal active request (expand ancestor folders/collections and scroll into view)
     // Redirection ONLY happens when switching between request files, NOT when clicking or opening folders/collections.
@@ -188,8 +190,10 @@ pub fn Sidebar(
         }
     });
 
-    let empty = collections.is_empty();
+    let empty = collections.is_empty() || (query_active && rows.is_empty());
     let all_rows = rows.clone();
+    let search_raw = search();
+    let highlight_term = search_highlight_term(&search_raw);
 
     rsx! {
         aside {
@@ -288,12 +292,8 @@ pub fn Sidebar(
                     }
                 }
             }
-            input {
-                class: "sidebar-search",
-                r#type: "search",
-                placeholder: "Search collections & requests…",
-                value: "{search}",
-                oninput: move |evt: Event<FormData>| search.set(evt.value()),
+            SidebarSearchInput {
+                on_search: move |val: String| search.set(val),
             }
 
             if !selected_ids().is_empty() {
@@ -419,7 +419,12 @@ pub fn Sidebar(
                         if search().trim().is_empty() {
                             "No collections yet."
                         } else {
-                            "No requests match \"{search}\"."
+                            "No items match \"{search}\"."
+                        }
+                    }
+                    if !search().trim().is_empty() {
+                        span { class: "tree-search-hint",
+                            "Tip: Use folder: or req: to filter (e.g. folder:auth or req:users)"
                         }
                     }
                     button {
@@ -668,7 +673,7 @@ pub fn Sidebar(
                         }
                         }
                     },
-                    for row in rows {
+                    for row in rendered_rows {
                         {
                             let row_id = row.id;
                             let col_id = row.collection_id;
@@ -1017,7 +1022,7 @@ pub fn Sidebar(
                                             }
                                         } else {
                                             {
-                                                highlight_tree_label(&label, &search())
+                                                highlight_tree_label(&label, highlight_term)
                                             }
                                         }
                                     }
@@ -1194,6 +1199,11 @@ pub fn Sidebar(
                                     }
                                 }
                             }
+                        }
+                    }
+                    if truncated_search {
+                        div { class: "tree-search-limit-notice",
+                            "Showing first {MAX_SEARCH_RENDER} of {total_matches} matches. Refine query to narrow."
                         }
                     }
                 }
@@ -1746,32 +1756,83 @@ fn highlight_tree_label(label: &str, query: &str) -> Element {
     if q.is_empty() {
         return rsx! { span { class: "tree-label", "{label}" } };
     }
-    let lower_q: Vec<char> = q.to_lowercase().chars().collect();
-    let label_chars: Vec<char> = label.chars().collect();
-    let mut match_range = None;
-    if !lower_q.is_empty() && label_chars.len() >= lower_q.len() {
-        for i in 0..=(label_chars.len() - lower_q.len()) {
-            if label_chars[i..i + lower_q.len()]
-                .iter()
-                .zip(lower_q.iter())
-                .all(|(a, b)| a.to_lowercase().eq(b.to_lowercase()))
-            {
-                match_range = Some((i, i + lower_q.len()));
-                break;
-            }
+    // Fast path: ASCII substring matching without heap allocation
+    if label.is_ascii() && q.is_ascii() {
+        let lower_label = label.to_ascii_lowercase();
+        let lower_q = q.to_ascii_lowercase();
+        if let Some(idx) = lower_label.find(&lower_q) {
+            let end = idx + q.len();
+            let before = &label[..idx];
+            let matched = &label[idx..end];
+            let after = &label[end..];
+            return rsx! {
+                span { class: "tree-label",
+                    "{before}"
+                    mark { class: "tree-search-match", "{matched}" }
+                    "{after}"
+                }
+            };
+        }
+    } else {
+        let lower_label = label.to_lowercase();
+        let lower_q = q.to_lowercase();
+        if let Some(byte_idx) = lower_label.find(&lower_q) {
+            let char_start = lower_label[..byte_idx].chars().count();
+            let char_len = lower_q.chars().count();
+            let mut chars = label.chars();
+            let before: String = chars.by_ref().take(char_start).collect();
+            let matched: String = chars.by_ref().take(char_len).collect();
+            let after: String = chars.collect();
+            return rsx! {
+                span { class: "tree-label",
+                    "{before}"
+                    mark { class: "tree-search-match", "{matched}" }
+                    "{after}"
+                }
+            };
         }
     }
-    if let Some((start, end)) = match_range {
-        let before: String = label_chars[..start].iter().collect();
-        let matched: String = label_chars[start..end].iter().collect();
-        let after: String = label_chars[end..].iter().collect();
-        return rsx! {
-            span { class: "tree-label",
-                "{before}"
-                mark { class: "tree-search-match", "{matched}" }
-                "{after}"
-            }
-        };
-    }
     rsx! { span { class: "tree-label", "{label}" } }
+}
+
+#[component]
+fn SidebarSearchInput(on_search: EventHandler<String>) -> Element {
+    let mut draft = use_signal(String::new);
+    let mut seq = use_signal(|| 0u64);
+
+    rsx! {
+        input {
+            class: "sidebar-search",
+            r#type: "search",
+            placeholder: "Search… (e.g. folder:auth, req:users)",
+            title: "Search tree. Type folder: (or f:) or req: (or r:) to filter by type.",
+            value: "{draft}",
+            oninput: move |evt: Event<FormData>| {
+                let val = evt.value();
+                draft.set(val.clone());
+                let next_seq = seq() + 1;
+                seq.set(next_seq);
+                if val.trim().is_empty() {
+                    on_search.call(String::new());
+                } else {
+                    spawn(async move {
+                        tokio::time::sleep(std::time::Duration::from_millis(120)).await;
+                        if seq() == next_seq {
+                            on_search.call(val);
+                        }
+                    });
+                }
+            },
+            onkeydown: move |evt: KeyboardEvent| {
+                if evt.key() == Key::Enter {
+                    seq.set(seq() + 1);
+                    on_search.call(draft());
+                } else if evt.key() == Key::Escape {
+                    draft.set(String::new());
+                    seq.set(seq() + 1);
+                    on_search.call(String::new());
+                }
+            },
+        }
+    }
 }

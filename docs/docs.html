@@ -150,6 +150,7 @@
         <div class="font-bold uppercase tracking-wider text-spot-bright text-[11px] mb-2 font-mono">2. Workspaces & Requests</div>
         <ul class="space-y-1 text-spot-muted">
           <li><a href="#collections" class="block py-1 hover:text-white transition-colors">Collections & Folders</a></li>
+          <li><a href="#sidebar-search" class="block py-1 hover:text-white transition-colors">Instant Search &amp; Type Filters</a></li>
           <li><a href="#request-builder" class="block py-1 hover:text-white transition-colors">Request Builder & Bodies</a></li>
           <li><a href="#auth" class="block py-1 hover:text-white transition-colors">Authentication (8 Schemes)</a></li>
           <li><a href="#cookies" class="block py-1 hover:text-white transition-colors">Cookie Jar Management</a></li>
@@ -305,6 +306,50 @@
         <p class="text-slate-300 text-sm leading-relaxed">
           Blitz organizes API suites into nested trees of Collections, Folders, Subfolders, and Request items. All items support custom headers, query parameters, authorization schemes, pre-request scripts, and test scripts.
         </p>
+
+        <!-- INSTANT SEARCH & TYPE FILTERS -->
+        <h3 id="sidebar-search" class="text-lg font-bold text-white pt-2">⚡ Instant Tree Search &amp; Inline Type Filters</h3>
+        <p class="text-slate-300 text-xs leading-relaxed">
+          The sidebar search input provides real-time, debounced filtering across request names, URLs, HTTP methods, headers, and payloads with zero UI lag. Filter by specific item types directly inside the search bar using inline prefix syntax:
+        </p>
+        <div class="overflow-x-auto">
+          <table class="w-full text-left text-xs table-border border-collapse rounded-lg overflow-hidden font-mono">
+            <thead class="bg-spot-black text-slate-300">
+              <tr>
+                <th class="p-3 border-b border-white/10">Prefix Syntax</th>
+                <th class="p-3 border-b border-white/10">Shorthand</th>
+                <th class="p-3 border-b border-white/10">Example Query</th>
+                <th class="p-3 border-b border-white/10">Filter Behavior</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-white/5 text-slate-400">
+              <tr>
+                <td class="p-3 text-spot-bright font-bold">folder:&lt;query&gt;</td>
+                <td class="p-3 text-spot-muted">f:&lt;query&gt;</td>
+                <td class="p-3 text-white">folder:auth</td>
+                <td class="p-3 font-sans">Filters folders only (keeps parent collection visible). <code>folder:</code> alone lists all folders.</td>
+              </tr>
+              <tr>
+                <td class="p-3 text-spot-bright font-bold">req:&lt;query&gt;</td>
+                <td class="p-3 text-spot-muted">request:, r:</td>
+                <td class="p-3 text-white">req:users</td>
+                <td class="p-3 font-sans">Filters request items only by name, URL, method, or payload. <code>req:</code> alone lists all requests.</td>
+              </tr>
+              <tr>
+                <td class="p-3 text-spot-bright font-bold">col:&lt;query&gt;</td>
+                <td class="p-3 text-spot-muted">collection:, c:</td>
+                <td class="p-3 text-white">col:store</td>
+                <td class="p-3 font-sans">Filters top-level collections only. <code>col:</code> alone lists all collections.</td>
+              </tr>
+              <tr>
+                <td class="p-3 text-spot-bright font-bold">is:&lt;type&gt; / type:&lt;type&gt;</td>
+                <td class="p-3 text-spot-muted">—</td>
+                <td class="p-3 text-white">is:folder auth</td>
+                <td class="p-3 font-sans">Alternative semantic filter syntax for folders, requests, or collections.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
 
         <h3 id="request-builder" class="text-lg font-bold text-white pt-2">Request Body Modes</h3>
         <p class="text-slate-300 text-xs leading-relaxed">

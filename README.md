@@ -178,6 +178,11 @@ Interact with any modern API standard in one place:
 
 ### 📑 Comprehensive Collection Workspace
 Manage complex API suites with dedicated tabs:
+- **Instant Search & Type Filtering:** Real-time debounced sidebar search with zero UI lag. Type inline prefixes directly in the search bar to filter by node type:
+  - `folder:<query>` or `f:<query>` (e.g. `folder:auth` or `folder:` alone to browse all folders)
+  - `req:<query>` or `r:<query>` (e.g. `req:login` or `req:` alone to browse all requests)
+  - `col:<query>` or `c:<query>` (e.g. `col:store`)
+  - Alternative syntax: `is:folder`, `is:req`, `type:folder`, `type:req`
 - **Overview:** Collection documentation, structure preview, and real-time statistics.
 - **Authorization:** Inherited authentication (Bearer, Basic, API Key, OAuth2) applied across child requests.
 - **Pre-request & Test Scripts:** Collection-wide scripting for setup, teardown, and validation.

@@ -449,30 +449,135 @@ fn sibling_path(items: &[CollectionItem], item_id: Uuid, path: &mut Vec<usize>) 
     false
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SearchKindFilter {
+    All,
+    FolderOnly,
+    RequestOnly,
+    CollectionOnly,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ParsedTreeQuery {
+    pub kind_filter: SearchKindFilter,
+    pub term: String,
+}
+
+impl ParsedTreeQuery {
+    pub fn parse(raw: &str) -> Self {
+        let trimmed = raw.trim();
+        if trimmed.is_empty() {
+            return Self {
+                kind_filter: SearchKindFilter::All,
+                term: String::new(),
+            };
+        }
+
+        let lower = trimmed.to_ascii_lowercase();
+        let prefixes: &[(&str, SearchKindFilter)] = &[
+            ("folder:", SearchKindFilter::FolderOnly),
+            ("f:", SearchKindFilter::FolderOnly),
+            ("request:", SearchKindFilter::RequestOnly),
+            ("req:", SearchKindFilter::RequestOnly),
+            ("r:", SearchKindFilter::RequestOnly),
+            ("collection:", SearchKindFilter::CollectionOnly),
+            ("col:", SearchKindFilter::CollectionOnly),
+            ("c:", SearchKindFilter::CollectionOnly),
+            ("is:folder", SearchKindFilter::FolderOnly),
+            ("is:req", SearchKindFilter::RequestOnly),
+            ("is:request", SearchKindFilter::RequestOnly),
+            ("is:col", SearchKindFilter::CollectionOnly),
+            ("is:collection", SearchKindFilter::CollectionOnly),
+            ("type:folder", SearchKindFilter::FolderOnly),
+            ("type:req", SearchKindFilter::RequestOnly),
+            ("type:request", SearchKindFilter::RequestOnly),
+            ("type:col", SearchKindFilter::CollectionOnly),
+            ("type:collection", SearchKindFilter::CollectionOnly),
+        ];
+
+        for &(prefix, kind) in prefixes {
+            if lower.starts_with(prefix) {
+                let rest = trimmed[prefix.len()..].trim().to_ascii_lowercase();
+                return Self {
+                    kind_filter: kind,
+                    term: rest,
+                };
+            }
+        }
+
+        Self {
+            kind_filter: SearchKindFilter::All,
+            term: lower,
+        }
+    }
+}
+
+/// Extract clean term for highlight from query (stripping folder:/req:/col: prefixes).
+pub fn search_highlight_term(raw: &str) -> &str {
+    let trimmed = raw.trim();
+    let lower = trimmed.to_ascii_lowercase();
+    let prefixes = [
+        "folder:", "f:", "request:", "req:", "r:", "collection:", "col:", "c:",
+        "is:folder", "is:req", "is:request", "is:col", "is:collection",
+        "type:folder", "type:req", "type:request", "type:col", "type:collection",
+    ];
+    for prefix in prefixes {
+        if lower.starts_with(prefix) {
+            return trimmed[prefix.len()..].trim();
+        }
+    }
+    trimmed
+}
+
 /// Filter tree rows whose name or content contains `query` (case-insensitive),
 /// keeping ancestors. Requests match against their full draft (URL, method,
 /// params, headers, body, scripts, …) so the sidebar search box isn't limited
 /// to the request's display name.
+/// Supports inline type prefixes: `folder:` / `f:`, `req:` / `r:`, `col:` / `c:`.
 pub fn filter_tree_rows(rows: Vec<TreeRow>, query: &str) -> Vec<TreeRow> {
-    let q = query.trim().to_ascii_lowercase();
-    if q.is_empty() {
+    let parsed = ParsedTreeQuery::parse(query);
+    if parsed.kind_filter == SearchKindFilter::All && parsed.term.is_empty() {
         return rows;
     }
     let match_ids: std::collections::HashSet<Uuid> = rows
         .iter()
-        .filter(|r| r.search_text.contains(&q))
+        .filter(|r| {
+            let kind_ok = match parsed.kind_filter {
+                SearchKindFilter::All => true,
+                SearchKindFilter::FolderOnly => matches!(r.kind, TreeRowKind::Folder),
+                SearchKindFilter::RequestOnly => matches!(r.kind, TreeRowKind::Request { .. }),
+                SearchKindFilter::CollectionOnly => matches!(r.kind, TreeRowKind::Collection),
+            };
+            if !kind_ok {
+                return false;
+            }
+
+            if parsed.term.is_empty() {
+                return true;
+            }
+
+            if !r.search_text.is_empty() {
+                r.search_text.contains(&parsed.term)
+            } else {
+                r.name.to_ascii_lowercase().contains(&parsed.term)
+            }
+        })
         .map(|r| r.id)
         .collect();
-    // Keep matching rows + all ancestors
+    // Keep matching rows + all ancestors in O(N) using parent index
+    let parent_map: std::collections::HashMap<Uuid, Option<Uuid>> =
+        rows.iter().map(|r| (r.id, r.parent_id)).collect();
     let mut keep = match_ids.clone();
     for r in &rows {
         if match_ids.contains(&r.id) {
+            keep.insert(r.collection_id);
             let mut pid = r.parent_id;
             while let Some(p) = pid {
-                keep.insert(p);
-                pid = rows.iter().find(|x| x.id == p).and_then(|x| x.parent_id);
+                if !keep.insert(p) {
+                    break;
+                }
+                pid = parent_map.get(&p).copied().flatten();
             }
-            keep.insert(r.collection_id);
         }
     }
     rows.into_iter().filter(|r| keep.contains(&r.id)).collect()
@@ -518,6 +623,22 @@ pub fn flatten_collections_filtered(
     collections: &[Collection],
     collapsed: &std::collections::HashSet<Uuid>,
 ) -> Vec<TreeRow> {
+    flatten_collections_internal(collections, collapsed, false)
+}
+
+/// Like [`flatten_collections_filtered`], but populates `search_text` for filtering.
+pub fn flatten_collections_searchable(
+    collections: &[Collection],
+    collapsed: &std::collections::HashSet<Uuid>,
+) -> Vec<TreeRow> {
+    flatten_collections_internal(collections, collapsed, true)
+}
+
+fn flatten_collections_internal(
+    collections: &[Collection],
+    collapsed: &std::collections::HashSet<Uuid>,
+    populate_search: bool,
+) -> Vec<TreeRow> {
     let mut out = Vec::new();
     for col in collections {
         out.push(TreeRow {
@@ -528,10 +649,10 @@ pub fn flatten_collections_filtered(
             name: col.name.clone(),
             depth: 0,
             favorite: col.favorite,
-            search_text: col.name.to_ascii_lowercase(),
+            search_text: if populate_search { col.name.to_ascii_lowercase() } else { String::new() },
         });
         if !collapsed.contains(&col.id) {
-            flatten_items(&col.items, col.id, col.id, 1, collapsed, &mut out);
+            flatten_items(&col.items, col.id, col.id, 1, collapsed, populate_search, &mut out);
         }
     }
     out
@@ -919,6 +1040,7 @@ fn flatten_items(
     parent_id: Uuid,
     depth: u8,
     collapsed: &std::collections::HashSet<Uuid>,
+    populate_search: bool,
     out: &mut Vec<TreeRow>,
 ) {
     for item in items {
@@ -932,7 +1054,7 @@ fn flatten_items(
                     name: folder.name.clone(),
                     depth,
                     favorite: false,
-                    search_text: folder.name.to_ascii_lowercase(),
+                    search_text: if populate_search { folder.name.to_ascii_lowercase() } else { String::new() },
                 });
                 if !collapsed.contains(&folder.id) {
                     flatten_items(
@@ -941,6 +1063,7 @@ fn flatten_items(
                         folder.id,
                         depth.saturating_add(1),
                         collapsed,
+                        populate_search,
                         out,
                     );
                 }
@@ -954,7 +1077,7 @@ fn flatten_items(
                     name: req.name.clone(),
                     depth,
                     favorite: false,
-                    search_text: req.search_text(),
+                    search_text: if populate_search { req.search_text() } else { String::new() },
                 });
             }
         }
@@ -1407,6 +1530,7 @@ fn rename_item_in_items(items: &mut [CollectionItem], id: Uuid, name: String) ->
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::collections::HashSet;
 
     #[test]
     fn flatten_nested_tree() {
@@ -1854,5 +1978,112 @@ mod tests {
         let mut untitled_with_url = untitled.clone();
         untitled_with_url.url = "https://example.com/custom".into();
         assert!(is_draft_dirty(&untitled_with_url, &cols));
+    }
+
+    #[test]
+    fn test_filter_tree_rows_keeps_ancestors() {
+        let mut cols = Vec::new();
+        let mut col = Collection::new("Store API");
+        let mut folder = Folder::new("Users");
+        let req1 = RequestDraft {
+            name: "List Users".into(),
+            url: "https://api.test/users".into(),
+            ..Default::default()
+        };
+        let req2 = RequestDraft {
+            name: "Delete User".into(),
+            url: "https://api.test/users/1".into(),
+            method: HttpMethod::Delete,
+            ..Default::default()
+        };
+        folder.items.push(CollectionItem::Request(req1));
+        folder.items.push(CollectionItem::Request(req2));
+        col.items.push(CollectionItem::Folder(folder));
+        cols.push(col);
+
+        let rows = flatten_collections_searchable(&cols, &HashSet::new());
+        assert_eq!(rows.len(), 4); // collection, folder, req1, req2
+
+        // Filter "delete" -> should keep Store API (collection), Users (folder), and Delete User (req2)
+        let filtered = filter_tree_rows(rows.clone(), "delete");
+        assert_eq!(filtered.len(), 3);
+        assert_eq!(filtered[0].name, "Store API");
+        assert_eq!(filtered[1].name, "Users");
+        assert_eq!(filtered[2].name, "Delete User");
+
+        // Filter non-existent -> empty
+        let empty_filter = filter_tree_rows(rows, "nonexistent_query_xyz");
+        assert!(empty_filter.is_empty());
+    }
+
+    #[test]
+    fn test_flatten_collections_searchable_vs_standard() {
+        let cols = demo_collections();
+        let regular = flatten_collections(&cols);
+        let searchable = flatten_collections_searchable(&cols, &HashSet::new());
+
+        assert_eq!(regular.len(), searchable.len());
+        // Regular flattening saves memory by skipping eager search_text generation
+        assert!(regular.iter().all(|r| r.search_text.is_empty()));
+        // Searchable flattening populates search_text
+        assert!(searchable.iter().any(|r| !r.search_text.is_empty()));
+    }
+
+    #[test]
+    fn test_filter_tree_rows_type_prefixes() {
+        let mut cols = Vec::new();
+        let mut col = Collection::new("Store API");
+        let mut folder = Folder::new("Users");
+        let req1 = RequestDraft {
+            name: "List Users".into(),
+            url: "https://api.test/users".into(),
+            ..Default::default()
+        };
+        let req2 = RequestDraft {
+            name: "Delete Item".into(),
+            url: "https://api.test/items/1".into(),
+            method: HttpMethod::Delete,
+            ..Default::default()
+        };
+        folder.items.push(CollectionItem::Request(req1));
+        folder.items.push(CollectionItem::Request(req2));
+        col.items.push(CollectionItem::Folder(folder));
+        cols.push(col);
+
+        let rows = flatten_collections_searchable(&cols, &HashSet::new());
+
+        // "folder:users" -> matches Users folder (+ Store API ancestor), but NOT List Users req
+        let folder_match = filter_tree_rows(rows.clone(), "folder: users");
+        assert_eq!(folder_match.len(), 2);
+        assert_eq!(folder_match[0].name, "Store API");
+        assert_eq!(folder_match[1].name, "Users");
+
+        // "f:users" shorthand
+        let f_match = filter_tree_rows(rows.clone(), "f:users");
+        assert_eq!(f_match.len(), 2);
+
+        // "req:users" -> matches List Users req (+ Users folder + Store API ancestor)
+        let req_match = filter_tree_rows(rows.clone(), "req:users");
+        assert_eq!(req_match.len(), 3);
+        assert_eq!(req_match[2].name, "List Users");
+
+        // "folder:" (empty term) -> returns all folders + ancestors
+        let all_folders = filter_tree_rows(rows.clone(), "folder:");
+        assert_eq!(all_folders.len(), 2); // Store API + Users folder
+
+        // "req:" (empty term) -> returns all requests + ancestors
+        let all_reqs = filter_tree_rows(rows.clone(), "req:");
+        assert_eq!(all_reqs.len(), 4); // all rows because both requests are kept
+
+        // "col:store" -> only matches Store API
+        let col_match = filter_tree_rows(rows, "col:store");
+        assert_eq!(col_match.len(), 1);
+        assert_eq!(col_match[0].name, "Store API");
+
+        // Highlight term stripping
+        assert_eq!(search_highlight_term("folder: users"), "users");
+        assert_eq!(search_highlight_term("req:delete"), "delete");
+        assert_eq!(search_highlight_term("f: auth "), "auth");
+        assert_eq!(search_highlight_term("plain query"), "plain query");
     }
 }

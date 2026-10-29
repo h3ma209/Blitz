@@ -1466,6 +1466,29 @@ blitz.test("Response payload contains user_id", () => {
             <span class="px-2 py-0.5 rounded bg-white/5 border border-white/10 text-spot-muted">JSON-RPC 2.0 stdio</span>
           </div>
         </div>
+
+        <!-- Feature 15: Instant Tree Search & Inline Type Filters -->
+        <div class="p-8 rounded-2xl glass glass-hover relative overflow-hidden group">
+          <div class="absolute top-4 right-4">
+            <span
+              class="text-[10px] font-bold bg-spot-green/20 text-spot-bright px-2 py-0.5 rounded tracking-wide font-mono uppercase">NEW</span>
+          </div>
+          <div class="w-12 h-12 rounded-xl bg-sky-500/15 text-sky-400 flex items-center justify-center mb-6">
+            <svg class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <circle cx="11" cy="11" r="8" />
+              <line x1="21" y1="21" x2="16.65" y2="16.65" />
+            </svg>
+          </div>
+          <h3 class="text-xl font-bold mb-3 tracking-tight">Instant Tree Search &amp; Inline Filters</h3>
+          <p class="text-spot-muted text-sm leading-relaxed mb-3">
+            Real-time debounced sidebar tree search with 0ms keystroke lag. Filter specifically by node type using inline search syntax directly in the search bar: <code class="text-spot-bright font-mono">folder:auth</code>, <code class="text-sky-300 font-mono">req:users</code>, or <code class="text-amber-300 font-mono">col:api</code>.
+          </p>
+          <div class="flex flex-wrap items-center gap-1.5 text-[11px] font-mono text-spot-muted">
+            <span class="px-2 py-0.5 rounded bg-white/5 border border-white/10 text-spot-bright">folder:&lt;name&gt;</span>
+            <span class="px-2 py-0.5 rounded bg-white/5 border border-white/10 text-sky-300">req:&lt;name&gt;</span>
+            <span class="px-2 py-0.5 rounded bg-white/5 border border-white/10 text-amber-300">col:&lt;name&gt;</span>
+          </div>
+        </div>
       </div>
     </section>
 

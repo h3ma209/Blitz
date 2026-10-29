@@ -656,6 +656,14 @@ pub fn TopBar(st: WorkbenchState) -> Element {
                                 },
                                 "Check for updates…"
                             }
+                            button {
+                                class: "menu-item",
+                                onclick: move |_| {
+                                    tools_menu_open.set(false);
+                                    open_browser_url("https://h3ma209.github.io/Blitz/docs.html");
+                                },
+                                "Documentation & Reference…"
+                            }
                         }
                     }
                 }

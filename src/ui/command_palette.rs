@@ -2,8 +2,8 @@ use dioxus::prelude::*;
 use uuid::Uuid;
 
 use crate::core::{
-    find_request_across, folder_path_to_request, Collection, CollectionItem, HttpMethod,
-    RequestDraft, UiTheme,
+    find_request_across, Collection, CollectionItem, HttpMethod,
+    UiTheme,
 };
 use crate::ui::workbench::cloud::switch_to_env;
 use crate::ui::workbench::method_class;
@@ -27,7 +27,7 @@ pub enum PaletteAction {
     SelectEnvironment(Option<Uuid>),
     OpenRequest {
         collection_id: Uuid,
-        request: Box<RequestDraft>,
+        request_id: Uuid,
     },
 }
 
@@ -41,7 +41,7 @@ pub struct PaletteEntry {
     pub action: PaletteAction,
 }
 
-/// Fast subsequence fuzzy matcher.
+/// Fast subsequence fuzzy matcher with zero-allocation ASCII fast path.
 /// Returns `Some(score)` when every char of `query` appears in `hay` in order (case-insensitive).
 /// Higher scores indicate tighter, earlier, or word-boundary matches.
 pub fn fuzzy_score(query: &str, hay: &str) -> Option<i32> {
@@ -50,7 +50,67 @@ pub fn fuzzy_score(query: &str, hay: &str) -> Option<i32> {
         return Some(0);
     }
 
-    let q_chars: Vec<char> = q_trimmed.chars().flat_map(|c| c.to_lowercase()).collect();
+    // Zero-allocation fast path for ASCII (majority of commands & requests)
+    if q_trimmed.is_ascii() && hay.is_ascii() {
+        return fuzzy_score_ascii(q_trimmed.as_bytes(), hay.as_bytes());
+    }
+
+    fuzzy_score_unicode(q_trimmed, hay)
+}
+
+fn fuzzy_score_ascii(q: &[u8], h: &[u8]) -> Option<i32> {
+    if q.is_empty() {
+        return Some(0);
+    }
+    if h.len() < q.len() {
+        return None;
+    }
+
+    let mut score = 0i32;
+    let mut qi = 0usize;
+    let mut prev_match_idx: Option<usize> = None;
+
+    for (hi, &hb) in h.iter().enumerate() {
+        let hc = hb.to_ascii_lowercase();
+        let qc = q[qi].to_ascii_lowercase();
+        if hc == qc {
+            let mut char_score = 10;
+            if hi == 0 {
+                char_score += 25;
+            } else {
+                let prev = h[hi - 1];
+                if !prev.is_ascii_alphanumeric() {
+                    char_score += 18;
+                } else if prev.is_ascii_lowercase() && hb.is_ascii_uppercase() {
+                    char_score += 14;
+                }
+            }
+
+            if let Some(prev_idx) = prev_match_idx {
+                if hi == prev_idx + 1 {
+                    char_score += 20;
+                } else {
+                    let gap = (hi - prev_idx - 1) as i32;
+                    char_score -= gap.min(8);
+                }
+            } else {
+                char_score -= (hi as i32).min(15);
+            }
+
+            score += char_score;
+            prev_match_idx = Some(hi);
+            qi += 1;
+            if qi == q.len() {
+                return Some(score);
+            }
+        }
+    }
+
+    None
+}
+
+fn fuzzy_score_unicode(query: &str, hay: &str) -> Option<i32> {
+    let q_chars: Vec<char> = query.chars().flat_map(|c| c.to_lowercase()).collect();
     let h_chars: Vec<char> = hay.chars().collect();
     let h_lower: Vec<char> = hay.chars().flat_map(|c| c.to_lowercase()).collect();
 
@@ -69,11 +129,9 @@ pub fn fuzzy_score(query: &str, hay: &str) -> Option<i32> {
         if qi < q_chars.len() && hc == q_chars[qi] {
             let mut char_score = 10;
 
-            // Bonus for matching at start of string
             if hi == 0 {
                 char_score += 25;
             } else {
-                // Word boundary bonus
                 let prev = h_chars.get(hi - 1).copied().unwrap_or(' ');
                 if !prev.is_alphanumeric() {
                     char_score += 18;
@@ -84,7 +142,6 @@ pub fn fuzzy_score(query: &str, hay: &str) -> Option<i32> {
                 }
             }
 
-            // Consecutive match bonus
             if let Some(prev_idx) = prev_match_idx {
                 if hi == prev_idx + 1 {
                     char_score += 20;
@@ -93,7 +150,6 @@ pub fn fuzzy_score(query: &str, hay: &str) -> Option<i32> {
                     char_score -= gap.min(8);
                 }
             } else {
-                // Slight penalty for late first match
                 char_score -= (hi as i32).min(15);
             }
 
@@ -110,26 +166,32 @@ pub fn fuzzy_score(query: &str, hay: &str) -> Option<i32> {
     }
 }
 
-fn collect_requests(cols: &[Collection]) -> Vec<(Uuid, String, RequestDraft)> {
+/// O(N) single-pass request collection without cloning RequestDraft bodies or repeated tree searches.
+fn collect_requests(cols: &[Collection]) -> Vec<(Uuid, String, Uuid, String, String, HttpMethod)> {
     fn walk_items(
-        col: &Collection,
+        col_id: Uuid,
+        col_name: &str,
         items: &[CollectionItem],
-        out: &mut Vec<(Uuid, String, RequestDraft)>,
+        cur_folder: &str,
+        out: &mut Vec<(Uuid, String, Uuid, String, String, HttpMethod)>,
     ) {
         for item in items {
             match item {
                 CollectionItem::Request(r) => {
-                    let folders = folder_path_to_request(col, r.id);
-                    let path = if folders.is_empty() {
-                        col.name.clone()
+                    let path = if cur_folder.is_empty() {
+                        col_name.to_string()
                     } else {
-                        let f_names: Vec<&str> = folders.iter().map(|f| f.name.as_str()).collect();
-                        format!("{} / {}", col.name, f_names.join(" / "))
+                        format!("{col_name} / {cur_folder}")
                     };
-                    out.push((col.id, path, r.clone()));
+                    out.push((col_id, path, r.id, r.name.clone(), r.url.clone(), r.method));
                 }
                 CollectionItem::Folder(f) => {
-                    walk_items(col, &f.items, out);
+                    let next = if cur_folder.is_empty() {
+                        f.name.clone()
+                    } else {
+                        format!("{cur_folder} / {}", f.name)
+                    };
+                    walk_items(col_id, col_name, &f.items, &next, out);
                 }
             }
         }
@@ -137,7 +199,7 @@ fn collect_requests(cols: &[Collection]) -> Vec<(Uuid, String, RequestDraft)> {
 
     let mut out = Vec::new();
     for col in cols {
-        walk_items(col, &col.items, &mut out);
+        walk_items(col.id, &col.name, &col.items, "", &mut out);
     }
     out
 }
@@ -235,22 +297,24 @@ fn build_entries(st: &WorkbenchState) -> Vec<PaletteEntry> {
         },
     ];
 
-    // 2. Requests across all collections
-    for (col_id, folder_path, req) in collect_requests(&(st.collections)()) {
-        let subtitle = if req.url.is_empty() {
+    // 2. Requests across all collections (zero clone of body/params/scripts)
+    for (col_id, folder_path, req_id, req_name, req_url, req_method) in
+        collect_requests(&(st.collections)())
+    {
+        let subtitle = if req_url.is_empty() {
             folder_path
         } else {
-            format!("{folder_path} · {}", req.url)
+            format!("{folder_path} · {req_url}")
         };
         entries.push(PaletteEntry {
             category: "Request",
-            title: req.name.clone(),
+            title: req_name,
             subtitle,
             shortcut: None,
-            method_badge: Some(req.method),
+            method_badge: Some(req_method),
             action: PaletteAction::OpenRequest {
                 collection_id: col_id,
-                request: Box::new(req),
+                request_id: req_id,
             },
         });
     }
@@ -298,6 +362,34 @@ fn build_entries(st: &WorkbenchState) -> Vec<PaletteEntry> {
     entries
 }
 
+/// Restore window and keyboard focus to the main workbench when palette closes.
+pub fn restore_desktop_focus() {
+    spawn(async move {
+        let script = r#"
+            window.focus();
+            setTimeout(() => {
+                let target = window.__blitz_last_focused;
+                if (!target || !document.contains(target) || target.classList.contains('palette-search-input')) {
+                    target = document.getElementById('np-url-input') || document.querySelector('.url-input');
+                }
+                if (target && typeof target.focus === 'function') {
+                    target.focus();
+                    if (target.id === 'np-url-input' && typeof target.select === 'function') {
+                        target.select();
+                    }
+                } else {
+                    const shell = document.querySelector('.app-shell') || document.body;
+                    if (shell) {
+                        if (!shell.hasAttribute('tabindex')) shell.setAttribute('tabindex', '-1');
+                        shell.focus();
+                    }
+                }
+            }, 10);
+        "#;
+        let _ = document::eval(script).await;
+    });
+}
+
 #[component]
 pub fn CommandPalette(
     st: WorkbenchState,
@@ -308,31 +400,58 @@ pub fn CommandPalette(
 ) -> Element {
     let mut query = use_signal(String::new);
     let mut selected_idx = use_signal(|| 0usize);
+    // Cached once on modal open — avoids rebuilding/cloning entries on every keystroke/hover
+    let all_entries = use_signal(|| build_entries(&st));
 
-    let all_entries = build_entries(&st);
-    let q = query();
-    let mut scored: Vec<(i32, PaletteEntry)> = all_entries
-        .into_iter()
-        .filter_map(|entry| {
-            if q.trim().is_empty() {
-                return Some((0, entry));
-            }
-            let hay = format!("{} {} {}", entry.category, entry.title, entry.subtitle);
-            let title_score = fuzzy_score(&q, &entry.title).map(|s| s + 25);
-            let full_score = fuzzy_score(&q, &hay);
-            match (title_score, full_score) {
-                (Some(a), Some(b)) => Some((a.max(b), entry)),
-                (Some(a), None) => Some((a, entry)),
-                (None, Some(b)) => Some((b, entry)),
-                (None, None) => None,
-            }
-        })
-        .collect();
+    // Restore desktop & webview focus on unmount regardless of exit path
+    use_drop(move || {
+        restore_desktop_focus();
+    });
 
-    if !q.trim().is_empty() {
+    // Ensure autofocus search input reliably on open and record previous focus
+    use_effect(move || {
+        spawn(async move {
+            let script = r#"
+                const cur = document.activeElement;
+                if (cur && cur !== document.body && !cur.classList.contains('palette-search-input')) {
+                    window.__blitz_last_focused = cur;
+                }
+                window.focus();
+                setTimeout(() => {
+                    const el = document.querySelector('.palette-search-input');
+                    if (el) {
+                        el.focus();
+                        el.select();
+                    }
+                }, 10);
+            "#;
+            let _ = document::eval(script).await;
+        });
+    });
+
+    let q_raw = query();
+    let q = q_raw.trim();
+    let entries = all_entries.read();
+    let filtered: Vec<PaletteEntry> = if q.is_empty() {
+        entries.iter().take(40).cloned().collect()
+    } else {
+        let mut scored: Vec<(i32, &PaletteEntry)> = entries
+            .iter()
+            .filter_map(|entry| {
+                if let Some(ts) = fuzzy_score(q, &entry.title) {
+                    Some((ts + 25, entry))
+                } else if let Some(ss) = fuzzy_score(q, &entry.subtitle) {
+                    Some((ss + 5, entry))
+                } else if let Some(cs) = fuzzy_score(q, entry.category) {
+                    Some((cs, entry))
+                } else {
+                    None
+                }
+            })
+            .collect();
         scored.sort_by_key(|b| std::cmp::Reverse(b.0));
-    }
-    let filtered: Vec<PaletteEntry> = scored.into_iter().take(40).map(|(_, e)| e).collect();
+        scored.into_iter().take(40).map(|(_, e)| e.clone()).collect()
+    };
     let item_count = filtered.len();
 
     let cur_sel = if item_count == 0 {
@@ -371,13 +490,13 @@ pub fn CommandPalette(
             }
             PaletteAction::OpenRequest {
                 collection_id,
-                request,
+                request_id,
             } => {
-                let req_id = request.id;
                 let cols = (st.collections)();
-                let resolved_req = find_request_across(&cols, req_id)
-                    .map(|(_, r)| r.clone())
-                    .unwrap_or(*request);
+                let Some((_, resolved_req)) = find_request_across(&cols, request_id) else {
+                    return;
+                };
+                let resolved_req = resolved_req.clone();
 
                 let mut tabs = (st.open_tabs)();
                 let cur = (st.draft)();
@@ -393,7 +512,7 @@ pub fn CommandPalette(
                 }
                 st.open_tabs.set(tabs);
                 st.draft.set(resolved_req.clone());
-                st.active_request_id.set(Some(req_id));
+                st.active_request_id.set(Some(request_id));
                 st.active_collection_id.set(Some(collection_id));
                 st.editing_collection_id.set(None);
                 st.show_settings.set(false);
@@ -404,7 +523,7 @@ pub fn CommandPalette(
                     st.vars.set(v);
                 }
                 let resp_map = (st.responses)();
-                if let Some(cached) = resp_map.get(&req_id).cloned() {
+                if let Some(cached) = resp_map.get(&request_id).cloned() {
                     st.response.set(Some(cached));
                 } else {
                     st.response.set(None);
@@ -429,12 +548,22 @@ pub fn CommandPalette(
                             evt.prevent_default();
                             if item_count > 0 {
                                 selected_idx.set((cur_sel + 1) % item_count);
+                                spawn(async move {
+                                    let _ = document::eval(
+                                        "const el = document.querySelector('.palette-item.active'); if (el) el.scrollIntoView({ block: 'nearest' });"
+                                    ).await;
+                                });
                             }
                         }
                         Key::ArrowUp => {
                             evt.prevent_default();
                             if item_count > 0 {
                                 selected_idx.set(if cur_sel == 0 { item_count - 1 } else { cur_sel - 1 });
+                                spawn(async move {
+                                    let _ = document::eval(
+                                        "const el = document.querySelector('.palette-item.active'); if (el) el.scrollIntoView({ block: 'nearest' });"
+                                    ).await;
+                                });
                             }
                         }
                         Key::Enter => {
@@ -454,13 +583,20 @@ pub fn CommandPalette(
                     input {
                         class: "palette-search-input",
                         r#type: "text",
-                        autofocus: true,
                         placeholder: "Type a command, request name, URL, environment, or theme…",
                         value: "{query()}",
                         oninput: move |evt: Event<FormData>| {
                             query.set(evt.value());
                             selected_idx.set(0);
                         },
+                    }
+                    button {
+                        class: "palette-close-btn",
+                        r#type: "button",
+                        title: "Close (Esc)",
+                        aria_label: "Close command palette",
+                        onclick: move |_| on_close.call(()),
+                        "✕"
                     }
                 }
                 div { class: "palette-list",
@@ -478,22 +614,22 @@ pub fn CommandPalette(
                                         onmouseenter: move |_| selected_idx.set(idx),
                                         onclick: move |_| execute_action(act.clone()),
                                         div { class: "palette-item-main",
-                                            span { class: "palette-category", "{item.category}" }
-                                            if let Some(m) = item.method_badge {
-                                                span {
-                                                    class: "method-badge method-{method_class(m)}",
-                                                    "{m.as_str()}"
-                                                }
-                                            }
-                                            span { class: "palette-title", "{item.title}" }
-                                        }
-                                        div { class: "palette-item-meta",
-                                            span { class: "palette-subtitle", "{item.subtitle}" }
-                                            if let Some(sc) = item.shortcut {
-                                                kbd { class: "palette-kbd", "{sc}" }
-                                            }
-                                        }
-                                    }
+                                             span { class: "palette-category", "{item.category}" }
+                                             if let Some(m) = item.method_badge {
+                                                 span {
+                                                     class: "method-badge method-{method_class(m)}",
+                                                     "{m.as_str()}"
+                                                 }
+                                             }
+                                             span { class: "palette-title", "{item.title}" }
+                                         }
+                                         div { class: "palette-item-meta",
+                                             span { class: "palette-subtitle", "{item.subtitle}" }
+                                             if let Some(sc) = item.shortcut {
+                                                 kbd { class: "palette-kbd", "{sc}" }
+                                             }
+                                         }
+                                     }
                                 }
                             }
                         }

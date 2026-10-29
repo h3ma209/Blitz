@@ -48,12 +48,14 @@ pub use collection::{
     add_folder_under, add_request_under, ancestor_ids_for_request, batch_duplicate_across,
     batch_move_items, collapsed_except_expanded, collapsible_tree_ids, collect_all_subtree_ids,
     delete_needs_confirmation, demo_collections, duplicate_across, filter_tree_rows,
-    find_request_across, flatten_collections, flatten_collections_filtered, folder_child_count,
+    find_request_across, flatten_collections, flatten_collections_filtered,
+    flatten_collections_searchable, folder_child_count,
     folder_path_to_request, insert_item_under, is_draft_dirty, item_contains_id, move_item_to, paste_target_parent_id,
     remint_pasted_item, request_tab_display_name, resolve_ancestor_auth, snapshot_tree_item,
     purge_from_trash, remove_across, rename_across, reorder_before, restore_from_trash,
-    save_request_to_collections, sort_collections, trash_collection, valid_move_destinations,
-    AncestorAuthOrigin, Collection, CollectionItem, Folder, MoveDestination, TreeRow, TreeRowKind,
+    save_request_to_collections, search_highlight_term, sort_collections, trash_collection, valid_move_destinations,
+    AncestorAuthOrigin, Collection, CollectionItem, Folder, MoveDestination,
+    ParsedTreeQuery, SearchKindFilter, TreeRow, TreeRowKind,
 };
 pub use console::{push_console, ConsoleLevel, ConsoleLine, CONSOLE_MAX};
 pub use cookies::{Cookie, CookieJar};

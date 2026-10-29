@@ -622,7 +622,32 @@ pub fn WorkbenchModals(
                 on_send: move |_| on_send.call(()),
                 on_save: move |_| on_save.call(()),
                 on_new_tab: move |_| on_new_tab.call(()),
-                on_close: move |_| show_palette.set(false),
+                on_close: move |_| {
+                    show_palette.set(false);
+                    spawn(async move {
+                        let script = r#"
+                            setTimeout(() => {
+                                let target = window.__blitz_last_focused;
+                                if (!target || !document.contains(target) || target.classList.contains('palette-search-input')) {
+                                    target = document.getElementById('np-url-input') || document.querySelector('.url-input');
+                                }
+                                if (target && typeof target.focus === 'function') {
+                                    target.focus();
+                                    if (target.id === 'np-url-input' && typeof target.select === 'function') {
+                                        target.select();
+                                    }
+                                } else {
+                                    const shell = document.querySelector('.app-shell') || document.body;
+                                    if (shell) {
+                                        if (!shell.hasAttribute('tabindex')) shell.setAttribute('tabindex', '-1');
+                                        shell.focus();
+                                    }
+                                }
+                            }, 10);
+                        "#;
+                        let _ = document::eval(script).await;
+                    });
+                },
             }
         }
 
