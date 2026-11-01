@@ -47,7 +47,9 @@ case "$OS" in
     cp -R "${MOUNT_DIR}/Blitz.app" "/Applications/"
     
     # Strip Gatekeeper quarantine automatically
+    echo "Bypassing macOS Gatekeeper quarantine..."
     xattr -cr "/Applications/Blitz.app" 2>/dev/null || true
+    xattr -rd com.apple.quarantine "/Applications/Blitz.app" 2>/dev/null || true
 
     # Link CLI into ~/.local/bin
     mkdir -p "${HOME}/.local/bin"
@@ -58,6 +60,7 @@ case "$OS" in
     
     echo ""
     echo "✓ Blitz successfully installed to /Applications/Blitz.app!"
+    echo "  Gatekeeper quarantine removed: xattr -cr /Applications/Blitz.app"
     echo "  CLI linked to ~/.local/bin/blitz"
     echo "  You can open it from Spotlight, Launchpad, or by typing: open /Applications/Blitz.app"
     ;;
