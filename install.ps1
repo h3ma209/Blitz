@@ -1,17 +1,16 @@
 # Blitz instant installer for Windows
 $ErrorActionPreference = 'Stop'
 $repo = "h3ma209/Blitz"
-Write-Host "⚡ Fetching latest release of Blitz..." -ForegroundColor Cyan
+$version = if ($args[0]) { $args[0] } else { "latest" }
 
-$release = Invoke-RestMethod -Uri "https://api.github.com/repos/$repo/releases/latest"
-$tag = $release.tag_name
+Write-Host "⚡ Fetching Blitz ($version)..." -ForegroundColor Cyan
 
-if (-not $tag) {
-    Write-Error "Could not determine latest release tag."
-    exit 1
+if ($version -eq "latest") {
+    $zipUrl = "https://github.com/$repo/releases/latest/download/blitz-windows-x86_64.zip"
+} else {
+    $zipUrl = "https://github.com/$repo/releases/download/$version/blitz-windows-x86_64.zip"
 }
 
-$zipUrl = "https://github.com/$repo/releases/download/$tag/blitz-windows-x86_64.zip"
 $installDir = Join-Path $env:LOCALAPPDATA "Blitz"
 $zipPath = Join-Path $env:TEMP "blitz-windows-x86_64.zip"
 
@@ -27,6 +26,7 @@ Expand-Archive -Path $zipPath -DestinationPath $installDir -Force
 Remove-Item -Path $zipPath -Force
 
 # Automatically unblock from Windows SmartScreen quarantine
+Write-Host "Bypassing Windows SmartScreen Mark-of-the-Web quarantine..." -ForegroundColor Gray
 try {
     Unblock-File -Path (Join-Path $installDir "blitz.exe") -ErrorAction SilentlyContinue
 } catch {
@@ -57,4 +57,5 @@ try {
 
 Write-Host ""
 Write-Host "✓ Blitz successfully installed to $installDir\blitz.exe!" -ForegroundColor Green
+Write-Host "  Windows SmartScreen quarantine unblocked: Unblock-File" -ForegroundColor Gray
 Write-Host "  Launch from Start Menu or type: blitz" -ForegroundColor Gray

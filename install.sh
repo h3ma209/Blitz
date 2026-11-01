@@ -71,9 +71,39 @@ case "$OS" in
     mkdir -p "$INSTALL_DIR"
     echo "Downloading ${TAR_URL}..."
     curl -fL --progress-bar "$TAR_URL" | tar -xz -C "$INSTALL_DIR"
+    
+    echo "Configuring permissions..."
     chmod +x "${INSTALL_DIR}/blitz"
+    
+    # Mark as trusted in desktop environments (GNOME/KDE)
+    gio set "${INSTALL_DIR}/blitz" metadata::trusted true 2>/dev/null || true
+
+    # Create desktop shortcut for application menu
+    DESKTOP_DIR="${HOME}/.local/share/applications"
+    if [ -d "$DESKTOP_DIR" ] || mkdir -p "$DESKTOP_DIR" 2>/dev/null; then
+      cat > "${DESKTOP_DIR}/blitz.desktop" <<EOF
+[Desktop Entry]
+Name=Blitz
+Comment=High-performance API Client
+Exec=${INSTALL_DIR}/blitz
+Icon=utilities-terminal
+Terminal=false
+Type=Application
+Categories=Development;
+EOF
+      chmod +x "${DESKTOP_DIR}/blitz.desktop" 2>/dev/null || true
+      gio set "${DESKTOP_DIR}/blitz.desktop" metadata::trusted true 2>/dev/null || true
+      update-desktop-database "$DESKTOP_DIR" 2>/dev/null || true
+    fi
+
     echo ""
-    echo "✓ Blitz CLI installed to ${INSTALL_DIR}/blitz"
+    echo "✓ Blitz successfully installed to ${INSTALL_DIR}/blitz!"
+    echo "  Execution permissions set: chmod +x"
+    echo "  Desktop entry created: ~/.local/share/applications/blitz.desktop"
+    if [[ ":$PATH:" != *":${INSTALL_DIR}:"* ]]; then
+      echo "  Note: Add ${INSTALL_DIR} to your PATH if not already present:"
+      echo "        export PATH=\"\$HOME/.local/bin:\$PATH\""
+    fi
     ;;
 
   MINGW*|MSYS*|CYGWIN*)
@@ -85,8 +115,15 @@ case "$OS" in
     curl -fL --progress-bar -o "$TMP_ZIP" "$ZIP_URL"
     unzip -o -q "$TMP_ZIP" -d "$INSTALL_DIR"
     chmod +x "${INSTALL_DIR}/blitz.exe" 2>/dev/null || true
+
+    # Strip Windows SmartScreen Mark-of-the-Web quarantine
+    echo "Bypassing Windows SmartScreen Mark-of-the-Web..."
+    WIN_EXE_PATH=$(cygpath -w "${INSTALL_DIR}/blitz.exe" 2>/dev/null || echo "${INSTALL_DIR}\\blitz.exe")
+    powershell.exe -NoProfile -Command "Unblock-File -Path '${WIN_EXE_PATH}'" 2>/dev/null || true
+
     echo ""
     echo "✓ Blitz successfully installed to ${INSTALL_DIR}/blitz.exe"
+    echo "  Windows SmartScreen quarantine unblocked: Unblock-File"
     echo "  Launch it by typing: ${INSTALL_DIR}/blitz.exe"
     ;;
 
