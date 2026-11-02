@@ -66,9 +66,6 @@ pub fn TopBar(st: WorkbenchState) -> Element {
             span {
                 class: "brand",
                 title: "Blitz · ⌘↵ Send/Cancel · ⌘S Save · ⌘T New · ⌘K Palette · ⌘+/- Zoom",
-                div { class: "brand-bolt-badge",
-                    span { class: "action-icon action-icon-bolt", aria_hidden: "true" }
-                }
                 span { class: "brand-name", "Blitz" }
             }
 

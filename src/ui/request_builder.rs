@@ -1044,19 +1044,16 @@ fn BodyEditor(
                         let graphql_query = graphql_query.clone();
                         let graphql_variables = graphql_variables.clone();
                         move |_| {
-                            let clean = crate::runtime::postman_defaults::strip_json_comments(&body);
-                            if let Ok(val) = serde_json::from_str::<serde_json::Value>(&clean) {
-                                if let Ok(pretty) = serde_json::to_string_pretty(&val) {
-                                    on_change.call((
-                                        mode,
-                                        pretty,
-                                        binary_path.clone(),
-                                        urlencoded.clone(),
-                                        formdata.clone(),
-                                        graphql_query.clone(),
-                                        graphql_variables.clone(),
-                                    ));
-                                }
+                            if let Some(pretty) = crate::core::beautify_json_body(&body) {
+                                on_change.call((
+                                    mode,
+                                    pretty,
+                                    binary_path.clone(),
+                                    urlencoded.clone(),
+                                    formdata.clone(),
+                                    graphql_query.clone(),
+                                    graphql_variables.clone(),
+                                ));
                             }
                         }
                     },
@@ -1064,19 +1061,18 @@ fn BodyEditor(
                     span { "Beautify JSON" }
                 }
                 {
-                    let trimmed = body.trim();
-                    if trimmed.is_empty() {
-                        rsx! {}
-                    } else {
-                        let clean = crate::runtime::postman_defaults::strip_json_comments(trimmed);
-                        match serde_json::from_str::<serde_json::Value>(&clean) {
-                            Ok(_) => rsx! {
-                                span { class: "json-lint-badge json-lint-ok", "✓ Valid JSON" }
-                            },
-                            Err(e) => rsx! {
-                                span { class: "json-lint-badge json-lint-err", title: "{e}", "⚠ Invalid JSON" }
-                            },
-                        }
+                    match crate::core::lint_json_body(&body) {
+                        Ok(()) if !body.trim().is_empty() => rsx! {
+                            span { class: "json-lint-badge json-lint-ok", "✓ Valid JSON" }
+                        },
+                        Err((line, col, msg)) => rsx! {
+                            span {
+                                class: "json-lint-badge json-lint-err",
+                                title: "Line {line}, Column {col}: {msg}",
+                                "⚠ Ln {line}, Col {col}: {msg}"
+                            }
+                        },
+                        _ => rsx! {}
                     }
                 }
             }

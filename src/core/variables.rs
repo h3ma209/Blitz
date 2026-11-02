@@ -173,14 +173,29 @@ pub fn var_insert_context(text: &str, caret: usize) -> Option<(usize, String)> {
 }
 
 /// Replace incomplete `{{…}}` at `open` through `caret` with `{{insert_name}}`.
+/// Strips existing closing `}}` or `}` if present right after the replaced token.
 pub fn apply_var_insert(text: &str, caret: usize, open: usize, insert_name: &str) -> (String, usize) {
     let open = snap_to_char_boundary(text, open);
     let caret = snap_to_char_boundary(text, caret.max(open));
+    let rest = &text[caret..];
+    let replace_end = if let Some(close_rel) = rest.find("}}") {
+        let candidate = caret + close_rel + 2;
+        let between = &rest[..close_rel];
+        if !between.contains("{{") && !between.contains('\n') {
+            candidate
+        } else {
+            caret
+        }
+    } else if rest.starts_with('}') {
+        caret + 1
+    } else {
+        caret
+    };
     let token = format!("{{{{{}}}}}", insert_name.trim());
     let mut out = String::with_capacity(text.len() + token.len());
     out.push_str(&text[..open]);
     out.push_str(&token);
-    out.push_str(&text[caret..]);
+    out.push_str(&text[replace_end..]);
     let new_caret = open + token.len();
     (out, new_caret)
 }
@@ -849,6 +864,22 @@ mod tests {
         // Safe apply_var_insert with mid-char caret
         let (out, new_caret) = apply_var_insert(text, 3, 0, "my_var");
         assert_eq!(out, "{{my_var}}“\"}");
+        assert_eq!(new_caret, 10);
+
+        // No double closing braces: {{foo}} -> {{my_var}} (NOT {{my_var}}}})
+        // "https://api.com/" is 16 bytes. "{{" is at 16..18. "foo" is at 18..21. "}}" is at 21..23.
+        let (out, new_caret) = apply_var_insert("https://api.com/{{foo}}", 21, 16, "my_var");
+        assert_eq!(out, "https://api.com/{{my_var}}");
+        assert_eq!(new_caret, 26);
+
+        // Incomplete single closing brace: {{foo} -> {{my_var}}
+        let (out, new_caret) = apply_var_insert("{{foo}", 5, 0, "my_var");
+        assert_eq!(out, "{{my_var}}");
+        assert_eq!(new_caret, 10);
+
+        // No closing brace: {{foo -> {{my_var}}
+        let (out, new_caret) = apply_var_insert("{{foo", 5, 0, "my_var");
+        assert_eq!(out, "{{my_var}}");
         assert_eq!(new_caret, 10);
 
         // Emoji 4-byte boundaries: {{🔥

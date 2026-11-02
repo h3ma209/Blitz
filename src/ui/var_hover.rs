@@ -10,7 +10,8 @@ use crate::core::{
 };
 
 use super::var_autocomplete::{
-    read_field_caret_anchor, restore_field_caret, VarSuggestDropdown, VarSuggestMenu,
+    apply_var_completion_dom, read_field_caret_anchor, restore_field_caret, VarSuggestDropdown,
+    VarSuggestMenu,
 };
 use super::DismissBackdrop;
 
@@ -108,10 +109,15 @@ pub fn VarHoverInput(
     let mut var_suggest = use_signal(|| None::<VarSuggestMenu>);
     let mirror_html = render_var_highlight_html(&value, Some(&vars));
     let input_class = format!("{class} var-highlight-input");
+    let host_class = if class.contains("url-input") {
+        "var-hover-host var-highlight-host code-editor-host has-url-input"
+    } else {
+        "var-hover-host var-highlight-host code-editor-host"
+    };
 
     rsx! {
         div {
-            class: "var-hover-host var-highlight-host code-editor-host",
+            class: "{host_class}",
             onmouseleave: move |_| {
                 hover_seq.set(hover_seq() + 1);
                 schedule_dismiss(popover, dismiss_gen, editing, over_popover);
@@ -137,6 +143,7 @@ pub fn VarHoverInput(
                         let vars = vars.clone();
                         let input_id = input_id.clone();
                         spawn(async move {
+                            sync_mirror_scroll(&input_id).await;
                             if let Some((caret, left, top)) = read_field_caret_anchor(&input_id).await {
                                 if var_insert_context(&val, caret).is_some() {
                                     var_suggest.set(VarSuggestMenu::refresh(&val, caret, &vars, left, top));
@@ -175,7 +182,11 @@ pub fn VarHoverInput(
                                         let value = value.clone();
                                         let input_id = input_id.clone();
                                         spawn(async move {
-                                            if let Some((caret, _, _)) =
+                                            if let Some(new_val) =
+                                                apply_var_completion_dom(&input_id, open, &item.insert).await
+                                            {
+                                                on_input.call(new_val);
+                                            } else if let Some((caret, _, _)) =
                                                 read_field_caret_anchor(&input_id).await
                                             {
                                                 let (new_text, new_caret) =
@@ -206,14 +217,20 @@ pub fn VarHoverInput(
                     let value = value.clone();
                     let vars = vars.clone();
                     move |_| {
+                        // Clicking in input focuses for typing — dismiss any hover popover
+                        popover.set(None);
                         let input_id = input_id.clone();
                         let value = value.clone();
                         let vars = vars.clone();
                         spawn(async move {
-                            if let Some((idx, left, top)) = read_caret_and_anchor(&input_id).await {
-                                try_open_popover(
-                                    &value, &vars, idx, left, top, popover, draft, dismiss_gen,
-                                );
+                            if let Some((caret, left, top)) = read_field_caret_anchor(&input_id).await {
+                                if var_insert_context(&value, caret).is_some() {
+                                    var_suggest.set(VarSuggestMenu::refresh(
+                                        &value, caret, &vars, left, top,
+                                    ));
+                                } else {
+                                    var_suggest.set(None);
+                                }
                             }
                         });
                     }
@@ -223,42 +240,40 @@ pub fn VarHoverInput(
                     let value = value.clone();
                     let vars = vars.clone();
                     move |evt: Event<KeyboardData>| {
-                        let value_s = value.clone();
-                        let vars_for_suggest = vars.clone();
-                        let input_id_for_suggest = input_id.clone();
-                        spawn(async move {
-                            if let Some((caret, left, top)) =
-                                read_field_caret_anchor(&input_id_for_suggest).await
-                            {
-                                if var_insert_context(&value_s, caret).is_some() {
-                                    var_suggest.set(VarSuggestMenu::refresh(
-                                        &value_s,
-                                        caret,
-                                        &vars_for_suggest,
-                                        left,
-                                        top,
-                                    ));
-                                } else {
-                                    var_suggest.set(None);
-                                }
+                        match evt.key() {
+                            Key::Escape => {
+                                dismiss_gen.set(dismiss_gen() + 1);
+                                editing.set(false);
+                                popover.set(None);
+                                var_suggest.set(None);
                             }
-                        });
-                        if matches!(evt.key(), Key::Escape) {
-                            dismiss_gen.set(dismiss_gen() + 1);
-                            editing.set(false);
-                            popover.set(None);
-                            return;
+                            // Do not refresh or reset suggestions on vertical navigation or pick keys!
+                            // Prevents resetting VarSuggestMenu::selected back to 0 on every arrow release.
+                            Key::ArrowDown | Key::ArrowUp | Key::Enter | Key::Tab => {}
+                            Key::ArrowLeft | Key::ArrowRight => {
+                                let value_s = value.clone();
+                                let vars_for_suggest = vars.clone();
+                                let input_id_for_suggest = input_id.clone();
+                                spawn(async move {
+                                    if let Some((caret, left, top)) =
+                                        read_field_caret_anchor(&input_id_for_suggest).await
+                                    {
+                                        if var_insert_context(&value_s, caret).is_some() {
+                                            var_suggest.set(VarSuggestMenu::refresh(
+                                                &value_s,
+                                                caret,
+                                                &vars_for_suggest,
+                                                left,
+                                                top,
+                                            ));
+                                        } else {
+                                            var_suggest.set(None);
+                                        }
+                                    }
+                                });
+                            }
+                            _ => {}
                         }
-                        let input_id = input_id.clone();
-                        let value = value.clone();
-                        let vars = vars.clone();
-                        spawn(async move {
-                            if let Some((idx, left, top)) = read_caret_and_anchor(&input_id).await {
-                                try_open_popover(
-                                    &value, &vars, idx, left, top, popover, draft, dismiss_gen,
-                                );
-                            }
-                        });
                     }
                 },
                 onmousemove: {
@@ -266,7 +281,8 @@ pub fn VarHoverInput(
                     let value = value.clone();
                     let vars = vars.clone();
                     move |evt: Event<MouseData>| {
-                        if editing() {
+                        // Do not show hover popover while editing or when autocomplete suggestions are active
+                        if editing() || var_suggest.peek().is_some() {
                             return;
                         }
                         let client_x = evt.client_coordinates().x;
@@ -279,13 +295,13 @@ pub fn VarHoverInput(
                             let already_open = popover.peek().is_some();
                             let dwell = if already_open { HOVER_SWITCH_MS } else { HOVER_DWELL_MS };
                             tokio::time::sleep(Duration::from_millis(dwell)).await;
-                            if *hover_seq.peek() != next_seq {
+                            if *hover_seq.peek() != next_seq || var_suggest.peek().is_some() {
                                 return;
                             }
                             if let Some((idx, left, top)) =
                                 read_hover_index_and_anchor(&input_id, client_x).await
                             {
-                                if *hover_seq.peek() != next_seq {
+                                if *hover_seq.peek() != next_seq || var_suggest.peek().is_some() {
                                     return;
                                 }
                                 if find_var_at(&value, idx).is_some() {
@@ -313,7 +329,11 @@ pub fn VarHoverInput(
                             let value = value.clone();
                             let item = item.clone();
                             spawn(async move {
-                                if let Some((caret, _, _)) = read_field_caret_anchor(&input_id).await {
+                                if let Some(new_val) =
+                                    apply_var_completion_dom(&input_id, open, &item.insert).await
+                                {
+                                    on_input.call(new_val);
+                                } else if let Some((caret, _, _)) = read_field_caret_anchor(&input_id).await {
                                     let (new_text, new_caret) =
                                         apply_var_insert(&value, caret, open, &item.insert);
                                     on_input.call(new_text);
@@ -494,29 +514,6 @@ async fn sync_mirror_scroll(input_id: &str) {
     let _ = document::eval(&script).await;
 }
 
-async fn read_caret_and_anchor(input_id: &str) -> Option<(usize, f64, f64)> {
-    let script = format!(
-        r#"
-        const el = document.getElementById({id});
-        if (!el) return null;
-        const rect = el.getBoundingClientRect();
-        const host = el.closest('.var-hover-host');
-        const hr = host ? host.getBoundingClientRect() : rect;
-        const caretChars = el.selectionStart ?? 0;
-        const byteIdx = new TextEncoder().encode((el.value || '').slice(0, caretChars)).length;
-        const boundaryEl = el.closest('.modal, .modal-dialog, .workbench-pane, #main') || document.body;
-        const boundary = boundaryEl.getBoundingClientRect();
-        const popWidth = 300;
-        const maxGlobalRight = Math.min(window.innerWidth - 12, boundary.right - 12);
-        const maxLeft = Math.max(8, maxGlobalRight - hr.left - popWidth);
-        const left = Math.max(8, Math.min(8, maxLeft));
-        return [byteIdx, left, rect.bottom - hr.top + 4];
-        "#,
-        id = serde_json::to_string(input_id).unwrap_or_else(|_| "\"\"".into())
-    );
-    let v = document::eval(&script).await.ok()?;
-    parse_index_anchor(&v)
-}
 
 async fn read_hover_index_and_anchor(input_id: &str, client_x: f64) -> Option<(usize, f64, f64)> {
     let script = format!(

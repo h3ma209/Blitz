@@ -324,7 +324,7 @@ impl UiSettings {
     pub const CONSOLE_MAX_PX: u32 = 420;
     pub const TOOLBAR_MIN_PX: u32 = 34;
     pub const TOOLBAR_MAX_PX: u32 = 56;
-    pub const DEFAULT_TOOLBAR_HEIGHT_PX: u32 = 42;
+    pub const DEFAULT_TOOLBAR_HEIGHT_PX: u32 = 46;
     pub const SPLASH_MIN_MS: u32 = 0;
     pub const SPLASH_MAX_MS: u32 = 2_000;
     pub const ZOOM_MIN_PERCENT: u32 = 50;
@@ -519,7 +519,7 @@ mod tests {
         assert_eq!(ui.splash_min_ms, 80);
         assert_eq!(ui.zoom_percent, 100);
         assert!(ui.history_collapsed);
-        assert_eq!(ui.toolbar_height_px, 42);
+        assert_eq!(ui.toolbar_height_px, 46);
         assert_eq!(UiSettings::clamp_toolbar_height(20), 34);
         assert_eq!(UiSettings::clamp_toolbar_height(100), 56);
         assert_eq!(UiSettings::clamp_zoom_percent(20), 50);

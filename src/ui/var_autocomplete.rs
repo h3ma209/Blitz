@@ -117,6 +117,64 @@ pub async fn read_field_caret_anchor(element_id: &str) -> Option<(usize, f64, f6
 }
 
 /// Move caret after Rust state updated the controlled field value.
+/// Insert variable completion directly into DOM element, setting caret immediately after `}}`.
+/// Dispatches 'input' event so Dioxus controlled input stays in sync without caret jump.
+pub async fn apply_var_completion_dom(
+    element_id: &str,
+    open_bytes: usize,
+    insert_name: &str,
+) -> Option<String> {
+    let script = format!(
+        r#"
+        const el = document.getElementById({id});
+        if (!el) return null;
+        const val = el.value || '';
+        const enc = new TextEncoder();
+        const targetOpenBytes = {open_bytes};
+        let openPos = 0;
+        let curBytes = 0;
+        for (const ch of val) {{
+            const b = enc.encode(ch).length;
+            if (curBytes + b > targetOpenBytes) break;
+            curBytes += b;
+            openPos += ch.length;
+        }}
+        const caretPos = el.selectionStart ?? val.length;
+        const token = "{token}";
+        const before = val.slice(0, openPos);
+        const rest = val.slice(caretPos);
+        let replaceEnd = caretPos;
+        const closeIdx = rest.indexOf("}}}}");
+        if (closeIdx !== -1) {{
+            const between = rest.slice(0, closeIdx);
+            if (!between.includes("{{{{") && !between.includes("\n")) {{
+                replaceEnd = caretPos + closeIdx + 2;
+            }}
+        }} else if (rest.startsWith("}}")) {{
+            replaceEnd = caretPos + 1;
+        }}
+        const after = val.slice(replaceEnd);
+        const newVal = before + token + after;
+        el.value = newVal;
+        const newCaret = openPos + token.length;
+        el.focus();
+        el.setSelectionRange(newCaret, newCaret);
+        const host = el.closest('.var-highlight-host');
+        const mirror = host && host.querySelector('.var-highlight-mirror');
+        if (mirror) {{
+            mirror.scrollLeft = el.scrollLeft || 0;
+        }}
+        el.dispatchEvent(new Event('input', {{ bubbles: true }}));
+        return newVal;
+        "#,
+        id = serde_json::to_string(element_id).unwrap_or_else(|_| "\"\"".into()),
+        open_bytes = open_bytes,
+        token = format!("{{{{{}}}}}", insert_name.trim())
+    );
+    let v = document::eval(&script).await.ok()?;
+    v.as_str().map(|s| s.to_string())
+}
+
 /// Accepts UTF-8 byte offset and maps it to UTF-16 code unit offset for `setSelectionRange`.
 pub async fn restore_field_caret(element_id: &str, byte_caret: usize) {
     let script = format!(

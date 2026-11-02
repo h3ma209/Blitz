@@ -18,6 +18,7 @@ pub mod doc_gen;
 pub mod environment;
 pub mod history;
 pub mod impex;
+pub mod json_lint;
 pub mod mock_server;
 pub mod mcp_server;
 pub mod mcp_setup;
@@ -72,6 +73,7 @@ pub use impex::{
     import_collection_v21, import_curl, import_har, import_openapi3,
     import_request_item, limitations_blurb, ImpexError,
 };
+pub use json_lint::{beautify_json_body, lint_json_body};
 #[cfg(test)]
 pub use impex::reconcile_openapi3_collection;
 pub use mock_server::{

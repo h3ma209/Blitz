@@ -673,11 +673,15 @@ pub fn Sidebar(
                         }
                         }
                     },
-                    for row in rendered_rows {
+                    for (idx, row) in rendered_rows.iter().enumerate() {
                         {
                             let row_id = row.id;
                             let col_id = row.collection_id;
-                            let depth = row.depth;
+                            let depth = row.depth as usize;
+                            let has_following_sibling = rendered_rows
+                                .get(idx + 1)
+                                .map(|next| (next.depth as usize) >= depth)
+                                .unwrap_or(false);
                             let name = row.name.clone();
                             let kind = row.kind.clone();
                             let favorite = row.favorite;
@@ -695,7 +699,7 @@ pub fn Sidebar(
                             let is_drop = drop_target() == Some(row_id);
                             let can_drop = is_col || is_folder;
                             let is_renaming = renaming_id() == Some(row_id);
-                            let pad = 8 + (depth as i64) * 12;
+                            let pad = if depth == 0 { 6 } else { 8 + (depth as i64) * 14 };
                             let glyph = if is_folder || is_col {
                                 if is_collapsed { "▸" } else { "▾" }
                             } else {
@@ -801,8 +805,13 @@ pub fn Sidebar(
                                         let coords = evt.client_coordinates();
                                         let sel = selected_ids();
                                         if !sel.contains(&row_id) {
-                                            selected_ids.set(HashSet::from([row_id]));
+                                            selected_ids.set(HashSet::new());
                                         }
+                                        focused_row.set(Some(TreeSelection {
+                                            id: row_id,
+                                            collection_id: col_id,
+                                            kind: kind_for_ctx.clone(),
+                                        }));
                                         ctx_menu.set(Some(ContextMenuState {
                                             x: coords.x,
                                             y: coords.y,
@@ -811,6 +820,54 @@ pub fn Sidebar(
                                             collection_id: col_id,
                                         }));
                                     },
+                                    if depth > 0 {
+                                        div {
+                                            class: "tree-guide-wrap",
+                                            "aria-hidden": "true",
+                                            for lvl in 0..depth {
+                                                {
+                                                    let line_x = 10 + (lvl as i64) * 14;
+                                                    let is_last_level = lvl == depth - 1;
+                                                    if is_last_level {
+                                                        let branch_color = type_guide_color(&kind);
+                                                        if has_following_sibling {
+                                                            rsx! {
+                                                                div {
+                                                                    key: "branch-{lvl}",
+                                                                    style: "display: contents;",
+                                                                    span {
+                                                                        class: "tree-guide-vertical",
+                                                                        style: "left: {line_x}px; background-color: {branch_color};",
+                                                                    }
+                                                                    span {
+                                                                        class: "tree-guide-arm",
+                                                                        style: "left: {line_x}px; border-color: {branch_color};",
+                                                                    }
+                                                                }
+                                                            }
+                                                        } else {
+                                                            rsx! {
+                                                                span {
+                                                                    key: "elbow-{lvl}",
+                                                                    class: "tree-guide-elbow",
+                                                                    style: "left: {line_x}px; border-color: {branch_color};",
+                                                                }
+                                                            }
+                                                        }
+                                                    } else {
+                                                        let anc_color = ancestor_guide_color(lvl);
+                                                        rsx! {
+                                                            span {
+                                                                key: "anc-{lvl}",
+                                                                class: "tree-guide-vertical",
+                                                                style: "left: {line_x}px; background-color: {anc_color};",
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
                                     div {
                                         class: "tree-main",
                                         onclick: {
@@ -866,42 +923,10 @@ pub fn Sidebar(
                                                     }));
                                                     return;
                                                 } else {
-                                                    let sel = selected_ids();
-                                                    if !sel.is_empty() {
-                                                        if is_col || is_folder {
-                                                            // In multi-select mode, clicking a collection or folder
-                                                            // toggles expand/collapse WITHOUT exiting multi-select mode!
-                                                            let mut set = expanded();
-                                                            if set.contains(&row_id) {
-                                                                set.remove(&row_id);
-                                                            } else {
-                                                                set.insert(row_id);
-                                                            }
-                                                            expanded.set(set);
-                                                            on_event.call(SidebarEvent::new(
-                                                                SidebarAction::ToggleExpand,
-                                                                Some(row_id),
-                                                                Some(col_id),
-                                                            ));
-                                                            return;
-                                                        } else {
-                                                            // In multi-select mode, clicking a request row toggles
-                                                            // selection (prevents misclick off checkbox from dropping selection)
-                                                            let mut set = sel;
-                                                            if set.contains(&row_id) {
-                                                                set.remove(&row_id);
-                                                            } else {
-                                                                set.insert(row_id);
-                                                            }
-                                                            last_selected_id.set(Some(row_id));
-                                                            selected_ids.set(set);
-                                                            focused_row.set(Some(TreeSelection {
-                                                                id: row_id,
-                                                                collection_id: col_id,
-                                                                kind: kind_for_click.clone(),
-                                                            }));
-                                                            return;
-                                                        }
+                                                    // Plain click clears multi-selection so clicking a request opens it directly.
+                                                    // To toggle multi-selection, user clicks the row's checkbox or uses Cmd/Shift.
+                                                    if !selected_ids().is_empty() {
+                                                        selected_ids.set(HashSet::new());
                                                     }
                                                     last_selected_id.set(Some(row_id));
                                                 }
@@ -1748,6 +1773,30 @@ fn method_class(m: HttpMethod) -> &'static str {
         HttpMethod::Delete => "delete",
         HttpMethod::Head => "head",
         HttpMethod::Options => "options",
+    }
+}
+
+fn type_guide_color(kind: &TreeRowKind) -> &'static str {
+    match kind {
+        TreeRowKind::Collection => "rgba(29, 185, 84, 0.45)",
+        TreeRowKind::Folder => "rgba(245, 158, 11, 0.45)",
+        TreeRowKind::Request { method } => match method {
+            HttpMethod::Get => "rgba(59, 130, 246, 0.5)",
+            HttpMethod::Post => "rgba(16, 185, 129, 0.5)",
+            HttpMethod::Put => "rgba(245, 158, 11, 0.5)",
+            HttpMethod::Patch => "rgba(139, 92, 246, 0.5)",
+            HttpMethod::Delete => "rgba(239, 68, 68, 0.5)",
+            HttpMethod::Head => "rgba(6, 182, 212, 0.5)",
+            HttpMethod::Options => "rgba(236, 72, 153, 0.5)",
+        },
+    }
+}
+
+fn ancestor_guide_color(level: usize) -> &'static str {
+    if level == 0 {
+        "rgba(29, 185, 84, 0.24)"
+    } else {
+        "rgba(245, 158, 11, 0.24)"
     }
 }
 
