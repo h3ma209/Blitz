@@ -109,7 +109,7 @@ pub use cloud_sync::{
 };
 pub use settings::{
     default_zoom_percent, AccentIntensity, AppSettings, ClientCertSettings, CloudSyncSettings,
-    DefaultResponseTab, ProxyMode, ProxySettings, RequestSettings, UiDensity, UiSettings, UiTheme,
+    DefaultResponseTab, ProxyMode, ProxySettings, RequestSettings, ThemeGroup, UiDensity, UiSettings, UiTheme,
     WorkbenchLayout, DEFAULT_CLOUD_REMOTE,
 };
 pub use variables::{

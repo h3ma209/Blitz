@@ -110,6 +110,13 @@ pub enum UiDensity {
     Compact,
 }
 
+/// Logical grouping for theme dropdown picker.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ThemeGroup {
+    pub category: &'static str,
+    pub themes: &'static [UiTheme],
+}
+
 /// Workbench color theme (class token on `.app-shell`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "snake_case")]
@@ -117,6 +124,8 @@ pub enum UiTheme {
     /// Dark glass + Spotify green accent (default).
     #[default]
     Spotify,
+    /// Linear Studio Dark — hyper-refined midnight zinc & electric iris.
+    Linear,
     /// Postman dark stage + signature orange accent ("notPostman").
     NotPostman,
     /// Obsidian & Electric Amber / Cyberpunk minimal terminal dark stage.
@@ -138,6 +147,7 @@ impl UiTheme {
     pub fn class_token(self) -> &'static str {
         match self {
             Self::Spotify => "theme-spotify",
+            Self::Linear => "theme-linear",
             Self::NotPostman => "theme-not-postman",
             Self::Obsidian => "theme-obsidian",
             Self::Blueprint => "theme-blueprint",
@@ -150,13 +160,18 @@ impl UiTheme {
 
     /// Structural layout family (shared geometry, separate palettes).
     pub fn chassis_token(self) -> Option<&'static str> {
-        matches!(self, Self::Blueprint | Self::BlueprintLight).then_some("chassis-blueprint")
+        match self {
+            Self::Blueprint | Self::BlueprintLight => Some("chassis-blueprint"),
+            Self::Linear => Some("chassis-linear"),
+            _ => None,
+        }
     }
 
     /// Human label for Settings dropdown.
     pub fn label(self) -> &'static str {
         match self {
             Self::Spotify => "Spotify (default)",
+            Self::Linear => "Linear (Studio Dark)",
             Self::NotPostman => "notPostman",
             Self::Obsidian => "Obsidian Ember",
             Self::Blueprint => "Hardware Blueprint",
@@ -167,10 +182,56 @@ impl UiTheme {
         }
     }
 
+    /// Palette subtitle / description.
+    pub fn description(self) -> &'static str {
+        match self {
+            Self::Spotify => "Dark glass & Spotify green",
+            Self::Linear => "Midnight zinc & electric iris",
+            Self::NotPostman => "Dark workbench & signature orange",
+            Self::Obsidian => "Volcanic black & warm amber",
+            Self::Slate => "Deep navy & sky blue",
+            Self::Blueprint => "Anodized industrial & orange",
+            Self::BlueprintLight => "Warm drafting paper & grid",
+            Self::Light => "Clean minimal light surfaces",
+            Self::HighContrast => "High contrast black & yellow",
+        }
+    }
+
+    /// Categorized groups for dropdown selector.
+    pub fn grouped() -> &'static [ThemeGroup] {
+        &[
+            ThemeGroup {
+                category: "Modern Dark & Studio",
+                themes: &[
+                    Self::Spotify,
+                    Self::Linear,
+                    Self::NotPostman,
+                    Self::Obsidian,
+                    Self::Slate,
+                ],
+            },
+            ThemeGroup {
+                category: "Industrial & Hardware",
+                themes: &[
+                    Self::Blueprint,
+                    Self::BlueprintLight,
+                ],
+            },
+            ThemeGroup {
+                category: "Light & High Contrast",
+                themes: &[
+                    Self::Light,
+                    Self::HighContrast,
+                ],
+            },
+        ]
+    }
+
     /// All themes in Settings display order.
     pub fn all() -> &'static [UiTheme] {
         &[
             Self::Spotify,
+            Self::Linear,
             Self::NotPostman,
             Self::Obsidian,
             Self::Blueprint,
@@ -624,6 +685,7 @@ mod tests {
             UiTheme::BlueprintLight.chassis_token(),
             Some("chassis-blueprint")
         );
+        assert_eq!(UiTheme::Linear.chassis_token(), Some("chassis-linear"));
         assert_eq!(UiTheme::Spotify.chassis_token(), None);
         assert_eq!(UiTheme::NotPostman.chassis_token(), None);
         assert_eq!(UiTheme::NotPostman.class_token(), "theme-not-postman");

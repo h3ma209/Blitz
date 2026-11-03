@@ -25,28 +25,37 @@ pub fn ThemeSelector(theme: UiTheme, on_change: EventHandler<UiTheme>) -> Elemen
             }
             if menu_open() {
                 div { class: "theme-menu",
-                    div { class: "theme-menu-header", "Color Theme" }
-                    for t in UiTheme::all() {
-                        {
-                            let item_theme = *t;
-                            let is_active = item_theme == theme;
-                            let row_class = if is_active {
-                                "theme-menu-row theme-menu-row-active"
-                            } else {
-                                "theme-menu-row"
-                            };
-                            rsx! {
-                                button {
-                                    key: "{item_theme.class_token()}",
-                                    class: "{row_class}",
-                                    onclick: move |_| {
-                                        menu_open.set(false);
-                                        on_change.call(item_theme);
-                                    },
-                                    span { class: "theme-menu-dot theme-dot-{item_theme.class_token()}" }
-                                    span { class: "theme-menu-label", "{item_theme.label()}" }
-                                    if is_active {
-                                        span { class: "theme-menu-check", "✓" }
+                    for group in UiTheme::grouped() {
+                        div {
+                            key: "{group.category}",
+                            class: "theme-menu-section",
+                            div { class: "theme-menu-header", "{group.category}" }
+                            for t in group.themes {
+                                {
+                                    let item_theme = *t;
+                                    let is_active = item_theme == theme;
+                                    let row_class = if is_active {
+                                        "theme-menu-row theme-menu-row-active"
+                                    } else {
+                                        "theme-menu-row"
+                                    };
+                                    rsx! {
+                                        button {
+                                            key: "{item_theme.class_token()}",
+                                            class: "{row_class}",
+                                            onclick: move |_| {
+                                                menu_open.set(false);
+                                                on_change.call(item_theme);
+                                            },
+                                            span { class: "theme-menu-dot theme-dot-{item_theme.class_token()}" }
+                                            div { class: "theme-menu-info",
+                                                span { class: "theme-menu-label", "{item_theme.label()}" }
+                                                span { class: "theme-menu-desc", "{item_theme.description()}" }
+                                            }
+                                            if is_active {
+                                                span { class: "theme-menu-check", "✓" }
+                                            }
+                                        }
                                     }
                                 }
                             }

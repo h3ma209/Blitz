@@ -97,6 +97,7 @@ pub fn TopBar(st: WorkbenchState) -> Element {
                     if file_menu_open() {
                         div { class: "menu-dropdown",
                             onmousedown: move |evt| evt.stop_propagation(),
+                            div { class: "menu-category-header", "Import" }
                             button {
                                 class: "menu-item",
                                 onclick: move |_| {
@@ -202,6 +203,7 @@ pub fn TopBar(st: WorkbenchState) -> Element {
                                 },
                                 "Load bundled sample exports"
                             }
+                            div { class: "menu-category-header", "Export" }
                             button {
                                 class: "menu-item",
                                 onclick: move |_| {
@@ -420,17 +422,6 @@ pub fn TopBar(st: WorkbenchState) -> Element {
                     }
                 }
 
-                button {
-                    class: "top-link",
-                    onclick: move |_| {
-                        file_menu_open.set(false);
-                        tools_menu_open.set(false);
-                        cloud_menu_open.set(false);
-                        show_runner.set(true);
-                    },
-                    "Runner"
-                }
-
                 div { class: "menu-file",
                     button {
                         class: if tools_menu_open() || mock_port().is_some() || proxy_port().is_some() {
@@ -451,6 +442,15 @@ pub fn TopBar(st: WorkbenchState) -> Element {
                     if tools_menu_open() {
                         div { class: "menu-dropdown menu-dropdown-wide",
                             onmousedown: move |evt| evt.stop_propagation(),
+                            div { class: "menu-category-header", "Testing & Simulation" }
+                            button {
+                                class: "menu-item",
+                                onclick: move |_| {
+                                    tools_menu_open.set(false);
+                                    show_runner.set(true);
+                                },
+                                "Collection Runner…"
+                            }
                             button {
                                 class: "menu-item",
                                 onclick: move |_| {
@@ -555,6 +555,7 @@ pub fn TopBar(st: WorkbenchState) -> Element {
                                 },
                                 if proxy_port().is_some() { "Stop capture proxy" } else { "Start capture proxy" }
                             }
+                            div { class: "menu-category-header", "Workspace & Data" }
                             button {
                                 class: "menu-item",
                                 onclick: move |_| {
@@ -581,6 +582,7 @@ pub fn TopBar(st: WorkbenchState) -> Element {
                                 },
                                 "Trash…"
                             }
+                            div { class: "menu-category-header", "View & Diagnostics" }
                             button {
                                 class: "menu-item",
                                 onclick: move |_| {
@@ -685,6 +687,7 @@ pub fn TopBar(st: WorkbenchState) -> Element {
                     if cloud_menu_open() {
                         div { class: "menu-dropdown menu-dropdown-wide",
                             onmousedown: move |evt| evt.stop_propagation(),
+                            div { class: "menu-category-header", "Repository Setup" }
                             button {
                                 class: "menu-item",
                                 disabled: cloud_busy(),
@@ -703,6 +706,7 @@ pub fn TopBar(st: WorkbenchState) -> Element {
                                 },
                                 "Link folder…"
                             }
+                            div { class: "menu-category-header", "Synchronization" }
                             button {
                                 class: "menu-item",
                                 disabled: cloud_busy(),

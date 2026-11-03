@@ -77,6 +77,7 @@ pub fn EnvSelector(
 
             if menu_open() {
                 div { class: "env-menu",
+                    div { class: "env-menu-header", "Default Scope" }
                     button {
                         class: if active_id.is_none() {
                             "env-menu-row env-menu-row-active"
@@ -88,32 +89,61 @@ pub fn EnvSelector(
                             on_change.call(None);
                         },
                         span { class: "env-indicator env-indicator-local", aria_hidden: "true" }
-                        span { class: "env-menu-name", "No Environment" }
+                        div { class: "env-menu-info",
+                            span { class: "env-menu-name", "No Environment" }
+                            span { class: "env-menu-sub", "Global & collection variables only" }
+                        }
+                        if active_id.is_none() {
+                            span { class: "env-menu-check", "✓" }
+                        }
                     }
-                    for env in environments.iter() {
-                        {
-                            let id = env.id;
-                            let name = env.name.clone();
-                            let tier = env_tier(&name);
-                            let active = active_id == Some(id);
-                            let row_class = if active {
-                                "env-menu-row env-menu-row-active"
-                            } else {
-                                "env-menu-row"
-                            };
-                            rsx! {
-                                button {
-                                    class: "{row_class}",
-                                    title: "Select {name} ({tier})",
-                                    onclick: move |_| {
-                                        menu_open.set(false);
-                                        on_change.call(Some(id));
-                                    },
-                                    span { class: "env-indicator env-indicator-{tier}", aria_hidden: "true" }
-                                    span { class: "env-menu-name", "{name}" }
+
+                    if !environments.is_empty() {
+                        div { class: "env-menu-header", "Environments" }
+                        for env in environments.iter() {
+                            {
+                                let id = env.id;
+                                let name = env.name.clone();
+                                let tier = env_tier(&name);
+                                let var_count = env.values.len();
+                                let active = active_id == Some(id);
+                                let row_class = if active {
+                                    "env-menu-row env-menu-row-active"
+                                } else {
+                                    "env-menu-row"
+                                };
+                                rsx! {
+                                    button {
+                                        key: "{id}",
+                                        class: "{row_class}",
+                                        title: "Select {name} ({tier})",
+                                        onclick: move |_| {
+                                            menu_open.set(false);
+                                            on_change.call(Some(id));
+                                        },
+                                        span { class: "env-indicator env-indicator-{tier}", aria_hidden: "true" }
+                                        div { class: "env-menu-info",
+                                            span { class: "env-menu-name", "{name}" }
+                                            span { class: "env-menu-sub", "{var_count} var(s) · {tier}" }
+                                        }
+                                        if active {
+                                            span { class: "env-menu-check", "✓" }
+                                        }
+                                    }
                                 }
                             }
                         }
+                    }
+
+                    div { class: "env-menu-divider" }
+                    button {
+                        class: "env-menu-row env-menu-action-row",
+                        onclick: move |_| {
+                            menu_open.set(false);
+                            on_manage.call(());
+                        },
+                        span { class: "action-icon action-icon-edit", aria_hidden: "true" }
+                        span { class: "env-menu-action-label", "Manage Environments…" }
                     }
                 }
             }

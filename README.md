@@ -1,35 +1,44 @@
-# ⚡ Blitz — Ultra-Fast, Local-First API Client in Rust
+# ⚡ Blitz — The Native, Local-First Postman Alternative
 
 <p align="center">
-  <img src="assets/logo.png" alt="Blitz — Open-Source Postman Alternative Logo" width="128" />
+  <img src="assets/logo.png" alt="Blitz Logo" width="120" />
 </p>
 
 <p align="center">
-  <strong>Lightweight, offline-first Postman alternative built with Rust & Dioxus.</strong><br/>
-  <em>Multi-protocol (REST, gRPC, WebSocket, GraphQL, MQTT, SSE), ~10MB RAM runner, zero cloud lock-in, and native MCP server for AI coding agents.</em>
+  <strong>The fast, private, offline-first API workbench built in Rust.</strong><br/>
+  Tired of Postman taking 1GB RAM and forcing cloud accounts? Blitz gives you instant startup, zero telemetry, Git-native team sync, and a built-in MCP server for AI coding agents.
 </p>
 
 <p align="center">
   <a href="https://github.com/h3ma209/Blitz/releases"><img src="https://img.shields.io/github/v/release/h3ma209/Blitz?include_prereleases&label=release&color=22c55e" alt="Release"></a>
   <a href="https://github.com/h3ma209/Blitz/actions/workflows/build.yml"><img src="https://img.shields.io/github/actions/workflow/status/h3ma209/Blitz/build.yml?branch=master&label=build" alt="CI Build"></a>
   <img src="https://img.shields.io/badge/rust-1.83%2B-orange.svg?logo=rust" alt="Rust 1.83+">
-  <img src="https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20Windows-blue" alt="Cross-Platform">
-  <img src="https://img.shields.io/badge/MCP-37%20Tools%20Active-brightgreen" alt="Model Context Protocol">
+  <img src="https://img.shields.io/badge/memory-~40MB%20RAM-blueviolet" alt="40MB RAM">
+  <img src="https://img.shields.io/badge/MCP-37%20AI%20Tools-brightgreen" alt="Model Context Protocol">
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT%20%2F%20Apache--2.0-blue" alt="License"></a>
-  <a href="https://h3ma209.github.io/Blitz/docs.html"><img src="https://img.shields.io/badge/docs-GitHub%20Pages-brightgreen" alt="Docs"></a>
 </p>
 
 <p align="center">
-  <a href="https://h3ma209.github.io/Blitz/docs.html">Documentation</a> •
-  <a href="#downloads--installation">Downloads</a> •
+  <a href="#-what-is-blitz">What is Blitz?</a> •
   <a href="#-interface-preview">Interface</a> •
-  <a href="#why-blitz-vs-the-alternatives">Comparison</a> •
-  <a href="#key-features">Features</a> •
+  <a href="#️-blitz-vs-alternatives">Comparison</a> •
+  <a href="#-downloads--installation">Install</a> •
+  <a href="#-core-features--capabilities">Features</a> •
   <a href="#-ai-agent-integration-via-mcp-cursor-claude-antigravity-windsurf-vs-code-zed">MCP Server</a> •
-  <a href="#headless-cli-runner">CLI Runner</a> •
-  <a href="#team-collaboration-via-git">Git Sync</a> •
-  <a href="#license">License</a>
+  <a href="https://h3ma209.github.io/Blitz/docs.html">Docs</a>
 </p>
+
+---
+
+## ⚡ What is Blitz?
+
+Blitz is a **lightweight, open-source API development and testing client** written in pure Rust (Dioxus). It replaces heavy Electron-based tools with a native desktop application that respects your hardware and privacy:
+
+- **🚀 10x Faster, 90% Less RAM:** Starts in <150ms and sits at ~40MB RAM (CLI runner uses only ~10MB). No bundled Chromium or multi-process Electron overhead.
+- **🔒 100% Offline & Local-First:** No accounts, no logins, no cloud tracking. Your collections, tokens, and environments stay on your machine.
+- **🐙 Git-Native Collaboration:** No $19/user/month cloud workspace paywalls. Save collections right inside your Git repo and sync via `git pull` / `git push`.
+- **🤖 First-Class AI Agent Support (MCP):** Comes with a built-in 37-tool Model Context Protocol server. Let Cursor, Claude, Antigravity, or Windsurf inspect, trigger, and debug your API endpoints automatically.
+- **🌐 All Major Protocols:** REST, GraphQL, WebSocket, gRPC (Protobuf), SSE, Socket.IO, and MQTT in a unified, modern interface.
 
 ---
 
@@ -38,6 +47,23 @@
 <p align="center">
   <img src="docs/app-screenshot.png" alt="Blitz Desktop Interface" width="900" style="border-radius: 8px; border: 1px solid rgba(255,255,255,0.1);" />
 </p>
+
+---
+
+## ⚖️ Blitz vs Alternatives
+
+| Feature | Postman | Bruno | Yaak | ⚡ Blitz |
+|---|:---:|:---:|:---:|:---:|
+| **Language & Engine** | Electron + Node.js | Electron + Node.js | Tauri + React | **Pure Rust + Dioxus** |
+| **Startup Time** | ~3,500 ms | ~1,200 ms | ~450 ms | **< 150 ms** |
+| **Memory Footprint** | 800 MB – 1.5 GB | 150 MB – 300 MB | ~120 MB | **~40 MB (GUI) / ~10 MB (CLI)** |
+| **Account Required** | **Mandatory Cloud** | No | No | **Never (100% Offline)** |
+| **Team Sync** | Paid Cloud ($19+/mo) | Git (.bru files) | Git / Cloud | **Git-Native (standard JSON)** |
+| **AI Agent Bridge** | Proprietary AI add-on | None | None | **Built-in MCP Server (37 tools)** |
+| **Protocols** | REST / WS / gRPC | REST / GraphQL | REST / WS / gRPC | **REST / WS / gRPC / MQTT / SSE** |
+| **Secret Storage** | Cloud or Plaintext | Plaintext `.env` | SQLite | **OS Encrypted Keychain** |
+| **Mock Server** | Cloud-only | No | No | **Localhost 127.0.0.1** |
+| **License** | Proprietary | MIT | Commercial / Fair-Core | **MIT / Apache-2.0** |
 
 ---
 
@@ -135,36 +161,7 @@ chmod +x ~/.local/bin/blitz
 
 ---
 
-## ⚡ Comparison
-
-| Feature | Postman | Bruno | Yaak | ⚡ Blitz |
-|---|:---:|:---:|:---:|:---:|
-| **Language / Architecture** | Electron + Node | Electron + Node | Tauri + React | **Pure Rust + Dioxus** |
-| **Cold Start Latency** | ~3,500 ms | ~1,200 ms | ~450 ms | **< 150 ms** |
-| **CLI Runner Footprint** | ~800 MB RSS | ~120 MB RSS | N/A | **~10.2 MB RSS** |
-| **Account Mandatory** | Yes (forced cloud) | No | No | **No (100% offline)** |
-| **Team Collaboration** | Cloud servers ($19+/user) | Git (.bru format) | Git / Sync | **Git-native (any remote)** |
-| **Secret Storage** | Cloud / Local | Plaintext env | SQLite | **OS Keychain (Encrypted)** |
-| **Built-in Mock Server** | Cloud hosted only | No | No | **Localhost 127.0.0.1** |
-| **Traffic Proxy Capture** | Cloud proxy | No | No | **Local HTTP/HTTPS Proxy** |
-| **License** | Proprietary | MIT | Fair-Core / Commercial | **MIT / Apache-2.0** |
-
----
-
-## Why Blitz?
-
-Most modern API clients have become bloated, memory-heavy cloud platforms that gate basic workflows behind subscriptions and force private endpoints onto remote servers.
-
-Blitz is built from the ground up to be fast, private, and developer-friendly:
-
-- **Ultra-lightweight:** Cold starts in ~120ms with a headless CLI runner that sits at ~10 MB RAM and a desktop GUI that uses native OS WebViews (no bundled Chromium or multi-process Electron bloat).
-- **Offline-First & Local:** Collections, environments, and mocks live as transparent JSON files directly in your repository.
-- **Zero Cloud Lock-in:** No forced logins, accounts, or telemetry. Your endpoints and tokens never leave your machine.
-- **Git-Native Team Sync:** Collaborate with your team using standard Git workflows (`git pull` / `git push`) instead of per-seat cloud subscriptions.
-
----
-
-## Key Features
+## 🎯 Core Features & Capabilities
 
 ### 🔌 Multi-Protocol Support
 Interact with any modern API standard in one place:
