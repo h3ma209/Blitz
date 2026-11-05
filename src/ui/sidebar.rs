@@ -8,7 +8,7 @@ use uuid::Uuid;
 use crate::core::{
     ancestor_ids_for_request, collapsed_except_expanded, filter_tree_rows,
     flatten_collections_filtered, flatten_collections_searchable, paste_target_parent_id,
-    search_highlight_term, Collection, HistoryEntry, HttpMethod, TreeRowKind,
+    search_highlight_term, Collection, HistoryEntry, HttpMethod, RequestProtocol, TreeRowKind,
 };
 
 use super::sidebar_shortcuts::{
@@ -1008,9 +1008,15 @@ pub fn Sidebar(
                                                 title: "Folder",
                                                 aria_hidden: "true",
                                             }
-                                        } else if let TreeRowKind::Request { method } = kind {
-                                            span { class: "method-badge method-{method_class(method)}",
-                                                "{method.as_str()}"
+                                        } else if let TreeRowKind::Request { method, protocol } = kind {
+                                            if protocol != RequestProtocol::Http {
+                                                span { class: "method-badge method-{protocol.badge_class()}",
+                                                    "{protocol.badge_label()}"
+                                                }
+                                            } else {
+                                                span { class: "method-badge method-{method_class(method)}",
+                                                    "{method.as_str()}"
+                                                }
                                             }
                                         }
                                         if is_renaming {
@@ -1280,8 +1286,14 @@ pub fn Sidebar(
                                                     Some(id),
                                                     None,
                                                 )),
-                                                span { class: "method-badge method-{method_class(method)}",
-                                                    "{method.as_str()}"
+                                                if entry.draft.protocol != RequestProtocol::Http {
+                                                    span { class: "method-badge method-{entry.draft.protocol.badge_class()}",
+                                                        "{entry.draft.protocol.badge_label()}"
+                                                    }
+                                                } else {
+                                                    span { class: "method-badge method-{method_class(method)}",
+                                                        "{method.as_str()}"
+                                                    }
                                                 }
                                                 span { class: "{status_cls}", "{status}" }
                                                 span { class: "tree-label", "{url}" }
@@ -1780,15 +1792,30 @@ fn type_guide_color(kind: &TreeRowKind) -> &'static str {
     match kind {
         TreeRowKind::Collection => "rgba(29, 185, 84, 0.45)",
         TreeRowKind::Folder => "rgba(245, 158, 11, 0.45)",
-        TreeRowKind::Request { method } => match method {
-            HttpMethod::Get => "rgba(59, 130, 246, 0.5)",
-            HttpMethod::Post => "rgba(16, 185, 129, 0.5)",
-            HttpMethod::Put => "rgba(245, 158, 11, 0.5)",
-            HttpMethod::Patch => "rgba(139, 92, 246, 0.5)",
-            HttpMethod::Delete => "rgba(239, 68, 68, 0.5)",
-            HttpMethod::Head => "rgba(6, 182, 212, 0.5)",
-            HttpMethod::Options => "rgba(236, 72, 153, 0.5)",
-        },
+        TreeRowKind::Request { method, protocol } => {
+            if *protocol != RequestProtocol::Http {
+                match protocol {
+                    RequestProtocol::WebSocket => "rgba(192, 132, 252, 0.5)",
+                    RequestProtocol::Grpc => "rgba(251, 146, 60, 0.5)",
+                    RequestProtocol::Mqtt => "rgba(45, 212, 191, 0.5)",
+                    RequestProtocol::Mcp => "rgba(247, 183, 49, 0.5)",
+                    RequestProtocol::Sse => "rgba(56, 189, 248, 0.5)",
+                    RequestProtocol::GraphqlWs => "rgba(232, 121, 249, 0.5)",
+                    RequestProtocol::SocketIo => "rgba(52, 211, 153, 0.5)",
+                    RequestProtocol::Http => "rgba(59, 130, 246, 0.5)",
+                }
+            } else {
+                match method {
+                    HttpMethod::Get => "rgba(59, 130, 246, 0.5)",
+                    HttpMethod::Post => "rgba(16, 185, 129, 0.5)",
+                    HttpMethod::Put => "rgba(245, 158, 11, 0.5)",
+                    HttpMethod::Patch => "rgba(139, 92, 246, 0.5)",
+                    HttpMethod::Delete => "rgba(239, 68, 68, 0.5)",
+                    HttpMethod::Head => "rgba(6, 182, 212, 0.5)",
+                    HttpMethod::Options => "rgba(236, 72, 153, 0.5)",
+                }
+            }
+        }
     }
 }
 

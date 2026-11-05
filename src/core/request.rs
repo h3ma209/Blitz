@@ -45,6 +45,34 @@ impl RequestProtocol {
         ]
     }
 
+    /// Short compact label for sidebar and tab badges (e.g. WS, gRPC, MQTT).
+    pub fn badge_label(self) -> &'static str {
+        match self {
+            Self::Http => "HTTP",
+            Self::WebSocket => "WS",
+            Self::Grpc => "gRPC",
+            Self::Mqtt => "MQTT",
+            Self::Mcp => "MCP",
+            Self::SocketIo => "SIO",
+            Self::Sse => "SSE",
+            Self::GraphqlWs => "GQL",
+        }
+    }
+
+    /// CSS class name for styling the badge.
+    pub fn badge_class(self) -> &'static str {
+        match self {
+            Self::Http => "http",
+            Self::WebSocket => "ws",
+            Self::Grpc => "grpc",
+            Self::Mqtt => "mqtt",
+            Self::Mcp => "mcp",
+            Self::SocketIo => "sio",
+            Self::Sse => "sse",
+            Self::GraphqlWs => "gql",
+        }
+    }
+
     /// Default standard headers required or recommended for this protocol (e.g. Postman WebSocket handshake headers).
     pub fn default_headers(self) -> Vec<KeyValue> {
         match self {
@@ -597,6 +625,12 @@ impl RequestDraft {
         s.push(' ');
         s.push_str(self.method.as_str().to_ascii_lowercase().as_str());
         s.push(' ');
+        if self.protocol != RequestProtocol::Http {
+            s.push_str(self.protocol.as_str().to_ascii_lowercase().as_str());
+            s.push(' ');
+            s.push_str(self.protocol.badge_label().to_ascii_lowercase().as_str());
+            s.push(' ');
+        }
         for kv in &self.params {
             s.push_str(&kv.key.to_ascii_lowercase());
             s.push(' ');

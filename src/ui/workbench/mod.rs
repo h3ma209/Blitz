@@ -1810,9 +1810,16 @@ pub fn Workbench() -> Element {
                                                 tab_ctx_menu.set(None);
                                                 do_switch_tab(tid);
                                             },
-                                            span {
-                                                class: "tab-method method-{method_class(t.method)}",
-                                                "{t.method.as_str()}"
+                                            if t.protocol != RequestProtocol::Http {
+                                                span {
+                                                    class: "tab-method method-{t.protocol.badge_class()}",
+                                                    "{t.protocol.badge_label()}"
+                                                }
+                                            } else {
+                                                span {
+                                                    class: "tab-method method-{method_class(t.method)}",
+                                                    "{t.method.as_str()}"
+                                                }
                                             }
                                             if is_tab_renaming {
                                                 input {
@@ -1954,9 +1961,16 @@ pub fn Workbench() -> Element {
                                                     show_tab_menu.set(false);
                                                     do_switch_tab(tid);
                                                 },
-                                                span {
-                                                    class: "tab-method method-{method_class(t.method)}",
-                                                    "{t.method.as_str()}"
+                                                if t.protocol != RequestProtocol::Http {
+                                                    span {
+                                                        class: "tab-method method-{t.protocol.badge_class()}",
+                                                        "{t.protocol.badge_label()}"
+                                                    }
+                                                } else {
+                                                    span {
+                                                        class: "tab-method method-{method_class(t.method)}",
+                                                        "{t.method.as_str()}"
+                                                    }
                                                 }
                                                 span { class: "tab-dropdown-name", "{tname}" }
                                                 if is_dirty {

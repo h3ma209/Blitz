@@ -4,7 +4,10 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use uuid::Uuid;
 
-use super::request::{AuthConfig, AuthType, BodyMode, FormDataField, HttpMethod, KeyValue, RequestDraft};
+use super::request::{
+    AuthConfig, AuthType, BodyMode, FormDataField, HttpMethod, KeyValue, RequestDraft,
+    RequestProtocol,
+};
 
 /// Per-environment override for a request.
 /// Allows different auth, URL, headers, body per environment without duplicating collections.
@@ -275,7 +278,10 @@ impl Folder {
 pub enum TreeRowKind {
     Collection,
     Folder,
-    Request { method: HttpMethod },
+    Request {
+        method: HttpMethod,
+        protocol: RequestProtocol,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -1070,7 +1076,10 @@ fn flatten_items(
             }
             CollectionItem::Request(req) => {
                 out.push(TreeRow {
-                    kind: TreeRowKind::Request { method: req.method },
+                    kind: TreeRowKind::Request {
+                        method: req.method,
+                        protocol: req.protocol,
+                    },
                     id: req.id,
                     collection_id,
                     parent_id: Some(parent_id),
@@ -2085,5 +2094,30 @@ mod tests {
         assert_eq!(search_highlight_term("req:delete"), "delete");
         assert_eq!(search_highlight_term("f: auth "), "auth");
         assert_eq!(search_highlight_term("plain query"), "plain query");
+    }
+
+    #[test]
+    fn test_tree_row_protocol_badge() {
+        let mut col = Collection::new("WS Col");
+        let ws_req = RequestDraft {
+            name: "Live Chat".into(),
+            url: "wss://chat.test".into(),
+            protocol: RequestProtocol::WebSocket,
+            method: HttpMethod::Get,
+            ..Default::default()
+        };
+        col.items.push(CollectionItem::Request(ws_req));
+
+        let rows = flatten_collections(&[col]);
+        assert_eq!(rows.len(), 2);
+        match &rows[1].kind {
+            TreeRowKind::Request { method, protocol } => {
+                assert_eq!(*method, HttpMethod::Get);
+                assert_eq!(*protocol, RequestProtocol::WebSocket);
+                assert_eq!(protocol.badge_label(), "WS");
+                assert_eq!(protocol.badge_class(), "ws");
+            }
+            _ => panic!("expected TreeRowKind::Request"),
+        }
     }
 }

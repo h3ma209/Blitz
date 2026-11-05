@@ -130,6 +130,9 @@
   --proto-grpc: #fb923c;
   --proto-mqtt: #2dd4bf;
   --proto-mcp: #f7b731;
+  --proto-sse: #38bdf8;
+  --proto-graphql-ws: #e879f9;
+  --proto-socketio: #34d399;
 
   /* —— Rhythm —— */
   --space-1: 4px;
@@ -2367,6 +2370,41 @@ button.env-menu-row:hover,
   color: var(--method-options);
   background: var(--method-options-soft);
   border-color: color-mix(in srgb, var(--method-options) 30%, transparent);
+}
+.method-badge.method-ws, .tab-method.method-ws {
+  color: var(--proto-ws);
+  background: rgba(192, 132, 252, 0.16);
+  border-color: color-mix(in srgb, var(--proto-ws) 30%, transparent);
+}
+.method-badge.method-grpc, .tab-method.method-grpc {
+  color: var(--proto-grpc);
+  background: rgba(251, 146, 60, 0.16);
+  border-color: color-mix(in srgb, var(--proto-grpc) 30%, transparent);
+}
+.method-badge.method-mqtt, .tab-method.method-mqtt {
+  color: var(--proto-mqtt);
+  background: rgba(45, 212, 191, 0.16);
+  border-color: color-mix(in srgb, var(--proto-mqtt) 30%, transparent);
+}
+.method-badge.method-mcp, .tab-method.method-mcp {
+  color: var(--proto-mcp);
+  background: rgba(247, 183, 49, 0.16);
+  border-color: color-mix(in srgb, var(--proto-mcp) 30%, transparent);
+}
+.method-badge.method-sse, .tab-method.method-sse {
+  color: var(--proto-sse);
+  background: rgba(56, 189, 248, 0.16);
+  border-color: color-mix(in srgb, var(--proto-sse) 30%, transparent);
+}
+.method-badge.method-gql, .tab-method.method-gql {
+  color: var(--proto-graphql-ws);
+  background: rgba(232, 121, 249, 0.16);
+  border-color: color-mix(in srgb, var(--proto-graphql-ws) 30%, transparent);
+}
+.method-badge.method-sio, .tab-method.method-sio {
+  color: var(--proto-socketio);
+  background: rgba(52, 211, 153, 0.16);
+  border-color: color-mix(in srgb, var(--proto-socketio) 30%, transparent);
 }
 
 /* Tree kind icons (folder / collection) — SVG silhouette via CSS mask */

@@ -207,6 +207,19 @@ pub fn RequestBuilder(
                         }
 
                         let mut d = draft.clone();
+                        // Auto-detect protocol schemes if currently HTTP
+                        if d.protocol == RequestProtocol::Http {
+                            let lower = url.trim().to_lowercase();
+                            if lower.starts_with("ws://") || lower.starts_with("wss://") {
+                                d.apply_protocol_defaults(RequestProtocol::WebSocket);
+                            } else if lower.starts_with("grpc://") || lower.starts_with("grpcs://") {
+                                d.apply_protocol_defaults(RequestProtocol::Grpc);
+                            } else if lower.starts_with("mqtt://") || lower.starts_with("mqtts://") {
+                                d.apply_protocol_defaults(RequestProtocol::Mqtt);
+                            } else if lower.starts_with("sse://") {
+                                d.apply_protocol_defaults(RequestProtocol::Sse);
+                            }
+                        }
                         // Bi-directional URL -> Params sync
                         if url.contains('?') {
                             let (_, params) = crate::core::extract_url_query_params(&url);

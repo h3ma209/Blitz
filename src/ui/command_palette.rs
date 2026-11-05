@@ -2,7 +2,7 @@ use dioxus::prelude::*;
 use uuid::Uuid;
 
 use crate::core::{
-    find_request_across, Collection, CollectionItem, HttpMethod,
+    find_request_across, Collection, CollectionItem, HttpMethod, RequestProtocol,
     UiTheme,
 };
 use crate::ui::workbench::cloud::switch_to_env;
@@ -38,7 +38,7 @@ pub struct PaletteEntry {
     pub title: String,
     pub subtitle: String,
     pub shortcut: Option<&'static str>,
-    pub method_badge: Option<HttpMethod>,
+    pub badge: Option<(&'static str, &'static str)>,
     pub action: PaletteAction,
 }
 
@@ -168,13 +168,13 @@ fn fuzzy_score_unicode(query: &str, hay: &str) -> Option<i32> {
 }
 
 /// O(N) single-pass request collection without cloning RequestDraft bodies or repeated tree searches.
-fn collect_requests(cols: &[Collection]) -> Vec<(Uuid, String, Uuid, String, String, HttpMethod)> {
+fn collect_requests(cols: &[Collection]) -> Vec<(Uuid, String, Uuid, String, String, HttpMethod, RequestProtocol)> {
     fn walk_items(
         col_id: Uuid,
         col_name: &str,
         items: &[CollectionItem],
         cur_folder: &str,
-        out: &mut Vec<(Uuid, String, Uuid, String, String, HttpMethod)>,
+        out: &mut Vec<(Uuid, String, Uuid, String, String, HttpMethod, RequestProtocol)>,
     ) {
         for item in items {
             match item {
@@ -184,7 +184,7 @@ fn collect_requests(cols: &[Collection]) -> Vec<(Uuid, String, Uuid, String, Str
                     } else {
                         format!("{col_name} / {cur_folder}")
                     };
-                    out.push((col_id, path, r.id, r.name.clone(), r.url.clone(), r.method));
+                    out.push((col_id, path, r.id, r.name.clone(), r.url.clone(), r.method, r.protocol));
                 }
                 CollectionItem::Folder(f) => {
                     let next = if cur_folder.is_empty() {
@@ -213,7 +213,7 @@ fn build_entries(st: &WorkbenchState) -> Vec<PaletteEntry> {
             title: "Send Request".into(),
             subtitle: "Execute active request in builder".into(),
             shortcut: Some("⌘↵"),
-            method_badge: None,
+            badge: None,
             action: PaletteAction::SendRequest,
         },
         PaletteEntry {
@@ -221,7 +221,7 @@ fn build_entries(st: &WorkbenchState) -> Vec<PaletteEntry> {
             title: "Save Request to Collection".into(),
             subtitle: "Persist current request draft".into(),
             shortcut: Some("⌘S"),
-            method_badge: None,
+            badge: None,
             action: PaletteAction::SaveRequest,
         },
         PaletteEntry {
@@ -229,7 +229,7 @@ fn build_entries(st: &WorkbenchState) -> Vec<PaletteEntry> {
             title: "New Request Tab".into(),
             subtitle: "Open a blank request tab".into(),
             shortcut: Some("⌘T"),
-            method_badge: None,
+            badge: None,
             action: PaletteAction::NewTab,
         },
         PaletteEntry {
@@ -237,7 +237,7 @@ fn build_entries(st: &WorkbenchState) -> Vec<PaletteEntry> {
             title: "Open Collection Runner".into(),
             subtitle: "Run collection sequence with iterations & data".into(),
             shortcut: None,
-            method_badge: None,
+            badge: None,
             action: PaletteAction::OpenRunner,
         },
         PaletteEntry {
@@ -245,7 +245,7 @@ fn build_entries(st: &WorkbenchState) -> Vec<PaletteEntry> {
             title: "Toggle Console".into(),
             subtitle: "Show or hide bottom execution console".into(),
             shortcut: None,
-            method_badge: None,
+            badge: None,
             action: PaletteAction::ToggleConsole,
         },
         PaletteEntry {
@@ -253,7 +253,7 @@ fn build_entries(st: &WorkbenchState) -> Vec<PaletteEntry> {
             title: "Manage Environments & Variables".into(),
             subtitle: "Edit environment, collection, global, and vault variables".into(),
             shortcut: None,
-            method_badge: None,
+            badge: None,
             action: PaletteAction::OpenVariables,
         },
         PaletteEntry {
@@ -261,7 +261,7 @@ fn build_entries(st: &WorkbenchState) -> Vec<PaletteEntry> {
             title: "Compare Environments (Diff & Drift)".into(),
             subtitle: "Side-by-side variable comparison, drift inspection, and 1-click sync".into(),
             shortcut: None,
-            method_badge: None,
+            badge: None,
             action: PaletteAction::OpenVariablesDiff,
         },
         PaletteEntry {
@@ -269,7 +269,7 @@ fn build_entries(st: &WorkbenchState) -> Vec<PaletteEntry> {
             title: "Open Settings & Preferences".into(),
             subtitle: "Configure theme, layout, timeouts, proxy, certificates, and cloud sync".into(),
             shortcut: None,
-            method_badge: None,
+            badge: None,
             action: PaletteAction::OpenSettings,
         },
         PaletteEntry {
@@ -277,7 +277,7 @@ fn build_entries(st: &WorkbenchState) -> Vec<PaletteEntry> {
             title: "Generate Code Snippet".into(),
             subtitle: "Export current request to cURL, Rust, Python, JS, Go…".into(),
             shortcut: None,
-            method_badge: None,
+            badge: None,
             action: PaletteAction::OpenSnippets,
         },
         PaletteEntry {
@@ -285,7 +285,7 @@ fn build_entries(st: &WorkbenchState) -> Vec<PaletteEntry> {
             title: "Open Cookie Jar".into(),
             subtitle: "Inspect or clear stored HTTP cookies".into(),
             shortcut: None,
-            method_badge: None,
+            badge: None,
             action: PaletteAction::OpenCookies,
         },
         PaletteEntry {
@@ -293,7 +293,7 @@ fn build_entries(st: &WorkbenchState) -> Vec<PaletteEntry> {
             title: "Open Performance / Load Tester".into(),
             subtitle: "Benchmark endpoint latency & throughput with virtual users".into(),
             shortcut: None,
-            method_badge: None,
+            badge: None,
             action: PaletteAction::OpenPerformance,
         },
         PaletteEntry {
@@ -301,13 +301,13 @@ fn build_entries(st: &WorkbenchState) -> Vec<PaletteEntry> {
             title: "Open Trash".into(),
             subtitle: "Restore or permanently purge deleted collections".into(),
             shortcut: None,
-            method_badge: None,
+            badge: None,
             action: PaletteAction::OpenTrash,
         },
     ];
 
     // 2. Requests across all collections (zero clone of body/params/scripts)
-    for (col_id, folder_path, req_id, req_name, req_url, req_method) in
+    for (col_id, folder_path, req_id, req_name, req_url, req_method, req_proto) in
         collect_requests(&(st.collections)())
     {
         let subtitle = if req_url.is_empty() {
@@ -315,12 +315,17 @@ fn build_entries(st: &WorkbenchState) -> Vec<PaletteEntry> {
         } else {
             format!("{folder_path} · {req_url}")
         };
+        let (badge_label, badge_cls) = if req_proto != RequestProtocol::Http {
+            (req_proto.badge_label(), req_proto.badge_class())
+        } else {
+            (req_method.as_str(), method_class(req_method))
+        };
         entries.push(PaletteEntry {
             category: "Request",
             title: req_name,
             subtitle,
             shortcut: None,
-            method_badge: Some(req_method),
+            badge: Some((badge_label, badge_cls)),
             action: PaletteAction::OpenRequest {
                 collection_id: col_id,
                 request_id: req_id,
@@ -341,7 +346,7 @@ fn build_entries(st: &WorkbenchState) -> Vec<PaletteEntry> {
                 format!("{} variable(s)", env.values.len())
             },
             shortcut: None,
-            method_badge: None,
+            badge: None,
             action: PaletteAction::SelectEnvironment(Some(env.id)),
         });
     }
@@ -351,7 +356,7 @@ fn build_entries(st: &WorkbenchState) -> Vec<PaletteEntry> {
             title: "Clear Active Environment (No Environment)".into(),
             subtitle: "Deactivate environment variables".into(),
             shortcut: None,
-            method_badge: None,
+            badge: None,
             action: PaletteAction::SelectEnvironment(None),
         });
     }
@@ -363,7 +368,7 @@ fn build_entries(st: &WorkbenchState) -> Vec<PaletteEntry> {
             title: format!("Theme: {}", theme.label()),
             subtitle: "Switch workbench appearance".into(),
             shortcut: None,
-            method_badge: None,
+            badge: None,
             action: PaletteAction::SwitchTheme(theme),
         });
     }
@@ -628,10 +633,10 @@ pub fn CommandPalette(
                                         onclick: move |_| execute_action(act.clone()),
                                         div { class: "palette-item-main",
                                              span { class: "palette-category", "{item.category}" }
-                                             if let Some(m) = item.method_badge {
+                                             if let Some((lbl, cls)) = item.badge {
                                                  span {
-                                                     class: "method-badge method-{method_class(m)}",
-                                                     "{m.as_str()}"
+                                                     class: "method-badge method-{cls}",
+                                                     "{lbl}"
                                                  }
                                              }
                                              span { class: "palette-title", "{item.title}" }
