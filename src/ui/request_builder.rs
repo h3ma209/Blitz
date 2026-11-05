@@ -304,6 +304,7 @@ pub fn RequestBuilder(
                         ws_auto_ping,
                         protocol_log: protocol_log.clone(),
                         sending,
+                        vars: Some(vars.clone()),
                     }
                 },
                 BuilderTab::Params => {
@@ -569,6 +570,7 @@ fn ProtocolFields(
     #[props(default)] ws_auto_ping: bool,
     protocol_log: Vec<String>,
     sending: bool,
+    #[props(default)] vars: Option<VariableContext>,
 ) -> Element {
     let mut preset_name_input = use_signal(String::new);
     let mut show_new_preset = use_signal(|| false);
@@ -637,11 +639,49 @@ fn ProtocolFields(
 
                     if !draft.ws_deck_mode {
                         div { class: "ws-classic-view",
-                            label { class: "hint", "Message (Postman raw payload)" }
-                            CommentableTextarea {
+                            div { class: "body-editor-toolbar",
+                                div { class: "body-editor-tools-left",
+                                    button {
+                                        class: "btn btn-sm btn-ghost",
+                                        r#type: "button",
+                                        title: "Format and indent JSON message",
+                                        onclick: {
+                                            let draft = draft.clone();
+                                            move |_| {
+                                                if let Some(pretty) = crate::core::beautify_json_body(&draft.ws_message) {
+                                                    let mut d = draft.clone();
+                                                    d.ws_message = pretty;
+                                                    on_change.call(d);
+                                                }
+                                            }
+                                        },
+                                        span { class: "action-icon action-icon-format", aria_hidden: "true" }
+                                        span { "Beautify JSON" }
+                                    }
+                                }
+                                div { class: "body-editor-tools-right",
+                                    match crate::core::lint_json_body(&draft.ws_message) {
+                                        Ok(()) if !draft.ws_message.trim().is_empty() => rsx! {
+                                            span { class: "json-lint-badge json-lint-ok", "✓ Valid JSON" }
+                                        },
+                                        Err((line, col, msg)) => rsx! {
+                                            span {
+                                                class: "json-lint-badge json-lint-err",
+                                                title: "Line {line}, Column {col}: {msg}",
+                                                "⚠ Ln {line}, Col {col}: {msg}"
+                                            }
+                                        },
+                                        _ => rsx! {}
+                                    }
+                                }
+                            }
+                            MultilineCodeField {
                                 class: "body-editor".to_string(),
                                 value: draft.ws_message.clone(),
-                                rows: Some("4"),
+                                placeholder: "{\"type\": \"subscribe\", ...}".to_string(),
+                                rows: Some("6"),
+                                vars: vars.clone(),
+                                syntax: EditorSyntax::Json,
                                 on_change: {
                                     let draft = draft.clone();
                                     move |text: String| {
@@ -649,14 +689,23 @@ fn ProtocolFields(
                                         d.ws_message = text;
                                         on_change.call(d);
                                     }
-                                }
+                                },
+                                on_submit: {
+                                    let on_protocol_action = on_protocol_action;
+                                    let ws_connected = ws_connected;
+                                    Some(Callback::new(move |_| {
+                                        if ws_connected {
+                                            on_protocol_action.call("ws_send".into());
+                                        }
+                                    }))
+                                },
                             }
                             div { class: "kv-actions",
                                 button {
                                     class: "btn btn-ghost",
                                     disabled: !ws_connected,
                                     onclick: move |_| on_protocol_action.call("ws_send".into()),
-                                    "Send message"
+                                    "Send message (⌘↵)"
                                 }
                             }
                         }
@@ -833,17 +882,67 @@ fn ProtocolFields(
                                     }
 
                                     div { class: "ws-deck-composer",
-                                        textarea {
-                                            class: "ws-composer-input",
-                                            placeholder: "Type JSON / text message... (Press Send Frame or a Preset)",
-                                            value: "{draft.ws_message}",
-                                            oninput: {
-                                                let draft = draft.clone();
-                                                move |evt: Event<FormData>| {
-                                                    let mut d = draft.clone();
-                                                    d.ws_message = evt.value();
-                                                    on_change.call(d);
+                                        div { class: "ws-composer-main",
+                                            div { class: "ws-composer-toolbar",
+                                                div { class: "body-editor-tools-left",
+                                                    button {
+                                                        class: "btn btn-sm btn-ghost",
+                                                        r#type: "button",
+                                                        title: "Format and indent JSON message",
+                                                        onclick: {
+                                                            let draft = draft.clone();
+                                                            move |_| {
+                                                                if let Some(pretty) = crate::core::beautify_json_body(&draft.ws_message) {
+                                                                    let mut d = draft.clone();
+                                                                    d.ws_message = pretty;
+                                                                    on_change.call(d);
+                                                                }
+                                                            }
+                                                        },
+                                                        span { class: "action-icon action-icon-format", aria_hidden: "true" }
+                                                        span { "Beautify JSON" }
+                                                    }
                                                 }
+                                                div { class: "body-editor-tools-right",
+                                                    match crate::core::lint_json_body(&draft.ws_message) {
+                                                        Ok(()) if !draft.ws_message.trim().is_empty() => rsx! {
+                                                            span { class: "json-lint-badge json-lint-ok", "✓ Valid JSON" }
+                                                        },
+                                                        Err((line, col, msg)) => rsx! {
+                                                            span {
+                                                                class: "json-lint-badge json-lint-err",
+                                                                title: "Line {line}, Column {col}: {msg}",
+                                                                "⚠ Ln {line}, Col {col}: {msg}"
+                                                            }
+                                                        },
+                                                        _ => rsx! {}
+                                                    }
+                                                }
+                                            }
+                                            MultilineCodeField {
+                                                class: "ws-composer-input".to_string(),
+                                                value: draft.ws_message.clone(),
+                                                placeholder: "Type JSON / text message... (Press Send Frame, ⌘↵, or a Preset)".to_string(),
+                                                rows: Some("3"),
+                                                vars: vars.clone(),
+                                                syntax: EditorSyntax::Json,
+                                                on_change: {
+                                                    let draft = draft.clone();
+                                                    move |text: String| {
+                                                        let mut d = draft.clone();
+                                                        d.ws_message = text;
+                                                        on_change.call(d);
+                                                    }
+                                                },
+                                                on_submit: {
+                                                    let on_protocol_action = on_protocol_action;
+                                                    let ws_connected = ws_connected;
+                                                    Some(Callback::new(move |_| {
+                                                        if ws_connected {
+                                                            on_protocol_action.call("ws_send".into());
+                                                        }
+                                                    }))
+                                                },
                                             }
                                         }
                                         div { class: "ws-composer-actions",
@@ -887,11 +986,49 @@ fn ProtocolFields(
                             }
                         }
                     }
-                    label { class: "hint", "JSON body → google.protobuf.Struct" }
-                    CommentableTextarea {
+                    div { class: "body-editor-toolbar",
+                        div { class: "body-editor-tools-left",
+                            button {
+                                class: "btn btn-sm btn-ghost",
+                                r#type: "button",
+                                title: "Format and indent JSON body",
+                                onclick: {
+                                    let draft = draft.clone();
+                                    move |_| {
+                                        if let Some(pretty) = crate::core::beautify_json_body(&draft.body) {
+                                            let mut d = draft.clone();
+                                            d.body = pretty;
+                                            on_change.call(d);
+                                        }
+                                    }
+                                },
+                                span { class: "action-icon action-icon-format", aria_hidden: "true" }
+                                span { "Beautify JSON" }
+                            }
+                        }
+                        div { class: "body-editor-tools-right",
+                            match crate::core::lint_json_body(&draft.body) {
+                                Ok(()) if !draft.body.trim().is_empty() => rsx! {
+                                    span { class: "json-lint-badge json-lint-ok", "✓ Valid JSON" }
+                                },
+                                Err((line, col, msg)) => rsx! {
+                                    span {
+                                        class: "json-lint-badge json-lint-err",
+                                        title: "Line {line}, Column {col}: {msg}",
+                                        "⚠ Ln {line}, Col {col}: {msg}"
+                                    }
+                                },
+                                _ => rsx! {}
+                            }
+                        }
+                    }
+                    MultilineCodeField {
                         class: "body-editor".to_string(),
                         value: draft.body.clone(),
+                        placeholder: "{\"message\": \"hello\"}".to_string(),
                         rows: Some("6"),
+                        vars: vars.clone(),
+                        syntax: EditorSyntax::Json,
                         on_change: {
                             let draft = draft.clone();
                             move |text: String| {
@@ -930,10 +1067,13 @@ fn ProtocolFields(
                         }
                     }
                     label { class: "hint", "Payload" }
-                    CommentableTextarea {
+                    MultilineCodeField {
                         class: "body-editor".to_string(),
                         value: draft.body.clone(),
+                        placeholder: "Payload text or JSON".to_string(),
                         rows: Some("3"),
+                        vars: vars.clone(),
+                        syntax: EditorSyntax::Plain,
                         on_change: {
                             let draft = draft.clone();
                             move |text: String| {
@@ -1001,10 +1141,49 @@ fn ProtocolFields(
                         }
                     }
                     label { class: "hint", "Tool args JSON" }
-                    CommentableTextarea {
+                    div { class: "body-editor-toolbar",
+                        div { class: "body-editor-tools-left",
+                            button {
+                                class: "btn btn-sm btn-ghost",
+                                r#type: "button",
+                                title: "Format and indent JSON args",
+                                onclick: {
+                                    let draft = draft.clone();
+                                    move |_| {
+                                        if let Some(pretty) = crate::core::beautify_json_body(&draft.mcp_tool_args_json) {
+                                            let mut d = draft.clone();
+                                            d.mcp_tool_args_json = pretty;
+                                            on_change.call(d);
+                                        }
+                                    }
+                                },
+                                span { class: "action-icon action-icon-format", aria_hidden: "true" }
+                                span { "Beautify JSON" }
+                            }
+                        }
+                        div { class: "body-editor-tools-right",
+                            match crate::core::lint_json_body(&draft.mcp_tool_args_json) {
+                                Ok(()) if !draft.mcp_tool_args_json.trim().is_empty() => rsx! {
+                                    span { class: "json-lint-badge json-lint-ok", "✓ Valid JSON" }
+                                },
+                                Err((line, col, msg)) => rsx! {
+                                    span {
+                                        class: "json-lint-badge json-lint-err",
+                                        title: "Line {line}, Column {col}: {msg}",
+                                        "⚠ Ln {line}, Col {col}: {msg}"
+                                    }
+                                },
+                                _ => rsx! {}
+                            }
+                        }
+                    }
+                    MultilineCodeField {
                         class: "body-editor".to_string(),
                         value: draft.mcp_tool_args_json.clone(),
+                        placeholder: "{\"param\": \"value\"}".to_string(),
                         rows: Some("4"),
+                        vars: vars.clone(),
+                        syntax: EditorSyntax::Json,
                         on_change: {
                             let draft = draft.clone();
                             move |text: String| {
@@ -1044,10 +1223,49 @@ fn ProtocolFields(
                         }
                     }
                     label { class: "hint", "Emit payload JSON" }
-                    CommentableTextarea {
+                    div { class: "body-editor-toolbar",
+                        div { class: "body-editor-tools-left",
+                            button {
+                                class: "btn btn-sm btn-ghost",
+                                r#type: "button",
+                                title: "Format and indent JSON payload",
+                                onclick: {
+                                    let draft = draft.clone();
+                                    move |_| {
+                                        if let Some(pretty) = crate::core::beautify_json_body(&draft.body) {
+                                            let mut d = draft.clone();
+                                            d.body = pretty;
+                                            on_change.call(d);
+                                        }
+                                    }
+                                },
+                                span { class: "action-icon action-icon-format", aria_hidden: "true" }
+                                span { "Beautify JSON" }
+                            }
+                        }
+                        div { class: "body-editor-tools-right",
+                            match crate::core::lint_json_body(&draft.body) {
+                                Ok(()) if !draft.body.trim().is_empty() => rsx! {
+                                    span { class: "json-lint-badge json-lint-ok", "✓ Valid JSON" }
+                                },
+                                Err((line, col, msg)) => rsx! {
+                                    span {
+                                        class: "json-lint-badge json-lint-err",
+                                        title: "Line {line}, Column {col}: {msg}",
+                                        "⚠ Ln {line}, Col {col}: {msg}"
+                                    }
+                                },
+                                _ => rsx! {}
+                            }
+                        }
+                    }
+                    MultilineCodeField {
                         class: "body-editor".to_string(),
                         value: draft.body.clone(),
+                        placeholder: "{\"event\": \"data\"}".to_string(),
                         rows: Some("4"),
+                        vars: vars.clone(),
+                        syntax: EditorSyntax::Json,
                         on_change: {
                             let draft = draft.clone();
                             move |text: String| {
@@ -1084,6 +1302,7 @@ fn ProtocolFields(
                         value: draft.graphql_ws_query.clone(),
                         rows: Some("6"),
                         placeholder: "subscription {{ … }}".to_string(),
+                        vars: vars.clone(),
                         on_change: {
                             let draft = draft.clone();
                             move |text: String| {
@@ -1094,10 +1313,49 @@ fn ProtocolFields(
                         }
                     }
                     label { class: "hint", "Variables JSON" }
-                    CommentableTextarea {
+                    div { class: "body-editor-toolbar",
+                        div { class: "body-editor-tools-left",
+                            button {
+                                class: "btn btn-sm btn-ghost",
+                                r#type: "button",
+                                title: "Format and indent JSON variables",
+                                onclick: {
+                                    let draft = draft.clone();
+                                    move |_| {
+                                        if let Some(pretty) = crate::core::beautify_json_body(&draft.graphql_variables) {
+                                            let mut d = draft.clone();
+                                            d.graphql_variables = pretty;
+                                            on_change.call(d);
+                                        }
+                                    }
+                                },
+                                span { class: "action-icon action-icon-format", aria_hidden: "true" }
+                                span { "Beautify JSON" }
+                            }
+                        }
+                        div { class: "body-editor-tools-right",
+                            match crate::core::lint_json_body(&draft.graphql_variables) {
+                                Ok(()) if !draft.graphql_variables.trim().is_empty() => rsx! {
+                                    span { class: "json-lint-badge json-lint-ok", "✓ Valid JSON" }
+                                },
+                                Err((line, col, msg)) => rsx! {
+                                    span {
+                                        class: "json-lint-badge json-lint-err",
+                                        title: "Line {line}, Column {col}: {msg}",
+                                        "⚠ Ln {line}, Col {col}: {msg}"
+                                    }
+                                },
+                                _ => rsx! {}
+                            }
+                        }
+                    }
+                    MultilineCodeField {
                         class: "body-editor".to_string(),
                         value: draft.graphql_variables.clone(),
+                        placeholder: "{\"var\": \"val\"}".to_string(),
                         rows: Some("3"),
+                        vars: vars.clone(),
+                        syntax: EditorSyntax::Json,
                         on_change: {
                             let draft = draft.clone();
                             move |text: String| {

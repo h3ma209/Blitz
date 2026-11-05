@@ -298,6 +298,7 @@ pub fn MultilineCodeField(
     #[props(default)] vars: Option<VariableContext>,
     #[props(default)] syntax: EditorSyntax,
     #[props(default)] js_completions: bool,
+    #[props(default)] on_submit: Option<EventHandler<()>>,
 ) -> Element {
     let mut current_val = use_signal(|| value.clone());
     let mut last_sent = use_signal(|| value.clone());
@@ -548,6 +549,14 @@ pub fn MultilineCodeField(
                         }
                     });
                     return;
+                }
+
+                if cmd && evt.key() == Key::Enter {
+                    if let Some(ref h) = on_submit {
+                        evt.prevent_default();
+                        h.call(());
+                        return;
+                    }
                 }
 
                 // Auto-indent on Enter (VS Code style block matching and indent preservation)

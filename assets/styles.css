@@ -5532,33 +5532,86 @@ details.json-fold:not([open]) > summary .json-fold-close-comma {
   word-break: break-all;
 }
 
+.ws-classic-view {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px 0;
+}
+
 .ws-deck-composer {
   display: flex;
   gap: 8px;
   padding: 8px 10px;
   border-top: 1px solid var(--border);
   background: var(--panel-header-bg, var(--panel-bg));
+  align-items: flex-end;
+}
+
+.ws-composer-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.ws-composer-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 20px;
+}
+
+.ws-composer-toolbar .btn {
+  padding: 1px 6px;
+  height: 20px;
+  font-size: 11px;
+}
+
+.ws-composer-toolbar .json-lint-badge {
+  font-size: 10px;
+  padding: 1px 6px;
+}
+
+.ws-composer-main .code-editor-host {
+  width: 100%;
 }
 
 .ws-composer-input {
-  flex: 1;
+  width: 100%;
   font-family: var(--mono);
-  font-size: 12px;
+  font-size: var(--fs-editor);
+  line-height: var(--lh-loose);
+  letter-spacing: var(--track-mono);
   background: var(--bg);
   color: var(--text);
   border: 1px solid var(--border);
   border-radius: 4px;
-  padding: 6px 8px;
+  padding: 6px 10px;
   resize: vertical;
-  min-height: 48px;
-  max-height: 120px;
+  min-height: 52px;
+  max-height: 140px;
+  box-sizing: border-box;
+}
+
+.ws-composer-main .var-highlight-mirror-multiline,
+.ws-composer-main textarea.ws-composer-input {
+  font-family: var(--mono);
+  font-size: var(--fs-editor);
+  line-height: var(--lh-loose);
+  letter-spacing: var(--track-mono);
+  padding: 6px 10px;
+  tab-size: var(--editor-tab-size, 2);
+  -moz-tab-size: var(--editor-tab-size, 2);
 }
 
 .ws-composer-actions {
   display: flex;
   flex-direction: column;
   gap: 6px;
-  justify-content: center;
+  justify-content: flex-end;
+  padding-bottom: 2px;
 }
 
 /* —— Vars & Environments full page (Postman-style) —— */
