@@ -586,6 +586,67 @@ impl RequestDraft {
         }
     }
 
+    /// Detect if this request belongs to a non-HTTP protocol based on URL, headers, or parent folder/item name,
+    /// and upgrade the protocol if currently HTTP.
+    pub fn auto_detect_protocol(&mut self, context_hint: Option<&str>) {
+        if self.protocol != RequestProtocol::Http {
+            return;
+        }
+        let url_lower = self.url.to_lowercase();
+        let hint_lower = context_hint.map(|s| s.to_lowercase()).unwrap_or_default();
+        let name_lower = self.name.to_lowercase();
+
+        let is_ws = url_lower.starts_with("ws://")
+            || url_lower.starts_with("wss://")
+            || url_lower.contains("socket_endpoint")
+            || url_lower.contains("websocket")
+            || hint_lower.contains("websocket")
+            || hint_lower.contains("ws")
+            || name_lower.contains("websocket")
+            || self.headers.iter().any(|h| {
+                h.key.eq_ignore_ascii_case("Upgrade") && h.value.to_lowercase().contains("websocket")
+                    || h.key.to_lowercase().starts_with("sec-websocket")
+            });
+
+        let is_grpc = url_lower.starts_with("grpc://")
+            || url_lower.starts_with("grpcs://")
+            || hint_lower.contains("grpc")
+            || name_lower.contains("grpc")
+            || self.headers.iter().any(|h| h.value.contains("application/grpc"));
+
+        let is_mqtt = url_lower.starts_with("mqtt://")
+            || url_lower.starts_with("mqtts://")
+            || hint_lower.contains("mqtt")
+            || name_lower.contains("mqtt");
+
+        let is_sse = url_lower.starts_with("sse://")
+            || hint_lower.contains("sse")
+            || name_lower.contains("sse")
+            || self.headers.iter().any(|h| h.value.contains("text/event-stream"));
+
+        let is_sio = hint_lower.contains("socket.io")
+            || hint_lower.contains("socketio")
+            || url_lower.contains("socket.io")
+            || name_lower.contains("socket.io");
+
+        let is_gql_ws = hint_lower.contains("graphql-ws")
+            || self.headers.iter().any(|h| h.value.contains("graphql-transport-ws"));
+
+        if is_ws {
+            self.apply_protocol_defaults(RequestProtocol::WebSocket);
+        } else if is_grpc {
+            self.apply_protocol_defaults(RequestProtocol::Grpc);
+        } else if is_mqtt {
+            self.apply_protocol_defaults(RequestProtocol::Mqtt);
+        } else if is_sse {
+            self.apply_protocol_defaults(RequestProtocol::Sse);
+        } else if is_sio {
+            self.apply_protocol_defaults(RequestProtocol::SocketIo);
+        } else if is_gql_ws {
+            self.apply_protocol_defaults(RequestProtocol::GraphqlWs);
+        }
+    }
+
     /// Apply environment-specific overrides to this request draft.
     /// Returns a new RequestDraft with overrides applied.
     pub fn apply_env_override(&self, override_: &crate::core::collection::RequestEnvOverride) -> Self {

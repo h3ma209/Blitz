@@ -47,7 +47,7 @@ pub fn import_collection_v21(text: &str) -> Result<Collection, ImpexError> {
 
     let col_headers = extract_headers(root.get("header").or_else(|| root.get("headers")));
     let items_val = root.get("item").cloned().unwrap_or(Value::Array(vec![]));
-    let items = import_items(&items_val, &col_headers)?;
+    let items = import_items(&items_val, &col_headers, None)?;
 
     let mut col = Collection::new(name);
     col.description = description;
@@ -142,21 +142,29 @@ fn extract_script_exec(ev: &Value) -> String {
     }
 }
 
-fn import_items(val: &Value, inherited_headers: &[KeyValue]) -> Result<Vec<CollectionItem>, ImpexError> {
+fn import_items(
+    val: &Value,
+    inherited_headers: &[KeyValue],
+    folder_hint: Option<&str>,
+) -> Result<Vec<CollectionItem>, ImpexError> {
     let arr = val
         .as_array()
         .ok_or_else(|| ImpexError::Json("item must be array".into()))?;
     let mut out = Vec::new();
     for item in arr {
         if item.get("request").is_some() {
-            out.push(CollectionItem::Request(import_request_with_inheritance(item, inherited_headers)?));
+            out.push(CollectionItem::Request(import_request_with_inheritance(
+                item,
+                inherited_headers,
+                folder_hint,
+            )?));
         } else if let Some(sub_item) = item.get("item") {
             let name = item
                 .get("name")
                 .and_then(|v| v.as_str())
                 .unwrap_or("Folder")
                 .to_string();
-            let mut folder = Folder::new(name);
+            let mut folder = Folder::new(name.clone());
             if let Some(id_str) = item.get("id").or_else(|| item.get("_postman_id")).and_then(|v| v.as_str()) {
                 if let Ok(u) = Uuid::parse_str(id_str) {
                     folder.id = u;
@@ -184,15 +192,19 @@ fn import_items(val: &Value, inherited_headers: &[KeyValue]) -> Result<Vec<Colle
                     combined.push(fh);
                 }
             }
-            folder.items = import_items(sub_item, &combined)?;
+            folder.items = import_items(sub_item, &combined, Some(&name))?;
             out.push(CollectionItem::Folder(folder));
         }
     }
     Ok(out)
 }
 
-fn import_request_with_inheritance(item: &Value, inherited_headers: &[KeyValue]) -> Result<RequestDraft, ImpexError> {
-    let mut draft = import_request(item)?;
+fn import_request_with_inheritance(
+    item: &Value,
+    inherited_headers: &[KeyValue],
+    folder_hint: Option<&str>,
+) -> Result<RequestDraft, ImpexError> {
+    let mut draft = import_request(item, folder_hint)?;
     for inh in inherited_headers {
         if !draft.headers.iter().any(|h| !h.key.is_empty() && h.key.eq_ignore_ascii_case(&inh.key)) {
             let insert_pos = if draft.headers.last().map(|h| h.key.is_empty()).unwrap_or(false) {
@@ -206,7 +218,7 @@ fn import_request_with_inheritance(item: &Value, inherited_headers: &[KeyValue])
     Ok(draft)
 }
 
-fn import_request(item: &Value) -> Result<RequestDraft, ImpexError> {
+fn import_request(item: &Value, folder_hint: Option<&str>) -> Result<RequestDraft, ImpexError> {
     let fallback_obj;
     let req_val = if let Some(r) = item.get("request") {
         r
@@ -319,47 +331,9 @@ fn import_request(item: &Value) -> Result<RequestDraft, ImpexError> {
         .or_else(|| req.get("protocol"))
         .or_else(|| item.get("type"))
         .or_else(|| req.get("type"))
-        .and_then(|v| v.as_str())
-        .unwrap_or("");
+        .and_then(|v| v.as_str());
 
-    let url_lower = draft.url.to_lowercase();
-    let detected_proto = if proto_hint.eq_ignore_ascii_case("websocket")
-        || url_lower.starts_with("ws://")
-        || url_lower.starts_with("wss://")
-        || url_lower.contains("socket_endpoint")
-        || url_lower.contains("websocket")
-        || draft.headers.iter().any(|h| {
-            h.key.eq_ignore_ascii_case("Upgrade") && h.value.to_lowercase().contains("websocket")
-                || h.key.to_lowercase().starts_with("sec-websocket")
-        }) {
-        RequestProtocol::WebSocket
-    } else if proto_hint.eq_ignore_ascii_case("grpc")
-        || url_lower.starts_with("grpc://")
-        || url_lower.starts_with("grpcs://")
-        || draft.headers.iter().any(|h| h.value.contains("application/grpc")) {
-        RequestProtocol::Grpc
-    } else if proto_hint.eq_ignore_ascii_case("mqtt")
-        || url_lower.starts_with("mqtt://")
-        || url_lower.starts_with("mqtts://") {
-        RequestProtocol::Mqtt
-    } else if proto_hint.eq_ignore_ascii_case("sse")
-        || url_lower.starts_with("sse://")
-        || draft.headers.iter().any(|h| h.value.contains("text/event-stream")) {
-        RequestProtocol::Sse
-    } else if proto_hint.eq_ignore_ascii_case("graphql-ws")
-        || draft.headers.iter().any(|h| h.value.contains("graphql-transport-ws")) {
-        RequestProtocol::GraphqlWs
-    } else if proto_hint.eq_ignore_ascii_case("socketio")
-        || proto_hint.eq_ignore_ascii_case("socket.io")
-        || url_lower.contains("socket.io") {
-        RequestProtocol::SocketIo
-    } else {
-        RequestProtocol::Http
-    };
-
-    if detected_proto != RequestProtocol::Http {
-        draft.apply_protocol_defaults(detected_proto);
-    }
+    draft.auto_detect_protocol(folder_hint.or(proto_hint));
 
     if let Some(body) = req.get("body") {
         let mode = body.get("mode").and_then(|v| v.as_str()).unwrap_or("raw");
@@ -1019,7 +993,7 @@ pub fn export_request_item(r: &RequestDraft) -> Value {
 pub fn import_request_item(text: &str) -> Result<RequestDraft, ImpexError> {
     let item: Value =
         serde_json::from_str(text).map_err(|e| ImpexError::Json(e.to_string()))?;
-    import_request(&item)
+    import_request(&item, None)
 }
 
 fn export_auth(auth: &AuthConfig) -> Value {

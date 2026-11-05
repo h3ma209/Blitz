@@ -1985,6 +1985,7 @@ pub fn Workbench() -> Element {
                                 }
                             }
                         }
+                    }
 
                         if let Some((ctx_tid, ctx_x, ctx_y)) = tab_ctx_menu() {
                             DismissBackdrop {
@@ -2263,10 +2264,18 @@ pub fn Workbench() -> Element {
                             }
                         }
                     } else {
-                        div {
-                            class: format!("workbench-split {}", app_settings().ui.layout.class_token()),
-                            div {
-                                class: "workbench-request-side",
+                        {
+                            let is_non_http = draft().protocol != RequestProtocol::Http;
+                            let split_class = if is_non_http {
+                                format!("workbench-split protocol-full {}", app_settings().ui.layout.class_token())
+                            } else {
+                                format!("workbench-split {}", app_settings().ui.layout.class_token())
+                            };
+                            rsx! {
+                                div {
+                                    class: "{split_class}",
+                                    div {
+                                        class: "workbench-request-side",
                                 {
                                     let cols_snap = collections();
                                     let cur_draft = draft();
@@ -2397,76 +2406,79 @@ pub fn Workbench() -> Element {
                                         }
                                     }
                                 }
-                            }
 
-                            div {
-                                class: if matches!(pane_drag(), Some(PaneDrag::Request { .. })) {
-                                    "pane-resize-h active"
-                                } else {
-                                    "pane-resize-h"
-                                },
-                                title: "Drag to resize request / response",
-                                onmousedown: move |evt| {
-                                    evt.prevent_default();
-                                    evt.stop_propagation();
-                                    pane_drag.set(Some(PaneDrag::Request {
-                                        start_y: evt.client_coordinates().y,
-                                        start_h: pane_h() as u32,
-                                    }));
-                                },
-                            }
-
-                            div {
-                                class: "workbench-response-side",
-                                ResponseViewer {
-                                    response: response(),
-                                    prev_response: prev_responses().get(&draft().id).cloned(),
-                                    examples: draft().examples,
-                                    sending: sending(),
-                                    default_tab: app_settings().ui.default_response_tab,
-                                    on_save_example: move |_| {
-                                        let mut st = st;
-                                        if let Some(view) = response() {
-                                            let mut d = draft();
-                                            let name = format!("Example {}", d.examples.len() + 1);
-                                            let ex = SavedExample::from_response(name, &view);
-                                            d.examples.push(ex.clone());
-                                            let req_id = d.id;
-                                            draft.set(d);
-                                            let mut cols = collections();
-                                            let _ = save_example_to_request(&mut cols, req_id, ex);
-                                            for col in cols.iter_mut() {
-                                                let _ = col.update_request(draft());
-                                            }
-                                            collections.set(cols);
-                                            st.persist();
-                                            status_msg.set("saved response as example".into());
-                                        }
-                                    },
-                                    on_auto_assert: move |_| {
-                                        let Some(view) = response() else { return; };
-                                        if view.error.is_some() || view.status == 0 {
-                                            status_msg.set("auto-assert: no successful response to learn from".into());
-                                            return;
-                                        }
-                                        let suggested = crate::core::suggest_from_response(
-                                            view.status,
-                                            &view.headers,
-                                            &view.body,
-                                            view.elapsed_ms,
-                                        );
-                                        let mut d = draft();
-                                        let added = crate::core::merge_assertions(&mut d.assertions, suggested);
-                                        draft.set(d);
-                                        status_msg.set(if added == 0 {
-                                            "auto-assert: all assertions already present".into()
+                                if !is_non_http {
+                                    div {
+                                        class: if matches!(pane_drag(), Some(PaneDrag::Request { .. })) {
+                                            "pane-resize-h active"
                                         } else {
-                                            format!("auto-assert: added {added} assertion(s) — review in Tests tab, ⌘S to save")
-                                        });
-                                    },
+                                            "pane-resize-h"
+                                        },
+                                        title: "Drag to resize request / response",
+                                        onmousedown: move |evt| {
+                                            evt.prevent_default();
+                                            evt.stop_propagation();
+                                            pane_drag.set(Some(PaneDrag::Request {
+                                                start_y: evt.client_coordinates().y,
+                                                start_h: pane_h() as u32,
+                                            }));
+                                        },
+                                    }
+
+                                    div {
+                                        class: "workbench-response-side",
+                                        ResponseViewer {
+                                            response: response(),
+                                            prev_response: prev_responses().get(&draft().id).cloned(),
+                                            examples: draft().examples,
+                                            sending: sending(),
+                                            default_tab: app_settings().ui.default_response_tab,
+                                            on_save_example: move |_| {
+                                                let mut st = st;
+                                                if let Some(view) = response() {
+                                                    let mut d = draft();
+                                                    let name = format!("Example {}", d.examples.len() + 1);
+                                                    let ex = SavedExample::from_response(name, &view);
+                                                    d.examples.push(ex.clone());
+                                                    let req_id = d.id;
+                                                    draft.set(d);
+                                                    let mut cols = collections();
+                                                    let _ = save_example_to_request(&mut cols, req_id, ex);
+                                                    for col in cols.iter_mut() {
+                                                        let _ = col.update_request(draft());
+                                                    }
+                                                    collections.set(cols);
+                                                    st.persist();
+                                                    status_msg.set("saved response as example".into());
+                                                }
+                                            },
+                                            on_auto_assert: move |_| {
+                                                let Some(view) = response() else { return; };
+                                                if view.error.is_some() || view.status == 0 {
+                                                    status_msg.set("auto-assert: no successful response to learn from".into());
+                                                    return;
+                                                }
+                                                let suggested = crate::core::suggest_from_response(
+                                                    view.status,
+                                                    &view.headers,
+                                                    &view.body,
+                                                    view.elapsed_ms,
+                                                );
+                                                let mut d = draft();
+                                                let added = crate::core::merge_assertions(&mut d.assertions, suggested);
+                                                draft.set(d);
+                                                status_msg.set(if added == 0 {
+                                                    "auto-assert: all assertions already present".into()
+                                                } else {
+                                                    format!("auto-assert: added {added} assertion(s) — review in Tests tab, ⌘S to save")
+                                                });
+                                            },
+                                        }
+                                    }
                                 }
                             }
                         }
+                    }
                     }
 
                     ConsolePanel {

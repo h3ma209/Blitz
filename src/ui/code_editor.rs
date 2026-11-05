@@ -299,6 +299,7 @@ pub fn MultilineCodeField(
     #[props(default)] syntax: EditorSyntax,
     #[props(default)] js_completions: bool,
     #[props(default)] on_submit: Option<EventHandler<()>>,
+    #[props(default)] style: Option<String>,
 ) -> Element {
     let mut current_val = use_signal(|| value.clone());
     let mut last_sent = use_signal(|| value.clone());
@@ -339,6 +340,7 @@ pub fn MultilineCodeField(
         textarea {
             id: "{field_id()}",
             class: "{ta_class}",
+            style: style.as_deref().unwrap_or(""),
             value: "{current_val()}",
             placeholder: "{placeholder}",
             rows: "{rows_attr}",
@@ -627,6 +629,7 @@ pub fn MultilineCodeField(
     rsx! {
         div {
             class: "{host_class}",
+            style: style.as_deref().unwrap_or(""),
             if highlight {
                 div {
                     class: "var-highlight-mirror var-highlight-mirror-multiline code-editor-mirror",

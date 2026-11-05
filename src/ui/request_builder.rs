@@ -210,7 +210,7 @@ pub fn RequestBuilder(
                         // Auto-detect protocol schemes if currently HTTP
                         if d.protocol == RequestProtocol::Http {
                             let lower = url.trim().to_lowercase();
-                            if lower.starts_with("ws://") || lower.starts_with("wss://") {
+                            if lower.starts_with("ws://") || lower.starts_with("wss://") || lower.contains("socket_endpoint") {
                                 d.apply_protocol_defaults(RequestProtocol::WebSocket);
                             } else if lower.starts_with("grpc://") || lower.starts_with("grpcs://") {
                                 d.apply_protocol_defaults(RequestProtocol::Grpc);
@@ -218,6 +218,8 @@ pub fn RequestBuilder(
                                 d.apply_protocol_defaults(RequestProtocol::Mqtt);
                             } else if lower.starts_with("sse://") {
                                 d.apply_protocol_defaults(RequestProtocol::Sse);
+                            } else if lower.contains("socket.io") {
+                                d.apply_protocol_defaults(RequestProtocol::SocketIo);
                             }
                         }
                         // Bi-directional URL -> Params sync
@@ -538,15 +540,29 @@ fn parse_method(s: &str) -> HttpMethod {
 }
 
 fn parse_protocol(s: &str) -> RequestProtocol {
-    match s {
-        "WebSocket" => RequestProtocol::WebSocket,
-        "gRPC" => RequestProtocol::Grpc,
-        "MQTT" => RequestProtocol::Mqtt,
-        "MCP" => RequestProtocol::Mcp,
-        "Socket.IO" => RequestProtocol::SocketIo,
-        "SSE" => RequestProtocol::Sse,
-        "GraphQL-WS" => RequestProtocol::GraphqlWs,
-        _ => RequestProtocol::Http,
+    let trimmed = s.trim();
+    if trimmed.eq_ignore_ascii_case("websocket") || trimmed.eq_ignore_ascii_case("ws") {
+        RequestProtocol::WebSocket
+    } else if trimmed.eq_ignore_ascii_case("grpc") {
+        RequestProtocol::Grpc
+    } else if trimmed.eq_ignore_ascii_case("mqtt") {
+        RequestProtocol::Mqtt
+    } else if trimmed.eq_ignore_ascii_case("mcp") {
+        RequestProtocol::Mcp
+    } else if trimmed.eq_ignore_ascii_case("socket.io")
+        || trimmed.eq_ignore_ascii_case("socketio")
+        || trimmed.eq_ignore_ascii_case("sio")
+    {
+        RequestProtocol::SocketIo
+    } else if trimmed.eq_ignore_ascii_case("sse") {
+        RequestProtocol::Sse
+    } else if trimmed.eq_ignore_ascii_case("graphql-ws")
+        || trimmed.eq_ignore_ascii_case("graphqlws")
+        || trimmed.eq_ignore_ascii_case("gql")
+    {
+        RequestProtocol::GraphqlWs
+    } else {
+        RequestProtocol::Http
     }
 }
 
@@ -589,6 +605,8 @@ fn ProtocolFields(
 ) -> Element {
     let mut preset_name_input = use_signal(String::new);
     let mut show_new_preset = use_signal(|| false);
+    let mut composer_h = use_signal(|| 140i32);
+    let mut composer_drag = use_signal(|| None::<(f64, i32)>);
 
     rsx! {
         div { class: "builder-pane protocol-pane",
@@ -838,7 +856,20 @@ fn ProtocolFields(
                                     }
                                 }
 
-                                div { class: "ws-deck-main",
+                                div {
+                                    class: "ws-deck-main",
+                                    onmousemove: move |evt| {
+                                        if let Some((start_y, start_h)) = composer_drag() {
+                                            let dy = start_y - evt.client_coordinates().y;
+                                            let next_h = (start_h + dy as i32).clamp(70, 600);
+                                            composer_h.set(next_h);
+                                        }
+                                    },
+                                    onmouseup: move |_| {
+                                        if composer_drag().is_some() {
+                                            composer_drag.set(None);
+                                        }
+                                    },
                                     div { class: "ws-stream-head",
                                         span { class: "ws-deck-title", "Live Timeline Stream ({ws_timeline.len()} frames)" }
                                     }
@@ -896,6 +927,16 @@ fn ProtocolFields(
                                         }
                                     }
 
+                                    div {
+                                        class: if composer_drag().is_some() { "ws-composer-resizer active" } else { "ws-composer-resizer" },
+                                        title: "Drag up/down to adjust input height",
+                                        onmousedown: move |evt| {
+                                            evt.prevent_default();
+                                            evt.stop_propagation();
+                                            composer_drag.set(Some((evt.client_coordinates().y, composer_h())));
+                                        },
+                                    }
+
                                     div { class: "ws-deck-composer",
                                         div { class: "ws-composer-main",
                                             div { class: "ws-composer-toolbar",
@@ -916,6 +957,29 @@ fn ProtocolFields(
                                                         },
                                                         span { class: "action-icon action-icon-format", aria_hidden: "true" }
                                                         span { "Beautify JSON" }
+                                                    }
+                                                    div { class: "ws-height-presets",
+                                                        button {
+                                                            class: if composer_h() <= 90 { "btn active" } else { "btn" },
+                                                            r#type: "button",
+                                                            title: "Compact height (80px)",
+                                                            onclick: move |_| composer_h.set(80),
+                                                            "S"
+                                                        }
+                                                        button {
+                                                            class: if composer_h() > 90 && composer_h() <= 200 { "btn active" } else { "btn" },
+                                                            r#type: "button",
+                                                            title: "Medium height (160px)",
+                                                            onclick: move |_| composer_h.set(160),
+                                                            "M"
+                                                        }
+                                                        button {
+                                                            class: if composer_h() > 200 { "btn active" } else { "btn" },
+                                                            r#type: "button",
+                                                            title: "Large height (320px)",
+                                                            onclick: move |_| composer_h.set(320),
+                                                            "L"
+                                                        }
                                                     }
                                                 }
                                                 div { class: "body-editor-tools-right",
@@ -938,7 +1002,8 @@ fn ProtocolFields(
                                                 class: "ws-composer-input".to_string(),
                                                 value: draft.ws_message.clone(),
                                                 placeholder: "Type JSON / text message... (Press Send Frame, ⌘↵, or a Preset)".to_string(),
-                                                rows: Some("3"),
+                                                rows: Some("6"),
+                                                style: Some(format!("height: {}px;", composer_h())),
                                                 vars: vars.clone(),
                                                 syntax: EditorSyntax::Json,
                                                 on_change: {

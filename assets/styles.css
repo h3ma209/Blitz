@@ -2955,6 +2955,59 @@ button.env-menu-row:hover,
   display: contents;
 }
 
+/* Non-HTTP Protocol full-screen mode (WebSocket, MQTT, MCP, etc.) */
+.workbench-split.protocol-full {
+  flex-direction: column !important;
+  height: 100% !important;
+  flex: 1 1 100% !important;
+  overflow: hidden !important;
+}
+
+.workbench-split.protocol-full > .workbench-request-side {
+  display: flex !important;
+  flex-direction: column !important;
+  flex: 1 1 100% !important;
+  height: 100% !important;
+  min-height: 0 !important;
+  width: 100% !important;
+  border-right: none !important;
+}
+
+.workbench-split.protocol-full .builder-pane {
+  flex: 1 1 auto !important;
+  height: 100% !important;
+  max-height: none !important;
+  border-bottom: none !important;
+  display: flex !important;
+  flex-direction: column !important;
+  min-height: 0 !important;
+  overflow: hidden !important;
+}
+
+.workbench-split.protocol-full .protocol-pane {
+  flex: 1 1 auto !important;
+  height: 100% !important;
+  display: flex !important;
+  flex-direction: column !important;
+  min-height: 0 !important;
+  overflow: hidden !important;
+}
+
+.workbench-split.protocol-full .ws-deck-workspace {
+  flex: 1 1 auto !important;
+  height: 100% !important;
+  display: flex !important;
+  flex-direction: column !important;
+  min-height: 0 !important;
+}
+
+.workbench-split.protocol-full .ws-deck-container {
+  flex: 1 1 auto !important;
+  height: 100% !important;
+  min-height: 0 !important;
+  max-height: none !important;
+}
+
 /* Side-by-Side (Row) layout */
 .workbench-split.layout-row {
   flex-direction: row;
@@ -5602,6 +5655,33 @@ details.json-fold:not([open]) > summary .json-fold-close-comma {
   padding: 8px 0;
 }
 
+.ws-composer-resizer {
+  height: 6px;
+  cursor: row-resize;
+  background: var(--border);
+  position: relative;
+  transition: background 150ms ease;
+  flex-shrink: 0;
+  border-top: 1px solid var(--border);
+}
+
+.ws-composer-resizer:hover,
+.ws-composer-resizer.active {
+  background: var(--accent);
+}
+
+.ws-composer-resizer::after {
+  content: "⋯";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 10px;
+  line-height: 1;
+  color: var(--text-dim);
+  letter-spacing: 2px;
+}
+
 .ws-deck-composer {
   display: flex;
   gap: 8px;
@@ -5624,6 +5704,27 @@ details.json-fold:not([open]) > summary .json-fold-close-comma {
   align-items: center;
   justify-content: space-between;
   min-height: 20px;
+}
+
+.ws-height-presets {
+  display: inline-flex;
+  gap: 2px;
+  margin-left: 8px;
+}
+
+.ws-height-presets .btn {
+  padding: 1px 5px;
+  height: 18px;
+  font-size: 10px;
+  font-weight: 700;
+  border-radius: 3px;
+  color: var(--text-muted);
+}
+
+.ws-height-presets .btn.active {
+  background: var(--accent-soft);
+  color: var(--accent);
+  border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
 }
 
 .ws-composer-toolbar .btn {
@@ -5653,8 +5754,8 @@ details.json-fold:not([open]) > summary .json-fold-close-comma {
   border-radius: 4px;
   padding: 6px 10px;
   resize: vertical;
-  min-height: 52px;
-  max-height: 140px;
+  min-height: 70px;
+  max-height: 600px;
   box-sizing: border-box;
 }
 

@@ -119,6 +119,16 @@ impl JsonStore {
         if snap.collections.is_empty() {
             snap.collections = bundled_postman_collections();
         }
+
+        // Upgrade legacy HTTP requests that are actually non-HTTP (e.g. WebSocket room inside Hakki Websocket folder)
+        for col in &mut snap.collections {
+            for item in &mut col.items {
+                migrate_item_protocols(item, None);
+            }
+        }
+        for tab in &mut snap.open_tabs {
+            tab.auto_detect_protocol(None);
+        }
         if snap.environments.is_empty() {
             snap.environments = demo_environments();
             // Migrate flat environment map into Development if present.
@@ -208,6 +218,20 @@ impl JsonStore {
             settings: AppSettings::default(),
             trash: vec![],
             ..Default::default()
+        }
+    }
+}
+
+fn migrate_item_protocols(item: &mut crate::core::CollectionItem, folder_hint: Option<&str>) {
+    match item {
+        crate::core::CollectionItem::Request(req) => {
+            req.auto_detect_protocol(folder_hint);
+        }
+        crate::core::CollectionItem::Folder(folder) => {
+            let name = folder.name.clone();
+            for sub in &mut folder.items {
+                migrate_item_protocols(sub, Some(&name));
+            }
         }
     }
 }
