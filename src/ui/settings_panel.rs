@@ -683,6 +683,7 @@ pub fn SettingsPanel(
                                 zoom_percent: zoom(),
                                 history_collapsed,
                                 toolbar_height_px: toolbar_h(),
+                                console_log_error_payloads: settings.ui.console_log_error_payloads,
                             }
                             .clamped(),
                             cloud_sync: CloudSyncSettings {

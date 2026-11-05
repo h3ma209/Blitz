@@ -101,6 +101,10 @@ pub fn default_toolbar_height_px() -> u32 {
     UiSettings::DEFAULT_TOOLBAR_HEIGHT_PX
 }
 
+fn default_console_log_error_payloads() -> bool {
+    true
+}
+
 /// Padding density for workbench chrome.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "snake_case")]
@@ -347,6 +351,9 @@ pub struct UiSettings {
     /// Top toolbar height in px (`--bar-h`).
     #[serde(default = "default_toolbar_height_px")]
     pub toolbar_height_px: u32,
+    /// Log sent request & received error payload to console on request failure.
+    #[serde(default = "default_console_log_error_payloads")]
+    pub console_log_error_payloads: bool,
 }
 
 impl Default for UiSettings {
@@ -370,6 +377,7 @@ impl Default for UiSettings {
             zoom_percent: default_zoom_percent(),
             history_collapsed: default_history_collapsed(),
             toolbar_height_px: default_toolbar_height_px(),
+            console_log_error_payloads: default_console_log_error_payloads(),
         }
     }
 }
@@ -580,6 +588,7 @@ mod tests {
         assert_eq!(ui.splash_min_ms, 80);
         assert_eq!(ui.zoom_percent, 100);
         assert!(ui.history_collapsed);
+        assert!(ui.console_log_error_payloads);
         assert_eq!(ui.toolbar_height_px, 46);
         assert_eq!(UiSettings::clamp_toolbar_height(20), 34);
         assert_eq!(UiSettings::clamp_toolbar_height(100), 56);

@@ -118,6 +118,17 @@ pub fn run_protocol_action(mut st: WorkbenchState, action: String) {
                 Err(e) => {
                     st.ws_connected.set(false);
                     st.log_error(format!("⚡ [WS] Connect error: {e}"));
+                    if st.app_settings.peek().ui.console_log_error_payloads {
+                        let mut sent = format!("─── WS Handshake Sent ───\nURL: {resolved_url}");
+                        if !headers_to_send.is_empty() {
+                            sent.push_str("\nHeaders:");
+                            for (k, v) in &headers_to_send {
+                                sent.push_str(&format!("\n  {k}: {v}"));
+                            }
+                        }
+                        st.log_network(sent);
+                        st.log_error(format!("─── Received on Error ───\nConnect error: {e}"));
+                    }
                     st.protocol_log.set(vec![e]);
                 }
             }
@@ -128,6 +139,10 @@ pub fn run_protocol_action(mut st: WorkbenchState, action: String) {
                 if let Some(s) = g.as_ref() {
                     if let Err(e) = s.send_text(msg.clone()) {
                         st.log_error(format!("⚡ [WS] Send failed: {e}"));
+                        if st.app_settings.peek().ui.console_log_error_payloads {
+                            st.log_network(format!("─── WS Payload Sent ───\nPayload:\n{msg}"));
+                            st.log_error(format!("─── Received on Error ───\nSend error: {e}"));
+                        }
                         st.protocol_log.set(vec![e]);
                     } else {
                         st.log_network(format!("⚡ [WS] Sent ({} bytes)", msg.len()));
@@ -164,9 +179,13 @@ pub fn run_protocol_action(mut st: WorkbenchState, action: String) {
             let topic = req.mqtt_topic.clone();
             let body = req.body.clone();
             st.log_network(format!("📡 [MQTT] Publish to topic '{topic}' ({url})"));
+            let url_bg = url.clone();
+            let cid_bg = cid.clone();
+            let topic_bg = topic.clone();
+            let body_bg = body.clone();
             spawn(async move {
                 let r = tokio::task::spawn_blocking(move || {
-                    mqtt_publish(&url, &cid, &topic, &body)
+                    mqtt_publish(&url_bg, &cid_bg, &topic_bg, &body_bg)
                 })
                 .await
                 .unwrap_or_else(|e| MqttActionResult {
@@ -178,6 +197,12 @@ pub fn run_protocol_action(mut st: WorkbenchState, action: String) {
                 let mut lines = r.messages;
                 if let Some(e) = r.error {
                     st.log_error(format!("📡 [MQTT] Publish error: {e}"));
+                    if st.app_settings.peek().ui.console_log_error_payloads {
+                        st.log_network(format!(
+                            "─── MQTT Payload Sent ───\nTopic: {topic}\nPayload:\n{body}"
+                        ));
+                        st.log_error(format!("─── Received on Error ───\nError: {e}"));
+                    }
                     lines.push(e);
                 } else {
                     st.log_network(format!("📡 [MQTT] Published in {} ms", r.elapsed_ms));
@@ -255,10 +280,11 @@ pub fn run_protocol_action(mut st: WorkbenchState, action: String) {
             let tool = req.mcp_tool_name.clone();
             let tool_bg = tool.clone();
             let args_json = req.mcp_tool_args_json.clone();
+            let args_json_bg = args_json.clone();
             st.log_network(format!("🤖 [MCP] Calling tool '{tool}'"));
             spawn(async move {
                 let result = tokio::task::spawn_blocking(move || {
-                    let v: serde_json::Value = serde_json::from_str(&args_json)
+                    let v: serde_json::Value = serde_json::from_str(&args_json_bg)
                         .unwrap_or_else(|_| serde_json::json!({}));
                     mcp_call_tool(&cmd, &args, &tool_bg, v)
                 })
@@ -270,6 +296,12 @@ pub fn run_protocol_action(mut st: WorkbenchState, action: String) {
                     }
                     Ok(Err(e)) => {
                         st.log_error(format!("🤖 [MCP] Tool '{tool}' error: {e}"));
+                        if st.app_settings.peek().ui.console_log_error_payloads {
+                            st.log_network(format!(
+                                "─── MCP Tool Call Sent ───\nTool: {tool}\nArgs:\n{args_json}"
+                            ));
+                            st.log_error(format!("─── Received on Error ───\nError: {e}"));
+                        }
                         st.protocol_log.set(vec![e]);
                     }
                     Err(e) => {
@@ -285,10 +317,13 @@ pub fn run_protocol_action(mut st: WorkbenchState, action: String) {
             let url = req.url.clone();
             let ev = req.socketio_event.clone();
             let body = req.body.clone();
+            let url_bg = url.clone();
+            let ev_bg = ev.clone();
+            let body_bg = body.clone();
             st.log_network(format!("⚡ [Socket.IO] Emitting '{ev}' to {url}"));
             spawn(async move {
                 let result = tokio::task::spawn_blocking(move || {
-                    socketio_session(&url, &ev, &body, &ev, 3_000)
+                    socketio_session(&url_bg, &ev_bg, &body_bg, &ev_bg, 3_000)
                 })
                 .await;
                 match result {
@@ -298,6 +333,12 @@ pub fn run_protocol_action(mut st: WorkbenchState, action: String) {
                     }
                     Ok(Err(e)) => {
                         st.log_error(format!("⚡ [Socket.IO] Error: {e}"));
+                        if st.app_settings.peek().ui.console_log_error_payloads {
+                            st.log_network(format!(
+                                "─── Socket.IO Sent ───\nEvent: {ev}\nPayload:\n{body}"
+                            ));
+                            st.log_error(format!("─── Received on Error ───\nError: {e}"));
+                        }
                         st.protocol_log.set(vec![e]);
                     }
                     Err(e) => {
@@ -318,9 +359,11 @@ pub fn run_protocol_action(mut st: WorkbenchState, action: String) {
                 .filter(|h| h.enabled && !h.key.is_empty())
                 .map(|h| (h.key.clone(), h.value.clone()))
                 .collect();
+            let url_bg = url.clone();
+            let headers_bg = headers.clone();
             spawn(async move {
                 let result =
-                    tokio::task::spawn_blocking(move || sse_listen(&url, &headers, 20, 15_000))
+                    tokio::task::spawn_blocking(move || sse_listen(&url_bg, &headers_bg, 20, 15_000))
                         .await;
                 match result {
                     Ok(Ok((lines, _))) => {
@@ -329,6 +372,17 @@ pub fn run_protocol_action(mut st: WorkbenchState, action: String) {
                     }
                     Ok(Err(e)) => {
                         st.log_error(format!("🌊 [SSE] Error: {e}"));
+                        if st.app_settings.peek().ui.console_log_error_payloads {
+                            let mut sent = format!("─── SSE Connection Sent ───\nURL: {url}");
+                            if !headers.is_empty() {
+                                sent.push_str("\nHeaders:");
+                                for (k, v) in &headers {
+                                    sent.push_str(&format!("\n  {k}: {v}"));
+                                }
+                            }
+                            st.log_network(sent);
+                            st.log_error(format!("─── Received on Error ───\nError: {e}"));
+                        }
                         st.protocol_log.set(vec![e]);
                     }
                     Err(e) => {
@@ -348,10 +402,13 @@ pub fn run_protocol_action(mut st: WorkbenchState, action: String) {
                 req.graphql_ws_query.clone()
             };
             let vars = req.graphql_variables.clone();
+            let url_bg = url.clone();
+            let q_bg = q.clone();
+            let vars_bg = vars.clone();
             st.log_network(format!("◈ [GraphQL-WS] Subscribing to {url}"));
             spawn(async move {
                 let result = tokio::task::spawn_blocking(move || {
-                    graphql_ws_subscribe(&url, &q, &vars, 10, 15_000)
+                    graphql_ws_subscribe(&url_bg, &q_bg, &vars_bg, 10, 15_000)
                 })
                 .await;
                 match result {
@@ -361,6 +418,12 @@ pub fn run_protocol_action(mut st: WorkbenchState, action: String) {
                     }
                     Ok(Err(e)) => {
                         st.log_error(format!("◈ [GraphQL-WS] Error: {e}"));
+                        if st.app_settings.peek().ui.console_log_error_payloads {
+                            st.log_network(format!(
+                                "─── GraphQL-WS Sent ───\nQuery:\n{q}\nVariables:\n{vars}"
+                            ));
+                            st.log_error(format!("─── Received on Error ───\nError: {e}"));
+                        }
                         st.protocol_log.set(vec![e]);
                     }
                     Err(e) => {

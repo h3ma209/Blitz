@@ -4982,6 +4982,31 @@ details.json-fold:not([open]) > summary .json-fold-close-comma {
   border-color: rgba(255, 255, 255, 0.16);
 }
 
+.console-checkbox-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  color: var(--gray-3);
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+  padding: 0 4px;
+  transition: color 0.15s ease;
+}
+
+.console-checkbox-label:hover {
+  color: #ffffff;
+}
+
+.console-checkbox {
+  cursor: pointer;
+  accent-color: var(--accent);
+  margin: 0;
+  width: 13px;
+  height: 13px;
+}
+
 .console-search-input {
   font-size: 11px;
   padding: 2px 8px;

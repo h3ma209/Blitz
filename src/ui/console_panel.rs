@@ -20,6 +20,8 @@ pub fn ConsolePanel(
     on_toggle: EventHandler<()>,
     on_clear: EventHandler<()>,
     on_resize_start: EventHandler<f64>,
+    #[props(default)] log_error_details: bool,
+    #[props(default)] on_toggle_log_errors: EventHandler<bool>,
 ) -> Element {
     let mut filter = use_signal(|| ConsoleFilter::All);
     let mut search = use_signal(String::new);
@@ -139,6 +141,17 @@ pub fn ConsolePanel(
                 }
                 if open {
                     div { class: "console-bar-right",
+                        label {
+                            class: "console-checkbox-label",
+                            title: "Log full request payload sent & response body received when an error occurs",
+                            input {
+                                r#type: "checkbox",
+                                class: "console-checkbox",
+                                checked: log_error_details,
+                                onchange: move |evt: Event<FormData>| on_toggle_log_errors.call(evt.checked()),
+                            }
+                            span { "Log on error" }
+                        }
                         input {
                             class: "console-search-input",
                             r#type: "text",

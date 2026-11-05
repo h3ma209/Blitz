@@ -592,8 +592,9 @@ pub fn Workbench() -> Element {
             spawn(async move {
                 let ep = endpoint.clone();
                 let meth = method.clone();
+                let body_bg = body.clone();
                 let result =
-                    tokio::task::spawn_blocking(move || grpc_unary(&ep, &meth, &body)).await;
+                    tokio::task::spawn_blocking(move || grpc_unary(&ep, &meth, &body_bg)).await;
                 if send_gen() != my_gen || cancel_grpc.load(Ordering::SeqCst) {
                     return;
                 }
@@ -613,7 +614,7 @@ pub fn Workbench() -> Element {
                             pipeline_log: log.clone(),
                             console_messages: log,
                             test_results: vec![],
-                            resolved_url: resolved,
+                            resolved_url: resolved.clone(),
                             timing: crate::core::TimingBreakdown {
                                 total_ms: r.elapsed_ms,
                                 ttfb_ms: r.elapsed_ms,
@@ -630,6 +631,25 @@ pub fn Workbench() -> Element {
                 let mut lines = console_lines();
                 for msg in &view.console_messages {
                     push_console(&mut lines, ConsoleLine::info(msg.clone()));
+                }
+                if (view.status == 0 || view.error.is_some())
+                    && app_settings().ui.console_log_error_payloads
+                {
+                    push_console(
+                        &mut lines,
+                        ConsoleLine::network(format!(
+                            "─── Sent gRPC Payload ───\n[Method: {resolved}]\nPayload:\n{body}"
+                        )),
+                    );
+                    let mut recv =
+                        format!("─── Received on Error ───\nStatus: {}", view.status_text);
+                    if let Some(err) = &view.error {
+                        recv.push_str(&format!("\nError detail: {err}"));
+                    }
+                    if !view.body.trim().is_empty() {
+                        recv.push_str(&format!("\nPayload:\n{}", view.body));
+                    }
+                    push_console(&mut lines, ConsoleLine::error(recv));
                 }
                 console_lines.set(lines);
                 protocol_log.set(view.pipeline_log.clone());
@@ -708,6 +728,8 @@ pub fn Workbench() -> Element {
         let mut st = st;
         let req_method = req.method;
         let req_url = req.url.clone();
+        let req_for_logging = req.clone();
+        let log_payloads_on_error = settings.ui.console_log_error_payloads;
 
         spawn(async move {
             let result = tokio::task::spawn_blocking(move || {
@@ -813,6 +835,7 @@ pub fn Workbench() -> Element {
             }
 
             let mut lines = console_lines();
+            let is_error_response = view.error.is_some() || view.status >= 400;
             if cancelled {
                 push_console(
                     &mut lines,
@@ -829,9 +852,14 @@ pub fn Workbench() -> Element {
                 } else {
                     &view.resolved_url
                 };
+                let line_fn = if view.status >= 400 {
+                    ConsoleLine::error
+                } else {
+                    ConsoleLine::network
+                };
                 push_console(
                     &mut lines,
-                    ConsoleLine::network(format!(
+                    line_fn(format!(
                         "← [{req_method}] {display_url} → {} {} ({} ms, {} B)",
                         view.status,
                         view.status_text,
@@ -839,6 +867,9 @@ pub fn Workbench() -> Element {
                         view.body.len()
                     )),
                 );
+            }
+            if !cancelled && is_error_response && log_payloads_on_error {
+                log_request_error_payloads(&mut lines, &req_for_logging, &view);
             }
             for msg in &view.console_messages {
                 push_console(&mut lines, ConsoleLine::script(msg.clone()));
@@ -2401,6 +2432,14 @@ pub fn Workbench() -> Element {
                         open: console_open(),
                         lines: console_lines(),
                         resizing: matches!(pane_drag(), Some(PaneDrag::Console { .. })),
+                        log_error_details: app_settings().ui.console_log_error_payloads,
+                        on_toggle_log_errors: move |val: bool| {
+                            let mut st = st;
+                            let mut s = app_settings();
+                            s.ui.console_log_error_payloads = val;
+                            app_settings.set(s);
+                            st.persist();
+                        },
                         on_toggle: move |_| console_open.set(!console_open()),
                         on_clear: move |_| console_lines.set(vec![]),
                         on_resize_start: move |start_y: f64| {
@@ -2579,5 +2618,152 @@ pub fn method_class(m: HttpMethod) -> &'static str {
         HttpMethod::Delete => "delete",
         HttpMethod::Head => "head",
         HttpMethod::Options => "options",
+    }
+}
+
+fn log_request_error_payloads(
+    lines: &mut Vec<ConsoleLine>,
+    req: &RequestDraft,
+    view: &ResponseView,
+) {
+    let target_url = if view.resolved_url.is_empty() {
+        &req.url
+    } else {
+        &view.resolved_url
+    };
+
+    // 1. Sent request details
+    let mut sent = format!("─── Sent Request ───\n[{} {}]", req.method, target_url);
+    let active_headers: Vec<_> = req
+        .headers
+        .iter()
+        .filter(|h| h.enabled && !h.key.is_empty())
+        .collect();
+    if !active_headers.is_empty() {
+        sent.push_str("\nHeaders:");
+        for h in active_headers {
+            sent.push_str(&format!("\n  {}: {}", h.key, h.value));
+        }
+    }
+    let body_str = match req.body_mode {
+        crate::core::BodyMode::Raw => {
+            if !req.body.trim().is_empty() {
+                Some(req.body.clone())
+            } else {
+                None
+            }
+        }
+        crate::core::BodyMode::Urlencoded => {
+            let pairs: Vec<_> = req
+                .body_urlencoded
+                .iter()
+                .filter(|kv| kv.enabled && !kv.key.is_empty())
+                .map(|kv| format!("{}={}", kv.key, kv.value))
+                .collect();
+            if !pairs.is_empty() {
+                Some(pairs.join("&"))
+            } else {
+                None
+            }
+        }
+        crate::core::BodyMode::FormData => {
+            let fields: Vec<_> = req
+                .body_formdata
+                .iter()
+                .filter(|f| f.enabled && !f.key.is_empty())
+                .map(|f| format!("{}: {}", f.key, f.value))
+                .collect();
+            if !fields.is_empty() {
+                Some(fields.join(", "))
+            } else {
+                None
+            }
+        }
+        crate::core::BodyMode::Graphql => {
+            let mut q = req.graphql_query.clone();
+            if !req.graphql_variables.trim().is_empty() {
+                q.push_str(&format!("\nVariables: {}", req.graphql_variables));
+            }
+            if !q.trim().is_empty() {
+                Some(q)
+            } else {
+                None
+            }
+        }
+        crate::core::BodyMode::Binary => {
+            if !req.binary_path.trim().is_empty() {
+                Some(format!("[Binary file: {}]", req.binary_path))
+            } else {
+                None
+            }
+        }
+        crate::core::BodyMode::None => None,
+    };
+    if let Some(b) = body_str {
+        sent.push_str("\nPayload:\n");
+        if b.len() > 4096 {
+            sent.push_str(&b[..4096]);
+            sent.push_str("\n... [truncated]");
+        } else {
+            sent.push_str(&b);
+        }
+    }
+    push_console(lines, ConsoleLine::network(sent));
+
+    // 2. Received on error details
+    let mut recv = format!(
+        "─── Received on Error ───\nStatus: {} {}",
+        view.status, view.status_text
+    );
+    if let Some(err) = &view.error {
+        recv.push_str(&format!("\nError detail: {err}"));
+    }
+    if !view.headers.is_empty() {
+        recv.push_str("\nHeaders:");
+        for (k, v) in &view.headers {
+            recv.push_str(&format!("\n  {k}: {v}"));
+        }
+    }
+    if !view.body.trim().is_empty() {
+        recv.push_str("\nPayload:\n");
+        if view.body.len() > 4096 {
+            recv.push_str(&view.body[..4096]);
+            recv.push_str("\n... [truncated]");
+        } else {
+            recv.push_str(&view.body);
+        }
+    }
+    push_console(lines, ConsoleLine::error(recv));
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_log_request_error_payloads() {
+        let mut lines = Vec::new();
+        let mut req = RequestDraft::default();
+        req.url = "https://api.example.com/login".into();
+        req.headers
+            .push(crate::core::KeyValue::new("Authorization", "Bearer token123"));
+        req.body_mode = crate::core::BodyMode::Raw;
+        req.body = r#"{"username": "alice"}"#.into();
+
+        let mut view = ResponseView::error("401 Unauthorized", vec![]);
+        view.status = 401;
+        view.status_text = "Unauthorized".into();
+        view.headers = vec![("content-type".into(), "application/json".into())];
+        view.body = r#"{"error": "invalid_credentials"}"#.into();
+
+        log_request_error_payloads(&mut lines, &req, &view);
+        assert_eq!(lines.len(), 2);
+        assert!(lines[0].message.contains("Sent Request"));
+        assert!(lines[0].message.contains("Authorization: Bearer token123"));
+        assert!(lines[0].message.contains(r#"{"username": "alice"}"#));
+
+        assert!(lines[1].message.contains("Received on Error"));
+        assert!(lines[1].message.contains("Status: 401 Unauthorized"));
+        assert!(lines[1].message.contains(r#"{"error": "invalid_credentials"}"#));
     }
 }
