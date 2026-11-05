@@ -85,6 +85,8 @@ pub fn Workbench() -> Element {
     let mut show_snippets = st.show_snippets;
     let mock_port = st.mock_port;
     let ws_connected = st.ws_connected;
+    let ws_timeline = st.ws_timeline;
+    let ws_auto_ping = st.ws_auto_ping;
     let mut protocol_log = st.protocol_log;
     let mut file_menu_open = st.file_menu_open;
     let mut tools_menu_open = st.tools_menu_open;
@@ -2317,6 +2319,8 @@ pub fn Workbench() -> Element {
                                             },
                                             sending: sending(),
                                             ws_connected: ws_connected(),
+                                            ws_timeline: ws_timeline(),
+                                            ws_auto_ping: ws_auto_ping(),
                                             protocol_log: protocol_log(),
                                         }
                                     }

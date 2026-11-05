@@ -5136,6 +5136,431 @@ details.json-fold:not([open]) > summary .json-fold-close-comma {
   border-color: color-mix(in srgb, var(--err) 30%, transparent);
 }
 
+/* —— Socket Deck & Modern WebSocket —— */
+.ws-header-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 12px;
+  background: var(--panel-header-bg, var(--panel-bg));
+  border-bottom: 1px solid var(--border);
+  border-radius: 4px 4px 0 0;
+  margin-bottom: 8px;
+}
+
+.ws-mode-switch {
+  display: inline-flex;
+  align-items: center;
+  background: var(--bg-alt, rgba(0,0,0,0.25));
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 2px;
+  gap: 2px;
+}
+
+.ws-mode-btn {
+  font-family: inherit;
+  font-size: var(--fs-small, 12px);
+  font-weight: 500;
+  color: var(--text-muted);
+  background: transparent;
+  border: none;
+  border-radius: 3px;
+  padding: 4px 10px;
+  cursor: pointer;
+  transition: all 120ms ease;
+}
+
+.ws-mode-btn:hover {
+  color: var(--text);
+  background: var(--hover-bg, rgba(255,255,255,0.06));
+}
+
+.ws-mode-btn.active {
+  color: var(--text-bright, #fff);
+  background: var(--accent);
+  font-weight: 600;
+}
+
+.ws-connection-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.btn-danger-ghost {
+  background: transparent;
+  color: var(--err, #ef4444);
+  border: 1px solid color-mix(in srgb, var(--err, #ef4444) 40%, transparent);
+  border-radius: 4px;
+  padding: 4px 10px;
+  font-size: var(--fs-small, 12px);
+  cursor: pointer;
+  transition: all 120ms ease;
+}
+
+.btn-danger-ghost:hover {
+  background: var(--err-soft, rgba(239, 68, 68, 0.15));
+}
+
+.ws-deck-container {
+  display: grid;
+  grid-template-columns: 280px 1fr;
+  gap: 12px;
+  height: 480px;
+  min-height: 380px;
+}
+
+@media (max-width: 900px) {
+  .ws-deck-container {
+    grid-template-columns: 1fr;
+    height: auto;
+  }
+}
+
+.ws-deck-presets {
+  display: flex;
+  flex-direction: column;
+  background: var(--panel-bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.ws-deck-presets-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+  background: var(--panel-header-bg, transparent);
+}
+
+.ws-deck-title {
+  font-size: var(--fs-small, 12px);
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.btn-mini-add {
+  font-size: 11px;
+  padding: 2px 6px;
+  background: var(--accent-soft, rgba(30, 215, 96, 0.15));
+  color: var(--accent, #1ed760);
+  border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
+  border-radius: 3px;
+  cursor: pointer;
+}
+
+.ws-new-preset-box {
+  padding: 8px;
+  background: var(--bg-alt, rgba(0,0,0,0.2));
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.ws-preset-input {
+  font-size: 12px;
+  padding: 4px 8px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 4px;
+}
+
+.ws-new-preset-btns {
+  display: flex;
+  gap: 6px;
+}
+
+.ws-presets-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.ws-presets-empty {
+  color: var(--text-dim, #777);
+  font-size: 12px;
+  font-style: italic;
+  padding: 16px 8px;
+  text-align: center;
+}
+
+.ws-preset-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  padding: 6px 8px;
+  background: var(--card-bg, rgba(255,255,255,0.03));
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  transition: all 120ms ease;
+}
+
+.ws-preset-card:hover {
+  background: var(--hover-bg, rgba(255,255,255,0.06));
+  border-color: color-mix(in srgb, var(--accent) 30%, var(--border));
+}
+
+.ws-preset-info {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  flex: 1;
+}
+
+.ws-preset-name {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.ws-preset-snippet {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text-dim, #888);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ws-preset-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.btn-send-deck {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 3px 8px;
+  background: var(--accent);
+  color: var(--accent-fg, #000);
+  border: none;
+  border-radius: 3px;
+  cursor: pointer;
+  transition: transform 80ms ease;
+}
+
+.btn-send-deck:hover:not(:disabled) {
+  filter: brightness(1.1);
+  transform: scale(1.02);
+}
+
+.btn-send-deck:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.btn-icon {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  font-size: 12px;
+  cursor: pointer;
+  padding: 2px 4px;
+}
+
+.btn-icon:hover {
+  color: var(--text);
+}
+
+.ws-deck-main {
+  display: flex;
+  flex-direction: column;
+  background: var(--panel-bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.ws-stream-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+  background: var(--panel-header-bg, transparent);
+}
+
+.ws-stream-timeline {
+  flex: 1;
+  overflow-y: auto;
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  background: var(--bg);
+}
+
+.ws-stream-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: var(--text-dim, #777);
+  gap: 8px;
+  padding: 40px 20px;
+}
+
+.ws-stream-empty-icon {
+  font-size: 28px;
+  opacity: 0.5;
+}
+
+.ws-stream-empty-text {
+  font-size: 13px;
+  max-width: 340px;
+  text-align: center;
+  line-height: 1.4;
+}
+
+.ws-frame-row {
+  display: flex;
+  width: 100%;
+}
+
+.ws-frame-row.frame-outbound {
+  justify-content: flex-end;
+}
+
+.ws-frame-row.frame-inbound {
+  justify-content: flex-start;
+}
+
+.ws-frame-row.frame-system {
+  justify-content: center;
+}
+
+.ws-frame-bubble {
+  max-width: 82%;
+  border-radius: 6px;
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  background: var(--panel-bg);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.frame-outbound .ws-frame-bubble {
+  background: color-mix(in srgb, var(--accent) 12%, var(--panel-bg));
+  border-color: color-mix(in srgb, var(--accent) 35%, transparent);
+}
+
+.frame-inbound .ws-frame-bubble {
+  background: color-mix(in srgb, #06b6d4 10%, var(--panel-bg));
+  border-color: color-mix(in srgb, #06b6d4 30%, transparent);
+}
+
+.frame-system .ws-frame-bubble {
+  background: var(--bg-alt, rgba(0,0,0,0.3));
+  border-color: var(--border);
+  padding: 4px 10px;
+}
+
+.ws-frame-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.ws-frame-badge {
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  padding: 1px 4px;
+  border-radius: 2px;
+}
+
+.frame-outbound .ws-frame-badge {
+  background: var(--accent);
+  color: var(--accent-fg, #000);
+}
+
+.frame-inbound .ws-frame-badge {
+  background: #06b6d4;
+  color: #000;
+}
+
+.frame-system .ws-frame-badge {
+  background: var(--text-dim, #555);
+  color: #fff;
+}
+
+.ws-frame-time {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--text-dim, #777);
+}
+
+.ws-frame-copy {
+  margin-left: auto;
+  font-size: 10px;
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  border-radius: 3px;
+  padding: 1px 5px;
+  cursor: pointer;
+}
+
+.ws-frame-copy:hover {
+  color: var(--text);
+  border-color: var(--accent);
+}
+
+.ws-frame-content {
+  font-family: var(--mono);
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--text);
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.ws-deck-composer {
+  display: flex;
+  gap: 8px;
+  padding: 8px 10px;
+  border-top: 1px solid var(--border);
+  background: var(--panel-header-bg, var(--panel-bg));
+}
+
+.ws-composer-input {
+  flex: 1;
+  font-family: var(--mono);
+  font-size: 12px;
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 6px 8px;
+  resize: vertical;
+  min-height: 48px;
+  max-height: 120px;
+}
+
+.ws-composer-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  justify-content: center;
+}
+
 /* —— Vars & Environments full page (Postman-style) —— */
 .vars-page {
   position: fixed;

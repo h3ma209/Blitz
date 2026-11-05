@@ -33,6 +33,8 @@ pub fn RequestBuilder(
     on_protocol_action: EventHandler<String>,
     sending: bool,
     ws_connected: bool,
+    #[props(default)] ws_timeline: Vec<crate::core::WsFrameItem>,
+    #[props(default)] ws_auto_ping: bool,
     protocol_log: Vec<String>,
     vars: VariableContext,
     #[props(default)] data_root: String,
@@ -194,6 +196,8 @@ pub fn RequestBuilder(
                 on_change,
                 on_protocol_action,
                 ws_connected,
+                ws_timeline: ws_timeline.clone(),
+                ws_auto_ping,
                 protocol_log: protocol_log.clone(),
                 sending,
             }
@@ -488,52 +492,314 @@ fn ProtocolFields(
     on_change: EventHandler<RequestDraft>,
     on_protocol_action: EventHandler<String>,
     ws_connected: bool,
+    #[props(default)] ws_timeline: Vec<crate::core::WsFrameItem>,
+    #[props(default)] ws_auto_ping: bool,
     protocol_log: Vec<String>,
     sending: bool,
 ) -> Element {
+    let mut preset_name_input = use_signal(String::new);
+    let mut show_new_preset = use_signal(|| false);
+
     rsx! {
         div { class: "builder-pane protocol-pane",
             match draft.protocol {
                 RequestProtocol::WebSocket => rsx! {
-                    label { class: "hint", "Message" }
-                    CommentableTextarea {
-                        class: "body-editor".to_string(),
-                        value: draft.ws_message.clone(),
-                        rows: Some("3"),
-                        on_change: {
-                            let draft = draft.clone();
-                            move |text: String| {
-                                let mut d = draft.clone();
-                                d.ws_message = text;
-                                on_change.call(d);
+                    div { class: "ws-header-bar",
+                        div { class: "ws-mode-switch",
+                            button {
+                                class: if draft.ws_deck_mode { "ws-mode-btn active" } else { "ws-mode-btn" },
+                                onclick: {
+                                    let mut d = draft.clone();
+                                    move |_| {
+                                        d.ws_deck_mode = true;
+                                        on_change.call(d.clone());
+                                    }
+                                },
+                                "⚡ Socket Deck"
+                            }
+                            button {
+                                class: if !draft.ws_deck_mode { "ws-mode-btn active" } else { "ws-mode-btn" },
+                                onclick: {
+                                    let mut d = draft.clone();
+                                    move |_| {
+                                        d.ws_deck_mode = false;
+                                        on_change.call(d.clone());
+                                    }
+                                },
+                                "📄 Classic (Postman)"
+                            }
+                        }
+                        div { class: "ws-connection-bar",
+                            if !ws_connected {
+                                button {
+                                    class: "btn btn-send",
+                                    disabled: sending,
+                                    onclick: move |_| on_protocol_action.call("ws_connect".into()),
+                                    "Connect"
+                                }
+                            } else {
+                                button {
+                                    class: "btn btn-danger-ghost",
+                                    onclick: move |_| on_protocol_action.call("ws_disconnect".into()),
+                                    "Disconnect"
+                                }
+                                button {
+                                    class: if ws_auto_ping { "btn btn-tag active" } else { "btn btn-tag" },
+                                    title: "Send heartbeat ping every 15s",
+                                    onclick: move |_| on_protocol_action.call("ws_toggle_ping".into()),
+                                    if ws_auto_ping { "Auto-Ping (15s)" } else { "Auto-Ping: Off" }
+                                }
+                                button {
+                                    class: "btn btn-ghost",
+                                    onclick: move |_| on_protocol_action.call("ws_clear".into()),
+                                    "Clear"
+                                }
+                            }
+                            span {
+                                class: if ws_connected { "ws-state connected" } else { "ws-state disconnected" },
+                                if ws_connected { "● Connected" } else { "○ Disconnected" }
                             }
                         }
                     }
-                    div { class: "kv-actions",
-                        button {
-                            class: "btn btn-send",
-                            disabled: ws_connected || sending,
-                            onclick: move |_| on_protocol_action.call("ws_connect".into()),
-                            "Connect"
+
+                    if !draft.ws_deck_mode {
+                        div { class: "ws-classic-view",
+                            label { class: "hint", "Message (Postman raw payload)" }
+                            CommentableTextarea {
+                                class: "body-editor".to_string(),
+                                value: draft.ws_message.clone(),
+                                rows: Some("4"),
+                                on_change: {
+                                    let draft = draft.clone();
+                                    move |text: String| {
+                                        let mut d = draft.clone();
+                                        d.ws_message = text;
+                                        on_change.call(d);
+                                    }
+                                }
+                            }
+                            div { class: "kv-actions",
+                                button {
+                                    class: "btn btn-ghost",
+                                    disabled: !ws_connected,
+                                    onclick: move |_| on_protocol_action.call("ws_send".into()),
+                                    "Send message"
+                                }
+                            }
                         }
-                        button {
-                            class: "btn btn-ghost",
-                            disabled: !ws_connected,
-                            onclick: move |_| on_protocol_action.call("ws_send".into()),
-                            "Send message"
+                    } else {
+                        div { class: "ws-deck-container",
+                                div { class: "ws-deck-presets",
+                                    div { class: "ws-deck-presets-head",
+                                        span { class: "ws-deck-title", "Message Presets" }
+                                        button {
+                                            class: "btn btn-mini-add",
+                                            title: "Add preset",
+                                            onclick: move |_| show_new_preset.set(!show_new_preset()),
+                                            "+ Preset"
+                                        }
+                                    }
+
+                                    if show_new_preset() {
+                                        div { class: "ws-new-preset-box",
+                                            input {
+                                                class: "ws-preset-input",
+                                                placeholder: "Preset Name (e.g. Subscribe)",
+                                                value: "{preset_name_input}",
+                                                oninput: move |e: Event<FormData>| preset_name_input.set(e.value()),
+                                            }
+                                            div { class: "ws-new-preset-btns",
+                                                button {
+                                                    class: "btn btn-sm btn-send",
+                                                    onclick: {
+                                                        let draft = draft.clone();
+                                                        move |_| {
+                                                            let name = preset_name_input().trim().to_string();
+                                                            let n = if name.is_empty() { "Preset".to_string() } else { name };
+                                                            let mut d = draft.clone();
+                                                            d.ws_presets.push(crate::core::WsPreset::new(n, &d.ws_message));
+                                                            preset_name_input.set(String::new());
+                                                            show_new_preset.set(false);
+                                                            on_change.call(d);
+                                                        }
+                                                    },
+                                                    "Save from Editor"
+                                                }
+                                                button {
+                                                    class: "btn btn-sm btn-ghost",
+                                                    onclick: move |_| show_new_preset.set(false),
+                                                    "Cancel"
+                                                }
+                                            }
+                                        }
+                                    }
+
+                                    div { class: "ws-presets-list",
+                                        if draft.ws_presets.is_empty() {
+                                            div { class: "ws-presets-empty", "No presets yet. Save your common messages here." }
+                                        }
+                                        for preset in draft.ws_presets.iter() {
+                                            {
+                                                let p_id = preset.id;
+                                                let p_msg = preset.message.clone();
+                                                let p_name = preset.name.clone();
+                                                rsx! {
+                                                    div { class: "ws-preset-card", key: "{p_id}",
+                                                        div { class: "ws-preset-info",
+                                                            span { class: "ws-preset-name", "{p_name}" }
+                                                            span { class: "ws-preset-snippet", "{p_msg}" }
+                                                        }
+                                                        div { class: "ws-preset-actions",
+                                                            button {
+                                                                class: "btn btn-sm btn-send-deck",
+                                                                disabled: !ws_connected,
+                                                                title: "Send this preset immediately",
+                                                                onclick: {
+                                                                    let draft = draft.clone();
+                                                                    let msg = p_msg.clone();
+                                                                    move |_| {
+                                                                        let mut d = draft.clone();
+                                                                        d.ws_message = msg.clone();
+                                                                        on_change.call(d);
+                                                                        on_protocol_action.call("ws_send".into());
+                                                                    }
+                                                                },
+                                                                "Send"
+                                                            }
+                                                            button {
+                                                                class: "btn btn-sm btn-icon",
+                                                                title: "Load into editor",
+                                                                onclick: {
+                                                                    let draft = draft.clone();
+                                                                    let msg = p_msg.clone();
+                                                                    move |_| {
+                                                                        let mut d = draft.clone();
+                                                                        d.ws_message = msg.clone();
+                                                                        on_change.call(d);
+                                                                    }
+                                                                },
+                                                                "✎"
+                                                            }
+                                                            button {
+                                                                class: "btn btn-sm btn-icon text-muted",
+                                                                title: "Delete preset",
+                                                                onclick: {
+                                                                    let draft = draft.clone();
+                                                                    move |_| {
+                                                                        let mut d = draft.clone();
+                                                                        d.ws_presets.retain(|p| p.id != p_id);
+                                                                        on_change.call(d);
+                                                                    }
+                                                                },
+                                                                "×"
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+
+                                div { class: "ws-deck-main",
+                                    div { class: "ws-stream-head",
+                                        span { class: "ws-deck-title", "Live Timeline Stream ({ws_timeline.len()} frames)" }
+                                    }
+
+                                    div { class: "ws-stream-timeline",
+                                        if ws_timeline.is_empty() {
+                                            div { class: "ws-stream-empty",
+                                                div { class: "ws-stream-empty-icon", "⚡" }
+                                                div { class: "ws-stream-empty-text", "WebSocket stream is empty. Connect and send messages or presets to see live bidirectional traffic." }
+                                            }
+                                        }
+                                        for frame in ws_timeline.iter() {
+                                            {
+                                                let f_dir = frame.direction;
+                                                let f_text = frame.text.clone();
+                                                let f_time = frame.timestamp.format("%H:%M:%S%.3f").to_string();
+                                                let dir_class = match f_dir {
+                                                    crate::core::WsDirection::Inbound => "frame-inbound",
+                                                    crate::core::WsDirection::Outbound => "frame-outbound",
+                                                    crate::core::WsDirection::System => "frame-system",
+                                                };
+                                                let badge_label = match f_dir {
+                                                    crate::core::WsDirection::Inbound => "↓ IN",
+                                                    crate::core::WsDirection::Outbound => "↑ OUT",
+                                                    crate::core::WsDirection::System => "ℹ SYS",
+                                                };
+                                                rsx! {
+                                                    div { class: "ws-frame-row {dir_class}", key: "{frame.id}",
+                                                        div { class: "ws-frame-bubble",
+                                                            div { class: "ws-frame-meta",
+                                                                span { class: "ws-frame-badge", "{badge_label}" }
+                                                                span { class: "ws-frame-time", "{f_time}" }
+                                                                if f_dir != crate::core::WsDirection::System {
+                                                                    button {
+                                                                        class: "ws-frame-copy",
+                                                                        title: "Load into composer",
+                                                                        onclick: {
+                                                                            let draft = draft.clone();
+                                                                            let t = f_text.clone();
+                                                                            move |_| {
+                                                                                let mut d = draft.clone();
+                                                                                d.ws_message = t.clone();
+                                                                                on_change.call(d);
+                                                                            }
+                                                                        },
+                                                                        "Use"
+                                                                    }
+                                                                }
+                                                            }
+                                                            pre { class: "ws-frame-content", "{f_text}" }
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+
+                                    div { class: "ws-deck-composer",
+                                        textarea {
+                                            class: "ws-composer-input",
+                                            placeholder: "Type JSON / text message... (Press Send Frame or a Preset)",
+                                            value: "{draft.ws_message}",
+                                            oninput: {
+                                                let draft = draft.clone();
+                                                move |evt: Event<FormData>| {
+                                                    let mut d = draft.clone();
+                                                    d.ws_message = evt.value();
+                                                    on_change.call(d);
+                                                }
+                                            }
+                                        }
+                                        div { class: "ws-composer-actions",
+                                            button {
+                                                class: "btn btn-send",
+                                                disabled: !ws_connected || draft.ws_message.trim().is_empty(),
+                                                onclick: move |_| on_protocol_action.call("ws_send".into()),
+                                                "Send Frame"
+                                            }
+                                            button {
+                                                class: "btn btn-ghost",
+                                                disabled: draft.ws_message.trim().is_empty(),
+                                                onclick: {
+                                                    let draft = draft.clone();
+                                                    move |_| {
+                                                        let mut d = draft.clone();
+                                                        let name = format!("Preset #{}", d.ws_presets.len() + 1);
+                                                        d.ws_presets.push(crate::core::WsPreset::new(name, &d.ws_message));
+                                                        on_change.call(d);
+                                                    }
+                                                },
+                                                "Save Preset"
+                                            }
+                                        }
+                                    }
+                                }
+                            }
                         }
-                        button {
-                            class: "btn btn-ghost",
-                            disabled: !ws_connected,
-                            onclick: move |_| on_protocol_action.call("ws_disconnect".into()),
-                            "Disconnect"
-                        }
-                        span {
-                            class: if ws_connected { "ws-state connected" } else { "ws-state disconnected" },
-                            if ws_connected { "Connected" } else { "Disconnected" }
-                        }
-                    }
-                },
+                    },
                 RequestProtocol::Grpc => rsx! {
                     label { class: "hint", "Method (package.Service/Method)" }
                     input {
@@ -779,7 +1045,7 @@ fn ProtocolFields(
                 },
                 RequestProtocol::Http => rsx! {},
             }
-            if !protocol_log.is_empty() {
+            if !protocol_log.is_empty() && (draft.protocol != RequestProtocol::WebSocket || !draft.ws_deck_mode) {
                 div { class: "protocol-log",
                     h4 { "Protocol log" }
                     for line in protocol_log.iter() {

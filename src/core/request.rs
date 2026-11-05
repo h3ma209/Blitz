@@ -205,6 +205,28 @@ impl SavedExample {
     }
 }
 
+fn default_true() -> bool {
+    true
+}
+
+/// Saved WebSocket message preset (Socket Deck mode).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct WsPreset {
+    pub id: Uuid,
+    pub name: String,
+    pub message: String,
+}
+
+impl WsPreset {
+    pub fn new(name: impl Into<String>, message: impl Into<String>) -> Self {
+        Self {
+            id: Uuid::new_v4(),
+            name: name.into(),
+            message: message.into(),
+        }
+    }
+}
+
 /// Form-data row: text value, or local file path when `is_file`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct FormDataField {
@@ -352,6 +374,12 @@ pub struct RequestDraft {
     /// WebSocket outbound message draft.
     #[serde(default)]
     pub ws_message: String,
+    /// Saved WebSocket message presets (Deck mode).
+    #[serde(default)]
+    pub ws_presets: Vec<WsPreset>,
+    /// WebSocket interface mode: true = Socket Deck, false = Classic Postman.
+    #[serde(default = "default_true")]
+    pub ws_deck_mode: bool,
     /// gRPC method path, e.g. `helloworld.Greeter/SayHello`.
     #[serde(default)]
     pub grpc_method: String,
@@ -419,6 +447,19 @@ impl Default for RequestDraft {
             settings: RequestSettings::default(),
             examples: vec![],
             ws_message: String::new(),
+            ws_presets: vec![
+                WsPreset {
+                    id: Uuid::from_u128(1),
+                    name: "Ping".into(),
+                    message: "{\"type\": \"ping\"}".into(),
+                },
+                WsPreset {
+                    id: Uuid::from_u128(2),
+                    name: "Subscribe".into(),
+                    message: "{\"action\": \"subscribe\", \"channel\": \"default\"}".into(),
+                },
+            ],
+            ws_deck_mode: true,
             grpc_method: "helloworld.Greeter/SayHello".into(),
             mqtt_topic: "test/topic".into(),
             mqtt_client_id: "blitz".into(),

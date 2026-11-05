@@ -18,33 +18,73 @@ pub fn run_protocol_action(mut st: WorkbenchState, action: String) {
                     old.close();
                 }
             }
-            st.protocol_log.set(vec![format!("ws → {}", req.url)]);
-            st.log_network(format!("⚡ [WS] Connecting to {}", req.url));
-            match ws_connect_session(&req.url) {
+            let resolved_url = st.vars.peek().resolve_string(&req.url);
+            st.protocol_log.set(vec![format!("ws → {resolved_url}")]);
+            st.log_network(format!("⚡ [WS] Connecting to {resolved_url}"));
+            match ws_connect_session(&resolved_url) {
                 Ok(sess) => {
                     if let Ok(mut g) = WS_SESSION.lock() {
                         *g = Some(sess);
                     }
                     st.ws_connected.set(true);
-                    st.status_msg.set("websocket connecting…".into());
-                    st.log_network(format!("⚡ [WS] Connected to {}", req.url));
+                    st.status_msg.set("websocket connected".into());
+                    st.log_network(format!("⚡ [WS] Connected to {resolved_url}"));
                     spawn(async move {
-                        for _ in 0..40 {
-                            tokio::time::sleep(Duration::from_millis(250)).await;
-                            let snap = WS_SESSION
-                                .lock()
-                                .ok()
-                                .and_then(|g| g.as_ref().map(|s| s.events_snapshot()))
-                                .unwrap_or_default();
-                            let lines: Vec<String> =
-                                snap.iter().map(|e| format!("{e:?}")).collect();
+                        let mut auto_ping_ticks = 0usize;
+                        loop {
+                            tokio::time::sleep(Duration::from_millis(150)).await;
+                            if !(st.ws_connected)() {
+                                break;
+                            }
+                            let (events, timeline, still_open) = {
+                                let Ok(g) = WS_SESSION.lock() else { break; };
+                                if let Some(s) = g.as_ref() {
+                                    (s.events_snapshot(), s.timeline_snapshot(), true)
+                                } else {
+                                    (vec![], vec![], false)
+                                }
+                            };
+                            if !still_open {
+                                st.ws_connected.set(false);
+                                break;
+                            }
+
+                            // Classic lines format for Postman mode
+                            let lines: Vec<String> = events
+                                .iter()
+                                .map(|e| match e {
+                                    crate::core::WsSessionEvent::Opened => "⚡ Connected".into(),
+                                    crate::core::WsSessionEvent::Outbound(t) => format!("→ {t}"),
+                                    crate::core::WsSessionEvent::Message(t) => format!("← {t}"),
+                                    crate::core::WsSessionEvent::Closed(c) => format!("✗ Closed: {c}"),
+                                    crate::core::WsSessionEvent::Error(e) => format!("! Error: {e}"),
+                                })
+                                .collect();
                             st.protocol_log.set(lines);
-                            let still = WS_SESSION
-                                .lock()
-                                .ok()
-                                .map(|g| g.is_some())
-                                .unwrap_or(false);
-                            if !still {
+                            st.ws_timeline.set(timeline);
+
+                            // Auto-ping if enabled every 15s (100 * 150ms)
+                            if (st.ws_auto_ping)() {
+                                auto_ping_ticks += 1;
+                                if auto_ping_ticks >= 100 {
+                                    auto_ping_ticks = 0;
+                                    if let Ok(g) = WS_SESSION.lock() {
+                                        if let Some(s) = g.as_ref() {
+                                            let _ = s.send_text("{\"type\": \"ping\"}");
+                                        }
+                                    }
+                                }
+                            }
+
+                            // If closed or error occurred, finish loop
+                            if events.iter().any(|e| {
+                                matches!(
+                                    e,
+                                    crate::core::WsSessionEvent::Closed(_)
+                                        | crate::core::WsSessionEvent::Error(_)
+                                )
+                            }) {
+                                tokio::time::sleep(Duration::from_millis(300)).await;
                                 st.ws_connected.set(false);
                                 break;
                             }
@@ -66,13 +106,23 @@ pub fn run_protocol_action(mut st: WorkbenchState, action: String) {
                         st.log_error(format!("⚡ [WS] Send failed: {e}"));
                         st.protocol_log.set(vec![e]);
                     } else {
-                        let mut lines = (st.protocol_log)();
-                        lines.push("→ sent".into());
-                        st.protocol_log.set(lines);
                         st.log_network(format!("⚡ [WS] Sent ({} bytes)", msg.len()));
                     }
                 }
             }
+        }
+        "ws_clear" => {
+            if let Ok(g) = WS_SESSION.lock() {
+                if let Some(s) = g.as_ref() {
+                    s.clear_timeline();
+                }
+            }
+            st.protocol_log.set(Vec::new());
+            st.ws_timeline.set(Vec::new());
+        }
+        "ws_toggle_ping" => {
+            let curr = (st.ws_auto_ping)();
+            st.ws_auto_ping.set(!curr);
         }
         "ws_disconnect" => {
             if let Ok(mut g) = WS_SESSION.lock() {
@@ -81,9 +131,6 @@ pub fn run_protocol_action(mut st: WorkbenchState, action: String) {
                 }
             }
             st.ws_connected.set(false);
-            let mut lines = (st.protocol_log)();
-            lines.push("disconnected".into());
-            st.protocol_log.set(lines);
             st.log_network("⚡ [WS] Disconnected");
         }
         "mqtt_publish" => {

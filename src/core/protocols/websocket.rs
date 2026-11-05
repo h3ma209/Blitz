@@ -3,16 +3,48 @@
 use std::sync::{Arc, Mutex};
 use std::thread::{self, JoinHandle};
 
+use chrono::{DateTime, Utc};
 use futures_util::{SinkExt, StreamExt};
+use serde::{Deserialize, Serialize};
 use tokio::runtime::Runtime;
 use tokio::sync::mpsc;
 use tokio_tungstenite::{connect_async, tungstenite::Message};
+use uuid::Uuid;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum WsDirection {
+    Inbound,
+    Outbound,
+    System,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct WsFrameItem {
+    pub id: Uuid,
+    pub timestamp: DateTime<Utc>,
+    pub direction: WsDirection,
+    pub text: String,
+    pub is_binary: bool,
+}
+
+impl WsFrameItem {
+    pub fn new(direction: WsDirection, text: impl Into<String>, is_binary: bool) -> Self {
+        Self {
+            id: Uuid::new_v4(),
+            timestamp: Utc::now(),
+            direction,
+            text: text.into(),
+            is_binary,
+        }
+    }
+}
 
 #[derive(Debug, Clone)]
 #[allow(dead_code)]
 pub enum WsSessionEvent {
     Opened,
     Message(String),
+    Outbound(String),
     Closed(String),
     Error(String),
 }
@@ -20,6 +52,7 @@ pub enum WsSessionEvent {
 pub struct WsSession {
     tx: mpsc::UnboundedSender<WsCmd>,
     events: Arc<Mutex<Vec<WsSessionEvent>>>,
+    frames: Arc<Mutex<Vec<WsFrameItem>>>,
     join: Option<JoinHandle<()>>,
 }
 
@@ -33,9 +66,23 @@ impl WsSession {
         self.events.lock().map(|g| g.clone()).unwrap_or_default()
     }
 
+    pub fn timeline_snapshot(&self) -> Vec<WsFrameItem> {
+        self.frames.lock().map(|g| g.clone()).unwrap_or_default()
+    }
+
+    pub fn clear_timeline(&self) {
+        if let Ok(mut f) = self.frames.lock() {
+            f.clear();
+        }
+        if let Ok(mut e) = self.events.lock() {
+            e.clear();
+        }
+    }
+
     pub fn send_text(&self, text: impl Into<String>) -> Result<(), String> {
+        let msg = text.into();
         self.tx
-            .send(WsCmd::Send(text.into()))
+            .send(WsCmd::Send(msg))
             .map_err(|e| format!("ws send: {e}"))
     }
 
@@ -52,6 +99,8 @@ pub fn ws_connect_session(url: &str) -> Result<WsSession, String> {
     let url = url.to_string();
     let events = Arc::new(Mutex::new(Vec::<WsSessionEvent>::new()));
     let events_bg = Arc::clone(&events);
+    let frames = Arc::new(Mutex::new(Vec::<WsFrameItem>::new()));
+    let frames_bg = Arc::clone(&frames);
     let (tx, mut rx) = mpsc::unbounded_channel::<WsCmd>();
 
     let join = thread::Builder::new()
@@ -60,7 +109,12 @@ pub fn ws_connect_session(url: &str) -> Result<WsSession, String> {
             let rt = match Runtime::new() {
                 Ok(r) => r,
                 Err(e) => {
-                    push(&events_bg, WsSessionEvent::Error(format!("runtime: {e}")));
+                    push_both(
+                        &events_bg,
+                        &frames_bg,
+                        WsSessionEvent::Error(format!("runtime: {e}")),
+                        WsFrameItem::new(WsDirection::System, format!("Runtime error: {e}"), false),
+                    );
                     return;
                 }
             };
@@ -68,11 +122,21 @@ pub fn ws_connect_session(url: &str) -> Result<WsSession, String> {
                 let (ws, _) = match connect_async(&url).await {
                     Ok(p) => p,
                     Err(e) => {
-                        push(&events_bg, WsSessionEvent::Error(format!("connect: {e}")));
+                        push_both(
+                            &events_bg,
+                            &frames_bg,
+                            WsSessionEvent::Error(format!("connect: {e}")),
+                            WsFrameItem::new(WsDirection::System, format!("Connect error: {e}"), false),
+                        );
                         return;
                     }
                 };
-                push(&events_bg, WsSessionEvent::Opened);
+                push_both(
+                    &events_bg,
+                    &frames_bg,
+                    WsSessionEvent::Opened,
+                    WsFrameItem::new(WsDirection::System, format!("Connected to {url}"), false),
+                );
                 let (mut write, mut read) = ws.split();
 
                 loop {
@@ -80,14 +144,30 @@ pub fn ws_connect_session(url: &str) -> Result<WsSession, String> {
                         cmd = rx.recv() => {
                             match cmd {
                                 Some(WsCmd::Send(t)) => {
+                                    push_both(
+                                        &events_bg,
+                                        &frames_bg,
+                                        WsSessionEvent::Outbound(t.clone()),
+                                        WsFrameItem::new(WsDirection::Outbound, t.clone(), false),
+                                    );
                                     if let Err(e) = write.send(Message::Text(t.into())).await {
-                                        push(&events_bg, WsSessionEvent::Error(format!("send: {e}")));
+                                        push_both(
+                                            &events_bg,
+                                            &frames_bg,
+                                            WsSessionEvent::Error(format!("send: {e}")),
+                                            WsFrameItem::new(WsDirection::System, format!("Send error: {e}"), false),
+                                        );
                                         break;
                                     }
                                 }
                                 Some(WsCmd::Close) | None => {
                                     let _ = write.close().await;
-                                    push(&events_bg, WsSessionEvent::Closed("local close".into()));
+                                    push_both(
+                                        &events_bg,
+                                        &frames_bg,
+                                        WsSessionEvent::Closed("local close".into()),
+                                        WsFrameItem::new(WsDirection::System, "Disconnected (local close)", false),
+                                    );
                                     break;
                                 }
                             }
@@ -95,28 +175,50 @@ pub fn ws_connect_session(url: &str) -> Result<WsSession, String> {
                         msg = read.next() => {
                             match msg {
                                 Some(Ok(Message::Text(t))) => {
-                                    push(&events_bg, WsSessionEvent::Message(t.to_string()));
+                                    push_both(
+                                        &events_bg,
+                                        &frames_bg,
+                                        WsSessionEvent::Message(t.to_string()),
+                                        WsFrameItem::new(WsDirection::Inbound, t.to_string(), false),
+                                    );
                                 }
                                 Some(Ok(Message::Binary(b))) => {
-                                    push(
+                                    let label = format!("[binary {} bytes]", b.len());
+                                    push_both(
                                         &events_bg,
-                                        WsSessionEvent::Message(format!("[binary {} bytes]", b.len())),
+                                        &frames_bg,
+                                        WsSessionEvent::Message(label.clone()),
+                                        WsFrameItem::new(WsDirection::Inbound, label, true),
                                     );
                                 }
                                 Some(Ok(Message::Ping(_) | Message::Pong(_) | Message::Frame(_))) => {}
                                 Some(Ok(Message::Close(c))) => {
-                                    push(
+                                    let msg = format!("{c:?}");
+                                    push_both(
                                         &events_bg,
-                                        WsSessionEvent::Closed(format!("{c:?}")),
+                                        &frames_bg,
+                                        WsSessionEvent::Closed(msg.clone()),
+                                        WsFrameItem::new(WsDirection::System, format!("Closed by remote: {msg}"), false),
                                     );
                                     break;
                                 }
                                 Some(Err(e)) => {
-                                    push(&events_bg, WsSessionEvent::Error(format!("read: {e}")));
+                                    let msg = format!("read: {e}");
+                                    push_both(
+                                        &events_bg,
+                                        &frames_bg,
+                                        WsSessionEvent::Error(msg.clone()),
+                                        WsFrameItem::new(WsDirection::System, format!("Read error: {msg}"), false),
+                                    );
                                     break;
                                 }
                                 None => {
-                                    push(&events_bg, WsSessionEvent::Closed("eof".into()));
+                                    push_both(
+                                        &events_bg,
+                                        &frames_bg,
+                                        WsSessionEvent::Closed("eof".into()),
+                                        WsFrameItem::new(WsDirection::System, "Disconnected (remote EOF)", false),
+                                    );
                                     break;
                                 }
                             }
@@ -130,16 +232,29 @@ pub fn ws_connect_session(url: &str) -> Result<WsSession, String> {
     Ok(WsSession {
         tx,
         events,
+        frames,
         join: Some(join),
     })
 }
 
-fn push(events: &Arc<Mutex<Vec<WsSessionEvent>>>, ev: WsSessionEvent) {
+fn push_both(
+    events: &Arc<Mutex<Vec<WsSessionEvent>>>,
+    frames: &Arc<Mutex<Vec<WsFrameItem>>>,
+    ev: WsSessionEvent,
+    frame: WsFrameItem,
+) {
     if let Ok(mut g) = events.lock() {
         g.push(ev);
         if g.len() > 500 {
             let drain = g.len() - 500;
             g.drain(0..drain);
+        }
+    }
+    if let Ok(mut f) = frames.lock() {
+        f.push(frame);
+        if f.len() > 500 {
+            let drain = f.len() - 500;
+            f.drain(0..drain);
         }
     }
 }
