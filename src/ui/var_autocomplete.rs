@@ -124,6 +124,7 @@ pub async fn apply_var_completion_dom(
     open_bytes: usize,
     insert_name: &str,
 ) -> Option<String> {
+    let token = format!("{{{{{}}}}}", insert_name.trim());
     let script = format!(
         r#"
         const el = document.getElementById({id});
@@ -169,7 +170,7 @@ pub async fn apply_var_completion_dom(
         "#,
         id = serde_json::to_string(element_id).unwrap_or_else(|_| "\"\"".into()),
         open_bytes = open_bytes,
-        token = format!("{{{{{}}}}}", insert_name.trim())
+        token = token
     );
     let v = document::eval(&script).await.ok()?;
     v.as_str().map(|s| s.to_string())

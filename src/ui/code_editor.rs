@@ -379,12 +379,9 @@ pub fn MultilineCodeField(
             },
             onkeyup: {
                 move |evt: Event<KeyboardData>| {
-                    match evt.key() {
-                        Key::Escape => {
-                            var_menu.set(None);
-                            js_menu.set(None);
-                        }
-                        _ => {}
+                    if evt.key() == Key::Escape {
+                        var_menu.set(None);
+                        js_menu.set(None);
                     }
                 }
             },
@@ -517,9 +514,10 @@ pub fn MultilineCodeField(
                 // Undo / Redo keyboard shortcuts
                 let cmd = evt.modifiers().meta() || evt.modifiers().ctrl();
                 let shift = evt.modifiers().shift();
-                let is_undo = cmd && !shift && matches!(evt.key(), Key::Character(ref c) if c.eq_ignore_ascii_case("z"));
-                let is_redo = (cmd && shift && matches!(evt.key(), Key::Character(ref c) if c.eq_ignore_ascii_case("z")))
-                    || (cmd && !shift && matches!(evt.key(), Key::Character(ref c) if c.eq_ignore_ascii_case("y")));
+                let is_z = matches!(evt.key(), Key::Character(ref c) if c.eq_ignore_ascii_case("z"));
+                let is_y = matches!(evt.key(), Key::Character(ref c) if c.eq_ignore_ascii_case("y"));
+                let is_undo = cmd && !shift && is_z;
+                let is_redo = cmd && ((shift && is_z) || (!shift && is_y));
 
                 if is_undo {
                     evt.prevent_default();

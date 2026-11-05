@@ -66,7 +66,7 @@ fn tokenize_path(path: &str) -> Result<Vec<Token>, String> {
                 }
                 let mut index_str = String::new();
                 let mut closed = false;
-                while let Some(c) = chars.next() {
+                for c in chars.by_ref() {
                     if c == ']' {
                         closed = true;
                         break;
