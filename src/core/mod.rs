@@ -92,8 +92,8 @@ pub use perf_runner::{run_performance, PerfReport};
 pub use protocols::{
     graphql_ws_subscribe, grpc_reflection_list, grpc_server_stream_stub, grpc_unary, mcp_call_tool,
     mcp_list_tools, mqtt_publish, mqtt_subscribe_once, socketio_session, split_mcp_args, sse_listen,
-    ws_connect_session, GrpcUnaryResult, McpToolInfo, MqttActionResult, SseEvent, WsDirection,
-    WsFrameItem, WsSession, WsSessionEvent,
+    ws_connect_session, ws_connect_session_with_headers, GrpcUnaryResult, McpToolInfo,
+    MqttActionResult, SseEvent, WsDirection, WsFrameItem, WsSession, WsSessionEvent,
 };
 pub use request::{
     build_url_with_params, extract_path_param_keys, extract_url_path, extract_url_query_params,

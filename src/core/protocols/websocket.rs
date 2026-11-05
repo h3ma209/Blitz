@@ -8,7 +8,10 @@ use futures_util::{SinkExt, StreamExt};
 use serde::{Deserialize, Serialize};
 use tokio::runtime::Runtime;
 use tokio::sync::mpsc;
-use tokio_tungstenite::{connect_async, tungstenite::Message};
+use tokio_tungstenite::{
+    connect_async,
+    tungstenite::{client::IntoClientRequest, Message},
+};
 use uuid::Uuid;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -96,7 +99,16 @@ impl WsSession {
 
 /// Connect in a background thread with its own Tokio runtime.
 pub fn ws_connect_session(url: &str) -> Result<WsSession, String> {
+    ws_connect_session_with_headers(url, &[])
+}
+
+/// Connect in a background thread with custom handshake headers.
+pub fn ws_connect_session_with_headers(
+    url: &str,
+    headers: &[(String, String)],
+) -> Result<WsSession, String> {
     let url = url.to_string();
+    let headers_bg = headers.to_vec();
     let events = Arc::new(Mutex::new(Vec::<WsSessionEvent>::new()));
     let events_bg = Arc::clone(&events);
     let frames = Arc::new(Mutex::new(Vec::<WsFrameItem>::new()));
@@ -119,7 +131,34 @@ pub fn ws_connect_session(url: &str) -> Result<WsSession, String> {
                 }
             };
             rt.block_on(async move {
-                let (ws, _) = match connect_async(&url).await {
+                let connect_res = if headers_bg.is_empty() {
+                    connect_async(&url).await
+                } else {
+                    match url.clone().into_client_request() {
+                        Ok(mut req) => {
+                            for (k, v) in &headers_bg {
+                                if let (Ok(hk), Ok(hv)) = (
+                                    tokio_tungstenite::tungstenite::http::header::HeaderName::from_bytes(k.as_bytes()),
+                                    tokio_tungstenite::tungstenite::http::header::HeaderValue::from_str(v),
+                                ) {
+                                    req.headers_mut().insert(hk, hv);
+                                }
+                            }
+                            connect_async(req).await
+                        }
+                        Err(e) => {
+                            push_both(
+                                &events_bg,
+                                &frames_bg,
+                                WsSessionEvent::Error(format!("request build: {e}")),
+                                WsFrameItem::new(WsDirection::System, format!("Request error: {e}"), false),
+                            );
+                            return;
+                        }
+                    }
+                };
+
+                let (ws, _) = match connect_res {
                     Ok(p) => p,
                     Err(e) => {
                         push_both(

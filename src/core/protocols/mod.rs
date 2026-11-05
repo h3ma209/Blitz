@@ -15,4 +15,7 @@ pub use mcp::{mcp_call_tool, mcp_list_tools, split_mcp_args, McpToolInfo};
 pub use mqtt::{mqtt_publish, mqtt_subscribe_once, MqttActionResult};
 pub use socketio::socketio_session;
 pub use sse::{sse_listen, SseEvent};
-pub use websocket::{ws_connect_session, WsDirection, WsFrameItem, WsSession, WsSessionEvent};
+pub use websocket::{
+    ws_connect_session, ws_connect_session_with_headers, WsDirection, WsFrameItem, WsSession,
+    WsSessionEvent,
+};

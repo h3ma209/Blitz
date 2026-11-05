@@ -10,8 +10,9 @@ use super::{CommentableTextarea, ScriptCodeEditor};
 
 pub use super::var_hover::VarEditEvent as RequestVarEditEvent;
 
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum BuilderTab {
+    Message,
     Params,
     Headers,
     Body,
@@ -41,7 +42,11 @@ pub fn RequestBuilder(
     on_var_edit: EventHandler<VarEditEvent>,
     #[props(default)] on_open_code: EventHandler<()>,
 ) -> Element {
-    let mut tab = use_signal(|| BuilderTab::Params);
+    let default_tab = match draft.protocol {
+        RequestProtocol::Http => BuilderTab::Params,
+        _ => BuilderTab::Message,
+    };
+    let mut tab = use_signal(move || default_tab);
     let mut copied_curl = use_signal(|| false);
 
     let set_method = {
@@ -64,6 +69,87 @@ pub fn RequestBuilder(
 
     let proto_class = protocol_class(draft.protocol);
     let method_class = method_class_name(draft.method);
+
+    let tab_list: Vec<(String, BuilderTab)> = match draft.protocol {
+        RequestProtocol::Http => vec![
+            ("Params".into(), BuilderTab::Params),
+            ("Headers".into(), BuilderTab::Headers),
+            ("Body".into(), BuilderTab::Body),
+            ("Auth".into(), BuilderTab::Auth),
+            (
+                if draft.assertions.is_empty() {
+                    "Tests".to_string()
+                } else {
+                    format!("Tests ({})", draft.assertions.iter().filter(|a| a.enabled).count())
+                },
+                BuilderTab::Tests,
+            ),
+            ("Scripts".into(), BuilderTab::Scripts),
+            ("Docs".into(), BuilderTab::Docs),
+            ("Settings".into(), BuilderTab::Settings),
+        ],
+        RequestProtocol::WebSocket => vec![
+            ("Message / Deck".into(), BuilderTab::Message),
+            ("Params".into(), BuilderTab::Params),
+            ("Headers".into(), BuilderTab::Headers),
+            ("Auth".into(), BuilderTab::Auth),
+            ("Scripts".into(), BuilderTab::Scripts),
+            ("Docs".into(), BuilderTab::Docs),
+            ("Settings".into(), BuilderTab::Settings),
+        ],
+        RequestProtocol::Grpc => vec![
+            ("Method & Payload".into(), BuilderTab::Message),
+            ("Headers (Metadata)".into(), BuilderTab::Headers),
+            ("Auth".into(), BuilderTab::Auth),
+            ("Scripts".into(), BuilderTab::Scripts),
+            ("Docs".into(), BuilderTab::Docs),
+            ("Settings".into(), BuilderTab::Settings),
+        ],
+        RequestProtocol::GraphqlWs => vec![
+            ("Subscription".into(), BuilderTab::Message),
+            ("Params".into(), BuilderTab::Params),
+            ("Headers".into(), BuilderTab::Headers),
+            ("Auth".into(), BuilderTab::Auth),
+            ("Scripts".into(), BuilderTab::Scripts),
+            ("Docs".into(), BuilderTab::Docs),
+            ("Settings".into(), BuilderTab::Settings),
+        ],
+        RequestProtocol::Sse => vec![
+            ("Stream".into(), BuilderTab::Message),
+            ("Params".into(), BuilderTab::Params),
+            ("Headers".into(), BuilderTab::Headers),
+            ("Auth".into(), BuilderTab::Auth),
+            ("Scripts".into(), BuilderTab::Scripts),
+            ("Docs".into(), BuilderTab::Docs),
+            ("Settings".into(), BuilderTab::Settings),
+        ],
+        RequestProtocol::Mqtt => vec![
+            ("Topic & Payload".into(), BuilderTab::Message),
+            ("Auth".into(), BuilderTab::Auth),
+            ("Scripts".into(), BuilderTab::Scripts),
+            ("Docs".into(), BuilderTab::Docs),
+            ("Settings".into(), BuilderTab::Settings),
+        ],
+        RequestProtocol::SocketIo => vec![
+            ("Event & Payload".into(), BuilderTab::Message),
+            ("Headers".into(), BuilderTab::Headers),
+            ("Auth".into(), BuilderTab::Auth),
+            ("Scripts".into(), BuilderTab::Scripts),
+            ("Docs".into(), BuilderTab::Docs),
+            ("Settings".into(), BuilderTab::Settings),
+        ],
+        RequestProtocol::Mcp => vec![
+            ("Tool & Args".into(), BuilderTab::Message),
+            ("Docs".into(), BuilderTab::Docs),
+            ("Settings".into(), BuilderTab::Settings),
+        ],
+    };
+
+    let active_tab = if tab_list.iter().any(|(_, t)| *t == tab()) {
+        tab()
+    } else {
+        tab_list.first().map(|(_, t)| *t).unwrap_or(BuilderTab::Params)
+    };
 
     rsx! {
         div { class: "request-row",
@@ -190,48 +276,36 @@ pub fn RequestBuilder(
             }
         }
 
-        if draft.protocol != RequestProtocol::Http {
-            ProtocolFields {
-                draft: draft.clone(),
-                on_change,
-                on_protocol_action,
-                ws_connected,
-                ws_timeline: ws_timeline.clone(),
-                ws_auto_ping,
-                protocol_log: protocol_log.clone(),
-                sending,
-            }
-        }
-
-        if draft.protocol == RequestProtocol::Http {
         div { class: "builder-tabs",
-            for (label, t) in [
-                ("Params".to_string(), BuilderTab::Params),
-                ("Headers".to_string(), BuilderTab::Headers),
-                ("Body".to_string(), BuilderTab::Body),
-                ("Auth".to_string(), BuilderTab::Auth),
-                (
-                    if draft.assertions.is_empty() {
-                        "Tests".to_string()
-                    } else {
-                        format!("Tests ({})", draft.assertions.iter().filter(|a| a.enabled).count())
-                    },
-                    BuilderTab::Tests,
-                ),
-                ("Scripts".to_string(), BuilderTab::Scripts),
-                ("Docs".to_string(), BuilderTab::Docs),
-                ("Settings".to_string(), BuilderTab::Settings),
-            ] {
-                button {
-                    class: if tab() == t { "builder-tab active" } else { "builder-tab" },
-                    onclick: move |_| tab.set(t),
-                    "{label}"
+            for (label, t) in tab_list.iter() {
+                {
+                    let t_val = *t;
+                    rsx! {
+                        button {
+                            key: "{label}",
+                            class: if active_tab == t_val { "builder-tab active" } else { "builder-tab" },
+                            onclick: move |_| tab.set(t_val),
+                            "{label}"
+                        }
+                    }
                 }
             }
         }
 
         div { class: "builder-pane",
-            match tab() {
+            match active_tab {
+                BuilderTab::Message => rsx! {
+                    ProtocolFields {
+                        draft: draft.clone(),
+                        on_change,
+                        on_protocol_action,
+                        ws_connected,
+                        ws_timeline: ws_timeline.clone(),
+                        ws_auto_ping,
+                        protocol_log: protocol_log.clone(),
+                        sending,
+                    }
+                },
                 BuilderTab::Params => {
                     let path_vars = if draft.path_params.is_empty() {
                         crate::core::sync_path_params(&draft.url, &draft.path_params)
@@ -432,7 +506,6 @@ pub fn RequestBuilder(
                 },
             }
         }
-        } // HTTP-only builder tabs
     }
 }
 

@@ -4,8 +4,8 @@ use dioxus::prelude::*;
 
 use crate::core::{
     graphql_ws_subscribe, grpc_reflection_list, mcp_call_tool, mcp_list_tools, mqtt_publish,
-    mqtt_subscribe_once, socketio_session, split_mcp_args, sse_listen, ws_connect_session,
-    MqttActionResult,
+    mqtt_subscribe_once, socketio_session, split_mcp_args, sse_listen,
+    ws_connect_session_with_headers, MqttActionResult,
 };
 use crate::ui::workbench::state::{WorkbenchState, WS_SESSION};
 
@@ -18,10 +18,34 @@ pub fn run_protocol_action(mut st: WorkbenchState, action: String) {
                     old.close();
                 }
             }
-            let resolved_url = st.vars.peek().resolve_string(&req.url);
-            st.protocol_log.set(vec![format!("ws → {resolved_url}")]);
-            st.log_network(format!("⚡ [WS] Connecting to {resolved_url}"));
-            match ws_connect_session(&resolved_url) {
+            let vars = st.vars.peek();
+            let resolved_url = vars.resolve_string(&req.url);
+            let mut headers_to_send: Vec<(String, String)> = Vec::new();
+            for h in req.headers.iter().filter(|h| h.enabled && !h.key.is_empty()) {
+                headers_to_send.push((
+                    vars.resolve_string(&h.key),
+                    vars.resolve_string(&h.value),
+                ));
+            }
+            match &req.auth.auth_type {
+                crate::core::AuthType::Bearer => {
+                    let token = vars.resolve_string(&req.auth.token);
+                    if !token.is_empty() {
+                        headers_to_send.push(("Authorization".into(), format!("Bearer {token}")));
+                    }
+                }
+                crate::core::AuthType::ApiKey => {
+                    let key = vars.resolve_string(&req.auth.api_key_header);
+                    let val = vars.resolve_string(&req.auth.token);
+                    if !key.is_empty() && !val.is_empty() {
+                        headers_to_send.push((key, val));
+                    }
+                }
+                _ => {}
+            }
+            st.protocol_log.set(vec![format!("ws → {resolved_url} ({} headers)", headers_to_send.len())]);
+            st.log_network(format!("⚡ [WS] Connecting to {resolved_url} ({} headers)", headers_to_send.len()));
+            match ws_connect_session_with_headers(&resolved_url, &headers_to_send) {
                 Ok(sess) => {
                     if let Ok(mut g) = WS_SESSION.lock() {
                         *g = Some(sess);
