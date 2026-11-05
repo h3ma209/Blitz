@@ -182,6 +182,111 @@ fn apply_js_insert(text: &str, caret: usize, start: usize, snippet: &str) -> (St
     (out, new_caret)
 }
 
+fn current_time_ms() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as u64)
+        .unwrap_or(0)
+}
+
+/// Single snapshot in editor undo/redo history.
+#[derive(Clone, Debug, PartialEq)]
+pub struct TextSnapshot {
+    pub text: String,
+    pub caret: usize,
+}
+
+/// Robust undo/redo history manager for multiline code editors.
+#[derive(Clone, Debug, PartialEq, Default)]
+pub struct TextHistory {
+    pub past: Vec<TextSnapshot>,
+    pub future: Vec<TextSnapshot>,
+    pub last_checkpoint_ms: u64,
+}
+
+impl TextHistory {
+    pub fn new(_initial_text: &str) -> Self {
+        Self {
+            past: Vec::new(),
+            future: Vec::new(),
+            last_checkpoint_ms: current_time_ms(),
+        }
+    }
+
+    /// Record a keystroke edit, grouping rapid single-character typing.
+    pub fn record(&mut self, prev_text: &str, prev_caret: usize, new_text: &str, now_ms: u64) {
+        if prev_text == new_text {
+            return;
+        }
+        self.future.clear();
+
+        let is_rapid = now_ms.saturating_sub(self.last_checkpoint_ms) < 450;
+        let is_boundary = new_text.ends_with('\n')
+            || new_text.ends_with(' ')
+            || new_text.ends_with('\t')
+            || (new_text.len() as isize - prev_text.len() as isize).abs() > 1;
+
+        if !is_rapid || is_boundary || self.past.is_empty() {
+            if self.past.len() >= 150 {
+                self.past.remove(0);
+            }
+            self.past.push(TextSnapshot {
+                text: prev_text.to_string(),
+                caret: prev_caret,
+            });
+            self.last_checkpoint_ms = now_ms;
+        }
+    }
+
+    /// Explicit checkpoint before non-keystroke mutations (e.g. Beautify JSON, comment toggle, indentation).
+    pub fn push_explicit_checkpoint(&mut self, text: &str, caret: usize) {
+        if self.past.last().map(|s| s.text.as_str()) == Some(text) {
+            return;
+        }
+        self.future.clear();
+        if self.past.len() >= 150 {
+            self.past.remove(0);
+        }
+        self.past.push(TextSnapshot {
+            text: text.to_string(),
+            caret,
+        });
+        self.last_checkpoint_ms = current_time_ms();
+    }
+
+    pub fn can_undo(&self) -> bool {
+        !self.past.is_empty()
+    }
+
+    pub fn can_redo(&self) -> bool {
+        !self.future.is_empty()
+    }
+
+    pub fn undo(&mut self, current_text: &str, current_caret: usize) -> Option<TextSnapshot> {
+        let prev = self.past.pop()?;
+        if self.future.len() >= 150 {
+            self.future.remove(0);
+        }
+        self.future.push(TextSnapshot {
+            text: current_text.to_string(),
+            caret: current_caret,
+        });
+        Some(prev)
+    }
+
+    pub fn redo(&mut self, current_text: &str, current_caret: usize) -> Option<TextSnapshot> {
+        let next = self.future.pop()?;
+        if self.past.len() >= 150 {
+            self.past.remove(0);
+        }
+        self.past.push(TextSnapshot {
+            text: current_text.to_string(),
+            caret: current_caret,
+        });
+        Some(next)
+    }
+}
+
 /// Multiline editor with optional JS highlighting, `{{` variables, and `blitz.*` completions.
 #[component]
 pub fn MultilineCodeField(
@@ -196,8 +301,14 @@ pub fn MultilineCodeField(
 ) -> Element {
     let mut current_val = use_signal(|| value.clone());
     let mut last_sent = use_signal(|| value.clone());
+    let mut history = use_signal(|| TextHistory::new(&value));
 
     if value != last_sent() {
+        let prev = current_val();
+        if prev != value {
+            let len = prev.len();
+            history.write().push_explicit_checkpoint(&prev, len);
+        }
         current_val.set(value.clone());
         last_sent.set(value.clone());
     }
@@ -239,6 +350,11 @@ pub fn MultilineCodeField(
                 move |evt: Event<FormData>| {
                     let raw_val = evt.value();
                     let new_val = crate::core::sandbox::normalize_smart_quotes(&raw_val);
+                    let prev_val = current_val();
+                    let now_ms = current_time_ms();
+                    let prev_caret = prev_val.len();
+                    history.write().record(&prev_val, prev_caret, &new_val, now_ms);
+
                     current_val.set(new_val.clone());
                     last_sent.set(new_val.clone());
                     on_change.call(new_val.clone());
@@ -325,6 +441,8 @@ pub fn MultilineCodeField(
                                 let id = field_id();
                                 let value = current_val();
                                 spawn(async move {
+                                    let caret = read_textarea_caret(&id).await;
+                                    history.write().push_explicit_checkpoint(&value, caret);
                                     let res = apply_var_completion_dom(&id, open, &item.insert).await;
                                     if res.is_none() {
                                         if let Some((caret, _, _, _)) = read_textarea_caret_anchor(&id).await {
@@ -376,6 +494,8 @@ pub fn MultilineCodeField(
                                 let id = field_id();
                                 let value = value_for_fallback.clone();
                                 spawn(async move {
+                                    let caret = read_textarea_caret(&id).await;
+                                    history.write().push_explicit_checkpoint(&value, caret);
                                     if let Some((caret, _, _, _)) = read_textarea_caret_anchor(&id).await {
                                         let (new_text, new_caret) =
                                             apply_js_insert(&value, caret, start, &snippet);
@@ -391,6 +511,45 @@ pub fn MultilineCodeField(
                     }
                 }
 
+                // Undo / Redo keyboard shortcuts
+                let cmd = evt.modifiers().meta() || evt.modifiers().ctrl();
+                let shift = evt.modifiers().shift();
+                let is_undo = cmd && !shift && matches!(evt.key(), Key::Character(ref c) if c.eq_ignore_ascii_case("z"));
+                let is_redo = (cmd && shift && matches!(evt.key(), Key::Character(ref c) if c.eq_ignore_ascii_case("z")))
+                    || (cmd && !shift && matches!(evt.key(), Key::Character(ref c) if c.eq_ignore_ascii_case("y")));
+
+                if is_undo {
+                    evt.prevent_default();
+                    let id = field_id();
+                    let cur = current_val();
+                    spawn(async move {
+                        let caret = read_textarea_caret(&id).await;
+                        if let Some(snap) = history.write().undo(&cur, caret) {
+                            current_val.set(snap.text.clone());
+                            last_sent.set(snap.text.clone());
+                            on_change.call(snap.text.clone());
+                            apply_editor_undo_redo(&id, &snap.text, snap.caret).await;
+                        }
+                    });
+                    return;
+                }
+
+                if is_redo {
+                    evt.prevent_default();
+                    let id = field_id();
+                    let cur = current_val();
+                    spawn(async move {
+                        let caret = read_textarea_caret(&id).await;
+                        if let Some(snap) = history.write().redo(&cur, caret) {
+                            current_val.set(snap.text.clone());
+                            last_sent.set(snap.text.clone());
+                            on_change.call(snap.text.clone());
+                            apply_editor_undo_redo(&id, &snap.text, snap.caret).await;
+                        }
+                    });
+                    return;
+                }
+
                 // Auto-indent on Enter (VS Code style block matching and indent preservation)
                 if evt.key() == Key::Enter
                     && !evt.modifiers().shift()
@@ -400,7 +559,10 @@ pub fn MultilineCodeField(
                 {
                     evt.prevent_default();
                     let id = field_id();
+                    let cur = current_val();
                     spawn(async move {
+                        let caret = read_textarea_caret(&id).await;
+                        history.write().push_explicit_checkpoint(&cur, caret);
                         auto_indent_on_enter(&id).await;
                     });
                     return;
@@ -411,7 +573,10 @@ pub fn MultilineCodeField(
                     evt.prevent_default();
                     let shift = evt.modifiers().shift();
                     let id = field_id();
+                    let cur = current_val();
                     spawn(async move {
+                        let caret = read_textarea_caret(&id).await;
+                        history.write().push_explicit_checkpoint(&cur, caret);
                         indent_tab_dom(&id, shift).await;
                     });
                     return;
@@ -425,7 +590,10 @@ pub fn MultilineCodeField(
                 evt.prevent_default();
                 let fallback = value_for_fallback.clone();
                 let id = field_id();
+                let cur = current_val();
                 spawn(async move {
+                    let caret = read_textarea_caret(&id).await;
+                    history.write().push_explicit_checkpoint(&cur, caret);
                     let (text, start, end) = match read_textarea_state_by_id(&id).await {
                         Some(state) => state,
                         None => {
@@ -458,6 +626,56 @@ pub fn MultilineCodeField(
                 }
             }
             {textarea}
+            div { class: "code-editor-quick-actions",
+                button {
+                    class: "code-action-btn",
+                    r#type: "button",
+                    title: "Undo (⌘Z)",
+                    disabled: !history().can_undo(),
+                    onclick: {
+                        let id = field_id();
+                        let cur = current_val();
+                        move |_| {
+                            let id = id.clone();
+                            let cur = cur.clone();
+                            spawn(async move {
+                                let caret = read_textarea_caret(&id).await;
+                                if let Some(snap) = history.write().undo(&cur, caret) {
+                                    current_val.set(snap.text.clone());
+                                    last_sent.set(snap.text.clone());
+                                    on_change.call(snap.text.clone());
+                                    apply_editor_undo_redo(&id, &snap.text, snap.caret).await;
+                                }
+                            });
+                        }
+                    },
+                    span { class: "action-icon action-icon-undo", aria_hidden: "true" }
+                }
+                button {
+                    class: "code-action-btn",
+                    r#type: "button",
+                    title: "Redo (⌘⇧Z)",
+                    disabled: !history().can_redo(),
+                    onclick: {
+                        let id = field_id();
+                        let cur = current_val();
+                        move |_| {
+                            let id = id.clone();
+                            let cur = cur.clone();
+                            spawn(async move {
+                                let caret = read_textarea_caret(&id).await;
+                                if let Some(snap) = history.write().redo(&cur, caret) {
+                                    current_val.set(snap.text.clone());
+                                    last_sent.set(snap.text.clone());
+                                    on_change.call(snap.text.clone());
+                                    apply_editor_undo_redo(&id, &snap.text, snap.caret).await;
+                                }
+                            });
+                        }
+                    },
+                    span { class: "action-icon action-icon-redo", aria_hidden: "true" }
+                }
+            }
             if let Some(menu) = var_menu() {
                 if vars.is_some() {
                     VarSuggestDropdown {
@@ -791,4 +1009,117 @@ async fn read_textarea_state_by_id(id: &str) -> Option<(String, usize, usize)> {
     let start = arr.get(1)?.as_u64()? as usize;
     let end = arr.get(2)?.as_u64()? as usize;
     Some((value, start, end))
+}
+
+async fn read_textarea_caret(id: &str) -> usize {
+    let script = format!(
+        r#"
+        const el = document.getElementById({id});
+        if (!el) return 0;
+        const val = el.value || '';
+        const startU16 = el.selectionStart ?? val.length;
+        return new TextEncoder().encode(val.slice(0, startU16)).length;
+        "#,
+        id = serde_json::to_string(id).unwrap_or_else(|_| "\"\"".into())
+    );
+    document::eval(&script).await.ok().and_then(|v| v.as_u64()).unwrap_or(0) as usize
+}
+
+async fn apply_editor_undo_redo(textarea_id: &str, text: &str, byte_caret: usize) {
+    let script = format!(
+        r#"
+        const el = document.getElementById({id});
+        if (el) {{
+            el.value = {text};
+            const targetBytes = {byte_caret};
+            const val = el.value || '';
+            const enc = new TextEncoder();
+            let u16Pos = 0;
+            let currentBytes = 0;
+            for (const ch of val) {{
+                const chBytes = enc.encode(ch).length;
+                if (currentBytes + chBytes > targetBytes) break;
+                currentBytes += chBytes;
+                u16Pos += ch.length;
+            }}
+            el.focus();
+            try {{
+                el.setSelectionRange(u16Pos, u16Pos);
+            }} catch (_) {{}}
+            const host = el.closest('.code-editor-host, .var-highlight-host');
+            const mirror = host && host.querySelector('.code-editor-mirror, .var-highlight-mirror');
+            if (mirror) {{
+                mirror.scrollLeft = el.scrollLeft || 0;
+                mirror.scrollTop = el.scrollTop || 0;
+            }}
+        }}
+        "#,
+        id = serde_json::to_string(textarea_id).unwrap_or_else(|_| "\"\"".into()),
+        text = serde_json::to_string(text).unwrap_or_else(|_| "\"\"".into()),
+        byte_caret = byte_caret
+    );
+    let _ = document::eval(&script).await;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_text_history_undo_redo_cycle() {
+        let mut h = TextHistory::new("");
+        assert!(!h.can_undo());
+        assert!(!h.can_redo());
+
+        h.record("", 0, "hello", 1000);
+        assert!(h.can_undo());
+        assert!(!h.can_redo());
+
+        h.record("hello", 5, "hello world", 1600);
+        assert_eq!(h.past.len(), 2);
+
+        let snap1 = h.undo("hello world", 11).expect("undo 1");
+        assert_eq!(snap1.text, "hello");
+        assert!(h.can_redo());
+
+        let snap0 = h.undo("hello", 5).expect("undo 2");
+        assert_eq!(snap0.text, "");
+        assert!(!h.can_undo());
+
+        let redo1 = h.redo("", 0).expect("redo 1");
+        assert_eq!(redo1.text, "hello");
+
+        let redo2 = h.redo("hello", 5).expect("redo 2");
+        assert_eq!(redo2.text, "hello world");
+        assert!(!h.can_redo());
+    }
+
+    #[test]
+    fn test_text_history_explicit_checkpoint() {
+        let mut h = TextHistory::new("raw json");
+        h.push_explicit_checkpoint("raw json", 8);
+        assert!(h.can_undo());
+
+        let snap = h.undo("pretty json", 12).expect("undo");
+        assert_eq!(snap.text, "raw json");
+        assert_eq!(snap.caret, 8);
+
+        let redo = h.redo("raw json", 8).expect("redo");
+        assert_eq!(redo.text, "pretty json");
+    }
+
+    #[test]
+    fn test_text_history_rapid_typing_grouping() {
+        let mut h = TextHistory::new("");
+        // Fast keystrokes within 200ms
+        h.record("", 0, "a", 1000);
+        h.record("a", 1, "ab", 1100);
+        h.record("ab", 2, "abc", 1200);
+        // Only 1 checkpoint should be created for the initial transition
+        assert_eq!(h.past.len(), 1);
+
+        // Later keystroke after 600ms
+        h.record("abc", 3, "abcd", 1900);
+        assert_eq!(h.past.len(), 2);
+    }
 }

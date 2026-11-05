@@ -137,24 +137,18 @@ fn wait_for_loopback_code(redirect_uri: &str, timeout: Duration) -> Result<Strin
                 let n = stream.read(&mut buf).unwrap_or(0);
                 let req = String::from_utf8_lossy(&buf[..n]);
                 let first = req.lines().next().unwrap_or("");
-                // GET /callback?code=... HTTP/1.1
-                let path = first.split_whitespace().nth(1).unwrap_or("");
-                let code = path
-                    .split('?')
-                    .nth(1)
-                    .unwrap_or("")
-                    .split('&')
-                    .find_map(|p| {
-                        let (k, v) = p.split_once('=')?;
-                        (k == "code").then(|| v.to_string())
-                    });
-                let html = if code.is_some() {
-                    "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nConnection: close\r\n\r\n<html><body>⚡ Blitz: auth OK — close this tab.</body></html>"
-                } else {
-                    "HTTP/1.1 400 Bad Request\r\nContent-Type: text/plain\r\nConnection: close\r\n\r\nmissing code"
+                let parse_res = parse_loopback_response(first);
+                let error_html_storage: String;
+                let html = match &parse_res {
+                    Ok(_) => "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nConnection: close\r\n\r\n<html><body style=\"font-family: sans-serif; padding: 2rem;\"><h2>⚡ Blitz</h2><p>Authentication successful — you can close this tab.</p></body></html>",
+                    Err(OAuthError::Msg(m)) if m.starts_with("OAuth error:") => {
+                        error_html_storage = format!("HTTP/1.1 400 Bad Request\r\nContent-Type: text/html; charset=utf-8\r\nConnection: close\r\n\r\n<html><body style=\"font-family: sans-serif; padding: 2rem;\"><h2>⚡ Blitz: Authentication Failed</h2><p>{m}</p></body></html>");
+                        &error_html_storage
+                    }
+                    Err(_) => "HTTP/1.1 400 Bad Request\r\nContent-Type: text/plain\r\nConnection: close\r\n\r\nmissing code",
                 };
                 let _ = stream.write_all(html.as_bytes());
-                return code.ok_or_else(|| OAuthError::Msg("callback missing code".into()));
+                return parse_res;
             }
             Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
                 std::thread::sleep(Duration::from_millis(100));
@@ -162,6 +156,37 @@ fn wait_for_loopback_code(redirect_uri: &str, timeout: Duration) -> Result<Strin
             Err(e) => return Err(OAuthError::Msg(e.to_string())),
         }
     }
+}
+
+fn parse_loopback_response(first_line: &str) -> Result<String, OAuthError> {
+    let path = first_line.split_whitespace().nth(1).unwrap_or("");
+    let query = path.split_once('?').map(|(_, q)| q).unwrap_or("");
+    let mut code = None;
+    let mut oauth_error = None;
+    let mut oauth_desc = None;
+    for pair in query.split('&') {
+        if let Some((k, v)) = pair.split_once('=') {
+            let with_spaces = v.replace('+', " ");
+            let decoded = urlencoding::decode(&with_spaces)
+                .unwrap_or_else(|_| with_spaces.clone().into())
+                .into_owned();
+            match k {
+                "code" => code = Some(decoded),
+                "error" => oauth_error = Some(decoded),
+                "error_description" => oauth_desc = Some(decoded),
+                _ => {}
+            }
+        }
+    }
+    if let Some(err) = oauth_error {
+        let desc = oauth_desc.unwrap_or_default();
+        return Err(OAuthError::Msg(if desc.is_empty() {
+            format!("OAuth error: {err}")
+        } else {
+            format!("OAuth error: {err} ({desc})")
+        }));
+    }
+    code.ok_or_else(|| OAuthError::Msg("callback missing code".into()))
 }
 
 fn open_browser(url: &str) -> Result<(), OAuthError> {
@@ -205,5 +230,27 @@ mod tests {
         let mut cfg = OAuth2Config::default();
         let err = fetch_oauth2_token(&mut cfg).unwrap_err();
         assert!(err.to_string().contains("token_url"));
+    }
+
+    #[test]
+    fn parse_loopback_extracts_code_and_decodes() {
+        let line = "GET /callback?code=splendid%2Ftoken%2B123 HTTP/1.1";
+        let code = parse_loopback_response(line).unwrap();
+        assert_eq!(code, "splendid/token+123");
+    }
+
+    #[test]
+    fn parse_loopback_captures_error_and_description() {
+        let line = "GET /callback?error=access_denied&error_description=User+cancelled+authorization HTTP/1.1";
+        let err = parse_loopback_response(line).unwrap_err();
+        assert!(err.to_string().contains("access_denied"));
+        assert!(err.to_string().contains("User cancelled authorization"));
+    }
+
+    #[test]
+    fn parse_loopback_missing_code_reports_error() {
+        let line = "GET /callback HTTP/1.1";
+        let err = parse_loopback_response(line).unwrap_err();
+        assert!(err.to_string().contains("callback missing code"));
     }
 }

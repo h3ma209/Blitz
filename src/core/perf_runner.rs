@@ -7,7 +7,7 @@ use std::time::{Duration, Instant};
 use crate::core::{Collection, CookieJar, RequestDraft, VariableContext};
 use crate::runtime::{ordered_requests, send_request_with_options, SendOptions};
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct PerfReport {
     pub vus: u32,
     pub duration_secs: u64,
@@ -24,6 +24,19 @@ impl PerfReport {
             0.0
         } else {
             self.latency_sum_ms as f64 / self.total_requests as f64
+        }
+    }
+
+    pub fn rps(&self) -> f64 {
+        let dur = self.duration_secs.max(1);
+        (self.total_requests as f64 / dur as f64 * 100.0).round() / 100.0
+    }
+
+    pub fn error_rate(&self) -> f64 {
+        if self.total_requests == 0 {
+            0.0
+        } else {
+            ((self.errors as f64 / self.total_requests as f64) * 10000.0).round() / 100.0
         }
     }
 }

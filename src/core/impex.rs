@@ -150,7 +150,7 @@ fn import_items(val: &Value, inherited_headers: &[KeyValue]) -> Result<Vec<Colle
     for item in arr {
         if item.get("request").is_some() {
             out.push(CollectionItem::Request(import_request_with_inheritance(item, inherited_headers)?));
-        } else if item.get("item").is_some() {
+        } else if let Some(sub_item) = item.get("item") {
             let name = item
                 .get("name")
                 .and_then(|v| v.as_str())
@@ -184,7 +184,7 @@ fn import_items(val: &Value, inherited_headers: &[KeyValue]) -> Result<Vec<Colle
                     combined.push(fh);
                 }
             }
-            folder.items = import_items(item.get("item").unwrap(), &combined)?;
+            folder.items = import_items(sub_item, &combined)?;
             out.push(CollectionItem::Folder(folder));
         }
     }
@@ -1091,7 +1091,16 @@ fn shellish_tokens(s: &str) -> Vec<String> {
         match c {
             '\\' if in_double || !in_single => {
                 if let Some(n) = chars.next() {
-                    cur.push(n);
+                    if n == '\r' {
+                        if chars.peek() == Some(&'\n') {
+                            chars.next();
+                        }
+                        // Line continuation: ignore newline
+                    } else if n == '\n' {
+                        // Line continuation: ignore newline
+                    } else {
+                        cur.push(n);
+                    }
                 }
             }
             '\'' if !in_double => in_single = !in_single,
@@ -1300,6 +1309,15 @@ mod import_extra_tests {
         assert_eq!(d.url, "https://example.com/a");
         assert_eq!(d.method, HttpMethod::Get);
         assert!(d.headers.iter().any(|h| h.key == "Accept"));
+    }
+
+    #[test]
+    fn curl_multiline_backslash_continuation() {
+        let cmd = "curl https://example.com/api \\\n  -H 'Authorization: Bearer token123' \\\r\n  --data '{\"x\":1}'";
+        let d = import_curl(cmd).unwrap();
+        assert_eq!(d.url, "https://example.com/api");
+        assert!(d.headers.iter().any(|h| h.key == "Authorization" && h.value == "Bearer token123"));
+        assert_eq!(d.body, "{\"x\":1}");
     }
 
     #[test]

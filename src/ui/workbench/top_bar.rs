@@ -850,6 +850,7 @@ pub fn TopBar(st: WorkbenchState) -> Element {
                 EnvSelector {
                     environments: environments(),
                     active_id: active_env_id(),
+                    vars: Some((st.vars)()),
                     on_change: move |id| {
                         switch_to_env(st, id);
                     },
@@ -859,6 +860,10 @@ pub fn TopBar(st: WorkbenchState) -> Element {
                     on_manage: move |_| {
                         vars_active_tab.set(0);
                         editing_env_id.set(active_env_id());
+                        show_vars.set(true);
+                    },
+                    on_compare: move |_| {
+                        vars_active_tab.set(2);
                         show_vars.set(true);
                     },
                 }

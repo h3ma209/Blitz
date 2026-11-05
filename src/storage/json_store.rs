@@ -105,7 +105,17 @@ impl JsonStore {
             return Ok(Self::default_snapshot());
         }
         let text = fs::read_to_string(&path)?;
-        let mut snap: AppSnapshot = serde_json::from_str(&text)?;
+        let mut snap: AppSnapshot = match serde_json::from_str(&text) {
+            Ok(s) => s,
+            Err(e) => {
+                let backup_path = self.root.join(format!(
+                    "snapshot.json.corrupt.{}",
+                    chrono::Utc::now().timestamp()
+                ));
+                let _ = fs::copy(&path, &backup_path);
+                return Err(StorageError::Json(e));
+            }
+        };
         if snap.collections.is_empty() {
             snap.collections = bundled_postman_collections();
         }
@@ -237,6 +247,25 @@ mod tests {
             .any(|c| c.find_request(draft.id).is_some()));
         assert_eq!(loaded.active_request_id, Some(draft.id));
         assert!(!loaded.environments.is_empty());
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn corrupt_snapshot_creates_backup_and_returns_error() {
+        let root = temp_root();
+        let store = JsonStore::open(&root).unwrap();
+        let snap_path = store.snapshot_path();
+        fs::write(&snap_path, "{ broken json content: 123,").unwrap();
+
+        let load_res = store.load();
+        assert!(load_res.is_err());
+
+        // Verify that a backup copy was generated
+        let entries = fs::read_dir(&root).unwrap();
+        let has_corrupt_backup = entries
+            .filter_map(|e| e.ok())
+            .any(|e| e.file_name().to_string_lossy().starts_with("snapshot.json.corrupt."));
+        assert!(has_corrupt_backup);
         let _ = fs::remove_dir_all(&root);
     }
 

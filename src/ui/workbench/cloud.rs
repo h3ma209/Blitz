@@ -48,6 +48,7 @@ pub fn switch_to_env(mut st: WorkbenchState, new_id: Option<Uuid>) {
         st.env_switch_overlay.set(Some(to_name.clone()));
     }
     st.cloud_busy.set(true);
+    st.log_cloud(format!("☁ [Cloud] Switching environment: {from_name} → {to_name}"));
 
     let root = store.root().to_path_buf();
     let mut settings_bg = settings;
@@ -94,15 +95,18 @@ pub fn switch_to_env(mut st: WorkbenchState, new_id: Option<Uuid>) {
                 };
                 st.status_msg
                     .set(format!("cloud branch {}", branch_name_for_env(&to_name)));
+                st.log_cloud(format!("☁ [Cloud] Switched to branch {} (env: {to_name})", branch_name_for_env(&to_name)));
                 pick
             }
             Ok((Err(e), updated_settings, _)) => {
                 st.app_settings.set(updated_settings);
                 st.status_msg.set(format!("cloud env switch: {e}"));
+                st.log_error(format!("☁ [Cloud] Environment switch failed: {e}"));
                 new_id
             }
             Err(e) => {
                 st.status_msg.set(format!("cloud env switch join: {e}"));
+                st.log_error(format!("☁ [Cloud] Environment switch join error: {e}"));
                 new_id
             }
         };
@@ -125,6 +129,7 @@ pub fn sync_selected_env(mut st: WorkbenchState, id: Uuid) {
             "Local environment is not synced — pick Development/Production (or another team env)"
                 .into(),
         );
+        st.log_warn("☁ [Cloud] Local env is local-only; skipping sync");
         return;
     }
     // Activate this env first (UI + var map).
@@ -149,6 +154,7 @@ pub fn sync_selected_env(mut st: WorkbenchState, id: Uuid) {
     } else {
         st.status_msg.set(format!("syncing {env_name}…"));
     }
+    st.log_cloud(format!("☁ [Cloud] Syncing environment '{env_name}' with remote…"));
     let mut envs_mut = envs;
     let _ = ensure_default_environments(&mut envs_mut);
     st.environments.set(envs_mut.clone());
@@ -186,15 +192,18 @@ pub fn sync_selected_env(mut st: WorkbenchState, id: Uuid) {
                     st.vars.set(v);
                     st.environments.set(loaded_envs);
                 }
-                st.status_msg.set(result.message);
+                st.status_msg.set(result.message.clone());
+                st.log_cloud(format!("☁ [Cloud] Sync complete: {}", result.message));
                 st.persist_local();
             }
             Ok((Err(e), updated_settings)) => {
                 st.app_settings.set(updated_settings);
                 st.status_msg.set(format!("sync: {e}"));
+                st.log_error(format!("☁ [Cloud] Sync failed: {e}"));
             }
             Err(e) => {
                 st.status_msg.set(format!("sync join: {e}"));
+                st.log_error(format!("☁ [Cloud] Sync join error: {e}"));
             }
         }
     });
@@ -215,6 +224,7 @@ pub fn cloud_clone_or_link(mut st: WorkbenchState) {
     let root = store.root().to_path_buf();
     st.cloud_busy.set(true);
     st.status_msg.set("cloning / linking remote…".into());
+    st.log_cloud(format!("☁ [Cloud] Cloning or linking remote ({})…", settings.cloud_sync.remote_url));
     spawn(async move {
         let res = tokio::task::spawn_blocking(move || {
             let r = clone_or_ensure(&root, &mut settings);
@@ -225,11 +235,18 @@ pub fn cloud_clone_or_link(mut st: WorkbenchState) {
         match res {
             Ok((Ok(r), updated_settings)) => {
                 st.app_settings.set(updated_settings);
-                st.status_msg.set(r.message);
+                st.status_msg.set(r.message.clone());
+                st.log_cloud(format!("☁ [Cloud] Clone/link success: {}", r.message));
                 st.persist_local();
             }
-            Ok((Err(e), _)) => st.status_msg.set(format!("clone: {e}")),
-            Err(e) => st.status_msg.set(format!("clone join: {e}")),
+            Ok((Err(e), _)) => {
+                st.status_msg.set(format!("clone: {e}"));
+                st.log_error(format!("☁ [Cloud] Clone/link failed: {e}"));
+            }
+            Err(e) => {
+                st.status_msg.set(format!("clone join: {e}"));
+                st.log_error(format!("☁ [Cloud] Clone join error: {e}"));
+            }
         }
     });
 }
@@ -256,6 +273,7 @@ pub fn cloud_link_folder(mut st: WorkbenchState) {
         let root = store.root().to_path_buf();
         let mut settings = (st.app_settings)();
         st.cloud_busy.set(true);
+        st.log_cloud(format!("☁ [Cloud] Linking local folder '{}'", folder.display()));
         let res = tokio::task::spawn_blocking(move || {
             let r = link_folder(&root, &mut settings, &folder);
             (r, settings)
@@ -273,11 +291,18 @@ pub fn cloud_link_folder(mut st: WorkbenchState) {
                 if !envs.is_empty() {
                     st.environments.set(envs);
                 }
-                st.status_msg.set(r.message);
+                st.status_msg.set(r.message.clone());
+                st.log_cloud(format!("☁ [Cloud] Linked folder success: {}", r.message));
                 st.persist_local();
             }
-            Ok((Err(e), _)) => st.status_msg.set(format!("link: {e}")),
-            Err(e) => st.status_msg.set(format!("link join: {e}")),
+            Ok((Err(e), _)) => {
+                st.status_msg.set(format!("link: {e}"));
+                st.log_error(format!("☁ [Cloud] Link folder failed: {e}"));
+            }
+            Err(e) => {
+                st.status_msg.set(format!("link join: {e}"));
+                st.log_error(format!("☁ [Cloud] Link folder join error: {e}"));
+            }
         }
     });
 }
@@ -303,7 +328,8 @@ pub fn cloud_sync_status(mut st: WorkbenchState) {
         st.cloud_busy.set(false);
         if let Ok((r, updated_settings)) = res {
             st.app_settings.set(updated_settings);
-            st.status_msg.set(r.message);
+            st.status_msg.set(r.message.clone());
+            st.log_cloud(format!("☁ [Cloud] Status: {}", r.message));
             st.persist_local();
         }
     });
@@ -323,6 +349,7 @@ pub fn cloud_pull(mut st: WorkbenchState) {
     let envs = (st.environments)();
     st.is_loading.set(true);
     st.cloud_busy.set(true);
+    st.log_cloud("☁ [Cloud] Pulling latest changes from remote…");
     spawn(async move {
         let root_for_conflicts = root.clone();
         let res = tokio::task::spawn_blocking(move || {
@@ -350,25 +377,31 @@ pub fn cloud_pull(mut st: WorkbenchState) {
                     st.vars.set(v);
                     st.environments.set(envs);
                 }
-                st.status_msg.set(r.message);
+                st.status_msg.set(r.message.clone());
+                st.log_cloud(format!("☁ [Cloud] Pull complete: {}", r.message));
                 st.persist_local();
             }
             Ok((Err(e), _, conflicts)) => {
                 let _ = root_for_conflicts;
                 if !conflicts.is_empty() {
                     st.conflict_state.set(Some(ConflictState {
-                        files: conflicts,
+                        files: conflicts.clone(),
                         selected_idx: 0,
                     }));
                     st.active_request_id.set(None);
                     st.editing_collection_id.set(None);
-                    st.status_msg
-                        .set("⚔️ Merge conflicts detected — opened in main section".into());
+                    let warn_msg = format!("⚔️ Merge conflicts detected in {} file(s)!", conflicts.len());
+                    st.status_msg.set(warn_msg.clone());
+                    st.log_warn(format!("☁ [Cloud] {warn_msg}"));
                 } else {
                     st.status_msg.set(format!("pull: {e}"));
+                    st.log_error(format!("☁ [Cloud] Pull failed: {e}"));
                 }
             }
-            Err(e) => st.status_msg.set(format!("pull join: {e}")),
+            Err(e) => {
+                st.status_msg.set(format!("pull join: {e}"));
+                st.log_error(format!("☁ [Cloud] Pull join error: {e}"));
+            }
         }
     });
 }
@@ -396,6 +429,7 @@ pub fn cloud_push(mut st: WorkbenchState) {
     let commit = settings.cloud_sync.commit_message.clone();
     st.is_loading.set(true);
     st.cloud_busy.set(true);
+    st.log_cloud(format!("☁ [Cloud] Pushing workspace (commit: \"{commit}\")…"));
     spawn(async move {
         let res = tokio::task::spawn_blocking(move || {
             let r = push_workspace(
@@ -415,10 +449,18 @@ pub fn cloud_push(mut st: WorkbenchState) {
         match res {
             Ok((r, updated_settings)) => {
                 st.app_settings.set(updated_settings);
-                st.status_msg.set(r.message);
+                st.status_msg.set(r.message.clone());
+                if r.ok {
+                    st.log_cloud(format!("☁ [Cloud] Push complete: {}", r.message));
+                } else {
+                    st.log_warn(format!("☁ [Cloud] Push: {}", r.message));
+                }
                 st.persist_local();
             }
-            Err(e) => st.status_msg.set(format!("push join: {e}")),
+            Err(e) => {
+                st.status_msg.set(format!("push join: {e}"));
+                st.log_error(format!("☁ [Cloud] Push join error: {e}"));
+            }
         }
     });
 }

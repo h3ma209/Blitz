@@ -40,6 +40,7 @@ pub fn RequestBuilder(
     #[props(default)] on_open_code: EventHandler<()>,
 ) -> Element {
     let mut tab = use_signal(|| BuilderTab::Params);
+    let mut copied_curl = use_signal(|| false);
 
     let set_method = {
         let draft = draft.clone();
@@ -132,6 +133,35 @@ pub fn RequestBuilder(
                 on_var_edit,
             }
             if draft.protocol == RequestProtocol::Http {
+                button {
+                    class: if copied_curl() { "btn btn-ghost btn-copy-curl copied" } else { "btn btn-ghost btn-copy-curl" },
+                    style: "font-family: var(--mono); font-size: 11px; font-weight: 600; padding: 0 9px; display: inline-flex; align-items: center; gap: 4px;",
+                    title: "Copy resolved request as cURL command to clipboard",
+                    onclick: {
+                        let draft = draft.clone();
+                        let vars = vars.clone();
+                        move |_| {
+                            let curl_cmd = crate::core::generate_snippet_resolved("cURL", &draft, Some(&vars));
+                            let script = format!(
+                                "navigator.clipboard.writeText({});",
+                                serde_json::to_string(&curl_cmd).unwrap_or_else(|_| "\"\"".into())
+                            );
+                            spawn(async move {
+                                let _ = document::eval(&script).await;
+                                tokio::time::sleep(std::time::Duration::from_millis(1600)).await;
+                                copied_curl.set(false);
+                            });
+                            copied_curl.set(true);
+                        }
+                    },
+                    if copied_curl() {
+                        span { class: "action-icon action-icon-check", aria_hidden: "true", style: "width: 12px; height: 12px;" }
+                        span { "Copied" }
+                    } else {
+                        span { class: "action-icon action-icon-copy", aria_hidden: "true", style: "width: 12px; height: 12px;" }
+                        span { "cURL" }
+                    }
+                }
                 button {
                     class: "btn btn-ghost",
                     style: "font-family: var(--mono); font-weight: 700; padding: 0 10px;",
@@ -1032,35 +1062,37 @@ fn BodyEditor(
         }
         if mode == BodyMode::Raw {
             div { class: "body-editor-toolbar",
-                button {
-                    class: "btn btn-sm btn-ghost",
-                    r#type: "button",
-                    title: "Format and indent JSON body",
-                    onclick: {
-                        let body = body.clone();
-                        let binary_path = binary_path.clone();
-                        let urlencoded = urlencoded.clone();
-                        let formdata = formdata.clone();
-                        let graphql_query = graphql_query.clone();
-                        let graphql_variables = graphql_variables.clone();
-                        move |_| {
-                            if let Some(pretty) = crate::core::beautify_json_body(&body) {
-                                on_change.call((
-                                    mode,
-                                    pretty,
-                                    binary_path.clone(),
-                                    urlencoded.clone(),
-                                    formdata.clone(),
-                                    graphql_query.clone(),
-                                    graphql_variables.clone(),
-                                ));
+                div { class: "body-editor-tools-left",
+                    button {
+                        class: "btn btn-sm btn-ghost",
+                        r#type: "button",
+                        title: "Format and indent JSON body",
+                        onclick: {
+                            let body = body.clone();
+                            let binary_path = binary_path.clone();
+                            let urlencoded = urlencoded.clone();
+                            let formdata = formdata.clone();
+                            let graphql_query = graphql_query.clone();
+                            let graphql_variables = graphql_variables.clone();
+                            move |_| {
+                                if let Some(pretty) = crate::core::beautify_json_body(&body) {
+                                    on_change.call((
+                                        mode,
+                                        pretty,
+                                        binary_path.clone(),
+                                        urlencoded.clone(),
+                                        formdata.clone(),
+                                        graphql_query.clone(),
+                                        graphql_variables.clone(),
+                                    ));
+                                }
                             }
-                        }
-                    },
-                    span { class: "action-icon action-icon-format", aria_hidden: "true" }
-                    span { "Beautify JSON" }
+                        },
+                        span { class: "action-icon action-icon-format", aria_hidden: "true" }
+                        span { "Beautify JSON" }
+                    }
                 }
-                {
+                div { class: "body-editor-tools-right",
                     match crate::core::lint_json_body(&body) {
                         Ok(()) if !body.trim().is_empty() => rsx! {
                             span { class: "json-lint-badge json-lint-ok", "✓ Valid JSON" }

@@ -46,6 +46,9 @@ pub enum SendError {
 
 pub type SendResult = Result<ResponseView, SendError>;
 
+/// Maximum response body bytes retained in memory (50 MB). Protects against OOM crashes.
+pub const MAX_RESPONSE_BODY_BYTES: u64 = 50 * 1024 * 1024;
+
 /// reqwest `Display` for Kind::Builder is just `"builder error"` — chain sources.
 fn format_reqwest_error(e: &reqwest::Error) -> String {
     let mut parts = Vec::new();
@@ -415,7 +418,7 @@ fn base64_encode(bytes: &[u8]) -> String {
 }
 
 fn build_url(draft: &RequestDraft) -> Result<String, SendError> {
-    let mut url = draft.url.clone();
+    let mut url = draft.url.trim().to_string();
     if url.is_empty() {
         return Err(SendError::InvalidUrl("empty URL".into()));
     }
@@ -430,6 +433,13 @@ fn build_url(draft: &RequestDraft) -> Result<String, SendError> {
         .collect();
 
     if !enabled.is_empty() {
+        // Separate fragment if present (#hash must come after query string per RFC 3986)
+        let (base, fragment) = match url.split_once('#') {
+            Some((b, f)) => (b.to_string(), Some(f.to_string())),
+            None => (url, None),
+        };
+
+        let mut url_base = base;
         let query: String = enabled
             .iter()
             .map(|p| {
@@ -441,12 +451,21 @@ fn build_url(draft: &RequestDraft) -> Result<String, SendError> {
             })
             .collect::<Vec<_>>()
             .join("&");
-        if url.contains('?') {
-            url.push('&');
+
+        if url_base.ends_with('?') || url_base.ends_with('&') {
+            // Already has delimiter
+        } else if url_base.contains('?') {
+            url_base.push('&');
         } else {
-            url.push('?');
+            url_base.push('?');
         }
-        url.push_str(&query);
+        url_base.push_str(&query);
+
+        if let Some(f) = fragment {
+            url_base.push('#');
+            url_base.push_str(&f);
+        }
+        url = url_base;
     }
     Ok(url)
 }
@@ -497,10 +516,15 @@ fn build_headers(draft: &RequestDraft) -> Result<HeaderMap, SendError> {
     });
 
     for kv in draft.headers.iter().filter(|h| h.enabled && !h.key.is_empty()) {
+        let clean_key = kv.key.trim();
+        if clean_key.is_empty() {
+            continue;
+        }
+
         // If Host header simply matches the URL's target host, let reqwest / hyper
         // manage the Host header dynamically so redirects (e.g. facebook.com -> www.facebook.com)
         // do not get stuck in infinite redirect loops with a stale Host header.
-        if kv.key.eq_ignore_ascii_case("host") {
+        if clean_key.eq_ignore_ascii_case("host") {
             if let Some(ref uh) = url_host {
                 let kv_host = kv.value.trim();
                 let kv_host_clean = kv_host
@@ -519,10 +543,13 @@ fn build_headers(draft: &RequestDraft) -> Result<HeaderMap, SendError> {
             }
         }
 
-        let name = HeaderName::from_bytes(kv.key.as_bytes())
-            .map_err(|e| SendError::Header(format!("{}: {e}", kv.key)))?;
-        let value = HeaderValue::from_str(&kv.value)
-            .map_err(|e| SendError::Header(format!("{}: {e}", kv.key)))?;
+        // Sanitize CRLF injection from header value to prevent header smuggling
+        let clean_val = kv.value.replace(['\r', '\n'], "");
+
+        let name = HeaderName::from_bytes(clean_key.as_bytes())
+            .map_err(|e| SendError::Header(format!("invalid header name '{clean_key}': {e}")))?;
+        let value = HeaderValue::from_str(&clean_val)
+            .map_err(|e| SendError::Header(format!("invalid header value for '{clean_key}': {e}")))?;
         map.append(name, value);
     }
     Ok(map)
@@ -1140,9 +1167,27 @@ pub fn send_request_with_options(
         }
     }
 
-    let raw_bytes = blocking_http_cancelable(&opts.cancel, move || {
-        Ok(response.bytes().unwrap_or_default().to_vec())
+    let (raw_bytes, truncated) = blocking_http_cancelable(&opts.cancel, move || {
+        use std::io::Read;
+        let mut buf = Vec::new();
+        let mut reader = response.take(MAX_RESPONSE_BODY_BYTES + 1);
+        let _ = reader.read_to_end(&mut buf);
+        let is_truncated = buf.len() as u64 > MAX_RESPONSE_BODY_BYTES;
+        if is_truncated {
+            buf.truncate(MAX_RESPONSE_BODY_BYTES as usize);
+        }
+        Ok((buf, is_truncated))
     })?;
+    if truncated {
+        log.push(format!(
+            "response: payload exceeded {} MB limit — truncated",
+            MAX_RESPONSE_BODY_BYTES / (1024 * 1024)
+        ));
+        console.push(format!(
+            "⚠️ Response body exceeded {} MB limit — truncated to protect memory",
+            MAX_RESPONSE_BODY_BYTES / (1024 * 1024)
+        ));
+    }
     check_cancelled(&opts.cancel)?;
     let body = decode_response_body(&raw_bytes, &resp_headers, &mut log);
     let download_ms = started.elapsed().as_millis().saturating_sub(ttfb_ms);
@@ -1466,5 +1511,43 @@ mod tests {
         custom_draft.headers.push(KeyValue::new("Host", "internal.api.local"));
         let custom_headers = build_headers(&custom_draft).unwrap();
         assert_eq!(custom_headers.get("host").unwrap(), "internal.api.local");
+    }
+
+    #[test]
+    fn build_headers_sanitizes_crlf_and_whitespace() {
+        let mut draft = RequestDraft::default();
+        draft.headers.push(KeyValue::new("  X-Token  ", "Bearer secret\r\nInjected: evil\n"));
+        let headers = build_headers(&draft).unwrap();
+        assert_eq!(
+            headers.get("x-token").unwrap(),
+            "Bearer secretInjected: evil"
+        );
+    }
+
+    #[test]
+    fn build_url_fragment_and_delimiter_precision() {
+        // 1. Fragment preserved after query params
+        let mut d1 = RequestDraft {
+            url: "https://api.com/items#details".into(),
+            ..Default::default()
+        };
+        d1.params.push(KeyValue::new("page", "2"));
+        assert_eq!(build_url(&d1).unwrap(), "https://api.com/items?page=2#details");
+
+        // 2. Trailing question mark does not duplicate with `?&`
+        let mut d2 = RequestDraft {
+            url: "https://api.com/items?".into(),
+            ..Default::default()
+        };
+        d2.params.push(KeyValue::new("limit", "10"));
+        assert_eq!(build_url(&d2).unwrap(), "https://api.com/items?limit=10");
+
+        // 3. Trailing ampersand does not duplicate with `&&`
+        let mut d3 = RequestDraft {
+            url: "https://api.com/items?sort=desc&".into(),
+            ..Default::default()
+        };
+        d3.params.push(KeyValue::new("limit", "10"));
+        assert_eq!(build_url(&d3).unwrap(), "https://api.com/items?sort=desc&limit=10");
     }
 }

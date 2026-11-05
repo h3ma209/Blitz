@@ -249,6 +249,34 @@ impl WorkbenchState {
         push_toast(self.toasts, Toast::new(msg, level));
     }
 
+    pub fn log(&self, line: ConsoleLine) {
+        let mut lines = (self.console_lines)();
+        crate::core::push_console(&mut lines, line);
+        let mut sig = self.console_lines;
+        sig.set(lines);
+    }
+
+    #[allow(dead_code)]
+    pub fn log_info(&self, msg: impl Into<String>) {
+        self.log(ConsoleLine::info(msg));
+    }
+
+    pub fn log_warn(&self, msg: impl Into<String>) {
+        self.log(ConsoleLine::warn(msg));
+    }
+
+    pub fn log_error(&self, msg: impl Into<String>) {
+        self.log(ConsoleLine::error(msg));
+    }
+
+    pub fn log_network(&self, msg: impl Into<String>) {
+        self.log(ConsoleLine::network(msg));
+    }
+
+    pub fn log_cloud(&self, msg: impl Into<String>) {
+        self.log(ConsoleLine::cloud(msg));
+    }
+
     pub fn build_snapshot(&self, settings: AppSettings, active_environment: String) -> AppSnapshot {
         let mut tabs = (self.open_tabs)();
         let cur = (self.draft)();
@@ -387,7 +415,7 @@ pub fn sync_env_vars(envs: &[Environment], id: Option<Uuid>, v: &mut VariableCon
     }
 }
 
-/// Remove a collection (to trash) or folder/request from the tree.
+/// Remove a collection (to trash) or folder/request from the tree, closing associated tabs and subtrees.
 pub fn execute_tree_delete(
     id: Uuid,
     collections: &mut Vec<Collection>,
@@ -395,18 +423,21 @@ pub fn execute_tree_delete(
     active_collection_id: &mut Option<Uuid>,
     active_request_id: &mut Option<Uuid>,
     draft: &mut RequestDraft,
+    open_tabs: &mut Vec<RequestDraft>,
 ) -> Option<String> {
-    if trash_collection(collections, trash, id) {
-        if *active_collection_id == Some(id) {
-            *active_collection_id = collections.first().map(|c| c.id);
-        }
+    let is_col = collections.iter().any(|c| c.id == id);
+    let count = execute_batch_delete(
+        &[id],
+        collections,
+        trash,
+        active_collection_id,
+        active_request_id,
+        draft,
+        open_tabs,
+    );
+    if count > 0 && is_col {
         Some("moved collection to Trash".into())
     } else {
-        remove_across(collections, id);
-        if *active_request_id == Some(id) {
-            *active_request_id = None;
-            *draft = RequestDraft::default();
-        }
         None
     }
 }

@@ -7,10 +7,15 @@ use std::path::{Path, PathBuf};
 pub const DEFAULT_ASSETS_DIR: &str = "assets";
 
 /// Ensures that the workspace `assets/` directory (and subfolders) exists.
+/// Sanitizes `subfolder` components to prevent directory traversal outside `assets/`.
 pub fn ensure_assets_dir(workspace_root: &Path, subfolder: Option<&str>) -> std::io::Result<PathBuf> {
     let mut dir = workspace_root.join(DEFAULT_ASSETS_DIR);
     if let Some(sub) = subfolder {
-        dir = dir.join(sub);
+        for comp in Path::new(sub).components() {
+            if let std::path::Component::Normal(c) = comp {
+                dir = dir.join(c);
+            }
+        }
     }
     fs::create_dir_all(&dir)?;
     Ok(dir)
@@ -98,5 +103,13 @@ mod tests {
         let abs = if cfg!(windows) { "C:\\foo\\bar.txt" } else { "/var/data/foo.txt" };
         let resolved = resolve_asset_path(ws, abs);
         assert_eq!(resolved, PathBuf::from(abs));
+    }
+
+    #[test]
+    fn test_assets_dir_sanitizes_traversal() {
+        let unique_dir = std::env::temp_dir().join(format!("blitz_traversal_test_{}", uuid::Uuid::new_v4()));
+        let dir = ensure_assets_dir(&unique_dir, Some("../../../escaped/sub")).unwrap();
+        assert!(dir.starts_with(unique_dir.join(DEFAULT_ASSETS_DIR)));
+        let _ = fs::remove_dir_all(&unique_dir);
     }
 }

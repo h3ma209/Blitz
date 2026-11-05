@@ -2,7 +2,7 @@ use dioxus::prelude::*;
 use uuid::Uuid;
 
 use crate::core::{diff_bodies, DefaultResponseTab, DiffLine, ResponseView, SavedExample};
-use super::json_highlight::{render_json_highlight_html, should_highlight_json};
+use super::json_highlight::{render_json_highlight_html, render_json_highlight_html_with_fold, should_highlight_json};
 use super::loading::SkeletonBars;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -49,6 +49,10 @@ pub fn ResponseViewer(
     let mut copied_body = use_signal(|| false);
     let render_mode = use_signal(|| true);
     let mut diff_baseline = use_signal(|| DiffBaseline::PreviousRun);
+    let mut json_filter = use_signal(String::new);
+    let mut filter_open = use_signal(|| false);
+    let mut all_collapsed = use_signal(|| false);
+    let mut enable_folding = use_signal(|| true);
 
     rsx! {
         section { class: "response-pane",
@@ -155,6 +159,49 @@ pub fn ResponseViewer(
                             span { class: "action-icon action-icon-search", aria_hidden: "true" }
                             span { "Find" }
                         }
+                        if tab() == RespTab::Pretty && resp.error.is_none() {
+                            button {
+                                class: if filter_open() || !json_filter().is_empty() { "btn btn-ghost active" } else { "btn btn-ghost" },
+                                title: "Filter response using JSONPath (e.g. $.items[0])",
+                                onclick: move |_| filter_open.set(!filter_open()),
+                                span { class: "action-icon action-icon-filter", aria_hidden: "true" }
+                                span { "Filter" }
+                                if !json_filter().is_empty() {
+                                    span { class: "meta-active-badge", "1" }
+                                }
+                            }
+                            if enable_folding() {
+                                button {
+                                    class: "btn btn-ghost",
+                                    title: if all_collapsed() { "Expand all JSON blocks" } else { "Collapse all JSON blocks" },
+                                    onclick: move |_| {
+                                        let next = !all_collapsed();
+                                        all_collapsed.set(next);
+                                        spawn(async move {
+                                            let script = format!(
+                                                "document.querySelectorAll('.response-body-json details.json-fold').forEach(d => d.open = {});",
+                                                !next
+                                            );
+                                            let _ = document::eval(&script).await;
+                                        });
+                                    },
+                                    if all_collapsed() {
+                                        span { class: "action-icon action-icon-expand", aria_hidden: "true" }
+                                        span { "Expand" }
+                                    } else {
+                                        span { class: "action-icon action-icon-fold", aria_hidden: "true" }
+                                        span { "Collapse" }
+                                    }
+                                }
+                            }
+                            button {
+                                class: if enable_folding() { "btn btn-ghost" } else { "btn btn-ghost active" },
+                                title: if enable_folding() { "Disable tree folding (view plain syntax-highlighted JSON)" } else { "Enable interactive tree folding" },
+                                onclick: move |_| enable_folding.set(!enable_folding()),
+                                span { class: "action-icon action-icon-format", aria_hidden: "true" }
+                                span { if enable_folding() { "Fold: On" } else { "Fold: Off" } }
+                            }
+                        }
                         button {
                             class: "btn btn-ghost",
                             title: "Generate Tests from this response: status, content-type, JSON fields, time ceiling. Review them in the Tests tab.",
@@ -258,27 +305,123 @@ pub fn ResponseViewer(
 
                 match tab() {
                     RespTab::Pretty => {
-                        let pretty = pretty_body(&resp.body);
-                        let query = search_query();
-                        if !query.is_empty() {
-                            let highlighted = highlight_search_matches(&pretty, &query);
-                            rsx! {
-                                pre {
-                                    class: "response-body",
-                                    dangerous_inner_html: "{highlighted}",
-                                }
-                            }
-                        } else if should_highlight_json(&resp.body, &resp.headers) {
-                            let html = render_json_highlight_html(&pretty);
-                            rsx! {
-                                pre {
-                                    class: "response-body response-body-json",
-                                    dangerous_inner_html: "{html}",
-                                }
-                            }
+                        let is_json = should_highlight_json(&resp.body, &resp.headers);
+                        let parsed_json = if is_json {
+                            serde_json::from_str::<serde_json::Value>(resp.body.trim()).ok()
                         } else {
-                            rsx! {
-                                pre { class: "response-body", "{pretty}" }
+                            None
+                        };
+
+                        let filter_text = json_filter().trim().to_string();
+                        let filter_result = if let (Some(root_val), false) = (&parsed_json, filter_text.is_empty()) {
+                            Some(crate::core::query_json(root_val, &filter_text))
+                        } else {
+                            None
+                        };
+
+                        let root_pills = parsed_json.as_ref().map(|v| crate::core::root_keys(v, 6)).unwrap_or_default();
+
+                        rsx! {
+                            if is_json && (filter_open() || !json_filter().is_empty()) {
+                                div { class: "response-jsonpath-bar",
+                                    span { class: "jsonpath-label", "Filter" }
+                                    div { class: "jsonpath-input-wrap",
+                                        input {
+                                            class: "jsonpath-input",
+                                            placeholder: "JSONPath (e.g. $.data.users[0], items[*].id, status)…",
+                                            value: "{json_filter()}",
+                                            oninput: move |evt: Event<FormData>| json_filter.set(evt.value()),
+                                        }
+                                        if !json_filter().is_empty() {
+                                            button {
+                                                class: "jsonpath-clear-btn",
+                                                title: "Clear filter",
+                                                onclick: move |_| json_filter.set(String::new()),
+                                                "✕"
+                                            }
+                                        }
+                                    }
+                                    if !root_pills.is_empty() && json_filter().is_empty() {
+                                        div { class: "jsonpath-pills",
+                                            for key in root_pills {
+                                                {
+                                                    let k = key.clone();
+                                                    rsx! {
+                                                        button {
+                                                            key: "{k}",
+                                                            class: "jsonpath-pill",
+                                                            title: "Filter by .{k}",
+                                                            onclick: move |_| json_filter.set(k.clone()),
+                                                            ".{k}"
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+
+                            if let Some(res) = &filter_result {
+                                match res {
+                                    Ok(val) => {
+                                        let item_count = match val {
+                                            serde_json::Value::Array(a) => format!("{} items", a.len()),
+                                            serde_json::Value::Object(m) => format!("{} keys", m.len()),
+                                            _ => "1 value".to_string(),
+                                        };
+                                        let pretty_val = serde_json::to_string_pretty(val).unwrap_or_default();
+                                        let html = render_json_highlight_html_with_fold(&pretty_val, enable_folding());
+                                        rsx! {
+                                            div { class: "jsonpath-status status-ok",
+                                                span { "✓ Matched '{filter_text}' ({item_count})" }
+                                            }
+                                            pre {
+                                                class: "response-body response-body-json",
+                                                dangerous_inner_html: "{html}",
+                                            }
+                                        }
+                                    }
+                                    Err(err) => {
+                                        let pretty = pretty_body(&resp.body);
+                                        let html = render_json_highlight_html_with_fold(&pretty, enable_folding());
+                                        rsx! {
+                                            div { class: "jsonpath-status status-err",
+                                                span { "⚠ {err}" }
+                                            }
+                                            pre {
+                                                class: "response-body response-body-json",
+                                                dangerous_inner_html: "{html}",
+                                            }
+                                        }
+                                    }
+                                }
+                            } else {
+                                {
+                                    let pretty = pretty_body(&resp.body);
+                                    let query = search_query();
+                                    if !query.is_empty() {
+                                        let highlighted = highlight_search_matches(&pretty, &query);
+                                        rsx! {
+                                            pre {
+                                                class: "response-body",
+                                                dangerous_inner_html: "{highlighted}",
+                                            }
+                                        }
+                                    } else if is_json {
+                                        let html = render_json_highlight_html_with_fold(&pretty, enable_folding());
+                                        rsx! {
+                                            pre {
+                                                class: "response-body response-body-json",
+                                                dangerous_inner_html: "{html}",
+                                            }
+                                        }
+                                    } else {
+                                        rsx! {
+                                            pre { class: "response-body", "{pretty}" }
+                                        }
+                                    }
+                                }
                             }
                         }
                     },

@@ -515,33 +515,52 @@ impl VariableContext {
         }
     }
 
+    pub const MAX_RESOLVE_DEPTH: usize = 10;
+
     pub fn resolve_string(&self, input: &str) -> String {
         self.resolve_string_with_secrets(input, None)
     }
 
     /// Like [`resolve_string`], but `{{vault:key}}` may fall back to SecretsStore.
+    /// Supports nested recursive variable expansion up to [`Self::MAX_RESOLVE_DEPTH`]
+    /// iterations with cycle protection.
     pub fn resolve_string_with_secrets(
         &self,
         input: &str,
         secrets: Option<&dyn SecretsStore>,
     ) -> String {
         let re = var_token_re();
+        let mut current = input.to_string();
 
-        re.replace_all(input, |caps: &regex::Captures| {
-            let raw = caps[1].trim();
-            if let Some(key) = raw.strip_prefix("vault:") {
-                resolve_vault_key(&self.vault, secrets, key.trim()).unwrap_or_default()
-            } else if raw.starts_with('$') {
-                if let Some(dyn_val) = resolve_dynamic_var(raw) {
-                    dyn_val
+        for _ in 0..Self::MAX_RESOLVE_DEPTH {
+            if !current.contains("{{") {
+                break;
+            }
+
+            let mut replaced_any = false;
+            let next = re.replace_all(&current, |caps: &regex::Captures| {
+                let raw = caps[1].trim();
+                replaced_any = true;
+                if let Some(key) = raw.strip_prefix("vault:") {
+                    resolve_vault_key(&self.vault, secrets, key.trim()).unwrap_or_default()
+                } else if raw.starts_with('$') {
+                    if let Some(dyn_val) = resolve_dynamic_var(raw) {
+                        dyn_val
+                    } else {
+                        self.get(raw).unwrap_or("").to_string()
+                    }
                 } else {
                     self.get(raw).unwrap_or("").to_string()
                 }
-            } else {
-                self.get(raw).unwrap_or("").to_string()
+            }).into_owned();
+
+            if next == current || !replaced_any {
+                break;
             }
-        })
-        .into_owned()
+            current = next;
+        }
+
+        current
     }
 }
 
@@ -925,5 +944,25 @@ mod tests {
         let suggs = ctx.insert_suggestions("$");
         assert!(suggs.iter().any(|s| s.label == "$guid" && s.scope == VarResolveScope::Dynamic));
         assert!(suggs.iter().any(|s| s.label == "$randomEmail" && s.scope == VarResolveScope::Dynamic));
+    }
+
+    #[test]
+    fn test_nested_variable_resolution_and_cycle_guard() {
+        let mut ctx = VariableContext::default();
+        ctx.environment.insert("subdomain".into(), "api".into());
+        ctx.environment.insert("host".into(), "{{subdomain}}.service.local".into());
+        ctx.environment.insert("baseUrl".into(), "https://{{host}}:8443".into());
+
+        // Multi-level nested resolution:
+        assert_eq!(
+            ctx.resolve_string("{{baseUrl}}/v1/users"),
+            "https://api.service.local:8443/v1/users"
+        );
+
+        // Circular references terminate safely without hanging:
+        ctx.environment.insert("cycle_a".into(), "{{cycle_b}}".into());
+        ctx.environment.insert("cycle_b".into(), "{{cycle_a}}".into());
+        let out = ctx.resolve_string("ping {{cycle_a}}");
+        assert!(out == "ping {{cycle_a}}" || out == "ping {{cycle_b}}");
     }
 }

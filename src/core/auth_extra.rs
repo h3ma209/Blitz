@@ -10,6 +10,18 @@ use super::request::{AuthConfig, AuthType, KeyValue, RequestDraft};
 type HmacSha1 = Hmac<Sha1>;
 type HmacSha256 = Hmac<Sha256>;
 
+fn safe_hmac_sha256(key: &[u8], data: &[u8]) -> Option<Vec<u8>> {
+    let mut mac = HmacSha256::new_from_slice(key).ok()?;
+    mac.update(data);
+    Some(mac.finalize().into_bytes().to_vec())
+}
+
+fn safe_hmac_sha1(key: &[u8], data: &[u8]) -> Option<Vec<u8>> {
+    let mut mac = HmacSha1::new_from_slice(key).ok()?;
+    mac.update(data);
+    Some(mac.finalize().into_bytes().to_vec())
+}
+
 /// Inject Authorization (and related) headers for advanced auth types.
 pub fn inject_extra_auth(draft: &mut RequestDraft, log: &mut Vec<String>) {
     match draft.auth.auth_type {
@@ -92,16 +104,12 @@ fn inject_oauth1(draft: &mut RequestDraft, log: &mut Vec<String>) {
 
     let signature = match method.to_uppercase().as_str() {
         "PLAINTEXT" => key.clone(),
-        "HMAC-SHA256" => {
-            let mut mac = HmacSha256::new_from_slice(key.as_bytes()).unwrap();
-            mac.update(base.as_bytes());
-            base64_encode(&mac.finalize().into_bytes())
-        }
-        _ => {
-            let mut mac = HmacSha1::new_from_slice(key.as_bytes()).unwrap();
-            mac.update(base.as_bytes());
-            base64_encode(&mac.finalize().into_bytes())
-        }
+        "HMAC-SHA256" => safe_hmac_sha256(key.as_bytes(), base.as_bytes())
+            .map(|b| base64_encode(&b))
+            .unwrap_or_default(),
+        _ => safe_hmac_sha1(key.as_bytes(), base.as_bytes())
+            .map(|b| base64_encode(&b))
+            .unwrap_or_default(),
     };
 
     let mut auth_params = vec![
@@ -152,16 +160,12 @@ fn inject_hawk(draft: &mut RequestDraft, log: &mut Vec<String>) {
         draft.method.as_str().to_uppercase()
     );
     let mac = match algo {
-        "sha1" => {
-            let mut m = HmacSha1::new_from_slice(key.as_bytes()).unwrap();
-            m.update(normalized.as_bytes());
-            base64_encode(&m.finalize().into_bytes())
-        }
-        _ => {
-            let mut m = HmacSha256::new_from_slice(key.as_bytes()).unwrap();
-            m.update(normalized.as_bytes());
-            base64_encode(&m.finalize().into_bytes())
-        }
+        "sha1" => safe_hmac_sha1(key.as_bytes(), normalized.as_bytes())
+            .map(|b| base64_encode(&b))
+            .unwrap_or_default(),
+        _ => safe_hmac_sha256(key.as_bytes(), normalized.as_bytes())
+            .map(|b| base64_encode(&b))
+            .unwrap_or_default(),
     };
     let mut hdr = format!("Hawk id=\"{id}\", ts=\"{ts}\", nonce=\"{nonce}\", mac=\"{mac}\"");
     if !ext.is_empty() {
@@ -266,9 +270,13 @@ fn inject_aws_sigv4(draft: &mut RequestDraft, log: &mut Vec<String>) {
     let string_to_sign = format!("AWS4-HMAC-SHA256\n{amz_date}\n{credential_scope}\n{canonical_hash}");
 
     let signing_key = aws_signing_key(&secret_key, &date_stamp, region, service);
-    let mut mac = HmacSha256::new_from_slice(&signing_key).unwrap();
-    mac.update(string_to_sign.as_bytes());
-    let signature = hex::encode(mac.finalize().into_bytes());
+    let signature = match safe_hmac_sha256(&signing_key, string_to_sign.as_bytes()) {
+        Some(sig) => hex::encode(sig),
+        None => {
+            log.push("auth: aws sigv4 signature failed".into());
+            String::new()
+        }
+    };
 
     let auth = format!(
         "AWS4-HMAC-SHA256 Credential={access_key}/{credential_scope}, SignedHeaders={signed_headers}, Signature={signature}"
@@ -326,12 +334,15 @@ fn inject_edgegrid(draft: &mut RequestDraft, log: &mut Vec<String>) {
         draft.method.as_str()
     );
     // Signing key = HMAC(client_secret, timestamp)
-    let mut sk = HmacSha256::new_from_slice(client_secret.as_bytes()).unwrap();
-    sk.update(timestamp.as_bytes());
-    let signing_key = sk.finalize().into_bytes();
-    let mut mac = HmacSha256::new_from_slice(&signing_key).unwrap();
-    mac.update(data_to_sign.as_bytes());
-    let signature = base64_encode(&mac.finalize().into_bytes());
+    let Some(signing_key) = safe_hmac_sha256(client_secret.as_bytes(), timestamp.as_bytes()) else {
+        log.push("auth: edgegrid key derivation failed".into());
+        return;
+    };
+    let Some(sig_bytes) = safe_hmac_sha256(&signing_key, data_to_sign.as_bytes()) else {
+        log.push("auth: edgegrid signing failed".into());
+        return;
+    };
+    let signature = base64_encode(&sig_bytes);
     let hdr = format!(
         "EG1-HMAC-SHA256 client_token={client_token};access_token={access_token};timestamp={timestamp};nonce={nonce};signature={signature}"
     );
@@ -342,24 +353,19 @@ fn inject_edgegrid(draft: &mut RequestDraft, log: &mut Vec<String>) {
 }
 
 fn aws_signing_key(secret: &str, date: &str, region: &str, service: &str) -> Vec<u8> {
-    let k_date = {
-        let mut m = HmacSha256::new_from_slice(format!("AWS4{secret}").as_bytes()).unwrap();
-        m.update(date.as_bytes());
-        m.finalize().into_bytes()
+    let k_date = match safe_hmac_sha256(format!("AWS4{secret}").as_bytes(), date.as_bytes()) {
+        Some(k) => k,
+        None => return Vec::new(),
     };
-    let k_region = {
-        let mut m = HmacSha256::new_from_slice(&k_date).unwrap();
-        m.update(region.as_bytes());
-        m.finalize().into_bytes()
+    let k_region = match safe_hmac_sha256(&k_date, region.as_bytes()) {
+        Some(k) => k,
+        None => return Vec::new(),
     };
-    let k_service = {
-        let mut m = HmacSha256::new_from_slice(&k_region).unwrap();
-        m.update(service.as_bytes());
-        m.finalize().into_bytes()
+    let k_service = match safe_hmac_sha256(&k_region, service.as_bytes()) {
+        Some(k) => k,
+        None => return Vec::new(),
     };
-    let mut m = HmacSha256::new_from_slice(&k_service).unwrap();
-    m.update(b"aws4_request");
-    m.finalize().into_bytes().to_vec()
+    safe_hmac_sha256(&k_service, b"aws4_request").unwrap_or_default()
 }
 
 fn aws_url_parts(url: &str) -> (String, String, String) {

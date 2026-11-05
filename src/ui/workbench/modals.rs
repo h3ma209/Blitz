@@ -14,14 +14,13 @@ use crate::core::{
 };
 use crate::runtime::{run_collection_with_config, RunnerConfig};
 use crate::storage::JsonStore;
-use crate::ui::loading::Spinner;
 use crate::ui::runner_panel::{RunnerEvent, RunnerPanel};
 use crate::ui::var_hover::VarHoverInput;
 use crate::ui::workbench::cloud::switch_to_env;
 use crate::ui::workbench::state::{
     execute_batch_delete, execute_tree_delete, sync_env_vars, ImpexModal, WorkbenchState,
 };
-use crate::ui::{CommentableTextarea, ConflictState, ModalShell, TeamModal};
+use crate::ui::{CommentableTextarea, ConflictState, EnvDiffView, ModalShell, PerformanceModal, TeamModal};
 
 #[component]
 pub fn VarsPage(st: WorkbenchState) -> Element {
@@ -56,6 +55,11 @@ pub fn VarsPage(st: WorkbenchState) -> Element {
                             class: if vars_active_tab() == 1 { "vars-tab active" } else { "vars-tab" },
                             onclick: move |_| vars_active_tab.set(1),
                             "Variables Overview"
+                        }
+                        button {
+                            class: if vars_active_tab() == 2 { "vars-tab active" } else { "vars-tab" },
+                            onclick: move |_| vars_active_tab.set(2),
+                            "Diff & Drift Inspector"
                         }
                     }
                 }
@@ -563,6 +567,17 @@ pub fn VarsPage(st: WorkbenchState) -> Element {
                     }
                 }
             }
+            if vars_active_tab() == 2 {
+                EnvDiffView {
+                    environments,
+                    active_env_id,
+                    on_done: move |_| {
+                        let mut st = st;
+                        show_vars.set(false);
+                        st.persist();
+                    },
+                }
+            }
         }
     }
 }
@@ -690,8 +705,8 @@ pub fn WorkbenchModals(
                                     let mut col_id = active_collection_id();
                                     let mut req_id = active_request_id();
                                     let mut d = draft();
+                                    let mut tabs = (st.open_tabs)();
                                     if is_batch {
-                                        let mut tabs = (st.open_tabs)();
                                         let count = execute_batch_delete(
                                             &del_ids,
                                             &mut cols,
@@ -711,9 +726,11 @@ pub fn WorkbenchModals(
                                             &mut col_id,
                                             &mut req_id,
                                             &mut d,
+                                            &mut tabs,
                                         ) {
                                             status_msg.set(msg);
                                         }
+                                        st.open_tabs.set(tabs);
                                     }
                                     trash.set(tr);
                                     collections.set(cols);
@@ -1131,103 +1148,83 @@ pub fn WorkbenchModals(
         }
 
         if show_perf() {
-            ModalShell {
-                title: "Performance (minimal VUs)".to_string(),
-                class: "runner-modal".to_string(),
+            PerformanceModal {
+                collections: collections(),
+                active_collection_id: active_collection_id(),
+                active_request_id: active_request_id(),
+                running: perf_running(),
+                report: perf_report(),
+                initial_vus: perf_vus(),
+                initial_secs: perf_secs(),
                 on_close: move |_| show_perf.set(false),
-                div { class: "modal-body",
-                    p { class: "hint", "Concurrent VUs hit active collection for a duration. Reuses HTTP send pipeline." }
-                    label { class: "hint", "VUs" }
-                    input {
-                        r#type: "number",
-                        value: "{perf_vus()}",
-                        oninput: move |evt| {
-                            if let Ok(n) = evt.value().parse::<u32>() {
-                                perf_vus.set(n.clamp(1, 50));
+                on_run: move |(col_id, req_id, vus, secs)| {
+                    if perf_running() {
+                        return;
+                    }
+                    perf_vus.set(vus);
+                    perf_secs.set(secs);
+                    perf_running.set(true);
+                    perf_report.set(None);
+
+                    let cols = collections();
+                    let Some(col) = cols.into_iter().find(|c| c.id == col_id) else {
+                        perf_running.set(false);
+                        status_msg.set("collection not found".into());
+                        return;
+                    };
+
+                    let target_col = if let Some(r_id) = req_id {
+                        let reqs = crate::runtime::ordered_requests(&col);
+                        if let Some(target_req) = reqs.into_iter().find(|r| r.id == r_id) {
+                            Collection {
+                                id: Uuid::new_v4(),
+                                name: format!("Perf: {}", target_req.name),
+                                auth: col.auth.clone(),
+                                items: vec![crate::core::CollectionItem::Request(target_req)],
+                                ..Collection::new("PerfTarget")
                             }
+                        } else {
+                            col.clone()
                         }
+                    } else {
+                        col.clone()
+                    };
+
+                    let mut ctx = vars();
+                    ctx.collection = col.variables_map();
+                    if let Some(env) = find_environment(&environments(), active_env_id()) {
+                        ctx.environment = env.to_map();
+                    } else {
+                        ctx.environment.clear();
                     }
-                    label { class: "hint", "Duration (seconds)" }
-                    input {
-                        r#type: "number",
-                        value: "{perf_secs()}",
-                        oninput: move |evt| {
-                            if let Ok(n) = evt.value().parse::<u64>() {
-                                perf_secs.set(n.clamp(1, 120));
+
+                    spawn(async move {
+                        let report = tokio::task::spawn_blocking(move || {
+                            run_performance(
+                                &target_col,
+                                &ctx,
+                                vus,
+                                Duration::from_secs(secs),
+                            )
+                        })
+                        .await;
+
+                        perf_running.set(false);
+                        match report {
+                            Ok(r) => {
+                                status_msg.set(format!(
+                                    "perf completed: {} reqs, {} errs, avg {:.1}ms, {:.1} rps",
+                                    r.total_requests,
+                                    r.errors,
+                                    r.avg_latency_ms(),
+                                    r.rps(),
+                                ));
+                                perf_report.set(Some(r));
                             }
+                            Err(e) => status_msg.set(format!("perf failed: {e}")),
                         }
-                    }
-                    if let Some(r) = perf_report() {
-                        pre { class: "console-line",
-                            "requests={r.total_requests} errors={r.errors}\navg_ms={r.avg_latency_ms():.1} min={r.latency_min_ms} max={r.latency_max_ms}\nvus={r.vus} duration_s={r.duration_secs}"
-                        }
-                    }
-                    div { class: "kv-actions",
-                        button {
-                            class: "btn btn-send",
-                            disabled: perf_running(),
-                            onclick: move |_| {
-                                let Some(id) = active_collection_id() else {
-                                    status_msg.set("select a collection".into());
-                                    return;
-                                };
-                                let cols = collections();
-                                let Some(col) = cols.into_iter().find(|c| c.id == id) else {
-                                    status_msg.set("collection not found".into());
-                                    return;
-                                };
-                                let mut ctx = vars();
-                                if let Some(env) = find_environment(&environments(), active_env_id()) {
-                                    ctx.environment = env.to_map();
-                                }
-                                let vus = perf_vus();
-                                let secs = perf_secs();
-                                perf_running.set(true);
-                                perf_report.set(None);
-                                spawn(async move {
-                                    let report = tokio::task::spawn_blocking(move || {
-                                        run_performance(
-                                            &col,
-                                            &ctx,
-                                            vus,
-                                            Duration::from_secs(secs),
-                                        )
-                                    })
-                                    .await;
-                                    match report {
-                                        Ok(r) => {
-                                            status_msg.set(format!(
-                                                "perf: {} req, {} err, avg {:.0}ms",
-                                                r.total_requests,
-                                                r.errors,
-                                                r.avg_latency_ms()
-                                            ));
-                                            perf_report.set(Some(r));
-                                        }
-                                        Err(e) => status_msg.set(format!("perf join: {e}")),
-                                    }
-                                    perf_running.set(false);
-                                });
-                            },
-                            if perf_running() {
-                                div { class: "loading-row",
-                                    Spinner { }
-                                    span { class: "loading-text", "Running…" }
-                                }
-                            } else {
-                                "Start"
-                            }
-                        }
-                        button {
-                            class: "btn btn-ghost",
-                            onclick: move |_| show_perf.set(false),
-                            "Close"
-                        }
-                    }
-                    if perf_running() && perf_report().is_none() {
-                        div { class: "loading-row", Spinner { } span { class: "loading-text", "Executing load test…" } }
-                    }
-                }
+                    });
+                },
             }
         }
 

@@ -15,10 +15,12 @@ pub mod console;
 pub mod cookies;
 pub mod digest;
 pub mod doc_gen;
+pub mod env_diff;
 pub mod environment;
 pub mod history;
 pub mod impex;
 pub mod json_lint;
+pub mod json_query;
 pub mod mock_server;
 pub mod mcp_server;
 pub mod mcp_setup;
@@ -62,6 +64,10 @@ pub use console::{push_console, ConsoleLevel, ConsoleLine, CONSOLE_MAX};
 pub use cookies::{Cookie, CookieJar};
 pub use digest::{build_digest_authorization, digest_uri, DigestChallenge};
 pub use doc_gen::{generate_static_doc_html, generate_swagger_ui_html};
+pub use env_diff::{
+    compare_environments, export_diff_markdown, sync_all_missing_to_target, sync_var_to_target,
+    DiffStatus, EnvDiffReport, VarDiffRow,
+};
 pub use environment::{
     demo_environments, ensure_default_environments, export_environment_json, find_environment,
     import_environment_json, import_environment_texts, EnvVar,
@@ -74,6 +80,7 @@ pub use impex::{
     import_request_item, limitations_blurb, ImpexError,
 };
 pub use json_lint::{beautify_json_body, lint_json_body};
+pub use json_query::{query_json, root_keys};
 #[cfg(test)]
 pub use impex::reconcile_openapi3_collection;
 pub use mock_server::{

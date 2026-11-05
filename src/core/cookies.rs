@@ -23,22 +23,40 @@ pub struct CookieJar {
 impl CookieJar {
     /// Store / replace cookies from `Set-Cookie` header values for a request host.
     pub fn store_from_set_cookie(&mut self, host: &str, set_cookie_values: &[String]) {
-        let domain = host_to_domain(host);
+        let fallback_domain = host_to_domain(host);
         for raw in set_cookie_values {
-            if let Some((name, value, path)) = parse_set_cookie(raw) {
-                self.upsert(Cookie {
-                    domain: domain.clone(),
-                    name,
-                    value,
-                    path,
-                });
+            if let Some(parsed) = parse_set_cookie(raw) {
+                let domain = parsed.domain.unwrap_or_else(|| fallback_domain.clone());
+                let domain = domain.strip_prefix('.').unwrap_or(&domain).to_lowercase();
+                
+                // If Max-Age is 0 or negative, remove expired cookie
+                if parsed.max_age.map(|a| a <= 0).unwrap_or(false) {
+                    self.delete_cookie(&domain, &parsed.name, &parsed.path);
+                } else {
+                    self.upsert(Cookie {
+                        domain,
+                        name: parsed.name,
+                        value: parsed.value,
+                        path: parsed.path,
+                    });
+                }
             }
         }
     }
 
+    pub fn delete_cookie(&mut self, domain: &str, name: &str, path: &str) {
+        let clean_d = domain.strip_prefix('.').unwrap_or(domain);
+        self.cookies.retain(|c| {
+            let c_domain = c.domain.strip_prefix('.').unwrap_or(&c.domain);
+            !(c_domain.eq_ignore_ascii_case(clean_d) && c.name == name && c.path == path)
+        });
+    }
+
     pub fn upsert(&mut self, cookie: Cookie) {
         if let Some(existing) = self.cookies.iter_mut().find(|c| {
-            c.domain == cookie.domain && c.name == cookie.name && c.path == cookie.path
+            c.domain.eq_ignore_ascii_case(&cookie.domain)
+                && c.name == cookie.name
+                && c.path == cookie.path
         }) {
             *existing = cookie;
         } else {
@@ -82,26 +100,58 @@ fn host_to_domain(host: &str) -> String {
 }
 
 fn domain_matches(cookie_domain: &str, host: &str) -> bool {
-    host == cookie_domain || host.ends_with(&format!(".{cookie_domain}"))
+    let cd = cookie_domain.strip_prefix('.').unwrap_or(cookie_domain).to_lowercase();
+    let h = host.strip_prefix('.').unwrap_or(host).to_lowercase();
+    h == cd || h.ends_with(&format!(".{cd}"))
 }
 
-fn parse_set_cookie(raw: &str) -> Option<(String, String, String)> {
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ParsedSetCookie {
+    pub name: String,
+    pub value: String,
+    pub path: String,
+    pub domain: Option<String>,
+    pub max_age: Option<i64>,
+}
+
+fn parse_set_cookie(raw: &str) -> Option<ParsedSetCookie> {
     let first = raw.split(';').next()?.trim();
     let (name, value) = first.split_once('=')?;
+    let name = name.trim();
     if name.is_empty() {
         return None;
     }
+    let value = value.trim();
     let mut path = "/".to_string();
+    let mut domain = None;
+    let mut max_age = None;
+
     for part in raw.split(';').skip(1) {
         let part = part.trim();
         if let Some(p) = part
             .strip_prefix("Path=")
             .or_else(|| part.strip_prefix("path="))
         {
-            path = p.to_string();
+            path = p.trim().to_string();
+        } else if let Some(d) = part
+            .strip_prefix("Domain=")
+            .or_else(|| part.strip_prefix("domain="))
+        {
+            domain = Some(d.trim().to_string());
+        } else if let Some(ma) = part
+            .strip_prefix("Max-Age=")
+            .or_else(|| part.strip_prefix("max-age="))
+        {
+            max_age = ma.trim().parse::<i64>().ok();
         }
     }
-    Some((name.to_string(), value.to_string(), path))
+    Some(ParsedSetCookie {
+        name: name.to_string(),
+        value: value.to_string(),
+        path,
+        domain,
+        max_age,
+    })
 }
 
 #[cfg(test)]
@@ -117,5 +167,25 @@ mod tests {
         );
         let hdr = jar.header_for("httpbin.org", "/get").unwrap();
         assert!(hdr.contains("session=abc"));
+    }
+
+    #[test]
+    fn test_cookie_domain_matching_and_max_age_expiration() {
+        let mut jar = CookieJar::default();
+
+        // 1. Domain attribute applies to subdomains
+        jar.store_from_set_cookie(
+            "auth.example.com",
+            &["token=12345; Domain=.example.com; Path=/api".into()],
+        );
+        let hdr_sub = jar.header_for("api.example.com", "/api/v1").unwrap();
+        assert_eq!(hdr_sub, "token=12345");
+
+        // 2. Max-Age=0 deletes the cookie
+        jar.store_from_set_cookie(
+            "api.example.com",
+            &["token=; Domain=.example.com; Path=/api; Max-Age=0".into()],
+        );
+        assert!(jar.header_for("api.example.com", "/api/v1").is_none());
     }
 }

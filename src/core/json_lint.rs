@@ -83,8 +83,8 @@ pub fn beautify_json_body(raw: &str) -> Option<String> {
             if let Some(close) = clean[start..].find("}}") {
                 let end = start + close + 2;
                 let var_expr = &clean[start..end];
-                let before = substituted.trim_end();
-                if before.ends_with('"') {
+                let in_str = is_inside_string(&substituted);
+                if in_str {
                     let k_inner = format!("__BLITZ_VAR_{}__", counter);
                     counter += 1;
                     placeholders.push((k_inner.clone(), var_expr.to_string()));
@@ -113,6 +113,23 @@ pub fn beautify_json_body(raw: &str) -> Option<String> {
         }
     }
     None
+}
+
+fn is_inside_string(s: &str) -> bool {
+    let mut in_str = false;
+    let mut escaped = false;
+    for c in s.chars() {
+        if escaped {
+            escaped = false;
+            continue;
+        }
+        if c == '\\' {
+            escaped = true;
+        } else if c == '"' {
+            in_str = !in_str;
+        }
+    }
+    in_str
 }
 
 #[cfg(test)]
@@ -148,5 +165,15 @@ mod tests {
         let raw = r#"{"a":1,"b":{{var}}}"#;
         let formatted = beautify_json_body(raw).unwrap();
         assert!(formatted.contains("{\n  \"a\": 1,\n  \"b\": {{var}}\n}"));
+    }
+
+    #[test]
+    fn test_beautify_json_multiple_in_string_variables() {
+        let raw = r#"{"url":"{{host}}/api/{{version}}/resource"}"#;
+        let formatted = beautify_json_body(raw).unwrap();
+        assert_eq!(
+            formatted,
+            "{\n  \"url\": \"{{host}}/api/{{version}}/resource\"\n}"
+        );
     }
 }

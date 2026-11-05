@@ -66,7 +66,8 @@ fn run_git(cwd: &Path, args: &[&str]) -> Result<String, CloudGitError> {
 }
 
 fn classify_git_error(raw: &str) -> String {
-    let lower = raw.to_lowercase();
+    let masked = mask_remote_url(raw);
+    let lower = masked.to_lowercase();
     if lower.contains("authentication")
         || lower.contains("permission denied")
         || lower.contains("could not read username")
@@ -75,7 +76,7 @@ fn classify_git_error(raw: &str) -> String {
         || lower.contains("publickey")
     {
         format!(
-            "auth failure — use SSH agent or `gh auth login` / credential helper. Detail: {raw}"
+            "auth failure — use SSH agent or `gh auth login` / credential helper. Detail: {masked}"
         )
     } else if lower.contains("conflict")
         || lower.contains("non-fast-forward")
@@ -83,10 +84,10 @@ fn classify_git_error(raw: &str) -> String {
         || lower.contains("needs merge")
     {
         format!(
-            "conflict / non-fast-forward — pull & resolve in the clone, then save again. Detail: {raw}"
+            "conflict / non-fast-forward — pull & resolve in the clone, then save again. Detail: {masked}"
         )
     } else {
-        raw.to_string()
+        masked
     }
 }
 
@@ -919,6 +920,10 @@ mod tests {
             "git@github.com:org/repo.git"
         );
         assert_eq!(mask_remote_url(""), "");
+
+        let classified = classify_git_error("fatal: Authentication failed for 'https://user:secrettoken@github.com/org/repo.git'");
+        assert!(!classified.contains("secrettoken"));
+        assert!(classified.contains("user:***"));
     }
 
     #[test]

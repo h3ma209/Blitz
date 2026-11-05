@@ -18,6 +18,7 @@ pub enum PaletteAction {
     OpenRunner,
     ToggleConsole,
     OpenVariables,
+    OpenVariablesDiff,
     OpenSettings,
     OpenCookies,
     OpenPerformance,
@@ -257,6 +258,14 @@ fn build_entries(st: &WorkbenchState) -> Vec<PaletteEntry> {
         },
         PaletteEntry {
             category: "Action",
+            title: "Compare Environments (Diff & Drift)".into(),
+            subtitle: "Side-by-side variable comparison, drift inspection, and 1-click sync".into(),
+            shortcut: None,
+            method_badge: None,
+            action: PaletteAction::OpenVariablesDiff,
+        },
+        PaletteEntry {
+            category: "Action",
             title: "Open Settings & Preferences".into(),
             subtitle: "Configure theme, layout, timeouts, proxy, certificates, and cloud sync".into(),
             shortcut: None,
@@ -471,6 +480,10 @@ pub fn CommandPalette(
             PaletteAction::ToggleConsole => st.console_open.set(!(st.console_open)()),
             PaletteAction::OpenVariables => {
                 st.vars_active_tab.set(0);
+                st.show_vars.set(true);
+            }
+            PaletteAction::OpenVariablesDiff => {
+                st.vars_active_tab.set(2);
                 st.show_vars.set(true);
             }
             PaletteAction::OpenSettings => st.show_settings.set(true),

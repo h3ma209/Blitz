@@ -204,7 +204,7 @@ pub fn export_environment_json(env: &Environment) -> Result<String, String> {
         .map(|v| {
             serde_json::json!({
                 "key": v.key,
-                "value": v.current_value,
+                "value": v.effective(),
                 "enabled": v.enabled,
                 "type": "default",
             })
@@ -270,5 +270,17 @@ mod tests {
         let json = export_environment_json(&env).unwrap();
         let again = import_environment_json(&json).unwrap();
         assert_eq!(again.values.len(), 2);
+    }
+
+    #[test]
+    fn export_environment_preserves_initial_value_when_current_empty() {
+        let mut env = Environment::new("TestEnv");
+        let mut v = EnvVar::new("API_KEY", "secret_123");
+        v.current_value = String::new(); // User didn't overwrite current
+        env.values.push(v);
+
+        let json = export_environment_json(&env).unwrap();
+        let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed["values"][0]["value"], "secret_123");
     }
 }

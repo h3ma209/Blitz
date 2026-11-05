@@ -46,7 +46,7 @@ impl VaultStore {
     pub fn save(&self, root: &Path) -> Result<(), VaultError> {
         fs::create_dir_all(root)?;
         let path = Self::path_under(root);
-        let tmp_path = root.join("vault.json.tmp");
+        let tmp_path = root.join(format!("vault.json.tmp.{}", uuid::Uuid::new_v4()));
         let text = serde_json::to_string_pretty(self)?;
         fs::write(&tmp_path, text)?;
         fs::rename(&tmp_path, &path)?;
