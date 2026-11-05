@@ -11,7 +11,7 @@ use uuid::Uuid;
 use super::collection::{Collection, CollectionItem, Folder};
 use super::request::{
     AuthConfig, AuthType, BodyMode, FormDataField, HttpMethod, KeyValue, RequestDraft,
-    SavedExample,
+    RequestProtocol, SavedExample,
 };
 
 #[derive(Debug, Clone, thiserror::Error)]
@@ -207,9 +207,18 @@ fn import_request_with_inheritance(item: &Value, inherited_headers: &[KeyValue])
 }
 
 fn import_request(item: &Value) -> Result<RequestDraft, ImpexError> {
-    let req_val = item
-        .get("request")
-        .ok_or_else(|| ImpexError::Json("missing request".into()))?;
+    let fallback_obj;
+    let req_val = if let Some(r) = item.get("request") {
+        r
+    } else if item.get("url").is_some() {
+        fallback_obj = serde_json::json!({
+            "url": item.get("url"),
+            "header": item.get("header").or_else(|| item.get("headers")),
+        });
+        &fallback_obj
+    } else {
+        return Err(ImpexError::Json("missing request".into()));
+    };
 
     let req_is_str = req_val.is_string();
     let empty_obj = serde_json::json!({});
@@ -302,6 +311,54 @@ fn import_request(item: &Value) -> Result<RequestDraft, ImpexError> {
     if !parsed_hdrs.is_empty() {
         draft.headers = parsed_hdrs;
         draft.headers.push(KeyValue::new("", ""));
+    }
+
+    // Protocol detection & standard header injection
+    let proto_hint = item
+        .get("protocol")
+        .or_else(|| req.get("protocol"))
+        .or_else(|| item.get("type"))
+        .or_else(|| req.get("type"))
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
+
+    let url_lower = draft.url.to_lowercase();
+    let detected_proto = if proto_hint.eq_ignore_ascii_case("websocket")
+        || url_lower.starts_with("ws://")
+        || url_lower.starts_with("wss://")
+        || url_lower.contains("socket_endpoint")
+        || url_lower.contains("websocket")
+        || draft.headers.iter().any(|h| {
+            h.key.eq_ignore_ascii_case("Upgrade") && h.value.to_lowercase().contains("websocket")
+                || h.key.to_lowercase().starts_with("sec-websocket")
+        }) {
+        RequestProtocol::WebSocket
+    } else if proto_hint.eq_ignore_ascii_case("grpc")
+        || url_lower.starts_with("grpc://")
+        || url_lower.starts_with("grpcs://")
+        || draft.headers.iter().any(|h| h.value.contains("application/grpc")) {
+        RequestProtocol::Grpc
+    } else if proto_hint.eq_ignore_ascii_case("mqtt")
+        || url_lower.starts_with("mqtt://")
+        || url_lower.starts_with("mqtts://") {
+        RequestProtocol::Mqtt
+    } else if proto_hint.eq_ignore_ascii_case("sse")
+        || url_lower.starts_with("sse://")
+        || draft.headers.iter().any(|h| h.value.contains("text/event-stream")) {
+        RequestProtocol::Sse
+    } else if proto_hint.eq_ignore_ascii_case("graphql-ws")
+        || draft.headers.iter().any(|h| h.value.contains("graphql-transport-ws")) {
+        RequestProtocol::GraphqlWs
+    } else if proto_hint.eq_ignore_ascii_case("socketio")
+        || proto_hint.eq_ignore_ascii_case("socket.io")
+        || url_lower.contains("socket.io") {
+        RequestProtocol::SocketIo
+    } else {
+        RequestProtocol::Http
+    };
+
+    if detected_proto != RequestProtocol::Http {
+        draft.apply_protocol_defaults(detected_proto);
     }
 
     if let Some(body) = req.get("body") {
@@ -944,6 +1001,11 @@ fn export_request(r: &RequestDraft) -> Value {
         if let Ok(v) = serde_json::to_value(&r.assertions) {
             item["x-blitz"] = json!({ "assertions": v });
         }
+    }
+    if r.protocol != RequestProtocol::Http {
+        let proto_name = r.protocol.as_str().to_lowercase();
+        item["protocol"] = json!(proto_name);
+        item["request"]["protocol"] = json!(proto_name);
     }
     item
 }
@@ -1656,5 +1718,44 @@ mod tests {
         assert_eq!(req.examples.len(), 1);
         assert_eq!(req.examples[0].status, 200);
         assert_eq!(req.examples[0].body, "{\"token\":\"xyz\"}");
+    }
+
+    #[test]
+    fn test_import_postman_websocket_headers() {
+        let postman_json = r#"{
+            "info": { "name": "WS Test" },
+            "item": [
+                {
+                    "name": "Live Socket",
+                    "request": {
+                        "url": "{{hakki_socket_endpoint}}",
+                        "header": [
+                            { "key": "Authorization", "value": "{{ttoken_hakki}}" },
+                            { "key": "x-auth-host", "value": "snbhakki.rcell.me" }
+                        ]
+                    }
+                }
+            ]
+        }"#;
+
+        let col = import_collection_v21(postman_json).expect("import postman websocket collection");
+        let req = match &col.items[0] {
+            CollectionItem::Request(r) => r,
+            _ => panic!("expected request"),
+        };
+
+        assert_eq!(req.protocol, RequestProtocol::WebSocket);
+
+        // Check that standard Postman WebSocket headers are present
+        assert!(req.headers.iter().any(|h| h.key == "Host" && h.value == "<calculated at runtime>"));
+        assert!(req.headers.iter().any(|h| h.key == "Connection" && h.value == "Upgrade"));
+        assert!(req.headers.iter().any(|h| h.key == "Upgrade" && h.value == "websocket"));
+        assert!(req.headers.iter().any(|h| h.key == "Sec-WebSocket-Key" && h.value == "<calculated at runtime>"));
+        assert!(req.headers.iter().any(|h| h.key == "Sec-WebSocket-Version" && h.value == "13"));
+        assert!(req.headers.iter().any(|h| h.key == "Sec-WebSocket-Extensions" && h.value == "permessage-deflate; client_max_window_bits"));
+
+        // Check user custom headers are preserved
+        assert!(req.headers.iter().any(|h| h.key == "Authorization" && h.value == "{{ttoken_hakki}}"));
+        assert!(req.headers.iter().any(|h| h.key == "x-auth-host" && h.value == "snbhakki.rcell.me"));
     }
 }

@@ -44,6 +44,38 @@ impl RequestProtocol {
             Self::GraphqlWs,
         ]
     }
+
+    /// Default standard headers required or recommended for this protocol (e.g. Postman WebSocket handshake headers).
+    pub fn default_headers(self) -> Vec<KeyValue> {
+        match self {
+            Self::WebSocket => vec![
+                KeyValue::new("Host", "<calculated at runtime>"),
+                KeyValue::new("Connection", "Upgrade"),
+                KeyValue::new("Upgrade", "websocket"),
+                KeyValue::new("Sec-WebSocket-Key", "<calculated at runtime>"),
+                KeyValue::new("Sec-WebSocket-Version", "13"),
+                KeyValue::new("Sec-WebSocket-Extensions", "permessage-deflate; client_max_window_bits"),
+            ],
+            Self::Grpc => vec![
+                KeyValue::new("Content-Type", "application/grpc"),
+                KeyValue::new("TE", "trailers"),
+            ],
+            Self::Sse => vec![
+                KeyValue::new("Accept", "text/event-stream"),
+                KeyValue::new("Cache-Control", "no-cache"),
+                KeyValue::new("Connection", "keep-alive"),
+            ],
+            Self::GraphqlWs => vec![
+                KeyValue::new("Sec-WebSocket-Protocol", "graphql-transport-ws"),
+                KeyValue::new("Connection", "Upgrade"),
+                KeyValue::new("Upgrade", "websocket"),
+            ],
+            Self::SocketIo => vec![
+                KeyValue::new("Accept", "*/*"),
+            ],
+            _ => vec![],
+        }
+    }
 }
 
 impl std::fmt::Display for RequestProtocol {
@@ -477,6 +509,26 @@ impl Default for RequestDraft {
 }
 
 impl RequestDraft {
+    /// Switch protocol and inject default standard headers (e.g. Postman WebSocket headers)
+    /// without duplicating or wiping existing user headers. Places defaults at the top
+    /// in standard protocol order followed by custom user headers.
+    pub fn apply_protocol_defaults(&mut self, proto: RequestProtocol) {
+        self.protocol = proto;
+        let defaults = proto.default_headers();
+        let mut insert_idx = 0;
+        for def in defaults {
+            if let Some(pos) = self.headers.iter().position(|h| h.key.eq_ignore_ascii_case(&def.key)) {
+                if pos >= insert_idx {
+                    insert_idx = pos + 1;
+                }
+            } else {
+                let bounded_idx = insert_idx.min(self.headers.len());
+                self.headers.insert(bounded_idx, def);
+                insert_idx += 1;
+            }
+        }
+    }
+
     /// Apply environment-specific overrides to this request draft.
     /// Returns a new RequestDraft with overrides applied.
     pub fn apply_env_override(&self, override_: &crate::core::collection::RequestEnvOverride) -> Self {

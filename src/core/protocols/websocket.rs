@@ -137,9 +137,15 @@ pub fn ws_connect_session_with_headers(
                     match url.clone().into_client_request() {
                         Ok(mut req) => {
                             for (k, v) in &headers_bg {
+                                let v_trimmed = v.trim();
+                                if v_trimmed.is_empty()
+                                    || v_trimmed.eq_ignore_ascii_case("<calculated at runtime>")
+                                {
+                                    continue;
+                                }
                                 if let (Ok(hk), Ok(hv)) = (
                                     tokio_tungstenite::tungstenite::http::header::HeaderName::from_bytes(k.as_bytes()),
-                                    tokio_tungstenite::tungstenite::http::header::HeaderValue::from_str(v),
+                                    tokio_tungstenite::tungstenite::http::header::HeaderValue::from_str(v_trimmed),
                                 ) {
                                     req.headers_mut().insert(hk, hv);
                                 }

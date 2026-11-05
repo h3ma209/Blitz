@@ -90,8 +90,9 @@ pub use mock_server::{
 pub use oauth::{fetch_oauth2_token, OAuthError};
 pub use perf_runner::{run_performance, PerfReport};
 pub use protocols::{
-    graphql_ws_subscribe, grpc_reflection_list, grpc_server_stream_stub, grpc_unary, mcp_call_tool,
-    mcp_list_tools, mqtt_publish, mqtt_subscribe_once, socketio_session, split_mcp_args, sse_listen,
+    graphql_ws_subscribe, graphql_ws_subscribe_with_headers, grpc_reflection_list,
+    grpc_server_stream_stub, grpc_unary, grpc_unary_with_headers, mcp_call_tool, mcp_list_tools,
+    mqtt_publish, mqtt_subscribe_once, socketio_session, split_mcp_args, sse_listen,
     ws_connect_session, ws_connect_session_with_headers, GrpcUnaryResult, McpToolInfo,
     MqttActionResult, SseEvent, WsDirection, WsFrameItem, WsSession, WsSessionEvent,
 };

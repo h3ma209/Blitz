@@ -28,8 +28,18 @@ pub struct GrpcUnaryResult {
 
 /// Call unary RPC: `endpoint` like `http://127.0.0.1:50051`, method `pkg.Svc/Method`, JSON body.
 pub fn grpc_unary(endpoint: &str, method: &str, json_body: &str) -> GrpcUnaryResult {
+    grpc_unary_with_headers(endpoint, method, json_body, &[])
+}
+
+/// Call unary RPC with custom headers/metadata: `endpoint` like `http://127.0.0.1:50051`, method `pkg.Svc/Method`, JSON body.
+pub fn grpc_unary_with_headers(
+    endpoint: &str,
+    method: &str,
+    json_body: &str,
+    headers: &[(String, String)],
+) -> GrpcUnaryResult {
     let started = Instant::now();
-    let mut log = vec!["grpc: unary (Struct JSON encode)".into()];
+    let mut log = vec![format!("grpc: unary with {} headers (Struct JSON encode)", headers.len())];
 
     let rt = match Runtime::new() {
         Ok(r) => r,
@@ -46,7 +56,7 @@ pub fn grpc_unary(endpoint: &str, method: &str, json_body: &str) -> GrpcUnaryRes
         }
     };
 
-    match rt.block_on(unary_async(endpoint, method, json_body, &mut log)) {
+    match rt.block_on(unary_async(endpoint, method, json_body, headers, &mut log)) {
         Ok(mut r) => {
             r.elapsed_ms = started.elapsed().as_millis();
             r.log = log;
@@ -68,6 +78,7 @@ async fn unary_async(
     endpoint: &str,
     method: &str,
     json_body: &str,
+    headers: &[(String, String)],
     log: &mut Vec<String>,
 ) -> Result<GrpcUnaryResult, String> {
     let endpoint = endpoint.trim_end_matches('/');
@@ -92,12 +103,25 @@ async fn unary_async(
     let client: Client<_, Full<Bytes>> =
         Client::builder(TokioExecutor::new()).build(connector);
 
-    let req = Request::builder()
+    let mut req_builder = Request::builder()
         .method(hyper::Method::POST)
         .uri(&url)
         .header("content-type", "application/grpc")
         .header("te", "trailers")
-        .header("user-agent", "Blitz/0.1 grpc-unary")
+        .header("user-agent", "Blitz/0.1 grpc-unary");
+
+    for (k, v) in headers {
+        if !k.is_empty() && !v.is_empty() {
+            if let (Ok(hk), Ok(hv)) = (
+                hyper::header::HeaderName::from_bytes(k.as_bytes()),
+                hyper::header::HeaderValue::from_str(v),
+            ) {
+                req_builder = req_builder.header(hk, hv);
+            }
+        }
+    }
+
+    let req = req_builder
         .body(Full::new(Bytes::from(frame)))
         .map_err(|e| format!("build: {e}"))?;
 

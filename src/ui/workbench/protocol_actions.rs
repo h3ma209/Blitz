@@ -3,8 +3,8 @@ use std::time::Duration;
 use dioxus::prelude::*;
 
 use crate::core::{
-    graphql_ws_subscribe, grpc_reflection_list, mcp_call_tool, mcp_list_tools, mqtt_publish,
-    mqtt_subscribe_once, socketio_session, split_mcp_args, sse_listen,
+    graphql_ws_subscribe_with_headers, grpc_reflection_list, mcp_call_tool, mcp_list_tools,
+    mqtt_publish, mqtt_subscribe_once, socketio_session, split_mcp_args, sse_listen,
     ws_connect_session_with_headers, MqttActionResult,
 };
 use crate::ui::workbench::state::{WorkbenchState, WS_SESSION};
@@ -351,14 +351,35 @@ pub fn run_protocol_action(mut st: WorkbenchState, action: String) {
         }
         "sse_listen" => {
             st.sending.set(true);
-            let url = req.url.clone();
+            let vars = st.vars.peek();
+            let url = vars.resolve_string(&req.url);
             st.log_network(format!("🌊 [SSE] Connecting to {url}"));
-            let headers: Vec<(String, String)> = req
+            let mut headers: Vec<(String, String)> = req
                 .headers
                 .iter()
-                .filter(|h| h.enabled && !h.key.is_empty())
-                .map(|h| (h.key.clone(), h.value.clone()))
+                .filter(|h| {
+                    h.enabled
+                        && !h.key.trim().is_empty()
+                        && !h.value.trim().eq_ignore_ascii_case("<calculated at runtime>")
+                })
+                .map(|h| (vars.resolve_string(&h.key), vars.resolve_string(&h.value)))
                 .collect();
+            match &req.auth.auth_type {
+                crate::core::AuthType::Bearer => {
+                    let token = vars.resolve_string(&req.auth.token);
+                    if !token.is_empty() {
+                        headers.push(("Authorization".into(), format!("Bearer {token}")));
+                    }
+                }
+                crate::core::AuthType::ApiKey => {
+                    let key = vars.resolve_string(&req.auth.api_key_header);
+                    let val = vars.resolve_string(&req.auth.token);
+                    if !key.is_empty() && !val.is_empty() {
+                        headers.push((key, val));
+                    }
+                }
+                _ => {}
+            }
             let url_bg = url.clone();
             let headers_bg = headers.clone();
             spawn(async move {
@@ -395,20 +416,59 @@ pub fn run_protocol_action(mut st: WorkbenchState, action: String) {
         }
         "graphql_ws_subscribe" => {
             st.sending.set(true);
-            let url = req.url.clone();
-            let q = if req.graphql_ws_query.is_empty() {
-                req.graphql_query.clone()
+            let vars = st.vars.peek();
+            let url = vars.resolve_string(&req.url);
+            let raw_q = if req.graphql_ws_query.is_empty() {
+                &req.graphql_query
             } else {
-                req.graphql_ws_query.clone()
+                &req.graphql_ws_query
             };
-            let vars = req.graphql_variables.clone();
+            let q = vars.resolve_string(raw_q);
+            let q_vars = vars.resolve_string(&req.graphql_variables);
+            let mut headers: Vec<(String, String)> = req
+                .headers
+                .iter()
+                .filter(|h| {
+                    h.enabled
+                        && !h.key.trim().is_empty()
+                        && !h.value.trim().eq_ignore_ascii_case("<calculated at runtime>")
+                })
+                .map(|h| (vars.resolve_string(&h.key), vars.resolve_string(&h.value)))
+                .collect();
+            match &req.auth.auth_type {
+                crate::core::AuthType::Bearer => {
+                    let token = vars.resolve_string(&req.auth.token);
+                    if !token.is_empty() {
+                        headers.push(("Authorization".into(), format!("Bearer {token}")));
+                    }
+                }
+                crate::core::AuthType::ApiKey => {
+                    let key = vars.resolve_string(&req.auth.api_key_header);
+                    let val = vars.resolve_string(&req.auth.token);
+                    if !key.is_empty() && !val.is_empty() {
+                        headers.push((key, val));
+                    }
+                }
+                _ => {}
+            }
             let url_bg = url.clone();
             let q_bg = q.clone();
-            let vars_bg = vars.clone();
-            st.log_network(format!("◈ [GraphQL-WS] Subscribing to {url}"));
+            let vars_bg = q_vars.clone();
+            let headers_bg = headers.clone();
+            st.log_network(format!(
+                "◈ [GraphQL-WS] Subscribing to {url} ({} headers)",
+                headers.len()
+            ));
             spawn(async move {
                 let result = tokio::task::spawn_blocking(move || {
-                    graphql_ws_subscribe(&url_bg, &q_bg, &vars_bg, 10, 15_000)
+                    graphql_ws_subscribe_with_headers(
+                        &url_bg,
+                        &q_bg,
+                        &vars_bg,
+                        &headers_bg,
+                        10,
+                        15_000,
+                    )
                 })
                 .await;
                 match result {
@@ -420,7 +480,7 @@ pub fn run_protocol_action(mut st: WorkbenchState, action: String) {
                         st.log_error(format!("◈ [GraphQL-WS] Error: {e}"));
                         if st.app_settings.peek().ui.console_log_error_payloads {
                             st.log_network(format!(
-                                "─── GraphQL-WS Sent ───\nQuery:\n{q}\nVariables:\n{vars}"
+                                "─── GraphQL-WS Sent ───\nQuery:\n{q}\nVariables:\n{q_vars}"
                             ));
                             st.log_error(format!("─── Received on Error ───\nError: {e}"));
                         }

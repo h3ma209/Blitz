@@ -16,7 +16,7 @@ use crate::core::{
     apply_env_var_edit, apply_environment_map, batch_duplicate_across, batch_move_items,
     check_for_updates, delete_needs_confirmation, detect_git_conflicts, duplicate_across,
     export_collection_v21, find_environment, find_request_across, flatten_collections,
-    generate_static_doc_html, generate_swagger_ui_html, grpc_unary, insert_item_under,
+    generate_static_doc_html, generate_swagger_ui_html, grpc_unary_with_headers, insert_item_under,
     is_draft_dirty, move_item_to, push_console, push_history, remint_pasted_item, remove_across,
     rename_across, reorder_before, request_tab_display_name, resolve_ancestor_auth,
     save_example_to_request, save_request_to_collections, snapshot_tree_item, sort_collections,
@@ -584,17 +584,44 @@ pub fn Workbench() -> Element {
             send_cancel.set(Some(cancel_flag.clone()));
             sending.set(true);
             response.set(None);
-            let endpoint = req.url.clone();
-            let method = req.grpc_method.clone();
-            let body = req.body.clone();
+            let vars_snapshot = vars.peek();
+            let endpoint = vars_snapshot.resolve_string(&req.url);
+            let method = vars_snapshot.resolve_string(&req.grpc_method);
+            let body = vars_snapshot.resolve_string(&req.body);
             let resolved = format!("{endpoint}/{method}");
             let cancel_grpc = cancel_flag.clone();
+            let mut headers_to_send: Vec<(String, String)> = Vec::new();
+            for h in req.headers.iter().filter(|h| h.enabled && !h.key.is_empty()) {
+                headers_to_send.push((
+                    vars_snapshot.resolve_string(&h.key),
+                    vars_snapshot.resolve_string(&h.value),
+                ));
+            }
+            match &req.auth.auth_type {
+                crate::core::AuthType::Bearer => {
+                    let token = vars_snapshot.resolve_string(&req.auth.token);
+                    if !token.is_empty() {
+                        headers_to_send.push(("authorization".into(), format!("Bearer {token}")));
+                    }
+                }
+                crate::core::AuthType::ApiKey => {
+                    let key = vars_snapshot.resolve_string(&req.auth.api_key_header);
+                    let val = vars_snapshot.resolve_string(&req.auth.token);
+                    if !key.is_empty() && !val.is_empty() {
+                        headers_to_send.push((key, val));
+                    }
+                }
+                _ => {}
+            }
             spawn(async move {
                 let ep = endpoint.clone();
                 let meth = method.clone();
                 let body_bg = body.clone();
-                let result =
-                    tokio::task::spawn_blocking(move || grpc_unary(&ep, &meth, &body_bg)).await;
+                let headers_bg = headers_to_send.clone();
+                let result = tokio::task::spawn_blocking(move || {
+                    grpc_unary_with_headers(&ep, &meth, &body_bg, &headers_bg)
+                })
+                .await;
                 if send_gen() != my_gen || cancel_grpc.load(Ordering::SeqCst) {
                     return;
                 }

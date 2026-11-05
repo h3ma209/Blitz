@@ -5,7 +5,10 @@ use std::time::Duration;
 use futures_util::{SinkExt, StreamExt};
 use serde_json::{json, Value};
 use tokio::runtime::Runtime;
-use tokio_tungstenite::{connect_async, tungstenite::Message};
+use tokio_tungstenite::{
+    connect_async,
+    tungstenite::{client::IntoClientRequest, Message},
+};
 
 /// Subscribe and collect up to `max_events` payload messages (or until timeout).
 pub fn graphql_ws_subscribe(
@@ -15,11 +18,24 @@ pub fn graphql_ws_subscribe(
     max_events: usize,
     timeout_ms: u64,
 ) -> Result<Vec<String>, String> {
+    graphql_ws_subscribe_with_headers(ws_url, query, variables_json, &[], max_events, timeout_ms)
+}
+
+/// Subscribe with handshake headers/auth tokens and collect events.
+pub fn graphql_ws_subscribe_with_headers(
+    ws_url: &str,
+    query: &str,
+    variables_json: &str,
+    headers: &[(String, String)],
+    max_events: usize,
+    timeout_ms: u64,
+) -> Result<Vec<String>, String> {
     let rt = Runtime::new().map_err(|e| e.to_string())?;
     rt.block_on(subscribe_async(
         ws_url,
         query,
         variables_json,
+        headers,
         max_events,
         timeout_ms,
     ))
@@ -29,13 +45,36 @@ async fn subscribe_async(
     ws_url: &str,
     query: &str,
     variables_json: &str,
+    headers: &[(String, String)],
     max_events: usize,
     timeout_ms: u64,
 ) -> Result<Vec<String>, String> {
-    let mut log = vec![format!("graphql-ws: connect {ws_url}")];
-    let (mut ws, _) = connect_async(ws_url)
-        .await
-        .map_err(|e| format!("connect: {e}"))?;
+    let mut log = vec![format!("graphql-ws: connect {ws_url} ({} headers)", headers.len())];
+    let connect_res = if headers.is_empty() {
+        connect_async(ws_url).await
+    } else {
+        match ws_url.into_client_request() {
+            Ok(mut req) => {
+                for (k, v) in headers {
+                    let v_trimmed = v.trim();
+                    if v_trimmed.is_empty()
+                        || v_trimmed.eq_ignore_ascii_case("<calculated at runtime>")
+                    {
+                        continue;
+                    }
+                    if let (Ok(hk), Ok(hv)) = (
+                        tokio_tungstenite::tungstenite::http::header::HeaderName::from_bytes(k.as_bytes()),
+                        tokio_tungstenite::tungstenite::http::header::HeaderValue::from_str(v_trimmed),
+                    ) {
+                        req.headers_mut().insert(hk, hv);
+                    }
+                }
+                connect_async(req).await
+            }
+            Err(e) => return Err(format!("request build: {e}")),
+        }
+    };
+    let (mut ws, _) = connect_res.map_err(|e| format!("connect: {e}"))?;
 
     // graphql-transport-ws connection_init
     let init = json!({"type": "connection_init", "payload": {}});

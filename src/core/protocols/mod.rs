@@ -9,8 +9,11 @@ pub mod socketio;
 pub mod sse;
 pub mod websocket;
 
-pub use graphql_ws::graphql_ws_subscribe;
-pub use grpc::{grpc_reflection_list, grpc_server_stream_stub, grpc_unary, GrpcUnaryResult};
+pub use graphql_ws::{graphql_ws_subscribe, graphql_ws_subscribe_with_headers};
+pub use grpc::{
+    grpc_reflection_list, grpc_server_stream_stub, grpc_unary, grpc_unary_with_headers,
+    GrpcUnaryResult,
+};
 pub use mcp::{mcp_call_tool, mcp_list_tools, split_mcp_args, McpToolInfo};
 pub use mqtt::{mqtt_publish, mqtt_subscribe_once, MqttActionResult};
 pub use socketio::socketio_session;

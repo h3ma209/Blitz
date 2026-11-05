@@ -62,7 +62,8 @@ pub fn RequestBuilder(
         let draft = draft.clone();
         move |evt: Event<FormData>| {
             let mut d = draft.clone();
-            d.protocol = parse_protocol(&evt.value());
+            let new_proto = parse_protocol(&evt.value());
+            d.apply_protocol_defaults(new_proto);
             on_change.call(d);
         }
     };
