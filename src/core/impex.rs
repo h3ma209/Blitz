@@ -1746,13 +1746,15 @@ mod tests {
 
         assert_eq!(req.protocol, RequestProtocol::WebSocket);
 
-        // Check that standard Postman WebSocket headers are present
-        assert!(req.headers.iter().any(|h| h.key == "Host" && h.value == "<calculated at runtime>"));
-        assert!(req.headers.iter().any(|h| h.key == "Connection" && h.value == "Upgrade"));
-        assert!(req.headers.iter().any(|h| h.key == "Upgrade" && h.value == "websocket"));
-        assert!(req.headers.iter().any(|h| h.key == "Sec-WebSocket-Key" && h.value == "<calculated at runtime>"));
-        assert!(req.headers.iter().any(|h| h.key == "Sec-WebSocket-Version" && h.value == "13"));
-        assert!(req.headers.iter().any(|h| h.key == "Sec-WebSocket-Extensions" && h.value == "permessage-deflate; client_max_window_bits"));
+        // Check that auto-generated Postman WebSocket headers match Postman 1:1
+        let auto = req.protocol.auto_generated_headers();
+        assert_eq!(auto.len(), 6);
+        assert!(auto.iter().any(|(k, v)| *k == "Host" && *v == "<calculated at runtime>"));
+        assert!(auto.iter().any(|(k, v)| *k == "Connection" && *v == "Upgrade"));
+        assert!(auto.iter().any(|(k, v)| *k == "Upgrade" && *v == "websocket"));
+        assert!(auto.iter().any(|(k, v)| *k == "Sec-WebSocket-Key" && *v == "<calculated at runtime>"));
+        assert!(auto.iter().any(|(k, v)| *k == "Sec-WebSocket-Version" && *v == "13"));
+        assert!(auto.iter().any(|(k, v)| *k == "Sec-WebSocket-Extensions" && *v == "permessage-deflate; client_max_window_bits"));
 
         // Check user custom headers are preserved
         assert!(req.headers.iter().any(|h| h.key == "Authorization" && h.value == "{{ttoken_hakki}}"));

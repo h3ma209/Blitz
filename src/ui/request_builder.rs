@@ -404,6 +404,7 @@ pub fn RequestBuilder(
                         rows: draft.headers.clone(),
                         vars: vars.clone(),
                         is_headers: true,
+                        protocol: Some(draft.protocol),
                         on_var_edit,
                         on_change: {
                             let draft = draft.clone();
@@ -1451,12 +1452,22 @@ fn KvEditor(
     rows: Vec<KeyValue>,
     vars: VariableContext,
     #[props(default)] is_headers: bool,
+    #[props(default)] protocol: Option<RequestProtocol>,
     on_var_edit: EventHandler<VarEditEvent>,
     on_change: EventHandler<Vec<KeyValue>>,
 ) -> Element {
     let mut bulk_mode = use_signal(|| false);
     let mut bulk_text = use_signal(String::new);
     let mut show_system_headers = use_signal(|| false);
+
+    let proto = protocol.unwrap_or(RequestProtocol::Http);
+    let auto_headers = proto.auto_generated_headers();
+    let auto_count = auto_headers.len();
+    let toggle_label = if show_system_headers() {
+        format!("▾ Hide auto-generated headers ({auto_count})")
+    } else {
+        format!("▸ {auto_count} auto-generated headers hidden")
+    };
 
     rsx! {
         div { class: "kv-toolbar",
@@ -1479,16 +1490,12 @@ fn KvEditor(
                     },
                     if bulk_mode() { "Table Edit" } else { "Bulk Edit" }
                 }
-                if is_headers {
+                if is_headers && auto_count > 0 {
                     button {
                         class: "system-headers-toggle",
                         r#type: "button",
                         onclick: move |_| show_system_headers.set(!show_system_headers()),
-                        if show_system_headers() {
-                            "▾ Hide auto-generated headers (6)"
-                        } else {
-                            "▸ 6 auto-generated headers hidden"
-                        }
+                        "{toggle_label}"
                     }
                 }
             }
@@ -1516,14 +1523,7 @@ fn KvEditor(
                 }
                 tbody {
                     if is_headers && show_system_headers() {
-                        for (k, v) in [
-                            ("User-Agent", "PostmanRuntime/7.43.0"),
-                            ("Accept", "*/*"),
-                            ("Accept-Encoding", "gzip, deflate, br"),
-                            ("Connection", "keep-alive"),
-                            ("Cache-Control", "no-cache"),
-                            ("Postman-Token", "<calculated at runtime>"),
-                        ] {
+                        for (k, v) in auto_headers {
                             tr { class: "system-header-row",
                                 td {
                                     input {

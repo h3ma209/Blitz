@@ -219,11 +219,8 @@ mod tests {
     use std::time::{SystemTime, UNIX_EPOCH};
 
     fn temp_root() -> PathBuf {
-        let nanos = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_nanos();
-        std::env::temp_dir().join(format!("blitz-test-{nanos}"))
+        let id = uuid::Uuid::new_v4();
+        std::env::temp_dir().join(format!("blitz-test-{id}"))
     }
 
     #[test]

@@ -73,36 +73,58 @@ impl RequestProtocol {
         }
     }
 
-    /// Default standard headers required or recommended for this protocol (e.g. Postman WebSocket handshake headers).
-    pub fn default_headers(self) -> Vec<KeyValue> {
+    /// Auto-generated system headers for this protocol (e.g. Postman WebSocket handshake headers).
+    pub fn auto_generated_headers(self) -> &'static [(&'static str, &'static str)] {
         match self {
-            Self::WebSocket => vec![
-                KeyValue::new("Host", "<calculated at runtime>"),
-                KeyValue::new("Connection", "Upgrade"),
-                KeyValue::new("Upgrade", "websocket"),
-                KeyValue::new("Sec-WebSocket-Key", "<calculated at runtime>"),
-                KeyValue::new("Sec-WebSocket-Version", "13"),
-                KeyValue::new("Sec-WebSocket-Extensions", "permessage-deflate; client_max_window_bits"),
+            Self::WebSocket => &[
+                ("Host", "<calculated at runtime>"),
+                ("Connection", "Upgrade"),
+                ("Upgrade", "websocket"),
+                ("Sec-WebSocket-Key", "<calculated at runtime>"),
+                ("Sec-WebSocket-Version", "13"),
+                ("Sec-WebSocket-Extensions", "permessage-deflate; client_max_window_bits"),
             ],
-            Self::Grpc => vec![
-                KeyValue::new("Content-Type", "application/grpc"),
-                KeyValue::new("TE", "trailers"),
+            Self::Grpc => &[
+                ("Content-Type", "application/grpc"),
+                ("TE", "trailers"),
+                ("User-Agent", "PostmanRuntime/7.43.0"),
             ],
-            Self::Sse => vec![
-                KeyValue::new("Accept", "text/event-stream"),
-                KeyValue::new("Cache-Control", "no-cache"),
-                KeyValue::new("Connection", "keep-alive"),
+            Self::Sse => &[
+                ("Accept", "text/event-stream"),
+                ("Cache-Control", "no-cache"),
+                ("Connection", "keep-alive"),
             ],
-            Self::GraphqlWs => vec![
-                KeyValue::new("Sec-WebSocket-Protocol", "graphql-transport-ws"),
-                KeyValue::new("Connection", "Upgrade"),
-                KeyValue::new("Upgrade", "websocket"),
+            Self::GraphqlWs => &[
+                ("Host", "<calculated at runtime>"),
+                ("Connection", "Upgrade"),
+                ("Upgrade", "websocket"),
+                ("Sec-WebSocket-Protocol", "graphql-transport-ws"),
+                ("Sec-WebSocket-Key", "<calculated at runtime>"),
+                ("Sec-WebSocket-Version", "13"),
             ],
-            Self::SocketIo => vec![
-                KeyValue::new("Accept", "*/*"),
+            Self::SocketIo => &[
+                ("Accept", "*/*"),
+                ("Connection", "keep-alive"),
             ],
-            _ => vec![],
+            Self::Mqtt | Self::Mcp => &[],
+            Self::Http => &[
+                ("User-Agent", "PostmanRuntime/7.43.0"),
+                ("Accept", "*/*"),
+                ("Accept-Encoding", "gzip, deflate, br"),
+                ("Connection", "keep-alive"),
+                ("Cache-Control", "no-cache"),
+                ("Postman-Token", "<calculated at runtime>"),
+            ],
         }
+    }
+
+    /// Default standard headers required or recommended for this protocol (e.g. Postman WebSocket handshake headers).
+    #[allow(dead_code)]
+    pub fn default_headers(self) -> Vec<KeyValue> {
+        self.auto_generated_headers()
+            .iter()
+            .map(|(k, v)| KeyValue::new(*k, *v))
+            .collect()
     }
 }
 
@@ -537,23 +559,30 @@ impl Default for RequestDraft {
 }
 
 impl RequestDraft {
-    /// Switch protocol and inject default standard headers (e.g. Postman WebSocket headers)
-    /// without duplicating or wiping existing user headers. Places defaults at the top
-    /// in standard protocol order followed by custom user headers.
+    /// Switch protocol and strip stale HTTP boilerplate so non-HTTP protocols remain clean.
     pub fn apply_protocol_defaults(&mut self, proto: RequestProtocol) {
         self.protocol = proto;
-        let defaults = proto.default_headers();
-        let mut insert_idx = 0;
-        for def in defaults {
-            if let Some(pos) = self.headers.iter().position(|h| h.key.eq_ignore_ascii_case(&def.key)) {
-                if pos >= insert_idx {
-                    insert_idx = pos + 1;
-                }
-            } else {
-                let bounded_idx = insert_idx.min(self.headers.len());
-                self.headers.insert(bounded_idx, def);
-                insert_idx += 1;
-            }
+        if proto != RequestProtocol::Http {
+            // Strip HTTP default headers so they do not pollute non-HTTP protocols
+            self.headers.retain(|h| {
+                let k = h.key.trim();
+                let v = h.value.trim();
+                !(
+                    (k.eq_ignore_ascii_case("User-Agent") && v == "PostmanRuntime/7.43.0")
+                    || (k.eq_ignore_ascii_case("Accept-Encoding") && v == "gzip, deflate, br")
+                    || (k.eq_ignore_ascii_case("Connection") && v == "keep-alive")
+                    || (k.eq_ignore_ascii_case("Cache-Control") && v == "no-cache")
+                    || (k.eq_ignore_ascii_case("Postman-Token") && v == "<calculated at runtime>")
+                    || (k.eq_ignore_ascii_case("Accept") && v == "*/*" && proto == RequestProtocol::WebSocket)
+                )
+            });
+            // Also strip any literal <calculated at runtime> rows that match auto_generated headers
+            let auto = proto.auto_generated_headers();
+            self.headers.retain(|h| {
+                let k = h.key.trim();
+                let v = h.value.trim();
+                !auto.iter().any(|(ak, av)| ak.eq_ignore_ascii_case(k) && av.eq_ignore_ascii_case(v))
+            });
         }
     }
 
