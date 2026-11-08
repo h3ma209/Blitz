@@ -7,12 +7,15 @@ APP_NAME="Blitz"
 VERSION="${1:-latest}"
 
 if [ "$VERSION" = "latest" ]; then
-  BASE_URL="https://github.com/${REPO}/releases/latest/download"
-  echo "⚡ Fetching latest release of Blitz..."
-else
-  BASE_URL="https://github.com/${REPO}/releases/download/${VERSION}"
-  echo "⚡ Fetching Blitz ${VERSION}..."
+  echo "⚡ Fetching latest release tag of Blitz..."
+  VERSION=$(curl -fsSL -H "User-Agent: Blitz-Installer" "https://api.github.com/repos/${REPO}/releases/latest" 2>/dev/null | grep '"tag_name":' | head -1 | sed -E 's/.*"([^"]+)".*/\1/' || true)
+  if [ -z "$VERSION" ]; then
+    VERSION="v0.2.5"
+  fi
 fi
+
+BASE_URL="https://github.com/${REPO}/releases/download/${VERSION}"
+echo "⚡ Installing Blitz ${VERSION}..."
 
 OS="$(uname -s)"
 ARCH="$(uname -m)"
@@ -36,7 +39,10 @@ case "$OS" in
     fi
     DMG_URL="${BASE_URL}/Blitz-macos-arm64.dmg"
     echo "Downloading ${DMG_URL}..."
-    curl -fL --progress-bar -o "${TMP_DIR}/Blitz.dmg" "$DMG_URL"
+    if ! curl -fsSL --retry 3 --retry-delay 2 --progress-bar -o "${TMP_DIR}/Blitz.dmg" "$DMG_URL"; then
+      echo "CDN gateway error. Retrying directly via API stream..."
+      curl -fsSL --retry 3 --retry-delay 2 -H "Accept: application/octet-stream" -H "User-Agent: Blitz-Installer" --progress-bar -o "${TMP_DIR}/Blitz.dmg" "https://api.github.com/repos/${REPO}/releases/assets/723604328"
+    fi
     
     echo "Mounting DMG..."
     MOUNT_DIR=$(mktemp -d)
