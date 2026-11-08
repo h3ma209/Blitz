@@ -883,7 +883,7 @@ pub fn TopBar(st: WorkbenchState) -> Element {
                         button {
                             class: "top-link update-pill-pulse",
                             disabled: (st.installing_update)(),
-                            title: format!("Download, verify, and open Blitz v{} installer", upd.latest_version),
+                            title: format!("Download update, install silently, and restart Blitz v{}", upd.latest_version),
                             onclick: {
                                 let info = upd.clone();
                                 move |_| {
@@ -899,17 +899,36 @@ pub fn TopBar(st: WorkbenchState) -> Element {
                                         let res = tokio::task::spawn_blocking(move || {
                                             crate::core::download_and_verify_update(&info_bg)
                                         }).await;
-                                        st.installing_update.set(false);
                                         match res {
                                             Ok(Ok(path)) => {
-                                                st.status_msg.set(format!("verified installer → {}", path.display()));
-                                                crate::core::reveal_or_open_installer(&path);
+                                                st.status_msg.set("installing update and restarting Blitz…".to_string());
+                                                let p_install = path.clone();
+                                                let install_res = tokio::task::spawn_blocking(move || {
+                                                    crate::core::install_update_and_restart(&p_install)
+                                                }).await;
+                                                st.installing_update.set(false);
+                                                match install_res {
+                                                    Ok(Ok(())) => {
+                                                        // Process exits on restart
+                                                    }
+                                                    Ok(Err(e)) => {
+                                                        st.status_msg.set(format!("auto-update failed ({e}) — falling back to manual installer"));
+                                                        // Fallback so user can still update manually using the downloaded file
+                                                        crate::core::reveal_or_open_installer(&path);
+                                                    }
+                                                    Err(e) => {
+                                                        st.status_msg.set(format!("install task join error: {e}"));
+                                                        crate::core::reveal_or_open_installer(&path);
+                                                    }
+                                                }
                                             }
                                             Ok(Err(e)) => {
+                                                st.installing_update.set(false);
                                                 st.status_msg.set(format!("update failed ({e}) — opening release page"));
                                                 open_browser_url(&rel_url);
                                             }
                                             Err(e) => {
+                                                st.installing_update.set(false);
                                                 st.status_msg.set(format!("update join error: {e}"));
                                             }
                                         }
@@ -919,9 +938,9 @@ pub fn TopBar(st: WorkbenchState) -> Element {
                             span { class: "update-badge-dot" }
                             span {
                                 if (st.installing_update)() {
-                                    "Installing v{upd.latest_version}…"
+                                    "Updating & Restarting…"
                                 } else {
-                                    "Update v{upd.latest_version}"
+                                    "Update to v{upd.latest_version}"
                                 }
                             }
                         }

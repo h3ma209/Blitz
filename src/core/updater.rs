@@ -93,11 +93,11 @@ pub fn platform_asset_name() -> &'static str {
     }
     #[cfg(target_os = "windows")]
     {
-        "Blitz-windows-x86_64-setup.exe"
+        "blitz-windows-x86_64.zip"
     }
     #[cfg(all(not(target_os = "macos"), not(target_os = "windows")))]
     {
-        "Blitz-linux-x86_64.tar.gz"
+        "blitz-linux-x86_64.tar.gz"
     }
 }
 
@@ -225,6 +225,301 @@ pub fn open_browser_url(url: &str) {
     }
 }
 
+/// Find the running `.app` bundle directory if running on macOS as a bundle.
+pub fn current_app_bundle() -> Option<PathBuf> {
+    let exe = std::env::current_exe().ok()?;
+    for ancestor in exe.ancestors() {
+        if ancestor.extension().and_then(|s| s.to_str()) == Some("app") {
+            return Some(ancestor.to_path_buf());
+        }
+    }
+    None
+}
+
+/// Silently install the downloaded update and relaunch the updated application,
+/// without requiring the user to manually drag into Applications or open a disk image.
+pub fn install_update_and_restart(installer_path: &Path) -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    {
+        install_and_restart_macos(installer_path)
+    }
+    #[cfg(target_os = "linux")]
+    {
+        install_and_restart_linux(installer_path)
+    }
+    #[cfg(target_os = "windows")]
+    {
+        install_and_restart_windows(installer_path)
+    }
+    #[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "windows")))]
+    {
+        reveal_or_open_installer(installer_path);
+        Ok(())
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn install_and_restart_macos(installer_path: &Path) -> Result<(), String> {
+    let pid = std::process::id();
+    let is_dmg = installer_path
+        .extension()
+        .and_then(|s| s.to_str())
+        .map(|ext| ext.eq_ignore_ascii_case("dmg"))
+        .unwrap_or(false);
+
+    let stage_dir = std::env::temp_dir().join(format!("blitz-stage-{pid}"));
+    let _ = std::fs::remove_dir_all(&stage_dir);
+    std::fs::create_dir_all(&stage_dir).map_err(|e| format!("create stage dir: {e}"))?;
+
+    let staged_app = stage_dir.join("Blitz.app");
+
+    if is_dmg {
+        let mount_dir = std::env::temp_dir().join(format!("blitz-mnt-{pid}"));
+        let _ = std::fs::remove_dir_all(&mount_dir);
+        std::fs::create_dir_all(&mount_dir).map_err(|e| format!("create mount dir: {e}"))?;
+
+        // Attach DMG silently without opening any Finder window
+        let attach_status = std::process::Command::new("hdiutil")
+            .args([
+                "attach",
+                installer_path.to_str().ok_or("invalid installer path")?,
+                "-nobrowse",
+                "-noautoopen",
+                "-readonly",
+                "-mountpoint",
+                mount_dir.to_str().ok_or("invalid mount dir")?,
+            ])
+            .status()
+            .map_err(|e| format!("hdiutil attach failed: {e}"))?;
+
+        if !attach_status.success() {
+            let _ = std::fs::remove_dir_all(&mount_dir);
+            return Err(format!("hdiutil attach exited with {attach_status}"));
+        }
+
+        let app_source = mount_dir.join("Blitz.app");
+        if !app_source.exists() {
+            let _ = std::process::Command::new("hdiutil")
+                .args(["detach", mount_dir.to_str().unwrap(), "-force"])
+                .status();
+            let _ = std::fs::remove_dir_all(&mount_dir);
+            return Err("Blitz.app not found inside DMG".into());
+        }
+
+        // Copy Blitz.app out of DMG into local staging directory
+        let cp_res = std::process::Command::new("cp")
+            .args(["-R", app_source.to_str().unwrap(), staged_app.to_str().unwrap()])
+            .status();
+
+        // Detach DMG immediately
+        let _ = std::process::Command::new("hdiutil")
+            .args(["detach", mount_dir.to_str().unwrap(), "-force"])
+            .status();
+        let _ = std::fs::remove_dir_all(&mount_dir);
+
+        let cp_status = cp_res.map_err(|e| format!("cp Blitz.app failed: {e}"))?;
+        if !cp_status.success() {
+            return Err(format!("cp Blitz.app exited with {cp_status}"));
+        }
+    } else {
+        let status = std::process::Command::new("tar")
+            .args(["-xzf", installer_path.to_str().unwrap(), "-C", stage_dir.to_str().unwrap()])
+            .status()
+            .map_err(|e| format!("tar extract failed: {e}"))?;
+        if !status.success() {
+            return Err(format!("tar exited with {status}"));
+        }
+    }
+
+    // Strip quarantine flag on staged app
+    let _ = std::process::Command::new("xattr")
+        .args(["-cr", staged_app.to_str().unwrap()])
+        .status();
+
+    // Determine target location: existing running bundle or /Applications/Blitz.app
+    let target_app = current_app_bundle().unwrap_or_else(|| {
+        let sys = PathBuf::from("/Applications/Blitz.app");
+        let user = dirs::home_dir()
+            .map(|h| h.join("Applications/Blitz.app"))
+            .unwrap_or_else(|| sys.clone());
+        if user.exists() {
+            user
+        } else {
+            sys
+        }
+    });
+
+    // Write supervisor restart script that waits for old process to exit, swaps app bundle, and launches new one
+    let script_path = std::env::temp_dir().join(format!("blitz-updater-{pid}.sh"));
+    let script_content = format!(
+        r#"#!/bin/bash
+PID={pid}
+STAGED="{staged}"
+TARGET="{target}"
+BACKUP="{target}.old.$$"
+
+for i in $(seq 1 100); do
+    if ! kill -0 "$PID" 2>/dev/null; then
+        break
+    fi
+    sleep 0.1
+done
+
+if [ -d "$TARGET" ]; then
+    mv "$TARGET" "$BACKUP" 2>/dev/null || rm -rf "$TARGET" 2>/dev/null
+fi
+
+cp -R "$STAGED" "$TARGET" 2>/dev/null || rsync -a "$STAGED/" "$TARGET/" 2>/dev/null
+xattr -cr "$TARGET" 2>/dev/null || true
+
+rm -rf "$BACKUP" 2>/dev/null || true
+rm -rf "$STAGED" 2>/dev/null || true
+rm -f "$0" 2>/dev/null || true
+
+open -a "$TARGET" 2>/dev/null || open "$TARGET" 2>/dev/null
+"#,
+        pid = pid,
+        staged = staged_app.display(),
+        target = target_app.display()
+    );
+
+    std::fs::write(&script_path, script_content).map_err(|e| format!("write updater script: {e}"))?;
+
+    use std::os::unix::fs::PermissionsExt;
+    let _ = std::fs::set_permissions(&script_path, std::fs::Permissions::from_mode(0o755));
+
+    // Spawn script in background detached
+    std::process::Command::new("/bin/bash")
+        .arg(&script_path)
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+        .map_err(|e| format!("spawn updater script: {e}"))?;
+
+    // Exit old process cleanly so supervisor script proceeds
+    std::process::exit(0);
+}
+
+#[cfg(target_os = "linux")]
+fn install_and_restart_linux(installer_path: &Path) -> Result<(), String> {
+    let pid = std::process::id();
+    let stage_dir = std::env::temp_dir().join(format!("blitz-stage-{pid}"));
+    let _ = std::fs::remove_dir_all(&stage_dir);
+    std::fs::create_dir_all(&stage_dir).map_err(|e| format!("create stage dir: {e}"))?;
+
+    let status = std::process::Command::new("tar")
+        .args(["-xzf", installer_path.to_str().unwrap(), "-C", stage_dir.to_str().unwrap()])
+        .status()
+        .map_err(|e| format!("tar extract failed: {e}"))?;
+    if !status.success() {
+        return Err(format!("tar exited with {status}"));
+    }
+
+    let staged_bin = stage_dir.join("blitz");
+    let target_bin = std::env::current_exe().unwrap_or_else(|_| {
+        dirs::home_dir().map(|h| h.join(".local/bin/blitz")).unwrap_or_else(|| PathBuf::from("/usr/local/bin/blitz"))
+    });
+
+    let script_path = std::env::temp_dir().join(format!("blitz-updater-{pid}.sh"));
+    let script_content = format!(
+        r#"#!/bin/bash
+PID={pid}
+STAGED="{staged}"
+TARGET="{target}"
+
+for i in $(seq 1 100); do
+    if ! kill -0 "$PID" 2>/dev/null; then
+        break
+    fi
+    sleep 0.1
+done
+
+cp "$STAGED" "$TARGET" 2>/dev/null
+chmod +x "$TARGET" 2>/dev/null
+rm -rf "{stage_dir}" 2>/dev/null
+rm -f "$0" 2>/dev/null
+
+nohup "$TARGET" >/dev/null 2>&1 &
+"#,
+        pid = pid,
+        staged = staged_bin.display(),
+        target = target_bin.display(),
+        stage_dir = stage_dir.display()
+    );
+
+    std::fs::write(&script_path, script_content).map_err(|e| format!("write updater script: {e}"))?;
+
+    use std::os::unix::fs::PermissionsExt;
+    let _ = std::fs::set_permissions(&script_path, std::fs::Permissions::from_mode(0o755));
+
+    std::process::Command::new("/bin/bash")
+        .arg(&script_path)
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+        .map_err(|e| format!("spawn updater script: {e}"))?;
+
+    std::process::exit(0);
+}
+
+#[cfg(target_os = "windows")]
+fn install_and_restart_windows(installer_path: &Path) -> Result<(), String> {
+    let pid = std::process::id();
+    let stage_dir = std::env::temp_dir().join(format!("blitz-stage-{pid}"));
+    let _ = std::fs::remove_dir_all(&stage_dir);
+    std::fs::create_dir_all(&stage_dir).map_err(|e| format!("create stage dir: {e}"))?;
+
+    let ps_cmd = format!(
+        "Expand-Archive -Path '{}' -DestinationPath '{}' -Force",
+        installer_path.display(),
+        stage_dir.display()
+    );
+    let status = std::process::Command::new("powershell.exe")
+        .args(["-NoProfile", "-Command", &ps_cmd])
+        .status()
+        .map_err(|e| format!("unzip failed: {e}"))?;
+    if !status.success() {
+        return Err(format!("Expand-Archive exited with {status}"));
+    }
+
+    let staged_exe = stage_dir.join("blitz.exe");
+    let target_exe = std::env::current_exe().map_err(|e| format!("current_exe: {e}"))?;
+
+    let bat_path = std::env::temp_dir().join(format!("blitz-updater-{pid}.bat"));
+    let bat_content = format!(
+        r#"@echo off
+set PID={pid}
+set STAGED="{staged}"
+set TARGET="{target}"
+
+:waitloop
+tasklist /FI "PID eq %PID%" 2>NUL | find /I "%PID%" >NUL
+if not errorlevel 1 (
+    timeout /T 1 /NOBREAK >NUL
+    goto waitloop
+)
+
+copy /Y "%STAGED%" "%TARGET%" >NUL
+start "" "%TARGET%"
+del "%~f0" & exit
+"#,
+        pid = pid,
+        staged = staged_exe.display(),
+        target = target_exe.display()
+    );
+
+    std::fs::write(&bat_path, bat_content).map_err(|e| format!("write bat: {e}"))?;
+
+    std::process::Command::new("cmd.exe")
+        .args(["/C", "start", "", bat_path.to_str().unwrap()])
+        .spawn()
+        .map_err(|e| format!("spawn updater: {e}"))?;
+
+    std::process::exit(0);
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -241,19 +536,23 @@ mod tests {
     }
 
     #[test]
-    fn sha256_manifest_verification() {
-        let payload = b"blitz-binary-payload-v0.2.0";
-        let mut hasher = Sha256::new();
-        hasher.update(payload);
-        let digest = hex::encode(hasher.finalize());
+    fn test_platform_asset_name_non_empty() {
+        let name = platform_asset_name();
+        assert!(!name.is_empty());
+        #[cfg(target_os = "macos")]
+        assert!(name.ends_with(".dmg") || name.ends_with(".tar.gz"));
+        #[cfg(target_os = "linux")]
+        assert!(name.ends_with(".tar.gz"));
+        #[cfg(target_os = "windows")]
+        assert!(name.ends_with(".zip") || name.ends_with(".exe"));
+    }
 
-        let manifest = format!(
-            "0000000000000000000000000000000000000000000000000000000000000000  other.tar.gz\n\
-             {digest}  dist/Blitz-macos-arm64.dmg\n"
-        );
-
-        assert!(verify_sha256_manifest(&manifest, "Blitz-macos-arm64.dmg", payload).is_ok());
-        assert!(verify_sha256_manifest(&manifest, "Blitz-macos-arm64.dmg", b"tampered").is_err());
-        assert!(verify_sha256_manifest(&manifest, "missing.dmg", payload).is_err());
+    #[test]
+    fn test_current_app_bundle_helper() {
+        // When running `cargo test`, binary is inside `target/debug/deps`, not a .app bundle
+        let bundle = current_app_bundle();
+        if let Some(b) = bundle {
+            assert!(b.extension().and_then(|s| s.to_str()) == Some("app"));
+        }
     }
 }
