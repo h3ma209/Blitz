@@ -226,6 +226,7 @@ pub fn open_browser_url(url: &str) {
 }
 
 /// Find the running `.app` bundle directory if running on macOS as a bundle.
+#[allow(dead_code)]
 pub fn current_app_bundle() -> Option<PathBuf> {
     let exe = std::env::current_exe().ok()?;
     for ancestor in exe.ancestors() {
