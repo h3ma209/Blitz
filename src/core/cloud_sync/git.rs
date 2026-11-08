@@ -248,51 +248,254 @@ pub fn commit_timestamp_utc() -> String {
     Utc::now().to_rfc3339_opts(SecondsFormat::Secs, true)
 }
 
-/// Build one-line commit message from `git diff --cached --name-status` (or porcelain-ish) text.
+/// Build a clean, standard, self-explanatory commit message following Conventional Commits format:
+/// `sync(<scope>): <action> <details>`
 ///
-/// Format: `{ISO8601} A file.json M other.json` — or `{ISO8601} update N files` when many.
-pub fn build_commit_message(name_status: &str, timestamp: &str) -> String {
-    let mut entries: Vec<(char, String)> = Vec::new();
+/// Examples:
+/// - `sync(requests): add 'login'`
+/// - `sync(requests): update 'login' and 'logout'`
+/// - `sync(environments): update 'production'`
+/// - `sync(workspace): update 'login' request, update 'production' environment`
+/// - `sync(requests): update 5 requests`
+/// - `sync(workspace): update 8 files (5 requests, 3 environments)`
+pub fn build_commit_message(name_status: &str, _timestamp: &str) -> String {
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    enum Action {
+        Add,
+        Update,
+        Delete,
+        Rename,
+    }
+
+    impl Action {
+        fn verb(&self) -> &'static str {
+            match self {
+                Action::Add => "add",
+                Action::Update => "update",
+                Action::Delete => "delete",
+                Action::Rename => "rename",
+            }
+        }
+    }
+
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    enum ScopeKind {
+        Requests,
+        Environments,
+        Collections,
+        Variables,
+        Config,
+        Docs,
+        Workspace,
+    }
+
+    #[derive(Debug, Clone)]
+    struct ParsedEntry {
+        action: Action,
+        kind: ScopeKind,
+        item_name: String,
+        kind_label: &'static str,
+    }
+
+    let mut entries: Vec<ParsedEntry> = Vec::new();
     for line in name_status.lines() {
         let line = line.trim();
         if line.is_empty() {
             continue;
         }
-        // name-status: "M\tpath" or "A\tpath"; rename: "R100\told\tnew"
-        let mut parts = line.split('\t');
-        let status_tok = match parts.next() {
-            Some(s) => s.trim(),
-            None => continue,
+
+        let (status_char, raw_path) = if let Some((st, p)) = line.split_once('\t') {
+            let path = p.rsplit('\t').next().unwrap_or(p).trim();
+            (st.trim().chars().next().unwrap_or('M'), path)
+        } else if let Some((st, p)) = line.split_once(' ') {
+            (st.trim().chars().next().unwrap_or('M'), p.trim())
+        } else {
+            continue;
         };
-        let status = status_tok.chars().next().unwrap_or('M');
-        let path = match parts.next_back().or_else(|| parts.next()) {
-            Some(p) => p.trim(),
-            None => continue,
-        };
-        if path.is_empty() {
+
+        if raw_path.is_empty() {
             continue;
         }
-        let file = Path::new(path)
+
+        let action = match status_char {
+            'A' | '?' => Action::Add,
+            'D' => Action::Delete,
+            'R' => Action::Rename,
+            _ => Action::Update,
+        };
+
+        let norm = raw_path.replace('\\', "/");
+        let file_name = Path::new(&norm)
             .file_name()
             .and_then(|s| s.to_str())
-            .unwrap_or(path)
-            .to_string();
-        entries.push((status, file));
+            .unwrap_or(&norm);
+
+        let (kind, item_name, kind_label) = if norm.ends_with(".request.json") {
+            let clean = file_name.strip_suffix(".request.json").unwrap_or(file_name);
+            (ScopeKind::Requests, clean.to_string(), "request")
+        } else if norm.ends_with(".environment.json") {
+            let clean = file_name.strip_suffix(".environment.json").unwrap_or(file_name);
+            (ScopeKind::Environments, clean.to_string(), "environment")
+        } else if norm.ends_with("collection.json") {
+            let col = Path::new(&norm)
+                .parent()
+                .and_then(|p| p.file_name())
+                .and_then(|s| s.to_str())
+                .unwrap_or(file_name);
+            (ScopeKind::Collections, col.to_string(), "collection")
+        } else if norm.ends_with("globals.json") {
+            (ScopeKind::Variables, "global variables".to_string(), "globals")
+        } else if norm.ends_with("project.json") {
+            (ScopeKind::Config, "project settings".to_string(), "settings")
+        } else if norm.ends_with(".gitignore") {
+            (ScopeKind::Config, ".gitignore".to_string(), "config")
+        } else if norm.to_ascii_lowercase().contains("readme") {
+            (ScopeKind::Docs, "README".to_string(), "docs")
+        } else {
+            (ScopeKind::Workspace, file_name.to_string(), "file")
+        };
+
+        entries.push(ParsedEntry {
+            action,
+            kind,
+            item_name,
+            kind_label,
+        });
     }
 
     if entries.is_empty() {
-        return format!("{timestamp} sync");
+        return "sync(workspace): update workspace".to_string();
     }
-    const MAX_LISTED: usize = 5;
-    if entries.len() > MAX_LISTED {
-        return format!("{timestamp} update {} files", entries.len());
+
+    // Determine overall scope: if all entries match one kind, use that kind's scope.
+    let first_kind = entries[0].kind;
+    let single_kind = entries.iter().all(|e| e.kind == first_kind);
+
+    let scope_tag = if single_kind {
+        match first_kind {
+            ScopeKind::Requests => "requests",
+            ScopeKind::Environments => "environments",
+            ScopeKind::Collections => "collections",
+            ScopeKind::Variables => "variables",
+            ScopeKind::Config => "config",
+            ScopeKind::Docs => "docs",
+            ScopeKind::Workspace => "workspace",
+        }
+    } else {
+        "workspace"
+    };
+
+    // 1 to 3 items: describe each item explicitly
+    if entries.len() <= 3 {
+        if single_kind {
+            // Check if all actions are identical
+            let first_action = entries[0].action;
+            let same_action = entries.iter().all(|e| e.action == first_action);
+
+            let desc = if same_action {
+                let verb = first_action.verb();
+                if entries.len() == 1 {
+                    if first_kind == ScopeKind::Variables || first_kind == ScopeKind::Config || first_kind == ScopeKind::Docs {
+                        format!("{verb} {}", entries[0].item_name)
+                    } else {
+                        format!("{verb} '{}'", entries[0].item_name)
+                    }
+                } else if entries.len() == 2 {
+                    format!("{verb} '{}' and '{}'", entries[0].item_name, entries[1].item_name)
+                } else {
+                    format!(
+                        "{verb} '{}', '{}' and '{}'",
+                        entries[0].item_name, entries[1].item_name, entries[2].item_name
+                    )
+                }
+            } else {
+                entries
+                    .iter()
+                    .map(|e| format!("{} '{}'", e.action.verb(), e.item_name))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            };
+            return format!("sync({scope_tag}): {desc}");
+        } else {
+            // Mixed scopes: mention the kind label for clarity (e.g. "update 'login' request, update 'staging' environment")
+            let parts: Vec<String> = entries
+                .iter()
+                .map(|e| {
+                    if e.kind == ScopeKind::Variables || e.kind == ScopeKind::Config || e.kind == ScopeKind::Docs {
+                        format!("{} {}", e.action.verb(), e.item_name)
+                    } else if e.kind == ScopeKind::Workspace {
+                        format!("{} '{}'", e.action.verb(), e.item_name)
+                    } else {
+                        format!("{} '{}' {}", e.action.verb(), e.item_name, e.kind_label)
+                    }
+                })
+                .collect();
+            return format!("sync(workspace): {}", parts.join(", "));
+        }
     }
-    let body = entries
-        .iter()
-        .map(|(s, f)| format!("{s} {f}"))
-        .collect::<Vec<_>>()
-        .join(" ");
-    format!("{timestamp} {body}")
+
+    // More than 3 items: summarize by counts
+    if single_kind {
+        let adds = entries.iter().filter(|e| e.action == Action::Add).count();
+        let updates = entries.iter().filter(|e| e.action == Action::Update).count();
+        let deletes = entries.iter().filter(|e| e.action == Action::Delete).count();
+
+        let mut action_parts = Vec::new();
+        if adds > 0 {
+            action_parts.push(format!("add {adds}"));
+        }
+        if updates > 0 {
+            action_parts.push(format!("update {updates}"));
+        }
+        if deletes > 0 {
+            action_parts.push(format!("delete {deletes}"));
+        }
+
+        let noun = match first_kind {
+            ScopeKind::Requests => "requests",
+            ScopeKind::Environments => "environments",
+            ScopeKind::Collections => "collections",
+            _ => "files",
+        };
+
+        if action_parts.len() == 1 {
+            let act = if adds > 0 {
+                "add"
+            } else if deletes > 0 {
+                "delete"
+            } else {
+                "update"
+            };
+            format!("sync({scope_tag}): {act} {} {noun}", entries.len())
+        } else {
+            format!("sync({scope_tag}): {} {noun}", action_parts.join(", "))
+        }
+    } else {
+        let req_count = entries.iter().filter(|e| e.kind == ScopeKind::Requests).count();
+        let env_count = entries.iter().filter(|e| e.kind == ScopeKind::Environments).count();
+        let col_count = entries.iter().filter(|e| e.kind == ScopeKind::Collections).count();
+
+        let mut breakdown = Vec::new();
+        if req_count > 0 {
+            breakdown.push(format!("{req_count} requests"));
+        }
+        if env_count > 0 {
+            breakdown.push(format!("{env_count} environments"));
+        }
+        if col_count > 0 {
+            breakdown.push(format!("{col_count} collections"));
+        }
+
+        if !breakdown.is_empty() {
+            format!(
+                "sync(workspace): update {} items ({})",
+                entries.len(),
+                breakdown.join(", ")
+            )
+        } else {
+            format!("sync(workspace): update {} files", entries.len())
+        }
+    }
 }
 
 /// Resolve commit message: non-empty override wins; else auto from cached name-status.
@@ -690,6 +893,24 @@ pub fn mask_remote_url(raw: &str) -> String {
     raw.to_string()
 }
 
+/// Returns true if an author/committer appears to be an automated or no-reply account.
+/// Filters out GitHub / GitLab / generic noreply patterns and bots so team member lists
+/// only reflect actual human teammates.
+pub fn is_noreply_user(email: &str, name: &str) -> bool {
+    let email_lower = email.trim().to_ascii_lowercase();
+    let name_lower = name.trim().to_ascii_lowercase();
+
+    email_lower.contains("noreply")
+        || email_lower.contains("no-reply")
+        || email_lower.contains("no.reply")
+        || name_lower.contains("noreply")
+        || name_lower.contains("no-reply")
+        || name_lower.contains("no.reply")
+        || name_lower.ends_with("[bot]")
+        || name_lower == "web-flow"
+        || name_lower == "github-actions"
+}
+
 /// Query team contributors, recent commits with file diffs, and local modified files.
 pub fn get_team_activity(cwd: &Path, limit_commits: usize) -> Result<TeamActivity, CloudGitError> {
     let branch = run_git(cwd, &["rev-parse", "--abbrev-ref", "HEAD"]).unwrap_or_else(|_| "main".into());
@@ -711,6 +932,10 @@ pub fn get_team_activity(cwd: &Path, limit_commits: usize) -> Result<TeamActivit
             let name = parts[0].trim().to_string();
             let email = parts[1].trim().to_string();
             let date = parts[2].trim().to_string();
+
+            if is_noreply_user(&email, &name) {
+                continue;
+            }
 
             if let Some(existing) = members.iter_mut().find(|m| m.name == name && m.email == email) {
                 existing.commit_count += 1;
@@ -847,7 +1072,7 @@ mod tests {
         );
         assert_eq!(
             msg,
-            "2026-10-17T16:03:00Z A login.request.json M health.request.json"
+            "sync(requests): add 'login', update 'health'"
         );
     }
 
@@ -858,7 +1083,29 @@ mod tests {
             status.push_str(&format!("M\tfile{i}.json\n"));
         }
         let msg = build_commit_message(&status, "2026-10-17T16:03:00Z");
-        assert_eq!(msg, "2026-10-17T16:03:00Z update 6 files");
+        assert_eq!(msg, "sync(workspace): update 6 files");
+    }
+
+    #[test]
+    fn build_commit_message_mixed_scopes() {
+        let status = "M\tcollections/auth/login.request.json\nM\tenvironments/production.environment.json\n";
+        let msg = build_commit_message(status, "2026-10-17T16:03:00Z");
+        assert_eq!(
+            msg,
+            "sync(workspace): update 'login' request, update 'production' environment"
+        );
+    }
+
+    #[test]
+    fn test_is_noreply_user() {
+        assert!(is_noreply_user("12345+user@users.noreply.github.com", "User"));
+        assert!(is_noreply_user("bot@no-reply.com", "Bot"));
+        assert!(is_noreply_user("test@no.reply.org", "Tester"));
+        assert!(is_noreply_user("noreply@github.com", "web-flow"));
+        assert!(is_noreply_user("actions@github.com", "github-actions[bot]"));
+        assert!(is_noreply_user("general@domain.com", "noreply"));
+        assert!(!is_noreply_user("alice@example.com", "Alice"));
+        assert!(!is_noreply_user("hema.omer007@gmail.com", "Hema Omer"));
     }
 
     #[test]
@@ -868,7 +1115,7 @@ mod tests {
             "custom msg"
         );
         let auto = resolve_commit_message(None, "D\told.request.json\n");
-        assert!(auto.contains("D old.request.json"), "{auto}");
+        assert_eq!(auto, "sync(requests): delete 'old'");
     }
 
     #[test]
@@ -938,14 +1185,35 @@ mod tests {
             return;
         }
 
+        // Add a commit from a bot / noreply user
+        fs::write(root.join("bot.txt"), "bot action").unwrap();
+        let _ = run_git(&root, &["add", "bot.txt"]);
+        let _ = run_git(
+            &root,
+            &[
+                "-c",
+                "user.name=web-flow",
+                "-c",
+                "user.email=noreply@github.com",
+                "commit",
+                "-m",
+                "sync: bot update",
+            ],
+        );
+
         // Let's create an uncommitted file to test uncommitted_changes.
         fs::write(root.join("new_work.txt"), "hello work").unwrap();
 
         if let Ok(activity) = get_team_activity(&root, 10) {
             assert!(!activity.members.is_empty(), "should list members");
             assert_eq!(activity.members[0].name, "Test");
+            // Noreply user web-flow must NOT be listed in members
+            assert!(
+                !activity.members.iter().any(|m| m.email.contains("noreply") || m.name == "web-flow"),
+                "noreply users must be excluded from team members"
+            );
             assert!(!activity.recent_commits.is_empty(), "should list recent commits");
-            assert!(activity.recent_commits[0].message.contains("initial commit"));
+            assert!(activity.recent_commits.iter().any(|c| c.message.contains("initial commit")));
             assert!(!activity.uncommitted_changes.is_empty(), "should list uncommitted edited files");
             assert!(activity.uncommitted_changes.iter().any(|f| f.path.contains("new_work.txt")));
         }

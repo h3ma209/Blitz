@@ -756,6 +756,7 @@ pub fn TopBar(st: WorkbenchState) -> Element {
                                 onclick: move |_| {
                                     cloud_menu_open.set(false);
                                     show_env_manager.set(false);
+                                    st.settings_tab_open.set(true);
                                     show_settings.set(true);
                                 },
                                 "Cloud settings…"
@@ -978,7 +979,12 @@ pub fn TopBar(st: WorkbenchState) -> Element {
                     aria_label: "Settings",
                     onclick: move |_| {
                         show_env_manager.set(false);
-                        show_settings.set(!show_settings());
+                        if show_settings() {
+                            show_settings.set(false);
+                        } else {
+                            st.settings_tab_open.set(true);
+                            show_settings.set(true);
+                        }
                     },
                     span { class: "action-icon action-icon-sliders", aria_hidden: "true" }
                 }

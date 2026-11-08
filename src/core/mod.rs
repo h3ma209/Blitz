@@ -110,7 +110,7 @@ pub use sandbox::{
 pub use scripts::{run_script_ex, ScriptRunOutcome};
 pub use cloud_sync::{
     branch_name_for_env, clone_or_ensure, detect_git_conflicts,
-    get_conflict_file_versions, get_team_activity, link_folder,
+    get_conflict_file_versions, get_team_activity, is_noreply_user, link_folder,
     open_in_file_manager, pull_workspace, push_workspace, refresh_status, resolve_git_conflicts,
     status_summary, switch_env_branch, sync_environment, sync_on_save, ChangedFile, SyncResult,
     TeamActivity, TeamCommit, TeamMember,

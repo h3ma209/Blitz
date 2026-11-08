@@ -20,7 +20,7 @@ mod tree;
 
 pub use git::{
     build_commit_message, checkout_env_branch, commit_local_changes, detect_git_conflicts,
-    ensure_clone, get_conflict_file_versions, get_team_activity,
+    ensure_clone, get_conflict_file_versions, get_team_activity, is_noreply_user,
     mask_remote_url, open_in_file_manager, pull_rebase, push_commit, push_only, resolve_commit_message,
     resolve_git_conflicts, status_detail, status_summary, sync_pull_push, ChangedFile,
     CloudGitError, GitStatus, SyncResult, TeamActivity, TeamCommit, TeamMember,

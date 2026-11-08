@@ -618,7 +618,7 @@ pub fn SettingsPanel(
                                     label { "Commit Message Override" }
                                     input {
                                         r#type: "text",
-                                        placeholder: "Auto-generated timestamp commit message (leave empty)",
+                                        placeholder: "e.g. sync: update auth collection (leave empty for auto)",
                                         value: "{cloud_commit_msg}",
                                         oninput: move |evt| cloud_commit_msg.set(evt.value()),
                                     }

@@ -25,7 +25,12 @@ pub fn TeamModal(
     let mut active_tab = use_signal(|| TeamTab::RecentChanges);
     let mut selected_commit_idx = use_signal(|| None::<usize>);
 
-    let member_count = activity.members.len();
+    let visible_members: Vec<&crate::core::TeamMember> = activity
+        .members
+        .iter()
+        .filter(|m| !crate::core::is_noreply_user(&m.email, &m.name))
+        .collect();
+    let member_count = visible_members.len();
     let commit_count = activity.recent_commits.len();
     let edited_count = activity.uncommitted_changes.len();
     let display_remote_url = crate::core::cloud_sync::mask_remote_url(&activity.remote_url);
@@ -220,7 +225,7 @@ pub fn TeamModal(
                             }
                         },
                         TeamTab::Members => rsx! {
-                            if activity.members.is_empty() {
+                            if visible_members.is_empty() {
                                 if is_syncing {
                                     div { class: "team-loading-state",
                                         style: "display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; padding: 48px 16px;",
@@ -236,7 +241,7 @@ pub fn TeamModal(
                                 }
                             } else {
                                 div { class: "team-members-grid",
-                                    for member in &activity.members {
+                                    for member in &visible_members {
                                         div { key: "{member.email}", class: "team-member-card",
                                             div { class: "member-avatar",
                                                 "{member.name.chars().next().unwrap_or('?')}"

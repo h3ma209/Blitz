@@ -525,7 +525,8 @@ pub fn MultilineCodeField(
                     let cur = current_val();
                     spawn(async move {
                         let caret = read_textarea_caret(&id).await;
-                        if let Some(snap) = history.write().undo(&cur, caret) {
+                        let snap = history.write().undo(&cur, caret);
+                        if let Some(snap) = snap {
                             current_val.set(snap.text.clone());
                             last_sent.set(snap.text.clone());
                             on_change.call(snap.text.clone());
@@ -541,7 +542,8 @@ pub fn MultilineCodeField(
                     let cur = current_val();
                     spawn(async move {
                         let caret = read_textarea_caret(&id).await;
-                        if let Some(snap) = history.write().redo(&cur, caret) {
+                        let snap = history.write().redo(&cur, caret);
+                        if let Some(snap) = snap {
                             current_val.set(snap.text.clone());
                             last_sent.set(snap.text.clone());
                             on_change.call(snap.text.clone());
@@ -650,7 +652,8 @@ pub fn MultilineCodeField(
                             let cur = cur.clone();
                             spawn(async move {
                                 let caret = read_textarea_caret(&id).await;
-                                if let Some(snap) = history.write().undo(&cur, caret) {
+                                let snap = history.write().undo(&cur, caret);
+                                if let Some(snap) = snap {
                                     current_val.set(snap.text.clone());
                                     last_sent.set(snap.text.clone());
                                     on_change.call(snap.text.clone());
@@ -674,7 +677,8 @@ pub fn MultilineCodeField(
                             let cur = cur.clone();
                             spawn(async move {
                                 let caret = read_textarea_caret(&id).await;
-                                if let Some(snap) = history.write().redo(&cur, caret) {
+                                let snap = history.write().redo(&cur, caret);
+                                if let Some(snap) = snap {
                                     current_val.set(snap.text.clone());
                                     last_sent.set(snap.text.clone());
                                     on_change.call(snap.text.clone());

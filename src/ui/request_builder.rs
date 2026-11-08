@@ -1,4 +1,5 @@
 use dioxus::prelude::*;
+use uuid::Uuid;
 
 use crate::core::{
     fetch_oauth2_token, AuthConfig, AuthType, BodyMode, FormDataField, HttpMethod, KeyValue,
@@ -605,8 +606,16 @@ fn ProtocolFields(
 ) -> Element {
     let mut preset_name_input = use_signal(String::new);
     let mut show_new_preset = use_signal(|| false);
+    let mut selected_preset_id = use_signal(|| None::<Uuid>);
+    let mut renaming_preset_id = use_signal(|| None::<Uuid>);
+    let mut rename_draft = use_signal(String::new);
+    let mut save_feedback = use_signal(|| false);
     let mut composer_h = use_signal(|| 140i32);
     let mut composer_drag = use_signal(|| None::<(f64, i32)>);
+
+    let selected_preset = selected_preset_id().and_then(|id| {
+        draft.ws_presets.iter().find(|p| p.id == id).cloned()
+    });
 
     rsx! {
         div { class: "builder-pane protocol-pane",
@@ -750,7 +759,13 @@ fn ProtocolFields(
                                         button {
                                             class: "btn btn-mini-add",
                                             title: "Add preset",
-                                            onclick: move |_| show_new_preset.set(!show_new_preset()),
+                                            onclick: move |_| {
+                                                let opening = !show_new_preset();
+                                                show_new_preset.set(opening);
+                                                if opening {
+                                                    preset_name_input.set(String::new());
+                                                }
+                                            },
                                             "+ Preset"
                                         }
                                     }
@@ -761,7 +776,34 @@ fn ProtocolFields(
                                                 class: "ws-preset-input",
                                                 placeholder: "Preset Name (e.g. Subscribe)",
                                                 value: "{preset_name_input}",
+                                                autofocus: true,
                                                 oninput: move |e: Event<FormData>| preset_name_input.set(e.value()),
+                                                onkeydown: {
+                                                    let draft = draft.clone();
+                                                    move |e: KeyboardEvent| {
+                                                        if e.key() == Key::Enter {
+                                                            let name = preset_name_input().trim().to_string();
+                                                            let n = if name.is_empty() { format!("Preset #{}", draft.ws_presets.len() + 1) } else { name };
+                                                            let mut d = draft.clone();
+                                                            let initial_msg = if d.ws_message.trim().is_empty() {
+                                                                "{\n  \"action\": \"message\"\n}".to_string()
+                                                            } else {
+                                                                d.ws_message.clone()
+                                                            };
+                                                            let new_preset = crate::core::WsPreset::new(n, initial_msg);
+                                                            let new_id = new_preset.id;
+                                                            d.ws_presets.push(new_preset);
+                                                            d.ws_message = d.ws_presets.last().unwrap().message.clone();
+                                                            preset_name_input.set(String::new());
+                                                            show_new_preset.set(false);
+                                                            selected_preset_id.set(Some(new_id));
+                                                            save_feedback.set(false);
+                                                            on_change.call(d);
+                                                        } else if e.key() == Key::Escape {
+                                                            show_new_preset.set(false);
+                                                        }
+                                                    }
+                                                },
                                             }
                                             div { class: "ws-new-preset-btns",
                                                 button {
@@ -770,15 +812,25 @@ fn ProtocolFields(
                                                         let draft = draft.clone();
                                                         move |_| {
                                                             let name = preset_name_input().trim().to_string();
-                                                            let n = if name.is_empty() { "Preset".to_string() } else { name };
+                                                            let n = if name.is_empty() { format!("Preset #{}", draft.ws_presets.len() + 1) } else { name };
                                                             let mut d = draft.clone();
-                                                            d.ws_presets.push(crate::core::WsPreset::new(n, &d.ws_message));
+                                                            let initial_msg = if d.ws_message.trim().is_empty() {
+                                                                "{\n  \"action\": \"message\"\n}".to_string()
+                                                            } else {
+                                                                d.ws_message.clone()
+                                                            };
+                                                            let new_preset = crate::core::WsPreset::new(n, initial_msg);
+                                                            let new_id = new_preset.id;
+                                                            d.ws_presets.push(new_preset);
+                                                            d.ws_message = d.ws_presets.last().unwrap().message.clone();
                                                             preset_name_input.set(String::new());
                                                             show_new_preset.set(false);
+                                                            selected_preset_id.set(Some(new_id));
+                                                            save_feedback.set(false);
                                                             on_change.call(d);
                                                         }
                                                     },
-                                                    "Save from Editor"
+                                                    "Add Preset"
                                                 }
                                                 button {
                                                     class: "btn btn-sm btn-ghost",
@@ -791,43 +843,126 @@ fn ProtocolFields(
 
                                     div { class: "ws-presets-list",
                                         if draft.ws_presets.is_empty() {
-                                            div { class: "ws-presets-empty", "No presets yet. Save your common messages here." }
+                                            div { class: "ws-presets-empty", "No presets yet. Click + Preset to save common messages." }
                                         }
                                         for preset in draft.ws_presets.iter() {
                                             {
                                                 let p_id = preset.id;
                                                 let p_msg = preset.message.clone();
                                                 let p_name = preset.name.clone();
+                                                let is_selected = selected_preset_id() == Some(p_id);
+                                                let is_renaming = renaming_preset_id() == Some(p_id);
+                                                let card_class = if is_selected { "ws-preset-card active" } else { "ws-preset-card" };
+
                                                 rsx! {
-                                                    div { class: "ws-preset-card", key: "{p_id}",
+                                                    div {
+                                                        class: "{card_class}",
+                                                        key: "{p_id}",
+                                                        onclick: {
+                                                            let draft = draft.clone();
+                                                            let msg = p_msg.clone();
+                                                            move |_| {
+                                                                selected_preset_id.set(Some(p_id));
+                                                                save_feedback.set(false);
+                                                                let mut d = draft.clone();
+                                                                d.ws_message = msg.clone();
+                                                                on_change.call(d);
+                                                            }
+                                                        },
                                                         div { class: "ws-preset-info",
-                                                            span { class: "ws-preset-name", "{p_name}" }
-                                                            span { class: "ws-preset-snippet", "{p_msg}" }
+                                                            if is_renaming {
+                                                                input {
+                                                                    class: "ws-preset-rename-input",
+                                                                    value: "{rename_draft()}",
+                                                                    autofocus: true,
+                                                                    onclick: move |e| e.stop_propagation(),
+                                                                    onmousedown: move |e| e.stop_propagation(),
+                                                                    oninput: move |e: Event<FormData>| rename_draft.set(e.value()),
+                                                                    onkeydown: {
+                                                                        let draft = draft.clone();
+                                                                        move |e: KeyboardEvent| {
+                                                                            e.stop_propagation();
+                                                                            match e.key() {
+                                                                                Key::Enter => {
+                                                                                    let next = rename_draft().trim().to_string();
+                                                                                    if !next.is_empty() {
+                                                                                        let mut d = draft.clone();
+                                                                                        if let Some(p) = d.ws_presets.iter_mut().find(|p| p.id == p_id) {
+                                                                                            p.name = next;
+                                                                                            on_change.call(d);
+                                                                                        }
+                                                                                    }
+                                                                                    renaming_preset_id.set(None);
+                                                                                    rename_draft.set(String::new());
+                                                                                }
+                                                                                Key::Escape => {
+                                                                                    renaming_preset_id.set(None);
+                                                                                    rename_draft.set(String::new());
+                                                                                }
+                                                                                _ => {}
+                                                                            }
+                                                                        }
+                                                                    },
+                                                                    onblur: {
+                                                                        let draft = draft.clone();
+                                                                        move |_| {
+                                                                            let next = rename_draft().trim().to_string();
+                                                                            if !next.is_empty() {
+                                                                                let mut d = draft.clone();
+                                                                                if let Some(p) = d.ws_presets.iter_mut().find(|p| p.id == p_id) {
+                                                                                    p.name = next;
+                                                                                    on_change.call(d);
+                                                                                }
+                                                                            }
+                                                                            renaming_preset_id.set(None);
+                                                                            rename_draft.set(String::new());
+                                                                        }
+                                                                    }
+                                                                }
+                                                            } else {
+                                                                div { class: "ws-preset-name-row",
+                                                                    span {
+                                                                        class: "ws-preset-name",
+                                                                        title: "Double click to rename preset",
+                                                                        ondoubleclick: {
+                                                                            let name = p_name.clone();
+                                                                            move |e| {
+                                                                                e.stop_propagation();
+                                                                                rename_draft.set(name.clone());
+                                                                                renaming_preset_id.set(Some(p_id));
+                                                                            }
+                                                                        },
+                                                                        "{p_name}"
+                                                                    }
+                                                                    button {
+                                                                        class: "btn-icon-rename",
+                                                                        r#type: "button",
+                                                                        title: "Rename preset",
+                                                                        onclick: {
+                                                                            let name = p_name.clone();
+                                                                            move |e| {
+                                                                                e.stop_propagation();
+                                                                                rename_draft.set(name.clone());
+                                                                                renaming_preset_id.set(Some(p_id));
+                                                                            }
+                                                                        },
+                                                                        "✎"
+                                                                    }
+                                                                }
+                                                                span { class: "ws-preset-snippet", "{p_msg}" }
+                                                            }
                                                         }
                                                         div { class: "ws-preset-actions",
                                                             button {
-                                                                class: "btn btn-sm btn-send-deck",
-                                                                disabled: !ws_connected,
-                                                                title: "Send this preset immediately",
+                                                                class: if is_selected { "btn btn-sm btn-icon active" } else { "btn btn-sm btn-icon" },
+                                                                title: "Edit preset frame in composer",
                                                                 onclick: {
                                                                     let draft = draft.clone();
                                                                     let msg = p_msg.clone();
-                                                                    move |_| {
-                                                                        let mut d = draft.clone();
-                                                                        d.ws_message = msg.clone();
-                                                                        on_change.call(d);
-                                                                        on_protocol_action.call("ws_send".into());
-                                                                    }
-                                                                },
-                                                                "Send"
-                                                            }
-                                                            button {
-                                                                class: "btn btn-sm btn-icon",
-                                                                title: "Load into editor",
-                                                                onclick: {
-                                                                    let draft = draft.clone();
-                                                                    let msg = p_msg.clone();
-                                                                    move |_| {
+                                                                    move |e| {
+                                                                        e.stop_propagation();
+                                                                        selected_preset_id.set(Some(p_id));
+                                                                        save_feedback.set(false);
                                                                         let mut d = draft.clone();
                                                                         d.ws_message = msg.clone();
                                                                         on_change.call(d);
@@ -840,7 +975,14 @@ fn ProtocolFields(
                                                                 title: "Delete preset",
                                                                 onclick: {
                                                                     let draft = draft.clone();
-                                                                    move |_| {
+                                                                    move |e| {
+                                                                        e.stop_propagation();
+                                                                        if selected_preset_id() == Some(p_id) {
+                                                                            selected_preset_id.set(None);
+                                                                        }
+                                                                        if renaming_preset_id() == Some(p_id) {
+                                                                            renaming_preset_id.set(None);
+                                                                        }
                                                                         let mut d = draft.clone();
                                                                         d.ws_presets.retain(|p| p.id != p_id);
                                                                         on_change.call(d);
@@ -1009,6 +1151,7 @@ fn ProtocolFields(
                                                 on_change: {
                                                     let draft = draft.clone();
                                                     move |text: String| {
+                                                        save_feedback.set(false);
                                                         let mut d = draft.clone();
                                                         d.ws_message = text;
                                                         on_change.call(d);
@@ -1032,19 +1175,45 @@ fn ProtocolFields(
                                                 onclick: move |_| on_protocol_action.call("ws_send".into()),
                                                 "Send Frame"
                                             }
-                                            button {
-                                                class: "btn btn-ghost",
-                                                disabled: draft.ws_message.trim().is_empty(),
-                                                onclick: {
-                                                    let draft = draft.clone();
-                                                    move |_| {
-                                                        let mut d = draft.clone();
-                                                        let name = format!("Preset #{}", d.ws_presets.len() + 1);
-                                                        d.ws_presets.push(crate::core::WsPreset::new(name, &d.ws_message));
-                                                        on_change.call(d);
-                                                    }
-                                                },
-                                                "Save Preset"
+                                            if let Some(ref sel) = selected_preset {
+                                                button {
+                                                    class: "btn btn-ghost",
+                                                    disabled: draft.ws_message.trim().is_empty(),
+                                                    title: "Save frame changes to preset \"{sel.name}\"",
+                                                    onclick: {
+                                                        let draft = draft.clone();
+                                                        let sel_id = sel.id;
+                                                        move |_| {
+                                                            let mut d = draft.clone();
+                                                            if let Some(p) = d.ws_presets.iter_mut().find(|p| p.id == sel_id) {
+                                                                p.message = d.ws_message.clone();
+                                                                on_change.call(d);
+                                                                save_feedback.set(true);
+                                                            }
+                                                        }
+                                                    },
+                                                    if save_feedback() { "Saved ✓" } else { "Save Preset" }
+                                                }
+                                            } else {
+                                                button {
+                                                    class: "btn btn-ghost",
+                                                    disabled: draft.ws_message.trim().is_empty(),
+                                                    title: "Save current frame as new preset",
+                                                    onclick: {
+                                                        let draft = draft.clone();
+                                                        move |_| {
+                                                            let mut d = draft.clone();
+                                                            let name = format!("Preset #{}", d.ws_presets.len() + 1);
+                                                            let new_preset = crate::core::WsPreset::new(name, &d.ws_message);
+                                                            let new_id = new_preset.id;
+                                                            d.ws_presets.push(new_preset);
+                                                            selected_preset_id.set(Some(new_id));
+                                                            on_change.call(d);
+                                                            save_feedback.set(true);
+                                                        }
+                                                    },
+                                                    if save_feedback() { "Saved ✓" } else { "Save Preset" }
+                                                }
                                             }
                                         }
                                     }

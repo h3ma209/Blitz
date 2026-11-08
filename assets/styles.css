@@ -3244,6 +3244,7 @@ button.env-menu-row:hover,
 .tab-method.method-delete { color: var(--method-delete); background: var(--method-delete-soft); }
 .tab-method.method-head { color: var(--method-head); background: var(--method-head-soft); }
 .tab-method.method-options { color: var(--method-options); background: var(--method-options-soft); }
+.tab-method.method-settings { color: var(--accent); background: color-mix(in srgb, var(--accent) 18%, transparent); font-size: 11px; }
 
 .tab-dirty-dot {
   display: inline-flex;
@@ -5420,6 +5421,7 @@ details.json-fold:not([open]) > summary .json-fold-close-comma {
   background: var(--card-bg, rgba(255,255,255,0.03));
   border: 1px solid var(--border);
   border-radius: 4px;
+  cursor: pointer;
   transition: all 120ms ease;
 }
 
@@ -5428,17 +5430,122 @@ details.json-fold:not([open]) > summary .json-fold-close-comma {
   border-color: color-mix(in srgb, var(--accent) 30%, var(--border));
 }
 
+.ws-preset-card.active {
+  background: color-mix(in srgb, var(--accent) 14%, var(--card-bg, rgba(255,255,255,0.03)));
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 35%, transparent);
+}
+
 .ws-preset-info {
   display: flex;
   flex-direction: column;
   overflow: hidden;
   flex: 1;
+  min-width: 0;
+}
+
+.ws-preset-name-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
 
 .ws-preset-name {
   font-size: 12px;
   font-weight: 600;
   color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ws-preset-rename-input {
+  font-size: 12px;
+  font-weight: 600;
+  padding: 2px 6px;
+  background: var(--bg);
+  border: 1px solid var(--accent);
+  color: var(--text);
+  border-radius: 4px;
+  width: 100%;
+  max-width: 160px;
+  box-sizing: border-box;
+}
+
+.btn-icon-rename {
+  background: color-mix(in srgb, var(--text-dim, #888) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
+  color: var(--text-muted);
+  font-size: 13px;
+  cursor: pointer;
+  padding: 2px 6px;
+  line-height: 1;
+  opacity: 0.85;
+  border-radius: 4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  min-height: 20px;
+  min-width: 22px;
+  transition: all 120ms ease;
+}
+
+.btn-icon-rename:hover {
+  opacity: 1;
+  color: var(--accent);
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+}
+
+.btn-rename-banner {
+  font-size: 11px;
+  font-weight: 500;
+  padding: 2px 8px;
+}
+
+.btn-rename-banner .rename-icon {
+  font-size: 12px;
+}
+
+.ws-composer-preset-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 8px;
+  background: color-mix(in srgb, var(--accent) 10%, var(--bg-alt, rgba(0,0,0,0.25)));
+  border: 1px solid color-mix(in srgb, var(--accent) 30%, var(--border));
+  border-radius: 4px;
+  margin-bottom: 2px;
+}
+
+.ws-composer-preset-left {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.ws-composer-preset-badge {
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  padding: 1px 5px;
+  border-radius: 2px;
+  background: var(--accent);
+  color: var(--accent-fg, #000);
+  flex-shrink: 0;
+}
+
+.ws-composer-preset-name {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .ws-preset-snippet {

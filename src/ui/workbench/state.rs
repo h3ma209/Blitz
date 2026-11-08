@@ -104,6 +104,7 @@ pub struct WorkbenchState {
     pub app_settings: Signal<AppSettings>,
     pub data_root: Signal<String>,
     pub show_settings: Signal<bool>,
+    pub settings_tab_open: Signal<bool>,
     pub show_runner: Signal<bool>,
     pub runner_running: Signal<bool>,
     pub runner_report: Signal<Option<RunnerReport>>,
@@ -194,6 +195,7 @@ impl WorkbenchState {
             app_settings,
             data_root: use_signal(String::new),
             show_settings: use_signal(|| false),
+            settings_tab_open: use_signal(|| false),
             show_runner: use_signal(|| false),
             runner_running: use_signal(|| false),
             runner_report: use_signal(|| None::<RunnerReport>),
@@ -390,6 +392,7 @@ impl WorkbenchState {
         self.responses.set(snap.responses);
         self.show_vars.set(snap.show_vars);
         self.show_settings.set(snap.show_settings);
+        self.settings_tab_open.set(snap.show_settings);
         self.show_runner.set(snap.show_runner);
         self.show_perf.set(snap.show_perf);
         self.show_env_manager.set(snap.show_env_manager);

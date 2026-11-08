@@ -491,7 +491,10 @@ pub fn CommandPalette(
                 st.vars_active_tab.set(2);
                 st.show_vars.set(true);
             }
-            PaletteAction::OpenSettings => st.show_settings.set(true),
+            PaletteAction::OpenSettings => {
+                st.settings_tab_open.set(true);
+                st.show_settings.set(true);
+            }
             PaletteAction::OpenCookies => st.show_cookies.set(true),
             PaletteAction::OpenPerformance => st.show_perf.set(true),
             PaletteAction::OpenTrash => st.show_trash.set(true),

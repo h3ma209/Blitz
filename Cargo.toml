@@ -1,6 +1,6 @@
 [package]
 name = "blitz"
-version = "0.2.4"
+version = "0.2.5"
 edition = "2021"
 description = "Local-first API client (Rust + Dioxus) — ⚡ Blitz"
 license = "MIT"
@@ -50,6 +50,7 @@ keyring = { version = "3", default-features = false, features = ["apple-native"]
 
 [profile.dev]
 opt-level = 1
+incremental = false
 
 [profile.release]
 lto = true

@@ -79,6 +79,7 @@ pub fn Workbench() -> Element {
     let mut app_settings = st.app_settings;
     let mut data_root = st.data_root;
     let mut show_settings = st.show_settings;
+    let mut settings_tab_open = st.settings_tab_open;
     let mut trash = st.trash;
     let mut open_tabs = st.open_tabs;
     let mut show_palette = st.show_palette;
@@ -355,6 +356,7 @@ pub fn Workbench() -> Element {
         open_tabs.set(tabs);
         draft.set(req);
         active_request_id.set(None);
+        show_settings.set(false);
         response.set(None);
         status_msg.set("new tab (unsaved)".into());
     });
@@ -428,6 +430,7 @@ pub fn Workbench() -> Element {
             draft.set(found.clone());
             active_request_id.set(Some(tid));
             editing_collection_id.set(None);
+            show_settings.set(false);
             if let Some((col_id, _)) = find_request_across(&collections(), tid) {
                 active_collection_id.set(Some(col_id));
                 if let Some(col) = collections().iter().find(|c| c.id == col_id) {
@@ -991,6 +994,7 @@ pub fn Workbench() -> Element {
                         active_request_id.set(Some(id));
                         active_collection_id.set(Some(col_id));
                         editing_collection_id.set(None);
+                        show_settings.set(false);
                         if let Some(col) = collections().iter().find(|c| c.id == col_id) {
                             let mut v = vars();
                             v.collection = col.variables_map();
@@ -1011,6 +1015,7 @@ pub fn Workbench() -> Element {
                 active_collection_id.set(col_id);
                 editing_collection_id.set(col_id);
                 active_request_id.set(None);
+                show_settings.set(false);
                 if let Some(id) = col_id {
                     let cols = collections();
                     if let Some(col) = cols.iter().find(|c| c.id == id) {
@@ -1036,6 +1041,7 @@ pub fn Workbench() -> Element {
                 active_collection_id.set(Some(id));
                 editing_collection_id.set(Some(id));
                 active_request_id.set(None);
+                show_settings.set(false);
                 st.persist();
             }
             SidebarAction::NewFolder => {
@@ -1485,14 +1491,16 @@ pub fn Workbench() -> Element {
     let on_settings_event = move |evt: SettingsEvent| {
         let mut st = st;
         match evt {
-            SettingsEvent::Close => show_settings.set(false),
+            SettingsEvent::Close => {
+                settings_tab_open.set(false);
+                show_settings.set(false);
+            }
             SettingsEvent::Save(s) => {
                 let enabling_cloud = s.cloud_sync.enabled;
                 app_settings.set(s);
                 if enabling_cloud {
                     ensure_cloud_defaults(st);
                 }
-                show_settings.set(false);
                 st.persist();
                 status_msg.set("settings saved".into());
             }
@@ -1595,7 +1603,21 @@ pub fn Workbench() -> Element {
                     }
                     Key::Character(c) if meta && !shift && c.eq_ignore_ascii_case("w") => {
                         evt.prevent_default();
-                        do_close_tab(draft().id);
+                        if show_settings() {
+                            settings_tab_open.set(false);
+                            show_settings.set(false);
+                        } else {
+                            do_close_tab(draft().id);
+                        }
+                    }
+                    Key::Character(ref c) if meta && !shift && c == "," => {
+                        evt.prevent_default();
+                        if show_settings() {
+                            show_settings.set(false);
+                        } else {
+                            settings_tab_open.set(true);
+                            show_settings.set(true);
+                        }
                     }
                     Key::Character(c)
                         if meta
@@ -1700,33 +1722,31 @@ pub fn Workbench() -> Element {
             TopBar { st }
             VarsPage { st }
 
-            if !show_settings() {
-                div { class: "sidebar-slot",
-                    Sidebar {
-                        key: "{fold_epoch()}",
-                        collections: collections(),
-                        active_collection_id: active_collection_id(),
-                        active_request_id: active_request_id(),
-                        history: history(),
-                        history_collapsed: app_settings().ui.history_collapsed,
-                        on_event: on_sidebar,
-                    }
-                    div {
-                        class: if sidebar_drag().is_some() {
-                            "sidebar-resize active"
-                        } else {
-                            "sidebar-resize"
-                        },
-                        title: "Drag to resize sidebar",
-                        onmousedown: move |evt| {
-                            evt.prevent_default();
-                            evt.stop_propagation();
-                            sidebar_drag.set(Some((
-                                evt.client_coordinates().x,
-                                sidebar_w(),
-                            )));
-                        },
-                    }
+            div { class: "sidebar-slot",
+                Sidebar {
+                    key: "{fold_epoch()}",
+                    collections: collections(),
+                    active_collection_id: active_collection_id(),
+                    active_request_id: if show_settings() { None } else { active_request_id() },
+                    history: history(),
+                    history_collapsed: app_settings().ui.history_collapsed,
+                    on_event: on_sidebar,
+                }
+                div {
+                    class: if sidebar_drag().is_some() {
+                        "sidebar-resize active"
+                    } else {
+                        "sidebar-resize"
+                    },
+                    title: "Drag to resize sidebar",
+                    onmousedown: move |evt| {
+                        evt.prevent_default();
+                        evt.stop_propagation();
+                        sidebar_drag.set(Some((
+                            evt.client_coordinates().x,
+                            sidebar_w(),
+                        )));
+                    },
                 }
             }
 
@@ -1737,33 +1757,31 @@ pub fn Workbench() -> Element {
                     workbench_class
                 },
                 style: "{workbench_style}",
-                if show_settings() {
-                    SettingsPanel {
-                        settings: app_settings(),
-                        data_root: data_root(),
-                        on_event: on_settings_event,
-                    }
-                } else {
-                    div { class: "tab-strip",
-                        div { class: "tab-strip-fixed",
-                            button {
-                                class: if is_draft_dirty(&draft(), &collections()) {
-                                    "btn btn-save is-dirty"
-                                } else {
-                                    "btn btn-save"
-                                },
-                                title: "Save request (⌘S)",
-                                onclick: move |_| do_save(()),
-                                span { class: "action-icon action-icon-save", "aria-hidden": "true" }
-                                span { "Save" }
-                            }
+                div { class: "tab-strip",
+                    div { class: "tab-strip-fixed",
+                        button {
+                            class: if !show_settings() && is_draft_dirty(&draft(), &collections()) {
+                                "btn btn-save is-dirty"
+                            } else {
+                                "btn btn-save"
+                            },
+                            disabled: show_settings(),
+                            title: if show_settings() { "Settings auto-save on change" } else { "Save request (⌘S)" },
+                            onclick: move |_| {
+                                if !show_settings() {
+                                    do_save(());
+                                }
+                            },
+                            span { class: "action-icon action-icon-save", "aria-hidden": "true" }
+                            span { "Save" }
                         }
-                        div { class: "tab-strip-scrollable",
-                            for (idx, t) in open_tabs().into_iter().enumerate() {
-                                {
-                                    let tid = t.id;
-                                    let tname = request_tab_display_name(&collections(), tid);
-                                    let active = draft().id == tid;
+                    }
+                    div { class: "tab-strip-scrollable",
+                        for (idx, t) in open_tabs().into_iter().enumerate() {
+                            {
+                                let tid = t.id;
+                                let tname = request_tab_display_name(&collections(), tid);
+                                let active = !show_settings() && draft().id == tid;
                                     let is_tab_renaming = renaming_tab_id() == Some(tid);
                                     let tab_draft = if active {
                                         draft()
@@ -1909,6 +1927,41 @@ pub fn Workbench() -> Element {
                                                 "×"
                                             }
                                         }
+                                    }
+                                }
+                            }
+                            if settings_tab_open() {
+                                div {
+                                    class: if show_settings() { "tab active tab-settings" } else { "tab tab-settings" },
+                                    role: "button",
+                                    tabindex: "0",
+                                    title: "Settings & Preferences",
+                                    onclick: move |_| {
+                                        show_settings.set(true);
+                                    },
+                                    onmouseup: move |evt: MouseEvent| {
+                                        if evt.trigger_button() == Some(dioxus::html::input_data::MouseButton::Auxiliary) {
+                                            evt.prevent_default();
+                                            evt.stop_propagation();
+                                            settings_tab_open.set(false);
+                                            show_settings.set(false);
+                                        }
+                                    },
+                                    span {
+                                        class: "tab-method method-settings",
+                                        "⚙"
+                                    }
+                                    span { class: "tab-label", "Settings" }
+                                    button {
+                                        class: "tab-close",
+                                        r#type: "button",
+                                        title: "Close tab",
+                                        onclick: move |evt: MouseEvent| {
+                                            evt.stop_propagation();
+                                            settings_tab_open.set(false);
+                                            show_settings.set(false);
+                                        },
+                                        "×"
                                     }
                                 }
                             }
@@ -2070,9 +2123,14 @@ pub fn Workbench() -> Element {
                                 }
                             }
                         }
-                    }
 
-                    if let Some(conflict) = conflict_state() {
+                    if show_settings() {
+                        SettingsPanel {
+                            settings: app_settings(),
+                            data_root: data_root(),
+                            on_event: on_settings_event,
+                        }
+                    } else if let Some(conflict) = conflict_state() {
                         ConflictResolver {
                             root: std::path::PathBuf::from(data_root()),
                             conflict,
@@ -2209,7 +2267,10 @@ pub fn Workbench() -> Element {
 
                                             div {
                                                 class: "workbench-empty-card",
-                                                onclick: move |_| show_settings.set(true),
+                                                onclick: move |_| {
+                                                    settings_tab_open.set(true);
+                                                    show_settings.set(true);
+                                                },
                                                 div { class: "empty-card-head",
                                                     span { class: "empty-card-tag", "PREFERENCES" }
                                                     kbd { class: "empty-card-kbd", "{m_pfx}," }
