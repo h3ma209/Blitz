@@ -166,15 +166,24 @@ chmod +x ~/.local/bin/blitz
 ### 🔌 Multi-Protocol Support
 Interact with any modern API standard in one place:
 - **REST / HTTP:** Query parameters, headers, GraphQL, form-data, multipart uploads.
-- **WebSockets:** Interactive bidirectional streaming and frame inspection.
+- **WebSockets:** Interactive bidirectional streaming, frame inspection, Socket Deck, and message presets.
 - **gRPC:** Unary calls and streaming with Protobuf schema reflection and decoding.
 - **MQTT:** Real-time publish and subscribe to IoT brokers.
 - **SSE (Server-Sent Events):** Live streaming event reader.
 - **Socket.IO:** Native engine handshake and event listener.
 - **MCP (Model Context Protocol):** Direct connection to AI agent tooling and context servers.
 
+<p align="center">
+  <img src="docs/screenshot-websocket.png" alt="Blitz WebSocket & Streaming Protocol Workbench" width="900" style="border-radius: 8px; border: 1px solid rgba(255,255,255,0.1);" />
+</p>
+
 ### 📑 Comprehensive Collection Workspace
 Manage complex API suites with dedicated tabs:
+
+<p align="center">
+  <img src="docs/screenshot-cockpit.png" alt="Blitz Cockpit & Collection Workspace" width="900" style="border-radius: 8px; border: 1px solid rgba(255,255,255,0.1);" />
+</p>
+
 - **Instant Search & Type Filtering:** Real-time debounced sidebar search with zero UI lag. Type inline prefixes directly in the search bar to filter by node type:
   - `folder:<query>` or `f:<query>` (e.g. `folder:auth` or `folder:` alone to browse all folders)
   - `req:<query>` or `r:<query>` (e.g. `req:login` or `req:` alone to browse all requests)
@@ -351,6 +360,10 @@ Sync team workspaces directly through Git without cloud intermediaries:
 2. **Work Locally:** Add endpoints, edit environments, and write tests.
 3. **Sync:** Click **Sync** — Blitz pulls changes, handles merges, and pushes through standard Git (SSH or `gh` CLI).
 4. **Leak Prevention:** Passwords, tokens, and local secret variables are kept local and excluded from commits.
+
+<p align="center">
+  <img src="docs/screenshot-team-sync.png" alt="Blitz Team Collaboration & Git Cloud Activity" width="900" style="border-radius: 8px; border: 1px solid rgba(255,255,255,0.1);" />
+</p>
 
 ---
 
