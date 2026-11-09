@@ -1,12 +1,12 @@
-# ⚡ Blitz — The Native, Local-First Postman Alternative
+# ⚡ Blitz — AI-Native API Client with Built-in MCP Server
 
 <p align="center">
   <img src="assets/logo.png" alt="Blitz Logo" width="120" />
 </p>
 
 <p align="center">
-  <strong>The fast, private, offline-first API workbench built in Rust.</strong><br/>
-  Tired of Postman taking 1GB RAM and forcing cloud accounts? Blitz gives you instant startup, zero telemetry, Git-native team sync, and a built-in MCP server for AI coding agents.
+  <strong>Let Cursor, Claude, and other agents call your APIs from a local Rust workbench.</strong><br/>
+  37-tool MCP server, OS keychain secrets, Git-native sync, zero cloud accounts — plus sub-150ms startup when you need a fast Postman alternative.
 </p>
 
 <p align="center">
@@ -22,10 +22,11 @@
   <a href="#-what-is-blitz">What is Blitz?</a> •
   <a href="#-interface-preview">Interface</a> •
   <a href="#️-blitz-vs-alternatives">Comparison</a> •
+  <a href="#-ai-agent-integration-via-mcp-cursor-claude-antigravity-windsurf-vs-code-zed">MCP Server</a> •
   <a href="#-downloads--installation">Install</a> •
   <a href="#-core-features--capabilities">Features</a> •
-  <a href="#-ai-agent-integration-via-mcp-cursor-claude-antigravity-windsurf-vs-code-zed">MCP Server</a> •
-  <a href="https://h3ma209.github.io/Blitz/docs.html">Docs</a>
+  <a href="https://h3ma209.github.io/Blitz/docs.html">Docs</a> •
+  <a href="SECURITY.md">Security</a>
 </p>
 
 ---
@@ -34,10 +35,10 @@
 
 Blitz is a **lightweight, open-source API development and testing client** written in pure Rust (Dioxus). It replaces heavy Electron-based tools with a native desktop application that respects your hardware and privacy:
 
-- **🚀 10x Faster, 90% Less RAM:** Starts in <150ms and sits at ~40MB RAM (CLI runner uses only ~10MB). No bundled Chromium or multi-process Electron overhead.
+- **🤖 Built-in MCP server (37 tools):** Cursor, Claude, Antigravity, and Windsurf can list collections, send requests, sync OpenAPI, run perf tests, and diff responses — locally, over stdio.
 - **🔒 100% Offline & Local-First:** No accounts, no logins, no cloud tracking. Your collections, tokens, and environments stay on your machine.
 - **🐙 Git-Native Collaboration:** No $19/user/month cloud workspace paywalls. Save collections right inside your Git repo and sync via `git pull` / `git push`.
-- **🤖 First-Class AI Agent Support (MCP):** Comes with a built-in 37-tool Model Context Protocol server. Let Cursor, Claude, Antigravity, or Windsurf inspect, trigger, and debug your API endpoints automatically.
+- **🚀 Native speed:** Starts in &lt;150ms and sits at ~40MB RAM (CLI runner ~10MB). No bundled Chromium or multi-process Electron overhead.
 - **🌐 All Major Protocols:** REST, GraphQL, WebSocket, gRPC (Protobuf), SSE, Socket.IO, and MQTT in a unified, modern interface.
 
 ---
@@ -98,11 +99,24 @@ curl -fsSL https://raw.githubusercontent.com/h3ma209/Blitz/master/install.sh | b
 ```
 *Installs to `%LOCALAPPDATA%\Blitz\blitz.exe`, adds to User PATH, and creates Start Menu shortcut.*
 
-### Homebrew Tap
+### Homebrew Tap (recommended on macOS)
 ```bash
 brew tap h3ma209/blitz https://github.com/h3ma209/homebrew-blitz
 brew install --cask blitz
 ```
+
+### Windows package managers
+After manifests are accepted upstream (templates in `packaging/winget/` and `packaging/scoop/`):
+
+```powershell
+winget install --id h3ma209.Blitz -e
+```
+
+```powershell
+scoop install blitz
+```
+
+Until then, use the [1-line PowerShell installer](#-1-line-quick-install) or [Releases](https://github.com/h3ma209/Blitz/releases).
 
 ### Direct Downloads
 Pre-built binaries for macOS, Linux, and Windows are available directly from the **[Releases Page](https://github.com/h3ma209/Blitz/releases)**.
@@ -115,49 +129,39 @@ Pre-built binaries for macOS, Linux, and Windows are available directly from the
 | **Windows (x86_64)** | [blitz-windows-x86_64.zip](https://github.com/h3ma209/Blitz/releases/latest) | Unzip & run `blitz.exe` |
 | **Cargo (Any OS)** | Source crate | `cargo install --git https://github.com/h3ma209/Blitz.git` |
 
-### 🛡️ First-Launch Security Notice (macOS & Windows)
+### 🛡️ Install trust & OS prompts
 
-Because Blitz is an open-source project distributed without paid Apple Developer ($99/yr) or Windows EV enterprise certificates, your operating system may display a security verification warning on first manual launch.
+Blitz is unsigned (no Apple notarization / Windows EV cert yet). **Prefer Homebrew, winget, or Scoop** when available. For how we handle secrets, MCP, and disclosures, see **[SECURITY.md](SECURITY.md)**.
 
-#### 🍎 macOS Fix: *"Apple cannot verify that this app is free of malware"* or *"Blitz is damaged"*
-Apple Gatekeeper attaches a quarantine attribute to files downloaded via web browsers.
+<details>
+<summary><strong>macOS Gatekeeper or “damaged app”</strong> — click to expand</summary>
 
-**Method 1 — 1-Line Terminal Command (Recommended):**
+Browser downloads get a quarantine flag. The [install script](install.sh) clears it automatically; otherwise:
+
 ```bash
 xattr -cr /Applications/Blitz.app
 ```
-*(If installed to user folder `~/Applications/Blitz.app`, run `xattr -cr ~/Applications/Blitz.app`)*
 
-**Method 2 — GUI Right-Click:**
-1. Open **Finder** → navigate to **Applications**.
-2. **Right-click** (or `Control`-click) on **Blitz** and select **Open**.
-3. Click **Open** in the confirmation prompt (macOS will remember this permanently).
+Or right-click **Blitz** in Applications → **Open** once.
+</details>
 
-**Method 3 — System Settings:**
-Open **System Settings → Privacy & Security**, scroll down to the **Security** section, and click **Open Anyway**.
+<details>
+<summary><strong>Windows SmartScreen</strong> — click to expand</summary>
 
----
+Use **More info → Run anyway**, or the [PowerShell installer](install.ps1) (unblocks automatically), or:
 
-#### 🪟 Windows Fix: *"Windows protected your PC (SmartScreen)"*
-Microsoft Defender SmartScreen flags newly downloaded open-source executables.
-
-**Method 1 — GUI:**
-1. On the *"Windows protected your PC"* popup, click **More info**.
-2. Click **Run anyway**.
-
-**Method 2 — PowerShell (Instant Unblock):**
 ```powershell
 Unblock-File "$env:LOCALAPPDATA\Blitz\blitz.exe"
 ```
-*(Or if downloaded zip: `Unblock-File .\blitz-windows-x86_64.zip` before unzipping)*
+</details>
 
----
+<details>
+<summary><strong>Linux permission denied</strong> — click to expand</summary>
 
-#### 🐧 Linux: *"Permission denied"*
-Ensure the binary has executable permissions:
 ```bash
 chmod +x ~/.local/bin/blitz
 ```
+</details>
 
 ---
 

@@ -4,9 +4,9 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Documentation — Blitz API Client (Local-First, Rust, Postman Alternative)</title>
+  <title>Blitz Docs — MCP Tools, Scripting API &amp; CLI Reference</title>
   <meta name="description"
-    content="Comprehensive documentation for Blitz API client: multi-protocol execution, Postman JS sandbox, 37 MCP tools for AI agents, Git sync, dynamic faker variables, and headless CLI runner.">
+    content="Reference for Blitz: 37 MCP tools for Cursor/Claude, blitz.* / pm.* sandbox API, headless CLI, Git sync, protocols, and OS keychain vault.">
   <meta name="keywords"
     content="blitz docs, blitz documentation, postman alternative docs, mcp tools reference, api testing documentation, rust api client guide">
   <meta name="author" content="h3ma209">
@@ -112,7 +112,10 @@
       <!-- Header Links -->
       <div class="flex items-center gap-3 sm:gap-4 text-xs font-medium">
         <a href="index.html" class="text-spot-muted hover:text-white transition-colors">Home</a>
-        <a href="index.html#features" class="text-spot-muted hover:text-white transition-colors hidden sm:inline">Features</a>
+        <a href="#mcp-overview" class="text-spot-bright font-semibold hover:text-white transition-colors">MCP</a>
+        <a href="#sandbox-api" class="text-spot-muted hover:text-white transition-colors hidden sm:inline">Scripts</a>
+        <a href="#cli-runner" class="text-spot-muted hover:text-white transition-colors hidden sm:inline">CLI</a>
+        <a href="https://github.com/h3ma209/Blitz/blob/master/SECURITY.md" class="text-spot-muted hover:text-white transition-colors hidden sm:inline">Security</a>
         <a href="https://github.com/h3ma209/Blitz" target="_blank" rel="noopener"
           class="flex items-center gap-1.5 text-slate-300 hover:text-white transition-colors">
           <svg class="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
@@ -137,7 +140,26 @@
       class="w-64 shrink-0 hidden lg:block sticky top-24 self-start max-h-[calc(100vh-7rem)] overflow-y-auto pr-3 text-xs space-y-6">
       
       <div>
-        <div class="font-bold uppercase tracking-wider text-spot-bright text-[11px] mb-2 font-mono">1. Overview</div>
+        <div class="font-bold uppercase tracking-wider text-yellow-300 text-[11px] mb-2 font-mono">1. AI Agent (MCP)</div>
+        <ul class="space-y-1 text-spot-muted">
+          <li><a href="#mcp-overview" class="block py-1 hover:text-white transition-colors font-medium text-white/90">Model Context Protocol (Stdio)</a></li>
+          <li><a href="#mcp-setup" class="block py-1 hover:text-white transition-colors">blitz mcp setup (Auto-Config)</a></li>
+          <li><a href="#mcp-tools" class="block py-1 hover:text-white transition-colors">All 37 Tools Reference</a></li>
+          <li><a href="#mcp-resources" class="block py-1 hover:text-white transition-colors">MCP Resources URI Scheme</a></li>
+        </ul>
+      </div>
+
+      <div>
+        <div class="font-bold uppercase tracking-wider text-spot-bright text-[11px] mb-2 font-mono">2. Scripting &amp; CLI</div>
+        <ul class="space-y-1 text-spot-muted">
+          <li><a href="#sandbox-api" class="block py-1 hover:text-white transition-colors font-medium text-white/90">blitz.* Native Sandbox API</a></li>
+          <li><a href="#assertions" class="block py-1 hover:text-white transition-colors">Assertions &amp; blitz.expect</a></li>
+          <li><a href="#cli-runner" class="block py-1 hover:text-white transition-colors">Headless CLI Runner (blitz run)</a></li>
+        </ul>
+      </div>
+
+      <div>
+        <div class="font-bold uppercase tracking-wider text-spot-bright text-[11px] mb-2 font-mono">3. Overview</div>
         <ul class="space-y-1 text-spot-muted">
           <li><a href="#intro" class="block py-1 hover:text-white transition-colors">Introduction & Philosophy</a></li>
           <li><a href="#architecture" class="block py-1 hover:text-white transition-colors">Core Architecture</a></li>
@@ -147,7 +169,7 @@
       </div>
 
       <div>
-        <div class="font-bold uppercase tracking-wider text-spot-bright text-[11px] mb-2 font-mono">2. Workspaces & Requests</div>
+        <div class="font-bold uppercase tracking-wider text-spot-bright text-[11px] mb-2 font-mono">4. Workspaces & Requests</div>
         <ul class="space-y-1 text-spot-muted">
           <li><a href="#collections" class="block py-1 hover:text-white transition-colors">Collections & Folders</a></li>
           <li><a href="#sidebar-search" class="block py-1 hover:text-white transition-colors">Instant Search &amp; Type Filters</a></li>
@@ -158,7 +180,7 @@
       </div>
 
       <div>
-        <div class="font-bold uppercase tracking-wider text-spot-bright text-[11px] mb-2 font-mono">3. Multi-Protocol Engine</div>
+        <div class="font-bold uppercase tracking-wider text-spot-bright text-[11px] mb-2 font-mono">5. Multi-Protocol Engine</div>
         <ul class="space-y-1 text-spot-muted">
           <li><a href="#proto-ws" class="block py-1 hover:text-white transition-colors">WebSockets (ws:// &amp; wss://)</a></li>
           <li><a href="#proto-grpc" class="block py-1 hover:text-white transition-colors">gRPC Unary &amp; Protobuf</a></li>
@@ -170,7 +192,7 @@
       </div>
 
       <div>
-        <div class="font-bold uppercase tracking-wider text-spot-bright text-[11px] mb-2 font-mono">4. Variables & Dynamic Data</div>
+        <div class="font-bold uppercase tracking-wider text-spot-bright text-[11px] mb-2 font-mono">6. Variables & Dynamic Data</div>
         <ul class="space-y-1 text-spot-muted">
           <li><a href="#variables-scope" class="block py-1 hover:text-white transition-colors">5-Tier Variable Scopes</a></li>
           <li><a href="#faker-variables" class="block py-1 hover:text-white transition-colors">Postman Dynamic ($faker)</a></li>
@@ -179,30 +201,17 @@
       </div>
 
       <div>
-        <div class="font-bold uppercase tracking-wider text-spot-bright text-[11px] mb-2 font-mono">5. Scripting &amp; Test Sandbox</div>
+        <div class="font-bold uppercase tracking-wider text-spot-bright text-[11px] mb-2 font-mono">7. Advanced Scripting</div>
         <ul class="space-y-1 text-spot-muted">
-          <li><a href="#sandbox-api" class="block py-1 hover:text-white transition-colors">blitz.* Native Sandbox API</a></li>
-          <li><a href="#assertions" class="block py-1 hover:text-white transition-colors">Assertions &amp; blitz.expect</a></li>
           <li><a href="#visualizer" class="block py-1 hover:text-white transition-colors">Visualizer (blitz.visualizer)</a></li>
           <li><a href="#workflows" class="block py-1 hover:text-white transition-colors">Workflow Control (setNextRequest)</a></li>
         </ul>
       </div>
 
       <div>
-        <div class="font-bold uppercase tracking-wider text-yellow-300 text-[11px] mb-2 font-mono">6. AI Agent MCP Server</div>
-        <ul class="space-y-1 text-spot-muted">
-          <li><a href="#mcp-overview" class="block py-1 hover:text-white transition-colors">Model Context Protocol (Stdio)</a></li>
-          <li><a href="#mcp-setup" class="block py-1 hover:text-white transition-colors">blitz mcp setup (Auto-Config)</a></li>
-          <li><a href="#mcp-tools" class="block py-1 hover:text-white transition-colors">All 37 Tools Reference</a></li>
-          <li><a href="#mcp-resources" class="block py-1 hover:text-white transition-colors">MCP Resources URI Scheme</a></li>
-        </ul>
-      </div>
-
-      <div>
-        <div class="font-bold uppercase tracking-wider text-spot-bright text-[11px] mb-2 font-mono">7. Git Sync &amp; CI/CD</div>
+        <div class="font-bold uppercase tracking-wider text-spot-bright text-[11px] mb-2 font-mono">8. Git Sync &amp; CI/CD</div>
         <ul class="space-y-1 text-spot-muted">
           <li><a href="#git-sync" class="block py-1 hover:text-white transition-colors">Branch-Based Git Workspaces</a></li>
-          <li><a href="#cli-runner" class="block py-1 hover:text-white transition-colors">Headless CLI Runner (blitz run)</a></li>
           <li><a href="#load-testing" class="block py-1 hover:text-white transition-colors">Performance &amp; Load Testing</a></li>
           <li><a href="#impex" class="block py-1 hover:text-white transition-colors">Import &amp; Export (Postman/OpenAPI/HAR)</a></li>
         </ul>
@@ -214,22 +223,40 @@
 
       <!-- SECTION 1: INTRO -->
       <section id="intro" class="scroll-mt-24 space-y-4">
-        <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-spot-green/10 text-spot-bright text-xs font-mono font-medium border border-spot-green/20">
-          <span>⚡</span> Open Source • Local-First • 100% Offline
+        <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-yellow-400/10 text-yellow-200 text-xs font-mono font-medium border border-yellow-400/25">
+          <span>🤖</span> Start here: MCP • Scripts • CLI
         </div>
         <h1 class="text-3xl sm:text-4xl font-extrabold tracking-tight text-white">
-          Blitz Documentation &amp; Reference Guide
+          Blitz — MCP, Scripting &amp; API Reference
         </h1>
         <p class="text-slate-300 text-base leading-relaxed">
-          <strong>Blitz</strong> is an ultra-fast, local-first API client and testing platform built with <strong>Rust</strong> and <strong>Dioxus</strong>. It delivers sub-150ms native startup, a ~10MB memory footprint, multi-protocol execution (HTTP, WebSockets, gRPC, MQTT, SSE, GraphQL, Socket.IO), native OS keychain encryption, branch-based Git synchronization, and a built-in <strong>37-tool Model Context Protocol (MCP) server</strong> for AI coding agents.
+          <strong>Blitz</strong> ships a <strong>37-tool MCP server</strong> so agents can drive your collections locally, plus a Postman-compatible <strong><code>blitz.*</code></strong> sandbox and headless <strong><code>blitz run</code></strong> for CI. Under the hood: Rust + Dioxus, OS keychain secrets, Git sync, and eight wire protocols.
         </p>
+
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2">
+          <a href="#mcp-setup" class="p-4 rounded-xl glass glass-elevated hover:border-spot-bright/40 border border-white/10 transition-colors block">
+            <div class="text-[11px] font-mono text-yellow-300 font-bold mb-1">Pillar 1</div>
+            <div class="text-sm font-bold text-white mb-1">Wire Cursor / Claude</div>
+            <p class="text-xs text-spot-muted">Auto-config stdio MCP and tool reference.</p>
+          </a>
+          <a href="#sandbox-api" class="p-4 rounded-xl glass glass-elevated hover:border-spot-bright/40 border border-white/10 transition-colors block">
+            <div class="text-[11px] font-mono text-spot-bright font-bold mb-1">Pillar 2</div>
+            <div class="text-sm font-bold text-white mb-1">Pre-request &amp; test scripts</div>
+            <p class="text-xs text-spot-muted"><code>blitz.*</code> / <code>pm.*</code> API tables and examples.</p>
+          </a>
+          <a href="#cli-runner" class="p-4 rounded-xl glass glass-elevated hover:border-spot-bright/40 border border-white/10 transition-colors block">
+            <div class="text-[11px] font-mono text-spot-bright font-bold mb-1">Pillar 3</div>
+            <div class="text-sm font-bold text-white mb-1">CI &amp; load tests</div>
+            <p class="text-xs text-spot-muted">Headless runner and collection perf.</p>
+          </a>
+        </div>
 
         <div class="p-4 rounded-xl bg-white/[0.03] border border-white/10 text-xs text-slate-300 space-y-2">
           <div class="font-bold text-white flex items-center gap-2">
             <span>💡</span> Why Blitz exists:
           </div>
           <p>
-            Mainstream API clients increasingly force cloud logins, upload proprietary company payloads to remote servers, charge hefty per-seat subscription invoices, and consume hundreds of megabytes of RAM running Electron/Node.js runtimes. Blitz runs completely on your own hardware, saves data as clean JSON on disk, uses your own Git repositories for team sync, and exposes a native stdio MCP server for autonomous AI agents (Cursor, Claude, Antigravity, Windsurf).
+            Mainstream API clients increasingly force cloud logins, upload proprietary company payloads to remote servers, charge hefty per-seat subscription invoices, and consume hundreds of megabytes of RAM running Electron/Node.js runtimes. Blitz runs completely on your own hardware, saves data as clean JSON on disk, uses your own Git repositories for team sync, and exposes a native stdio MCP server for autonomous AI agents (Cursor, Claude, Antigravity, Windsurf). See <a href="https://github.com/h3ma209/Blitz/blob/master/SECURITY.md" class="text-spot-bright hover:underline">SECURITY.md</a> for disclosures and reporting.
           </p>
         </div>
       </section>

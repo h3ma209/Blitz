@@ -4,7 +4,7 @@ cask "blitz" do
 
   url "https://github.com/h3ma209/Blitz/releases/download/v#{version}/Blitz-macos-arm64.dmg"
   name "Blitz"
-  desc "Lightweight, native, offline-first API client in Rust"
+  desc "AI-native local-first API client with built-in MCP server"
   homepage "https://h3ma209.github.io/Blitz/"
 
   depends_on arch: :arm64

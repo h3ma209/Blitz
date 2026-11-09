@@ -4,9 +4,9 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Blitz — Ultra-Fast, Local-First API Client in Rust (Postman Alternative)</title>
+  <title>Blitz — AI-Native API Client with Built-in MCP Server</title>
   <meta name="description"
-    content="Blitz is a free, open-source, local-first API client and Postman alternative written in Rust. Sub-150ms startup, ~10MB runner, built-in MCP server for AI coding agents (Cursor, Claude, Antigravity), native OS keychain secrets, and branch-based Git sync without forced cloud accounts.">
+    content="Blitz: local-first API workbench with a built-in 37-tool MCP server for Cursor and Claude. OS keychain secrets, Git sync, Postman-compatible scripts — native Rust, zero telemetry.">
   <meta name="keywords"
     content="api client, postman alternative, insomnia alternative, rust api client, local first api client, offline first, model context protocol, mcp server, rest client, grpc client, websocket client, graphql client, api testing, load testing, developer tools, cursor mcp, claude mcp, antigravity">
   <meta name="author" content="h3ma209">
@@ -17,18 +17,18 @@
   <!-- Open Graph / Facebook -->
   <meta property="og:type" content="website">
   <meta property="og:url" content="https://h3ma209.github.io/Blitz/">
-  <meta property="og:title" content="Blitz — Ultra-Fast, Local-First API Client in Rust (Postman Alternative)">
+  <meta property="og:title" content="Blitz — AI-Native API Client with Built-in MCP Server">
   <meta property="og:description"
-    content="Free, local-first Postman alternative in Rust. Sub-150ms start, ~10MB runner, built-in MCP server for AI coding agents, and Git-based sync without forced cloud accounts.">
+    content="37-tool MCP server for AI agents. Local Postman-compatible workbench in Rust — keychain secrets, Git sync, no cloud account required.">
   <meta property="og:image" content="https://raw.githubusercontent.com/h3ma209/Blitz/master/docs/app-screenshot.png">
   <meta property="og:site_name" content="Blitz API Client">
 
   <!-- Twitter / X -->
   <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:url" content="https://h3ma209.github.io/Blitz/">
-  <meta name="twitter:title" content="Blitz — Ultra-Fast, Local-First API Client in Rust (Postman Alternative)">
+  <meta name="twitter:title" content="Blitz — AI-Native API Client with Built-in MCP Server">
   <meta name="twitter:description"
-    content="Free, local-first Postman alternative in Rust. Sub-150ms start, ~10MB runner, built-in MCP server for AI coding agents, and Git-based sync without forced cloud accounts.">
+    content="Built-in 37-tool MCP server for Cursor &amp; Claude. Native API client — keychain, Git sync, offline-first.">
   <meta name="twitter:image" content="https://raw.githubusercontent.com/h3ma209/Blitz/master/docs/app-screenshot.png">
 
   <!-- Schema.org JSON-LD Structured Data for Google Search -->
@@ -37,7 +37,7 @@
     "@context": "https://schema.org",
     "@type": "SoftwareApplication",
     "name": "Blitz",
-    "headline": "Ultra-Fast, Local-First API Client & Postman Alternative in Rust",
+    "headline": "AI-Native API Client with Built-in MCP Server",
     "operatingSystem": "macOS, Linux, Windows",
     "applicationCategory": "DeveloperApplication",
     "applicationSubCategory": "API Development & Testing",
@@ -47,7 +47,7 @@
       "price": "0",
       "priceCurrency": "USD"
     },
-    "description": "Blitz is an ultra-fast, lightweight, offline-first API client and Postman alternative written in Rust with built-in Model Context Protocol (MCP) server for AI coding agents.",
+    "description": "Blitz is a local-first API workbench with a built-in 37-tool Model Context Protocol (MCP) server for AI coding agents, plus native Rust performance and OS keychain secrets.",
     "url": "https://h3ma209.github.io/Blitz/",
     "downloadUrl": "https://github.com/h3ma209/Blitz/releases",
     "softwareVersion": "0.2.0",
@@ -171,14 +171,13 @@
 
       <!-- Desktop Nav Items -->
       <div class="hidden lg:flex items-center gap-6 text-xs text-spot-muted font-medium">
-        <a href="#screenshot" class="hover:text-white transition-colors">Interface</a>
-        <a href="#why-switch" class="hover:text-white transition-colors">Why Blitz</a>
-        <a href="#git-cloud" class="hover:text-white transition-colors">Git Sync</a>
+        <a href="#demo" class="text-spot-bright font-semibold hover:text-white transition-colors">MCP Demo</a>
+        <a href="#cli-runner" class="hover:text-white transition-colors">MCP &amp; CLI</a>
         <a href="#features" class="hover:text-white transition-colors">Features</a>
-        <a href="#protocols" class="hover:text-white transition-colors">Protocols</a>
-        <a href="#cli-runner" class="hover:text-white transition-colors">CLI</a>
-        <a href="#benchmarks" class="hover:text-white transition-colors">Benchmarks</a>
-        <a href="docs.html" class="text-spot-bright font-semibold hover:text-white transition-colors">Docs</a>
+        <a href="#screenshot" class="hover:text-white transition-colors">Interface</a>
+        <a href="docs.html#mcp-tools" class="hover:text-white transition-colors">37 Tools</a>
+        <a href="docs.html" class="hover:text-white transition-colors">Docs</a>
+        <a href="https://github.com/h3ma209/Blitz/blob/master/SECURITY.md" class="hover:text-white transition-colors">Security</a>
         <a href="https://github.com/h3ma209/Blitz" target="_blank" rel="noopener"
           class="flex items-center gap-1.5 text-slate-300 hover:text-white transition-colors">
           <svg class="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
@@ -196,14 +195,11 @@
       <!-- Mobile Dropdown Menu -->
       <div id="mobile-nav"
         class="hidden w-full lg:hidden pt-4 pb-2 border-t border-white/10 mt-3 flex flex-col gap-3 text-sm">
-        <a href="docs.html" class="text-spot-bright font-bold py-1">📖 Documentation</a>
-        <a href="#screenshot" onclick="toggleMobileNav()" class="text-spot-bright py-1 font-semibold">Interface</a>
-        <a href="#why-switch" onclick="toggleMobileNav()" class="text-spot-muted hover:text-white py-1">Why Blitz</a>
-        <a href="#git-cloud" onclick="toggleMobileNav()" class="text-spot-muted hover:text-white py-1">Git Sync</a>
+        <a href="#demo" onclick="toggleMobileNav()" class="text-spot-bright font-bold py-1">MCP Demo</a>
+        <a href="docs.html" onclick="toggleMobileNav()" class="text-spot-bright py-1">Documentation</a>
+        <a href="#cli-runner" onclick="toggleMobileNav()" class="text-spot-muted hover:text-white py-1">MCP &amp; CLI</a>
         <a href="#features" onclick="toggleMobileNav()" class="text-spot-muted hover:text-white py-1">Features</a>
-        <a href="#protocols" onclick="toggleMobileNav()" class="text-spot-muted hover:text-white py-1">Protocols</a>
-        <a href="#cli-runner" onclick="toggleMobileNav()" class="text-spot-muted hover:text-white py-1">CLI</a>
-        <a href="#benchmarks" onclick="toggleMobileNav()" class="text-spot-muted hover:text-white py-1">Benchmarks</a>
+        <a href="#screenshot" onclick="toggleMobileNav()" class="text-spot-muted hover:text-white py-1">Interface</a>
         <a href="#install" onclick="toggleMobileNav()" class="text-spot-muted hover:text-white py-1">Download</a>
       </div>
     </nav>
@@ -212,61 +208,89 @@
   <!-- Hero Section -->
   <main class="relative z-10 pt-20 pb-16 px-4 sm:px-6 max-w-6xl mx-auto text-center">
     <!-- Meta tag -->
-    <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full border border-white/10 bg-white/[0.03] text-xs text-slate-300 font-mono mb-6">
-      <span class="w-1.5 h-1.5 rounded-full bg-spot-bright"></span>
-      <span>v0.1.0 • macOS &amp; Linux native • Zero telemetry</span>
+    <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full border border-spot-bright/30 bg-spot-bright/10 text-xs text-spot-bright font-mono mb-6">
+      <span class="w-1.5 h-1.5 rounded-full bg-spot-bright animate-pulse"></span>
+      <span>37-tool MCP server • Cursor &amp; Claude • Zero telemetry</span>
     </div>
 
     <!-- Clean, Direct Headline -->
     <h1 class="text-3xl sm:text-5xl md:text-6xl font-bold tracking-tight text-white mb-5 max-w-4xl mx-auto leading-tight">
-      Native, local-first API client in Rust.
+      The AI-native API client with a built-in MCP server.
     </h1>
 
     <!-- Direct Subtitle -->
     <p class="text-base sm:text-lg text-spot-muted max-w-2xl mx-auto mb-8 leading-relaxed">
-      Sub-150ms boot. ~10MB RAM runner. Uses your existing Git repos for team sync and your OS Keychain for secrets — without forced cloud accounts or Electron bloat.
+      Agents import OpenAPI, fire requests, run perf tests, and diff responses — from your machine, with OS Keychain secrets and Git-native collections. Native Rust when you need speed, not Electron.
     </p>
 
     <!-- CTAs -->
     <div class="flex flex-wrap items-center justify-center gap-3 mb-10">
-      <a href="#install"
+      <a href="#demo"
         class="inline-flex items-center gap-2 bg-spot-bright hover:bg-emerald-400 text-slate-950 font-semibold text-sm px-6 py-2.5 rounded-md transition-all shadow-sm">
-        <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round"
-            d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
-        </svg>
-        Download for macOS (.dmg)
+        See MCP in action
       </a>
-      <a href="https://github.com/h3ma209/Blitz" target="_blank" rel="noopener"
+      <a href="#install"
         class="inline-flex items-center gap-2 border border-white/10 hover:border-white/20 hover:bg-white/5 text-slate-300 hover:text-white font-medium text-sm px-5 py-2.5 rounded-md transition-all">
-        View on GitHub
+        Download
       </a>
-      <div class="w-full sm:w-auto text-xs font-mono text-spot-faint bg-white/[0.02] border border-white/5 px-3 py-2 rounded-md">
-        <code>cargo install blitz</code>
-      </div>
+      <a href="docs.html#mcp-setup"
+        class="inline-flex items-center gap-2 border border-white/10 hover:border-white/20 hover:bg-white/5 text-slate-300 hover:text-white font-medium text-sm px-5 py-2.5 rounded-md transition-all">
+        Wire up Cursor
+      </a>
     </div>
+
+    <!-- Live hook: demo video slot + animated flow (replace demo.mp4 when recorded) -->
+    <section id="demo" class="max-w-5xl mx-auto mb-12 text-left scroll-mt-24">
+      <div class="panel rounded-xl overflow-hidden border border-white/10 shadow-2xl">
+        <div class="bg-[#161821] border-b border-white/5 px-4 py-2.5 flex items-center justify-between text-xs text-slate-400">
+          <span class="font-mono text-[11px] text-slate-300">Agent session • Blitz MCP (stdio)</span>
+          <span class="text-[11px] font-mono text-spot-bright">~30s workflow</span>
+        </div>
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-0 divide-y lg:divide-y-0 lg:divide-x divide-white/5">
+          <div class="p-0 bg-black/40">
+            <video id="hero-demo-video" class="w-full h-auto hidden" controls playsinline muted loop poster="screenshot-cockpit.png">
+              <source src="demo.mp4" type="video/mp4" />
+            </video>
+            <div id="hero-demo-fallback" class="p-5 font-mono text-[11px] leading-relaxed text-slate-300 space-y-2 min-h-[220px]">
+              <div class="text-spot-faint"># Cursor → Blitz MCP</div>
+              <div><span class="text-yellow-300">blitz_sync_openapi</span> <span class="text-slate-500">url=https://api.example.com/openapi.json</span></div>
+              <div class="text-spot-bright">→ 42 paths imported into "Payments API"</div>
+              <div><span class="text-yellow-300">blitz_perf_test</span> <span class="text-slate-500">collection=Payments API concurrency=20</span></div>
+              <div class="text-spot-bright">→ p95 84ms • 0 errors</div>
+              <div><span class="text-yellow-300">blitz_diff_responses</span> <span class="text-slate-500">baseline=staging current=prod</span></div>
+              <div class="text-spot-bright">→ schema drift: 2 fields</div>
+            </div>
+          </div>
+          <div class="p-4 flex flex-col justify-center gap-3 text-xs text-spot-muted">
+            <p class="leading-relaxed">Drop <code class="text-slate-200">docs/demo.mp4</code> beside this page for a real recording. Until then, this panel shows the agent workflow developers care about.</p>
+            <a href="docs.html#mcp-setup" class="text-spot-bright font-semibold hover:underline">MCP setup guide →</a>
+            <a href="https://github.com/h3ma209/Blitz/blob/master/SECURITY.md" class="hover:text-white transition-colors">Security policy →</a>
+          </div>
+        </div>
+      </div>
+    </section>
 
     <!-- Fast Facts Bar -->
     <div class="grid grid-cols-2 md:grid-cols-4 gap-3 max-w-4xl mx-auto mb-12 text-left font-mono text-xs">
+      <div class="panel p-3.5 rounded-lg border border-spot-bright/20">
+        <div class="text-spot-muted text-[11px] mb-1 font-sans">AI Bridge</div>
+        <div class="text-lg font-bold text-white">37 MCP Tools</div>
+        <div class="text-spot-faint text-[10px] mt-0.5">stdio • local only</div>
+      </div>
+      <div class="panel p-3.5 rounded-lg">
+        <div class="text-spot-muted text-[11px] mb-1 font-sans">Secrets</div>
+        <div class="text-lg font-bold text-white">OS Keychain</div>
+        <div class="text-spot-faint text-[10px] mt-0.5">not in git</div>
+      </div>
       <div class="panel p-3.5 rounded-lg">
         <div class="text-spot-muted text-[11px] mb-1 font-sans">Boot Time</div>
         <div class="text-lg font-bold text-white">&lt; 150ms</div>
-        <div class="text-spot-faint text-[10px] mt-0.5">native machine code</div>
-      </div>
-      <div class="panel p-3.5 rounded-lg">
-        <div class="text-spot-muted text-[11px] mb-1 font-sans">CLI Footprint</div>
-        <div class="text-lg font-bold text-white">~10.2 MB RSS</div>
-        <div class="text-spot-faint text-[10px] mt-0.5">vs 800MB+ Postman</div>
+        <div class="text-spot-faint text-[10px] mt-0.5">native Rust</div>
       </div>
       <div class="panel p-3.5 rounded-lg">
         <div class="text-spot-muted text-[11px] mb-1 font-sans">Team Sync</div>
-        <div class="text-lg font-bold text-white">Any Git Remote</div>
-        <div class="text-spot-faint text-[10px] mt-0.5">GitHub / GitLab / self-hosted</div>
-      </div>
-      <div class="panel p-3.5 rounded-lg">
-        <div class="text-spot-muted text-[11px] mb-1 font-sans">Secrets Storage</div>
-        <div class="text-lg font-bold text-white">OS Keychain</div>
-        <div class="text-spot-faint text-[10px] mt-0.5">never committed to git</div>
+        <div class="text-lg font-bold text-white">Git Native</div>
+        <div class="text-spot-faint text-[10px] mt-0.5">your remote</div>
       </div>
     </div>
 
@@ -1774,10 +1798,29 @@ blitz.test("Response payload contains user_id", () => {
     <!-- ================================================================= -->
     <section id="install" class="mt-36 text-center">
       <span class="text-xs font-bold text-spot-bright tracking-widest uppercase block mb-3">GETTING STARTED</span>
-      <h2 class="text-3xl sm:text-5xl font-extrabold tracking-tight mb-4">Ready to Run Lightning Fast?</h2>
-      <p class="text-spot-muted max-w-xl mx-auto text-base sm:text-lg mb-16">
-        Install the native desktop binary on macOS, Linux, or Windows.
+      <h2 class="text-3xl sm:text-5xl font-extrabold tracking-tight mb-4">Install Blitz — package managers first</h2>
+      <p class="text-spot-muted max-w-xl mx-auto text-base sm:text-lg mb-10">
+        Trusted install paths reduce OS warnings. Unsigned direct downloads are still available below.
       </p>
+
+      <div class="max-w-4xl mx-auto mb-10 text-left">
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 font-mono text-xs">
+          <div class="p-4 rounded-xl glass border border-white/10">
+            <div class="text-spot-bright font-bold mb-2">Homebrew (macOS)</div>
+            <code class="text-slate-300 text-[11px] block">brew tap h3ma209/blitz &amp;&amp; brew install --cask blitz</code>
+          </div>
+          <div class="p-4 rounded-xl glass border border-white/10">
+            <div class="text-purple-300 font-bold mb-2">winget (Windows)</div>
+            <code class="text-slate-300 text-[11px] block">winget install --id h3ma209.Blitz -e</code>
+            <p class="text-[10px] text-spot-faint mt-2 font-sans">After manifest merges — see <code>packaging/winget/</code></p>
+          </div>
+          <div class="p-4 rounded-xl glass border border-white/10">
+            <div class="text-blue-300 font-bold mb-2">Scoop (Windows)</div>
+            <code class="text-slate-300 text-[11px] block">scoop install blitz</code>
+            <p class="text-[10px] text-spot-faint mt-2 font-sans">Manifest in <code>packaging/scoop/</code></p>
+          </div>
+        </div>
+      </div>
 
       <div class="max-w-4xl mx-auto mb-12">
         <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 text-left">
@@ -1937,48 +1980,26 @@ make run</code></pre>
         </div>
       </div>
 
-      <!-- Security Verification Notice (macOS & Windows) -->
-      <div class="max-w-4xl mx-auto mt-6 text-left">
-        <div class="rounded-2xl glass p-6 border border-white/10">
-          <div class="flex items-center gap-2 mb-3">
-            <span class="text-base">🛡️</span>
-            <span class="font-bold text-sm text-white">First-Launch Security Verification Notice</span>
-            <span class="text-[10px] bg-yellow-400/20 text-yellow-300 px-2 py-0.5 rounded font-mono uppercase">Open-Source</span>
+      <details class="max-w-4xl mx-auto mt-6 text-left rounded-2xl glass border border-white/10 p-5 group">
+        <summary class="cursor-pointer text-sm font-semibold text-white list-none flex items-center gap-2">
+          <span>🛡️</span> OS security prompts (unsigned builds)
+          <span class="text-[10px] font-normal text-spot-faint ml-auto">expand if Gatekeeper / SmartScreen blocks you</span>
+        </summary>
+        <p class="text-xs text-spot-muted mt-4 mb-3 leading-relaxed">
+          Prefer Homebrew, winget, or Scoop. Disclosures and secret handling:
+          <a href="https://github.com/h3ma209/Blitz/blob/master/SECURITY.md" class="text-spot-bright hover:underline">SECURITY.md</a>.
+        </p>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs font-mono">
+          <div class="bg-black/60 border border-white/5 rounded-xl p-4">
+            <strong class="text-spot-bright">macOS</strong>
+            <div class="bg-black/50 p-2 rounded border border-white/5 text-gray-200 mt-2"><code>xattr -cr /Applications/Blitz.app</code></div>
           </div>
-          <p class="text-xs text-spot-muted leading-relaxed mb-4">
-            Because Blitz is an independent open-source project distributed without paid Apple Developer ($99/yr) or Windows EV enterprise certificates, your OS may display an unverified app prompt on first manual launch.
-          </p>
-          <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs font-mono">
-            <div class="bg-black/60 border border-white/5 rounded-xl p-4">
-              <div class="text-spot-bright font-bold mb-1 flex items-center gap-1.5">
-                <span>🍎</span> macOS: "Apple cannot verify malware"
-              </div>
-              <p class="text-[11px] text-spot-faint mb-2">Clear browser download quarantine in Terminal:</p>
-              <div class="flex items-center justify-between bg-black/50 p-2 rounded border border-white/5 text-gray-200">
-                <code>xattr -cr /Applications/Blitz.app</code>
-                <button onclick="copySnippet(this)" class="p-1 rounded bg-white/5 hover:bg-white/10 text-spot-muted hover:text-white transition-colors shrink-0 ml-2" title="Copy">
-                  <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
-                </button>
-              </div>
-              <p class="text-[10px] text-spot-faint mt-2 font-sans">Or: Right-click Blitz.app in Applications → select <strong>Open</strong>.</p>
-            </div>
-
-            <div class="bg-black/60 border border-white/5 rounded-xl p-4">
-              <div class="text-purple-400 font-bold mb-1 flex items-center gap-1.5">
-                <span>🪟</span> Windows: SmartScreen "Protected your PC"
-              </div>
-              <p class="text-[11px] text-spot-faint mb-2">Click <strong>More info → Run anyway</strong>, or run in PowerShell:</p>
-              <div class="flex items-center justify-between bg-black/50 p-2 rounded border border-white/5 text-gray-200">
-                <code>Unblock-File "$env:LOCALAPPDATA\Blitz\blitz.exe"</code>
-                <button onclick="copySnippet(this)" class="p-1 rounded bg-white/5 hover:bg-white/10 text-spot-muted hover:text-white transition-colors shrink-0 ml-2" title="Copy">
-                  <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
-                </button>
-              </div>
-              <p class="text-[10px] text-spot-faint mt-2 font-sans">1-line installer automatically unblocks SmartScreen.</p>
-            </div>
+          <div class="bg-black/60 border border-white/5 rounded-xl p-4">
+            <strong class="text-purple-300">Windows</strong>
+            <div class="bg-black/50 p-2 rounded border border-white/5 text-gray-200 mt-2"><code>Unblock-File "$env:LOCALAPPDATA\Blitz\blitz.exe"</code></div>
           </div>
         </div>
-      </div>
+      </details>
     </section>
   </main>
 
@@ -1999,6 +2020,8 @@ make run</code></pre>
         <span>•</span>
         <a href="https://github.com/h3ma209/Blitz/releases" target="_blank" rel="noopener"
           class="hover:text-spot-bright transition-colors">Releases</a>
+        <span>•</span>
+        <a href="https://github.com/h3ma209/Blitz/blob/master/SECURITY.md" class="hover:text-spot-bright transition-colors">Security</a>
         <span>•</span>
         <a href="#why-switch" class="hover:text-spot-bright transition-colors">Why Switch?</a>
         <span>•</span>
@@ -2542,6 +2565,21 @@ blitz.test("Admin role authorized", () => {
 
       log.scrollTop = log.scrollHeight;
     }
+
+    (function () {
+      const video = document.getElementById('hero-demo-video');
+      const fallback = document.getElementById('hero-demo-fallback');
+      if (!video || !fallback) return;
+      fetch('demo.mp4', { method: 'HEAD' })
+        .then((r) => {
+          if (r.ok) {
+            fallback.classList.add('hidden');
+            video.classList.remove('hidden');
+            video.play().catch(() => {});
+          }
+        })
+        .catch(() => {});
+    })();
   </script>
 </body>
 

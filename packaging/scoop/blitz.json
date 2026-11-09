@@ -1,0 +1,24 @@
+{
+  "version": "0.2.6",
+  "description": "AI-native local-first API client with built-in MCP server (Postman alternative)",
+  "homepage": "https://h3ma209.github.io/Blitz/",
+  "license": "MIT",
+  "notes": "Submit to scoop bucket or use: scoop install path/to/blitz.json",
+  "architecture": {
+    "64bit": {
+      "url": "https://github.com/h3ma209/Blitz/releases/download/v0.2.6/blitz-windows-x86_64.zip",
+      "hash": "9c9d72c9d11426b9d67faa2d7e290cfc392c0d6355eca117b7f0126bb459c06e"
+    }
+  },
+  "bin": "blitz.exe",
+  "checkver": {
+    "github": "https://github.com/h3ma209/Blitz"
+  },
+  "autoupdate": {
+    "architecture": {
+      "64bit": {
+        "url": "https://github.com/h3ma209/Blitz/releases/download/v$version/blitz-windows-x86_64.zip"
+      }
+    }
+  }
+}
