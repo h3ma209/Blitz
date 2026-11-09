@@ -796,6 +796,12 @@ pub struct ResponseView {
     /// Visualizer HTML from `blitz.visualizer.set` or HTML response body.
     #[serde(default)]
     pub visualizer_html: String,
+    /// Exact headers sent over the wire (including auth, system headers, cookies).
+    #[serde(default)]
+    pub sent_headers: Vec<(String, String)>,
+    /// Exact request body sent over the wire.
+    #[serde(default)]
+    pub sent_body: Option<String>,
 }
 
 impl ResponseView {
@@ -817,6 +823,8 @@ impl ResponseView {
             resolved_url: String::new(),
             timing: TimingBreakdown::default(),
             visualizer_html: String::new(),
+            sent_headers: vec![],
+            sent_body: None,
         }
     }
 }

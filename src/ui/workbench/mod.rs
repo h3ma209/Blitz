@@ -544,6 +544,8 @@ pub fn Workbench() -> Element {
                 resolved_url: String::new(),
                 timing: Default::default(),
                 visualizer_html: String::new(),
+                sent_headers: vec![],
+                sent_body: None,
             }));
             return;
         }
@@ -620,7 +622,9 @@ pub fn Workbench() -> Element {
                 let ep = endpoint.clone();
                 let meth = method.clone();
                 let body_bg = body.clone();
+                let body_for_view = body.clone();
                 let headers_bg = headers_to_send.clone();
+                let headers_for_view = headers_to_send.clone();
                 let result = tokio::task::spawn_blocking(move || {
                     grpc_unary_with_headers(&ep, &meth, &body_bg, &headers_bg)
                 })
@@ -651,6 +655,12 @@ pub fn Workbench() -> Element {
                                 ..Default::default()
                             },
                             visualizer_html: String::new(),
+                            sent_headers: headers_for_view.clone(),
+                            sent_body: if body_for_view.trim().is_empty() {
+                                None
+                            } else {
+                                Some(body_for_view.clone())
+                            },
                         }
                     }
                     Err(e) => ResponseView::error(format!("join: {e}"), vec![]),
@@ -662,24 +672,42 @@ pub fn Workbench() -> Element {
                 for msg in &view.console_messages {
                     push_console(&mut lines, ConsoleLine::info(msg.clone()));
                 }
-                if (view.status == 0 || view.error.is_some())
-                    && app_settings().ui.console_log_error_payloads
-                {
-                    push_console(
-                        &mut lines,
-                        ConsoleLine::network(format!(
-                            "─── Sent gRPC Payload ───\n[Method: {resolved}]\nPayload:\n{body}"
-                        )),
-                    );
-                    let mut recv =
-                        format!("─── Received on Error ───\nStatus: {}", view.status_text);
+                if app_settings().ui.console_log_error_payloads {
+                    let mut sent = format!("─── Sent gRPC Request ───\n[Method: {resolved}]");
+                    if !headers_for_view.is_empty() {
+                        sent.push_str("\nMetadata / Headers:");
+                        for (k, v) in &headers_for_view {
+                            sent.push_str(&format!("\n  {k}: {v}"));
+                        }
+                    }
+                    if !body.trim().is_empty() {
+                        sent.push_str(&format!("\nPayload:\n{body}"));
+                    }
+                    push_console(&mut lines, ConsoleLine::network(sent));
+
+                    let is_err = view.status == 0 || view.error.is_some();
+                    let mut recv = if is_err {
+                        format!("─── Received on Error ───\nStatus: {}", view.status_text)
+                    } else {
+                        format!("─── Received gRPC Response ───\nStatus: {}", view.status_text)
+                    };
                     if let Some(err) = &view.error {
                         recv.push_str(&format!("\nError detail: {err}"));
+                    }
+                    if !view.headers.is_empty() {
+                        recv.push_str("\nMetadata / Headers:");
+                        for (k, v) in &view.headers {
+                            recv.push_str(&format!("\n  {k}: {v}"));
+                        }
                     }
                     if !view.body.trim().is_empty() {
                         recv.push_str(&format!("\nPayload:\n{}", view.body));
                     }
-                    push_console(&mut lines, ConsoleLine::error(recv));
+                    if is_err {
+                        push_console(&mut lines, ConsoleLine::error(recv));
+                    } else {
+                        push_console(&mut lines, ConsoleLine::network(recv));
+                    }
                 }
                 console_lines.set(lines);
                 protocol_log.set(view.pipeline_log.clone());
@@ -813,6 +841,8 @@ pub fn Workbench() -> Element {
                         resolved_url: String::new(),
                         timing: Default::default(),
                         visualizer_html: String::new(),
+                        sent_headers: vec![],
+                        sent_body: None,
                     },
                     jar,
                     ctx,
@@ -898,8 +928,8 @@ pub fn Workbench() -> Element {
                     )),
                 );
             }
-            if !cancelled && is_error_response && log_payloads_on_error {
-                log_request_error_payloads(&mut lines, &req_for_logging, &view);
+            if !cancelled && log_payloads_on_error {
+                log_request_details(&mut lines, &req_for_logging, &view, is_error_response);
             }
             for msg in &view.console_messages {
                 push_console(&mut lines, ConsoleLine::script(msg.clone()));
@@ -2735,10 +2765,11 @@ pub fn method_class(m: HttpMethod) -> &'static str {
     }
 }
 
-fn log_request_error_payloads(
+fn log_request_details(
     lines: &mut Vec<ConsoleLine>,
     req: &RequestDraft,
     view: &ResponseView,
+    is_error: bool,
 ) {
     let target_url = if view.resolved_url.is_empty() {
         &req.url
@@ -2748,75 +2779,133 @@ fn log_request_error_payloads(
 
     // 1. Sent request details
     let mut sent = format!("─── Sent Request ───\n[{} {}]", req.method, target_url);
-    let active_headers: Vec<_> = req
-        .headers
-        .iter()
-        .filter(|h| h.enabled && !h.key.is_empty())
-        .collect();
-    if !active_headers.is_empty() {
+
+    // Prioritize final sent headers captured by the pipeline; fall back to req.headers + auth synthesis
+    let headers: Vec<(String, String)> = if !view.sent_headers.is_empty() {
+        view.sent_headers.clone()
+    } else {
+        let mut hdrs: Vec<(String, String)> = req
+            .headers
+            .iter()
+            .filter(|h| h.enabled && !h.key.is_empty())
+            .map(|h| (h.key.clone(), h.value.clone()))
+            .collect();
+
+        if !hdrs
+            .iter()
+            .any(|(k, _)| k.eq_ignore_ascii_case("authorization"))
+        {
+            match req.auth.auth_type {
+                crate::core::AuthType::Bearer if !req.auth.token.is_empty() => {
+                    hdrs.push(("Authorization".into(), format!("Bearer {}", req.auth.token)));
+                }
+                crate::core::AuthType::Basic
+                    if !req.auth.username.is_empty() || !req.auth.password.is_empty() =>
+                {
+                    use std::io::Write;
+                    let mut buf = Vec::new();
+                    let _ = write!(&mut buf, "{}:{}", req.auth.username, req.auth.password);
+                    hdrs.push((
+                        "Authorization".into(),
+                        format!("Basic {}", crate::core::base64_encode(&buf)),
+                    ));
+                }
+                crate::core::AuthType::ApiKey => {
+                    let key = if req.auth.api_key_header.is_empty() {
+                        "X-Api-Key"
+                    } else {
+                        req.auth.api_key_header.as_str()
+                    };
+                    if !req.auth.token.is_empty() {
+                        hdrs.push((key.into(), req.auth.token.clone()));
+                    }
+                }
+                crate::core::AuthType::Oauth2 => {
+                    let token = if !req.auth.oauth2.access_token.is_empty() {
+                        req.auth.oauth2.access_token.as_str()
+                    } else {
+                        req.auth.token.as_str()
+                    };
+                    if !token.is_empty() {
+                        hdrs.push(("Authorization".into(), format!("Bearer {token}")));
+                    }
+                }
+                _ => {}
+            }
+        }
+        hdrs
+    };
+
+    if !headers.is_empty() {
         sent.push_str("\nHeaders:");
-        for h in active_headers {
-            sent.push_str(&format!("\n  {}: {}", h.key, h.value));
+        for (k, v) in &headers {
+            sent.push_str(&format!("\n  {k}: {v}"));
         }
     }
-    let body_str = match req.body_mode {
-        crate::core::BodyMode::Raw => {
-            if !req.body.trim().is_empty() {
-                Some(req.body.clone())
-            } else {
-                None
+
+    let body_str = if let Some(ref sb) = view.sent_body {
+        Some(sb.clone())
+    } else {
+        match req.body_mode {
+            crate::core::BodyMode::Raw => {
+                if !req.body.trim().is_empty() {
+                    Some(req.body.clone())
+                } else {
+                    None
+                }
             }
+            crate::core::BodyMode::Urlencoded => {
+                let pairs: Vec<_> = req
+                    .body_urlencoded
+                    .iter()
+                    .filter(|kv| kv.enabled && !kv.key.is_empty())
+                    .map(|kv| format!("{}={}", kv.key, kv.value))
+                    .collect();
+                if !pairs.is_empty() {
+                    Some(pairs.join("&"))
+                } else {
+                    None
+                }
+            }
+            crate::core::BodyMode::FormData => {
+                let fields: Vec<_> = req
+                    .body_formdata
+                    .iter()
+                    .filter(|f| f.enabled && !f.key.is_empty())
+                    .map(|f| format!("{}: {}", f.key, f.value))
+                    .collect();
+                if !fields.is_empty() {
+                    Some(fields.join(", "))
+                } else {
+                    None
+                }
+            }
+            crate::core::BodyMode::Graphql => {
+                let mut q = req.graphql_query.clone();
+                if !req.graphql_variables.trim().is_empty() {
+                    q.push_str(&format!("\nVariables: {}", req.graphql_variables));
+                }
+                if !q.trim().is_empty() {
+                    Some(q)
+                } else {
+                    None
+                }
+            }
+            crate::core::BodyMode::Binary => {
+                if !req.binary_path.trim().is_empty() {
+                    Some(format!("[Binary file: {}]", req.binary_path))
+                } else {
+                    None
+                }
+            }
+            crate::core::BodyMode::None => None,
         }
-        crate::core::BodyMode::Urlencoded => {
-            let pairs: Vec<_> = req
-                .body_urlencoded
-                .iter()
-                .filter(|kv| kv.enabled && !kv.key.is_empty())
-                .map(|kv| format!("{}={}", kv.key, kv.value))
-                .collect();
-            if !pairs.is_empty() {
-                Some(pairs.join("&"))
-            } else {
-                None
-            }
-        }
-        crate::core::BodyMode::FormData => {
-            let fields: Vec<_> = req
-                .body_formdata
-                .iter()
-                .filter(|f| f.enabled && !f.key.is_empty())
-                .map(|f| format!("{}: {}", f.key, f.value))
-                .collect();
-            if !fields.is_empty() {
-                Some(fields.join(", "))
-            } else {
-                None
-            }
-        }
-        crate::core::BodyMode::Graphql => {
-            let mut q = req.graphql_query.clone();
-            if !req.graphql_variables.trim().is_empty() {
-                q.push_str(&format!("\nVariables: {}", req.graphql_variables));
-            }
-            if !q.trim().is_empty() {
-                Some(q)
-            } else {
-                None
-            }
-        }
-        crate::core::BodyMode::Binary => {
-            if !req.binary_path.trim().is_empty() {
-                Some(format!("[Binary file: {}]", req.binary_path))
-            } else {
-                None
-            }
-        }
-        crate::core::BodyMode::None => None,
     };
+
     if let Some(b) = body_str {
         sent.push_str("\nPayload:\n");
-        if b.len() > 4096 {
-            sent.push_str(&b[..4096]);
+        if b.len() > 8192 {
+            sent.push_str(&b[..8192]);
             sent.push_str("\n... [truncated]");
         } else {
             sent.push_str(&b);
@@ -2824,11 +2913,19 @@ fn log_request_error_payloads(
     }
     push_console(lines, ConsoleLine::network(sent));
 
-    // 2. Received on error details
-    let mut recv = format!(
-        "─── Received on Error ───\nStatus: {} {}",
-        view.status, view.status_text
-    );
+    // 2. Received response details
+    let mut recv = if is_error {
+        format!(
+            "─── Received on Error ───\nStatus: {} {} ({} ms)",
+            view.status, view.status_text, view.elapsed_ms
+        )
+    } else {
+        format!(
+            "─── Received Response ───\nStatus: {} {} ({} ms)",
+            view.status, view.status_text, view.elapsed_ms
+        )
+    };
+
     if let Some(err) = &view.error {
         recv.push_str(&format!("\nError detail: {err}"));
     }
@@ -2840,14 +2937,18 @@ fn log_request_error_payloads(
     }
     if !view.body.trim().is_empty() {
         recv.push_str("\nPayload:\n");
-        if view.body.len() > 4096 {
-            recv.push_str(&view.body[..4096]);
+        if view.body.len() > 8192 {
+            recv.push_str(&view.body[..8192]);
             recv.push_str("\n... [truncated]");
         } else {
             recv.push_str(&view.body);
         }
     }
-    push_console(lines, ConsoleLine::error(recv));
+    if is_error {
+        push_console(lines, ConsoleLine::error(recv));
+    } else {
+        push_console(lines, ConsoleLine::network(recv));
+    }
 }
 
 #[cfg(test)]
@@ -2855,29 +2956,60 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_log_request_error_payloads() {
+    fn test_log_request_details_error() {
         let mut lines = Vec::new();
         let mut req = RequestDraft::default();
         req.url = "https://api.example.com/login".into();
-        req.headers
-            .push(crate::core::KeyValue::new("Authorization", "Bearer token123"));
+        req.auth.auth_type = crate::core::AuthType::Bearer;
+        req.auth.token = "token123".into();
         req.body_mode = crate::core::BodyMode::Raw;
         req.body = r#"{"username": "alice"}"#.into();
 
         let mut view = ResponseView::error("401 Unauthorized", vec![]);
         view.status = 401;
         view.status_text = "Unauthorized".into();
+        view.elapsed_ms = 45;
         view.headers = vec![("content-type".into(), "application/json".into())];
         view.body = r#"{"error": "invalid_credentials"}"#.into();
 
-        log_request_error_payloads(&mut lines, &req, &view);
+        log_request_details(&mut lines, &req, &view, true);
         assert_eq!(lines.len(), 2);
         assert!(lines[0].message.contains("Sent Request"));
         assert!(lines[0].message.contains("Authorization: Bearer token123"));
         assert!(lines[0].message.contains(r#"{"username": "alice"}"#));
 
         assert!(lines[1].message.contains("Received on Error"));
-        assert!(lines[1].message.contains("Status: 401 Unauthorized"));
+        assert!(lines[1].message.contains("Status: 401 Unauthorized (45 ms)"));
         assert!(lines[1].message.contains(r#"{"error": "invalid_credentials"}"#));
+    }
+
+    #[test]
+    fn test_log_request_details_normal() {
+        let mut lines = Vec::new();
+        let mut req = RequestDraft::default();
+        req.url = "https://api.example.com/user".into();
+        req.body_mode = crate::core::BodyMode::Raw;
+
+        let mut view = ResponseView::error("", vec![]);
+        view.status = 200;
+        view.status_text = "OK".into();
+        view.error = None;
+        view.elapsed_ms = 82;
+        view.sent_headers = vec![
+            ("authorization".into(), "Bearer secret-token".into()),
+            ("accept".into(), "application/json".into()),
+        ];
+        view.headers = vec![("content-type".into(), "application/json".into())];
+        view.body = r#"{"id": 42, "name": "bob"}"#.into();
+
+        log_request_details(&mut lines, &req, &view, false);
+        assert_eq!(lines.len(), 2);
+        assert!(lines[0].message.contains("Sent Request"));
+        assert!(lines[0].message.contains("authorization: Bearer secret-token"));
+        assert!(lines[0].message.contains("accept: application/json"));
+
+        assert!(lines[1].message.contains("Received Response"));
+        assert!(lines[1].message.contains("Status: 200 OK (82 ms)"));
+        assert!(lines[1].message.contains(r#"{"id": 42, "name": "bob"}"#));
     }
 }

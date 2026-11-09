@@ -436,7 +436,7 @@ fn pct_decode_lite(s: &str) -> String {
         .unwrap_or_else(|_| s.to_string())
 }
 
-fn base64_encode(bytes: &[u8]) -> String {
+pub fn base64_encode(bytes: &[u8]) -> String {
     use base64::Engine;
     base64::engine::general_purpose::STANDARD.encode(bytes)
 }

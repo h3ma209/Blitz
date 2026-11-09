@@ -53,6 +53,16 @@ pub fn run_protocol_action(mut st: WorkbenchState, action: String) {
                     st.ws_connected.set(true);
                     st.status_msg.set("websocket connected".into());
                     st.log_network(format!("⚡ [WS] Connected to {resolved_url}"));
+                    if st.app_settings.peek().ui.console_log_error_payloads {
+                        let mut sent = format!("─── WS Handshake Sent ───\nURL: {resolved_url}");
+                        if !headers_to_send.is_empty() {
+                            sent.push_str("\nHeaders:");
+                            for (k, v) in &headers_to_send {
+                                sent.push_str(&format!("\n  {k}: {v}"));
+                            }
+                        }
+                        st.log_network(sent);
+                    }
                     spawn(async move {
                         let mut auto_ping_ticks = 0usize;
                         loop {
@@ -146,6 +156,9 @@ pub fn run_protocol_action(mut st: WorkbenchState, action: String) {
                         st.protocol_log.set(vec![e]);
                     } else {
                         st.log_network(format!("⚡ [WS] Sent ({} bytes)", msg.len()));
+                        if st.app_settings.peek().ui.console_log_error_payloads {
+                            st.log_network(format!("─── WS Frame Sent ───\nPayload:\n{msg}"));
+                        }
                     }
                 }
             }
@@ -206,6 +219,11 @@ pub fn run_protocol_action(mut st: WorkbenchState, action: String) {
                     lines.push(e);
                 } else {
                     st.log_network(format!("📡 [MQTT] Published in {} ms", r.elapsed_ms));
+                    if st.app_settings.peek().ui.console_log_error_payloads {
+                        st.log_network(format!(
+                            "─── MQTT Payload Sent ───\nTopic: {topic}\nPayload:\n{body}"
+                        ));
+                    }
                 }
                 lines.push(format!("{} ms", r.elapsed_ms));
                 st.protocol_log.set(lines);
@@ -292,6 +310,11 @@ pub fn run_protocol_action(mut st: WorkbenchState, action: String) {
                 match result {
                     Ok(Ok(body)) => {
                         st.log_network(format!("🤖 [MCP] Tool '{tool}' call succeeded"));
+                        if st.app_settings.peek().ui.console_log_error_payloads {
+                            st.log_network(format!(
+                                "─── MCP Tool Call Sent ───\nTool: {tool}\nArgs:\n{args_json}\n─── Received Result ───\n{body}"
+                            ));
+                        }
                         st.protocol_log.set(vec![body]);
                     }
                     Ok(Err(e)) => {
@@ -329,6 +352,11 @@ pub fn run_protocol_action(mut st: WorkbenchState, action: String) {
                 match result {
                     Ok(Ok(lines)) => {
                         st.log_network("⚡ [Socket.IO] Event acknowledged");
+                        if st.app_settings.peek().ui.console_log_error_payloads {
+                            st.log_network(format!(
+                                "─── Socket.IO Sent ───\nEvent: {ev}\nPayload:\n{body}"
+                            ));
+                        }
                         st.protocol_log.set(lines);
                     }
                     Ok(Err(e)) => {
@@ -389,6 +417,16 @@ pub fn run_protocol_action(mut st: WorkbenchState, action: String) {
                 match result {
                     Ok(Ok((lines, _))) => {
                         st.log_network(format!("🌊 [SSE] Received {} events", lines.len()));
+                        if st.app_settings.peek().ui.console_log_error_payloads {
+                            let mut sent = format!("─── SSE Connection Sent ───\nURL: {url}");
+                            if !headers.is_empty() {
+                                sent.push_str("\nHeaders:");
+                                for (k, v) in &headers {
+                                    sent.push_str(&format!("\n  {k}: {v}"));
+                                }
+                            }
+                            st.log_network(sent);
+                        }
                         st.protocol_log.set(lines);
                     }
                     Ok(Err(e)) => {
@@ -474,6 +512,11 @@ pub fn run_protocol_action(mut st: WorkbenchState, action: String) {
                 match result {
                     Ok(Ok(lines)) => {
                         st.log_network(format!("◈ [GraphQL-WS] Received {} events", lines.len()));
+                        if st.app_settings.peek().ui.console_log_error_payloads {
+                            st.log_network(format!(
+                                "─── GraphQL-WS Sent ───\nQuery:\n{q}\nVariables:\n{q_vars}"
+                            ));
+                        }
                         st.protocol_log.set(lines);
                     }
                     Ok(Err(e)) => {

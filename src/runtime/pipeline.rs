@@ -905,6 +905,8 @@ pub fn send_request_with_options(
             resolved_url: String::new(),
             timing: TimingBreakdown::default(),
             visualizer_html: String::new(),
+            sent_headers: vec![],
+            sent_body: None,
         });
     }
 
@@ -1063,6 +1065,27 @@ pub fn send_request_with_options(
     let method = method_from(resolved.method);
     let headers = build_headers(&resolved)?;
 
+    let mut sent_headers: Vec<(String, String)> = headers
+        .iter()
+        .map(|(k, v)| {
+            (
+                k.as_str().to_string(),
+                String::from_utf8_lossy(v.as_bytes()).to_string(),
+            )
+        })
+        .collect();
+
+    let sent_body: Option<String> = if use_formdata {
+        let active_fields = resolved.body_formdata.iter().filter(|f| f.enabled).count();
+        Some(format!("[multipart form-data: {active_fields} field(s)]"))
+    } else if let Some(b) = &body_bytes {
+        String::from_utf8(b.clone())
+            .ok()
+            .or_else(|| Some(format!("[binary body: {} bytes]", b.len())))
+    } else {
+        None
+    };
+
     console.push(format!("→ {} {}", resolved.method.as_str(), url));
 
     let attach_body = |builder: reqwest::blocking::RequestBuilder,
@@ -1129,6 +1152,16 @@ pub fn send_request_with_options(
                 HeaderValue::from_str(&auth_val)
                     .map_err(|e| SendError::Header(format!("Authorization: {e}")))?,
             );
+
+            sent_headers = headers2
+                .iter()
+                .map(|(k, v)| {
+                    (
+                        k.as_str().to_string(),
+                        String::from_utf8_lossy(v.as_bytes()).to_string(),
+                    )
+                })
+                .collect();
 
             let builder = client.request(method, &url).headers(headers2);
             let builder =
@@ -1274,6 +1307,8 @@ pub fn send_request_with_options(
         resolved_url: url,
         timing,
         visualizer_html,
+        sent_headers,
+        sent_body,
     })
 }
 

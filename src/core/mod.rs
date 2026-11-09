@@ -37,6 +37,7 @@ pub mod variables;
 pub mod vault;
 pub mod updater;
 
+pub use auth_extra::base64_encode;
 pub use assertions::{
     assertions_to_script, merge_assertions, suggest_from_response, Assertion, AssertionKind,
 };

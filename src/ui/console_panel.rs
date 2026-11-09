@@ -143,14 +143,14 @@ pub fn ConsolePanel(
                     div { class: "console-bar-right",
                         label {
                             class: "console-checkbox-label",
-                            title: "Log full request payload sent & response body received when an error occurs",
+                            title: "Log full request & response headers (including Authorization) and payloads in console",
                             input {
                                 r#type: "checkbox",
                                 class: "console-checkbox",
                                 checked: log_error_details,
                                 onchange: move |evt: Event<FormData>| on_toggle_log_errors.call(evt.checked()),
                             }
-                            span { "Log on error" }
+                            span { "Log details" }
                         }
                         input {
                             class: "console-search-input",
