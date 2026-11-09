@@ -1,13 +1,24 @@
-//! Decode compressed HTTP response bodies when the client did not auto-decompress.
+//! Decode compressed HTTP response bodies when `Content-Encoding` is still present.
 //!
-//! reqwest disables automatic decompression when `Accept-Encoding` is set manually
-//! (e.g. Postman-style system headers). In that case the server may return
-//! `Content-Encoding: gzip|deflate|br` and the raw bytes must be inflated before
-//! storing the body as text / JSON.
+//! reqwest strips that header after it inflates. Sniffing gzip magic on the
+//! result inflates a second time when the payload itself starts with gzip bytes.
 
 use std::io::Read;
 
-/// Decode `bytes` using `Content-Encoding` (or gzip magic) and return UTF-8 text.
+/// Inflate only when `Content-Encoding` is still present.
+pub fn finalize_response_body(
+    bytes: &[u8],
+    headers: &[(String, String)],
+    log: &mut Vec<String>,
+) -> String {
+    if content_encoding(headers).is_some() {
+        decode_response_body(bytes, headers, log)
+    } else {
+        String::from_utf8_lossy(bytes).into_owned()
+    }
+}
+
+/// Decode `bytes` using `Content-Encoding` and return UTF-8 text.
 /// Logs `encoding: decompressed {codec}` when decompression runs.
 pub fn decode_response_body(
     bytes: &[u8],
@@ -20,7 +31,6 @@ pub fn decode_response_body(
         Some("deflate") => ("deflate", try_deflate(bytes)),
         Some("br") => ("br", try_brotli(bytes)),
         Some(other) if other.contains("gzip") => ("gzip", try_gzip(bytes)),
-        _ if looks_like_gzip(bytes) => ("gzip", try_gzip(bytes)),
         _ => {
             return String::from_utf8_lossy(bytes).into_owned();
         }
@@ -43,6 +53,7 @@ fn content_encoding(headers: &[(String, String)]) -> Option<String> {
         .filter(|v| !v.is_empty())
 }
 
+#[cfg(test)]
 fn looks_like_gzip(bytes: &[u8]) -> bool {
     bytes.len() >= 2 && bytes[0] == 0x1f && bytes[1] == 0x8b
 }
@@ -114,13 +125,39 @@ mod tests {
     }
 
     #[test]
-    fn decompresses_gzip_via_magic_without_header() {
+    fn gzip_magic_without_content_encoding_is_not_inflated_again() {
         let plain = b"hello gzip";
         let compressed = gzip_bytes(plain);
         let mut log = vec![];
-        let body = decode_response_body(&compressed, &[], &mut log);
-        assert_eq!(body, "hello gzip");
-        assert!(log.iter().any(|l| l.contains("decompressed gzip")));
+        let body = finalize_response_body(&compressed, &[], &mut log);
+        assert_eq!(body, String::from_utf8_lossy(&compressed));
+        assert_ne!(body, String::from_utf8_lossy(plain));
+        assert!(log.iter().all(|l| !l.contains("decompressed")));
+    }
+
+    #[test]
+    fn gzip_decoded_once_and_nested_gzip_is_left_intact() {
+        let plain = "z".repeat(64 * 1024);
+        let inner = gzip_bytes(plain.as_bytes());
+        let outer = gzip_bytes(&inner);
+        let headers = vec![("content-encoding".into(), "gzip".into())];
+
+        let mut log = vec![];
+        let once = finalize_response_body(&outer, &headers, &mut log);
+        assert_eq!(once, String::from_utf8_lossy(&inner));
+        assert_ne!(once, plain);
+        assert_eq!(log.iter().filter(|l| l.contains("decompressed")).count(), 1);
+
+        let mut skipped = vec![];
+        let still = finalize_response_body(&inner, &[], &mut skipped);
+        assert_eq!(still, String::from_utf8_lossy(&inner));
+        assert_ne!(still, plain);
+        assert!(skipped.iter().all(|l| !l.contains("decompressed")));
+
+        let mut plain_log = vec![];
+        let same = finalize_response_body(plain.as_bytes(), &[], &mut plain_log);
+        assert_eq!(same, plain);
+        assert!(plain_log.is_empty());
     }
 
     #[test]

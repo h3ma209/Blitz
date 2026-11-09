@@ -98,6 +98,32 @@ pub fn normalize_smart_quotes(code: &str) -> String {
         .replace(['‘', '’', '‚', '‹', '›'], "'")
 }
 
+// shortcut: leaked realm per thread. Dropping Boa Context underflows boa_gc, and Context is !Send so it cannot move to a pool. Implicit globals (`x = 1`) still leak across scripts on that thread.
+thread_local! {
+    static JS_REALM: *mut Context = {
+        let mut context = Context::default();
+        register_host_fns(&mut context).expect("sandbox host fns");
+        Box::into_raw(Box::new(context))
+    };
+}
+
+fn register_host_fns(context: &mut Context) -> Result<(), String> {
+    for (name, arity, f) in [
+        (
+            "__np_http",
+            1usize,
+            np_http_native as fn(&JsValue, &[JsValue], &mut Context) -> JsResult<JsValue>,
+        ),
+        ("__np_sha256_hex", 1, np_sha256_hex_native),
+        ("__np_hmac_sha256_b64", 2, np_hmac_sha256_b64_native),
+    ] {
+        context
+            .register_global_callable(js_string!(name), arity, NativeFunction::from_fn_ptr(f))
+            .map_err(|e| format!("register {name}: {e}"))?;
+    }
+    Ok(())
+}
+
 pub fn run_js_sandbox_ex(
     script: &str,
     phase: &str,
@@ -110,27 +136,6 @@ pub fn run_js_sandbox_ex(
     if sanitized_script.trim().is_empty() {
         out.messages.push(format!("{phase}: skipped (empty)"));
         return out;
-    }
-
-    let mut context = Context::default();
-
-    for (name, arity, f) in [
-        (
-            "__np_http",
-            1usize,
-            np_http_native as fn(&JsValue, &[JsValue], &mut Context) -> JsResult<JsValue>,
-        ),
-        ("__np_sha256_hex", 1, np_sha256_hex_native),
-        ("__np_hmac_sha256_b64", 2, np_hmac_sha256_b64_native),
-    ] {
-        if let Err(e) = context.register_global_callable(
-            js_string!(name),
-            arity,
-            NativeFunction::from_fn_ptr(f),
-        ) {
-            out.error = Some(format!("{phase}: register {name}: {e}"));
-            return out;
-        }
     }
 
     let bridge = build_bridge_json(ctx, response, extras);
@@ -597,17 +602,22 @@ blitz.request.toString = pm.request.toString;
 "#
     );
 
-    let full = format!("{prelude}\n{sanitized_script}\n;JSON.stringify(__np);");
+    // IIFE keeps `var` / `function` off the reused realm. Newline before close so a trailing `//` comment cannot swallow it.
+    let full = format!("{prelude}\n(function(){{\n{sanitized_script}\n}})();\nJSON.stringify(__np);");
 
-    let result = context.eval(Source::from_bytes(full.as_bytes()));
-    match result {
-        Ok(val) => {
-            let json_str = js_to_string(&mut context, &val);
-            apply_bridge(&json_str, ctx, &mut out, phase);
+    let eval_result = JS_REALM.with(|ptr| {
+        // Exclusive for this call: host callbacks do not re-enter the sandbox.
+        let context = unsafe { &mut **ptr };
+        match context.eval(Source::from_bytes(full.as_bytes())) {
+            Ok(val) => Ok(js_to_string(context, &val)),
+            Err(e) => Err(format!("{phase}: JS error: {e}")),
         }
+    });
+    match eval_result {
+        Ok(json_str) => apply_bridge(&json_str, ctx, &mut out, phase),
         Err(e) => {
-            out.error = Some(format!("{phase}: JS error: {e}"));
-            out.messages.push(format!("{phase}: JS error: {e}"));
+            out.error = Some(e.clone());
+            out.messages.push(e);
         }
     }
 
@@ -1003,6 +1013,28 @@ mod tests {
         assert!(out.messages.iter().any(|m| m.contains("hi")));
         assert!(out.messages.iter().any(|m| m.contains("[warn]")));
         assert!(out.error.is_none());
+    }
+
+    #[test]
+    fn reused_realm_hides_previous_var() {
+        let mut ctx = VariableContext::default();
+        let first = run_js_sandbox_ex(
+            "var leaked = 'secret'; blitz.environment.set('k', leaked);",
+            "a",
+            &mut ctx,
+            None,
+            &SandboxExtras::default(),
+        );
+        assert!(first.error.is_none(), "{:?}", first.error);
+        let second = run_js_sandbox_ex(
+            "blitz.environment.set('k2', typeof leaked);",
+            "b",
+            &mut ctx,
+            None,
+            &SandboxExtras::default(),
+        );
+        assert!(second.error.is_none(), "{:?}", second.error);
+        assert_eq!(ctx.environment.get("k2").map(String::as_str), Some("undefined"));
     }
 
     #[test]

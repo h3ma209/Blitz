@@ -2,12 +2,16 @@
 
 use std::path::Path;
 
+use serde::Serialize;
+
 use super::environment::{import_environment_json, Environment};
 use super::impex::{import_collection_v21, import_har, import_openapi3};
 use super::collection::{Collection, CollectionItem};
 use super::request::RequestDraft;
 use super::variables::VariableContext;
 use crate::runtime::pipeline::{send_request_with_options, SendOptions};
+use crate::runtime::runner::{RunnerItemResult, RunnerReport};
+use crate::runtime::runner_export::to_junit_xml;
 
 /// Parse argv after binary name. Returns Some(exit code) if CLI handled; None → launch GUI.
 pub fn try_run_cli(args: &[String]) -> Option<i32> {
@@ -45,7 +49,7 @@ fn print_help() {
     eprintln!(
         "blitz — local API client\n\n\
          GUI:  blitz\n\
-         CLI:  blitz run <collection.json> [--env <environment.json>]\n\
+         CLI:  blitz run <collection.json> [--env <environment.json>] [--reporter json|junit] [--out report.xml]\n\
                blitz mcp\n\
                blitz mcp setup [--all] [--scan]\n\
                blitz help\n\n\
@@ -66,15 +70,35 @@ fn print_mcp_help() {
     );
 }
 
+#[derive(Debug, Serialize)]
+struct CliRunJson {
+    collection: String,
+    passed: usize,
+    failed: usize,
+    results: Vec<RunnerItemResult>,
+}
+
 fn run_collection_cli(args: &[String]) -> i32 {
     let mut collection_path: Option<&str> = None;
     let mut env_path: Option<&str> = None;
+    let mut reporter = "text".to_string();
+    let mut out_path: Option<String> = None;
     let mut i = 0;
     while i < args.len() {
         match args[i].as_str() {
             "--env" | "-e" => {
                 i += 1;
                 env_path = args.get(i).map(|s| s.as_str());
+            }
+            "--reporter" => {
+                i += 1;
+                if let Some(v) = args.get(i) {
+                    reporter = v.to_ascii_lowercase();
+                }
+            }
+            "--out" | "-o" => {
+                i += 1;
+                out_path = args.get(i).cloned();
             }
             s if !s.starts_with('-') && collection_path.is_none() => {
                 collection_path = Some(s);
@@ -127,7 +151,9 @@ fn run_collection_cli(args: &[String]) -> i32 {
     ctx.collection = col.variables_map();
 
     let drafts = flatten_requests(&col);
-    eprintln!("running {} request(s) from {}", drafts.len(), col.name);
+    if reporter == "text" {
+        eprintln!("running {} request(s) from {}", drafts.len(), col.name);
+    }
     let mut failed = 0usize;
     let mut jar = super::cookies::CookieJar::default();
     let mut inherited_pre = Vec::new();
@@ -138,9 +164,12 @@ fn run_collection_cli(args: &[String]) -> i32 {
     if !col.test_script.is_empty() {
         inherited_post.push(col.test_script.as_str());
     }
+    let mut results = Vec::with_capacity(drafts.len());
     for (idx, draft) in drafts.iter().enumerate() {
-        eprint!("[{}/{}] {} {} … ", idx + 1, drafts.len(), draft.method, draft.name);
-        match send_request_with_options(
+        if reporter == "text" {
+            eprint!("[{}/{}] {} {} … ", idx + 1, drafts.len(), draft.method, draft.name);
+        }
+        let (passed, item) = match send_request_with_options(
             draft,
             &mut ctx,
             SendOptions {
@@ -153,23 +182,112 @@ fn run_collection_cli(args: &[String]) -> i32 {
         ) {
             Ok(view) => {
                 let tests_fail = view.test_results.iter().filter(|t| !t.passed).count();
-                if view.error.is_some() || view.status >= 400 || tests_fail > 0 {
+                let ok = view.error.is_none() && view.status < 400 && tests_fail == 0;
+                if !ok {
                     failed += 1;
-                    eprintln!(
-                        "FAIL status={} tests_fail={tests_fail} err={:?}",
-                        view.status, view.error
-                    );
-                } else {
-                    eprintln!("OK {} ({} ms)", view.status, view.elapsed_ms);
                 }
+                if reporter == "text" {
+                    if !ok {
+                        eprintln!(
+                            "FAIL status={} tests_fail={tests_fail} err={:?}",
+                            view.status, view.error
+                        );
+                    } else {
+                        eprintln!("OK {} ({} ms)", view.status, view.elapsed_ms);
+                    }
+                }
+                (
+                    ok,
+                    RunnerItemResult {
+                        request_id: draft.id,
+                        name: draft.name.clone(),
+                        method: draft.method.as_str().to_string(),
+                        url: if view.resolved_url.is_empty() {
+                            draft.url.clone()
+                        } else {
+                            view.resolved_url.clone()
+                        },
+                        status: if view.error.is_some() {
+                            None
+                        } else {
+                            Some(view.status)
+                        },
+                        elapsed_ms: if view.error.is_some() {
+                            None
+                        } else {
+                            Some(view.elapsed_ms)
+                        },
+                        passed: ok,
+                        error: view.error.clone(),
+                        test_results: view.test_results.clone(),
+                        iteration: 1,
+                    },
+                )
             }
             Err(e) => {
                 failed += 1;
-                eprintln!("ERR {e}");
+                if reporter == "text" {
+                    eprintln!("ERR {e}");
+                }
+                (
+                    false,
+                    RunnerItemResult {
+                        request_id: draft.id,
+                        name: draft.name.clone(),
+                        method: draft.method.as_str().to_string(),
+                        url: draft.url.clone(),
+                        status: None,
+                        elapsed_ms: None,
+                        passed: false,
+                        error: Some(e.to_string()),
+                        test_results: Vec::new(),
+                        iteration: 1,
+                    },
+                )
             }
-        }
+        };
+        let _ = passed;
+        results.push(item);
     }
-    eprintln!("done — {} failed of {}", failed, drafts.len());
+
+    let rep = RunnerReport {
+        results,
+        console: Vec::new(),
+    };
+
+    if reporter == "json" {
+        let payload = CliRunJson {
+            collection: col.name.clone(),
+            passed: rep.passed_count(),
+            failed: rep.failed_count(),
+            results: rep.results.clone(),
+        };
+        let json = serde_json::to_string_pretty(&payload).unwrap_or_else(|_| "{}".into());
+        if let Some(out) = out_path {
+            if let Err(e) = std::fs::write(&out, &json) {
+                eprintln!("write {out}: {e}");
+                return 1;
+            }
+        } else {
+            println!("{json}");
+        }
+    } else if reporter == "junit" {
+        let xml = to_junit_xml(&col.name, &rep);
+        if let Some(out) = out_path {
+            if let Err(e) = std::fs::write(&out, &xml) {
+                eprintln!("write {out}: {e}");
+                return 1;
+            }
+        } else {
+            println!("{xml}");
+        }
+    } else if reporter == "text" {
+        eprintln!("done — {} failed of {}", failed, drafts.len());
+    } else {
+        eprintln!("unknown reporter: {reporter}");
+        return 1;
+    }
+
     if failed > 0 {
         1
     } else {

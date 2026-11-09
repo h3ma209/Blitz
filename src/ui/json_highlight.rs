@@ -152,7 +152,33 @@ pub fn render_json_var_mirror_html(text: &str, vars: Option<&VariableContext>) -
     html
 }
 
-pub const MAX_JSON_HIGHLIGHT_BYTES: usize = 1_000_000; // 1 MB cap
+/// shortcut: paint this prefix only, raise it if tokenizing full bodies stays cheap
+pub const JSON_PAINT_CAP: usize = 256 * 1024;
+/// Bounded prefix for pretty-print and highlight. Does not touch the stored body.
+pub fn json_paint_window(text: &str) -> (&str, bool) {
+    let (start, end) = json_paint_range(text, 0);
+    (&text[start..end], end < text.len())
+}
+
+/// Byte range `[start, end)` of at most [`JSON_PAINT_CAP`], aligned to char boundaries.
+/// `offset` selects a later page so the tail is reachable.
+pub fn json_paint_range(text: &str, offset: usize) -> (usize, usize) {
+    if text.is_empty() {
+        return (0, 0);
+    }
+    let mut start = offset.min(text.len());
+    while start > 0 && !text.is_char_boundary(start) {
+        start -= 1;
+    }
+    let mut end = start.saturating_add(JSON_PAINT_CAP).min(text.len());
+    while end > start && !text.is_char_boundary(end) {
+        end -= 1;
+    }
+    if end == start {
+        end = text.len();
+    }
+    (start, end)
+}
 
 /// True when Content-Type looks like JSON or body parses as JSON.
 pub fn should_highlight_json(body: &str, headers: &[(String, String)]) -> bool {
@@ -160,7 +186,7 @@ pub fn should_highlight_json(body: &str, headers: &[(String, String)]) -> bool {
     if trimmed.is_empty() {
         return false;
     }
-    if trimmed.len() > MAX_JSON_HIGHLIGHT_BYTES {
+    if json_paint_window(trimmed).1 {
         return false;
     }
     let ct_json = headers.iter().any(|(k, v)| {
@@ -185,14 +211,18 @@ pub fn render_json_highlight_html(body: &str) -> String {
 /// Pretty-print with optional `<details>` collapsible tree folding.
 pub fn render_json_highlight_html_with_fold(body: &str, enable_folding: bool) -> String {
     let trimmed = body.trim();
-    if trimmed.len() > MAX_JSON_HIGHLIGHT_BYTES {
-        return format!(
-            "<div class=\"json-large-warning\">⚠️ Large response ({} KB) — syntax tree disabled for smooth scrolling</div>\n{}",
-            trimmed.len() / 1024,
-            escape_html(trimmed)
-        );
+    let (window, truncated) = json_paint_window(trimmed);
+    if truncated {
+        let mut html = String::with_capacity(window.len().saturating_mul(2) + 80);
+        html.push_str("<div class=\"json-large-warning\">showing first ");
+        html.push_str(&(window.len() / 1024).to_string());
+        html.push_str(" KiB of ");
+        html.push_str(&(trimmed.len() / 1024).to_string());
+        html.push_str(" KiB</div>\n");
+        html.push_str(&highlight_json_fragment(window));
+        return html;
     }
-    match serde_json::from_str::<Value>(trimmed) {
+    match serde_json::from_str::<Value>(window) {
         Ok(v) => {
             let mut out = String::with_capacity(trimmed.len().saturating_mul(3));
             render_node(None, &v, false, &mut out, 0, enable_folding);
@@ -441,10 +471,40 @@ mod tests {
 
     #[test]
     fn oversized_payload_skips_dom_tree() {
-        let large = format!("{{\"data\": \"{}\"}}", "x".repeat(MAX_JSON_HIGHLIGHT_BYTES + 100));
+        let large = format!("{{\"data\": \"{}\"}}", "x".repeat(JSON_PAINT_CAP + 100));
         let headers = vec![("Content-Type".into(), "application/json".into())];
         assert!(!should_highlight_json(&large, &headers));
         let html = render_json_highlight_html(&large);
         assert!(html.contains("json-large-warning"));
+        assert!(!html.contains("json-fold"));
+    }
+
+    #[test]
+    fn json_paint_window_keeps_short_and_drops_the_tail() {
+        let small = r#"{"a":1}"#;
+        let (window, truncated) = json_paint_window(small);
+        assert_eq!(window, small);
+        assert!(!truncated);
+
+        let mut mid_char = "a".repeat(JSON_PAINT_CAP - 1);
+        mid_char.push('é');
+        let (cut, truncated) = json_paint_window(&mid_char);
+        assert!(truncated);
+        assert!(cut.is_char_boundary(cut.len()));
+        assert_eq!(cut, "a".repeat(JSON_PAINT_CAP - 1));
+
+        let tail = "TAILMARKER";
+        let mut big = String::from("{\"k\":\"");
+        big.push_str(&"x".repeat(JSON_PAINT_CAP));
+        big.push_str(tail);
+        big.push_str("\"}");
+        let html = render_json_highlight_html(&big);
+        assert!(html.contains("json-large-warning"));
+        assert!(!html.contains(tail));
+        assert!(html.matches('x').count() <= JSON_PAINT_CAP);
+
+        let (start, end) = json_paint_range(&big, JSON_PAINT_CAP);
+        assert!(big[start..end].contains(tail));
+        assert!(start > 0);
     }
 }

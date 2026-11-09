@@ -14,6 +14,7 @@ mod json_highlight;
 mod js_highlight;
 mod line_comments;
 mod var_autocomplete;
+mod lint_panel;
 mod loading;
 mod modal_shell;
 mod perf_modal;
@@ -34,6 +35,7 @@ pub(crate) use team_modal::TeamModal;
 pub(crate) use toast::{push_toast, Toast, ToastContainer, ToastLevel};
 
 pub(crate) use collection_editor::CollectionEditor;
+pub(crate) use lint_panel::LintPanel;
 pub(crate) use conflict_resolver::{ConflictResolver, ConflictState};
 pub(crate) use dismiss_backdrop::DismissBackdrop;
 pub(crate) use modal_shell::ModalShell;

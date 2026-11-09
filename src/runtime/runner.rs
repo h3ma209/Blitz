@@ -8,14 +8,14 @@ use std::time::Duration;
 use uuid::Uuid;
 
 use crate::core::{
-    flatten_collections, folder_path_to_request, AppSettings, AuthConfig, Collection, CookieJar,
-    RequestDraft, ResponseView, TestResult, VariableContext,
+    flatten_collections, folder_path_to_request, resolve_ancestor_auth, AppSettings, AuthConfig,
+    Collection, CookieJar, RequestDraft, ResponseView, TestResult, VariableContext,
 };
 use crate::secrets::SecretsStore;
 
 use super::pipeline::{send_request_with_options, ExecutionHints, SendOptions};
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
 pub struct RunnerItemResult {
     pub request_id: Uuid,
     pub name: String,
@@ -253,6 +253,19 @@ pub fn run_collection_with_config(
                 .console
                 .push(format!("runner: → {} {}", req.method.as_str(), req.name));
 
+            let ancestor = resolve_ancestor_auth(std::slice::from_ref(col), req.id);
+            let ancestor_label = ancestor.as_ref().map(|(_, origin)| {
+                if origin.is_collection {
+                    format!("collection '{}'", origin.name)
+                } else {
+                    format!("folder '{}'", origin.name)
+                }
+            });
+            let ancestor_auth = match (ancestor.as_ref(), ancestor_label.as_deref()) {
+                (Some((auth, _)), Some(label)) => Some((auth, label)),
+                _ => None,
+            };
+
             let result = send_request_with_options(
                 req,
                 ctx,
@@ -267,7 +280,7 @@ pub fn run_collection_with_config(
                     iteration: iter,
                     execution: Some(&mut hints),
                     cancel: None,
-                    ancestor_auth: None,
+                    ancestor_auth,
                     workspace_root: None,
                 },
             );

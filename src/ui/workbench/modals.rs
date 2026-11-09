@@ -20,7 +20,10 @@ use crate::ui::workbench::cloud::switch_to_env;
 use crate::ui::workbench::state::{
     execute_batch_delete, execute_tree_delete, sync_env_vars, ImpexModal, WorkbenchState,
 };
-use crate::ui::{CommentableTextarea, ConflictState, EnvDiffView, ModalShell, PerformanceModal, TeamModal};
+use crate::ui::{
+    CommentableTextarea, ConflictState, EnvDiffView, LintPanel, ModalShell, PerformanceModal,
+    TeamModal,
+};
 
 #[component]
 pub fn VarsPage(st: WorkbenchState) -> Element {
@@ -597,6 +600,7 @@ pub fn WorkbenchModals(
     let mut show_snippets = st.show_snippets;
     let mut snippet_lang = st.snippet_lang;
     let mut snippet_resolve_vars = st.snippet_resolve_vars;
+    let mut show_lint = st.show_lint;
     let mut show_runner = st.show_runner;
     let mut runner_running = st.runner_running;
     let mut runner_report = st.runner_report;
@@ -1144,6 +1148,14 @@ pub fn WorkbenchModals(
                         });
                     }
                 },
+            }
+        }
+
+        if show_lint() {
+            LintPanel {
+                collections: collections(),
+                vars: vars(),
+                on_close: move |_| show_lint.set(false),
             }
         }
 

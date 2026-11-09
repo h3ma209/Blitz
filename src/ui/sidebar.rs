@@ -6,9 +6,10 @@ use super::DismissBackdrop;
 use uuid::Uuid;
 
 use crate::core::{
-    ancestor_ids_for_request, collapsed_except_expanded, filter_tree_rows,
-    flatten_collections_filtered, flatten_collections_searchable, paste_target_parent_id,
-    search_highlight_term, Collection, HistoryEntry, HttpMethod, RequestProtocol, TreeRowKind,
+    ancestor_ids_for_request, ancestor_ids_for_tree_node, collapsed_except_expanded,
+    collection_spec_drift, filter_tree_rows, flatten_collections_filtered,
+    flatten_collections_searchable, paste_target_parent_id, search_highlight_term, Collection,
+    HistoryEntry, HttpMethod, RequestProtocol, TreeRowKind,
 };
 
 use super::sidebar_shortcuts::{
@@ -39,6 +40,7 @@ pub enum SidebarAction {
     Paste,
     OpenHistory,
     SaveHistoryToCollection,
+    SaveHistoryAsExample,
     ImportCollection,
     ExportCollection,
     ExportStaticDoc,
@@ -130,6 +132,7 @@ pub fn Sidebar(
     let mut selected_ids = use_signal(HashSet::<Uuid>::new);
     let mut last_selected_id = use_signal(|| None::<Uuid>);
     let mut last_scrolled_req = use_signal(|| None::<Uuid>);
+    let mut tree_scroll_row = use_signal(|| 0usize);
 
     let query = search();
     let query_active = !query.trim().is_empty();
@@ -152,6 +155,8 @@ pub fn Sidebar(
     // Auto-track and reveal active request (expand ancestor folders/collections and scroll into view)
     // Redirection ONLY happens when switching between request files, NOT when clicking or opening folders/collections.
     let collections_for_track = collections.clone();
+    let row_ids: Vec<Uuid> = rendered_rows.iter().map(|r| r.id).collect();
+    let (win_start, win_end) = tree_window(rendered_rows.len(), tree_scroll_row());
     use_effect(move || {
         let cur_req = active_request_id;
         if cur_req == last_scrolled_req() {
@@ -159,6 +164,9 @@ pub fn Sidebar(
         }
         last_scrolled_req.set(cur_req);
         if let Some(req_id) = cur_req {
+            if let Some(pos) = row_ids.iter().position(|id| *id == req_id) {
+                tree_scroll_row.set(pos.saturating_sub(6));
+            }
             let ancestors = ancestor_ids_for_request(&collections_for_track, req_id);
             if !ancestors.is_empty() {
                 let mut set = expanded.peek().clone();
@@ -194,6 +202,7 @@ pub fn Sidebar(
     let all_rows = rows.clone();
     let search_raw = search();
     let highlight_term = search_highlight_term(&search_raw);
+    let collections_for_nav = collections.clone();
 
     rsx! {
         aside {
@@ -242,7 +251,14 @@ pub fn Sidebar(
                 }));
             },
 
-            div { class: "sidebar-collections",
+            div {
+                class: "sidebar-collections",
+                onscroll: move |evt: Event<ScrollData>| {
+                    let row = (evt.data().scroll_top() / TREE_ROW_PX) as usize;
+                    if row != tree_scroll_row() {
+                        tree_scroll_row.set(row);
+                    }
+                },
             div { class: "sidebar-section-head",
                 h3 { class: "type-label", "Collections" }
                 div { class: "sidebar-actions",
@@ -293,7 +309,15 @@ pub fn Sidebar(
                 }
             }
             SidebarSearchInput {
+                query_active,
+                rows: all_rows.clone(),
+                focused_row,
+                expanded,
+                search,
+                tree_scroll_row,
+                collections: collections_for_nav.clone(),
                 on_search: move |val: String| search.set(val),
+                on_event,
             }
 
             if !selected_ids().is_empty() {
@@ -493,6 +517,9 @@ pub fn Sidebar(
                                     all_rows.first().cloned()
                                 };
                                 if let Some(row) = next_row {
+                                    if let Some(pos) = all_rows.iter().position(|r| r.id == row.id) {
+                                        tree_scroll_row.set(pos.saturating_sub(6));
+                                    }
                                     focused_row.set(Some(TreeSelection {
                                         id: row.id,
                                         collection_id: row.collection_id,
@@ -526,6 +553,9 @@ pub fn Sidebar(
                                     all_rows.first().cloned()
                                 };
                                 if let Some(row) = prev_row {
+                                    if let Some(pos) = all_rows.iter().position(|r| r.id == row.id) {
+                                        tree_scroll_row.set(pos.saturating_sub(6));
+                                    }
                                     focused_row.set(Some(TreeSelection {
                                         id: row.id,
                                         collection_id: row.collection_id,
@@ -648,13 +678,45 @@ pub fn Sidebar(
                             }
                             TreeKeyAction::Open => {
                                 if let Some(sel) = focused_row() {
+                                    let from_search = !search().trim().is_empty();
+                                    if from_search {
+                                        reveal_search_selection(
+                                            &collections,
+                                            &mut expanded,
+                                            &mut search,
+                                            &mut tree_scroll_row,
+                                            sel.id,
+                                            &sel.kind,
+                                        );
+                                    }
                                     if matches!(sel.kind, TreeRowKind::Request { .. }) {
                                         on_event.call(SidebarEvent::new(
                                             SidebarAction::SelectRequest,
                                             Some(sel.id),
                                             Some(sel.collection_id),
                                         ));
-                                    } else if matches!(sel.kind, TreeRowKind::Collection | TreeRowKind::Folder) {
+                                    } else if matches!(sel.kind, TreeRowKind::Collection) {
+                                        if from_search {
+                                            on_event.call(SidebarEvent::new(
+                                                SidebarAction::SelectCollection,
+                                                Some(sel.id),
+                                                Some(sel.collection_id),
+                                            ));
+                                        } else {
+                                            let mut set = expanded();
+                                            if set.contains(&sel.id) {
+                                                set.remove(&sel.id);
+                                            } else {
+                                                set.insert(sel.id);
+                                            }
+                                            expanded.set(set);
+                                            on_event.call(SidebarEvent::new(
+                                                SidebarAction::ToggleExpand,
+                                                Some(sel.id),
+                                                Some(sel.collection_id),
+                                            ));
+                                        }
+                                    } else if matches!(sel.kind, TreeRowKind::Folder) && !from_search {
                                         let mut set = expanded();
                                         if set.contains(&sel.id) {
                                             set.remove(&sel.id);
@@ -673,7 +735,18 @@ pub fn Sidebar(
                         }
                         }
                     },
-                    for (idx, row) in rendered_rows.iter().enumerate() {
+                    if win_start > 0 {
+                        div {
+                            aria_hidden: "true",
+                            style: "height: {win_start as f64 * TREE_ROW_PX}px; flex: none;",
+                        }
+                    }
+                    for (idx, row) in rendered_rows
+                        .iter()
+                        .enumerate()
+                        .skip(win_start)
+                        .take(win_end.saturating_sub(win_start))
+                    {
                         {
                             let row_id = row.id;
                             let col_id = row.collection_id;
@@ -705,8 +778,15 @@ pub fn Sidebar(
                             } else {
                                 glyph_for(&kind)
                             };
+                            let spec_drift = is_col
+                                && collections
+                                    .iter()
+                                    .find(|c| c.id == row_id)
+                                    .is_some_and(collection_spec_drift);
                             let label = if favorite {
                                 format!("★ {name}")
+                            } else if spec_drift {
+                                format!("{name} • spec")
                             } else {
                                 name.clone()
                             };
@@ -872,6 +952,7 @@ pub fn Sidebar(
                                         class: "tree-main",
                                         onclick: {
                                             let rows_clone = all_rows.clone();
+                                            let collections_nav = collections_for_nav.clone();
                                             move |evt| {
                                                 if is_renaming {
                                                     evt.stop_propagation();
@@ -882,6 +963,7 @@ pub fn Sidebar(
 
                                                 let is_meta = evt.modifiers().meta() || evt.modifiers().ctrl();
                                                 let is_shift = evt.modifiers().shift();
+                                                let from_search = !search().trim().is_empty();
 
                                                 if is_meta {
                                                     let mut set = selected_ids();
@@ -931,6 +1013,17 @@ pub fn Sidebar(
                                                     last_selected_id.set(Some(row_id));
                                                 }
 
+                                                if from_search && !is_meta && !is_shift {
+                                                    reveal_search_selection(
+                                                        &collections_nav,
+                                                        &mut expanded,
+                                                        &mut search,
+                                                        &mut tree_scroll_row,
+                                                        row_id,
+                                                        &kind_for_click,
+                                                    );
+                                                }
+
                                                 focused_row.set(Some(TreeSelection {
                                                     id: row_id,
                                                     collection_id: col_id,
@@ -942,7 +1035,28 @@ pub fn Sidebar(
                                                         Some(row_id),
                                                         Some(col_id),
                                                     ));
-                                                } else if is_col || is_folder {
+                                                } else if is_col {
+                                                    if from_search {
+                                                        on_event.call(SidebarEvent::new(
+                                                            SidebarAction::SelectCollection,
+                                                            Some(row_id),
+                                                            Some(col_id),
+                                                        ));
+                                                    } else {
+                                                        let mut set = expanded();
+                                                        if set.contains(&row_id) {
+                                                            set.remove(&row_id);
+                                                        } else {
+                                                            set.insert(row_id);
+                                                        }
+                                                        expanded.set(set);
+                                                        on_event.call(SidebarEvent::new(
+                                                            SidebarAction::ToggleExpand,
+                                                            Some(row_id),
+                                                            Some(col_id),
+                                                        ));
+                                                    }
+                                                } else if is_folder && !from_search {
                                                     let mut set = expanded();
                                                     if set.contains(&row_id) {
                                                         set.remove(&row_id);
@@ -1232,6 +1346,12 @@ pub fn Sidebar(
                             }
                         }
                     }
+                    if win_end < rendered_rows.len() {
+                        div {
+                            aria_hidden: "true",
+                            style: "height: {(rendered_rows.len() - win_end) as f64 * TREE_ROW_PX}px; flex: none;",
+                        }
+                    }
                     if truncated_search {
                         div { class: "tree-search-limit-notice",
                             "Showing first {MAX_SEARCH_RENDER} of {total_matches} matches. Refine query to narrow."
@@ -1309,6 +1429,17 @@ pub fn Sidebar(
                                                     active_collection_id,
                                                 )),
                                                 span { class: "action-icon action-icon-save", aria_hidden: "true" }
+                                            }
+                                            button {
+                                                class: "btn-icon",
+                                                title: "Save response as example on matching request",
+                                                aria_label: "Save as example",
+                                                onclick: move |_| on_event.call(SidebarEvent::new(
+                                                    SidebarAction::SaveHistoryAsExample,
+                                                    Some(id),
+                                                    None,
+                                                )),
+                                                span { class: "action-icon action-icon-duplicate", aria_hidden: "true" }
                                             }
                                         }
                                     }
@@ -1871,8 +2002,69 @@ fn highlight_tree_label(label: &str, query: &str) -> Element {
     rsx! { span { class: "tree-label", "{label}" } }
 }
 
+const TREE_ROW_PX: f64 = 34.0;
+
+fn reveal_search_selection(
+    collections: &[Collection],
+    expanded: &mut Signal<HashSet<Uuid>>,
+    search: &mut Signal<String>,
+    tree_scroll_row: &mut Signal<usize>,
+    row_id: Uuid,
+    kind: &TreeRowKind,
+) {
+    let mut expand = ancestor_ids_for_tree_node(collections, row_id);
+    if matches!(kind, TreeRowKind::Collection | TreeRowKind::Folder) && !expand.contains(&row_id) {
+        expand.push(row_id);
+    }
+    let mut set = expanded();
+    for id in expand {
+        set.insert(id);
+    }
+    let collapsed = collapsed_except_expanded(collections, &set);
+    expanded.set(set);
+    search.set(String::new());
+    let flat = flatten_collections_filtered(collections, &collapsed);
+    if let Some(pos) = flat.iter().position(|r| r.id == row_id) {
+        tree_scroll_row.set(pos.saturating_sub(6));
+    }
+
+    let script = format!(
+        r#"setTimeout(() => {{
+            const el = document.getElementById("tree-row-" + {id});
+            if (el) el.scrollIntoView({{ behavior: 'smooth', block: 'nearest' }});
+        }}, 30);"#,
+        id = serde_json::to_string(&row_id.to_string()).unwrap_or_else(|_| "\"\"".into())
+    );
+    spawn(async move {
+        let _ = document::eval(&script).await;
+    });
+}
+
+// shortcut: window assumes 34px rows, rename field or a taller row drifts until the next scroll
+fn tree_window(len: usize, anchor: usize) -> (usize, usize) {
+    const LIMIT: usize = 80;
+    const SPAN: usize = 64;
+    if len <= LIMIT {
+        return (0, len);
+    }
+    let anchor = if len == 0 { 0 } else { anchor.min(len - 1) };
+    let end = (anchor.saturating_sub(8) + SPAN).min(len);
+    let start = end.saturating_sub(SPAN);
+    (start, end)
+}
+
 #[component]
-fn SidebarSearchInput(on_search: EventHandler<String>) -> Element {
+fn SidebarSearchInput(
+    query_active: bool,
+    rows: Vec<crate::core::TreeRow>,
+    mut focused_row: Signal<Option<TreeSelection>>,
+    mut expanded: Signal<HashSet<Uuid>>,
+    mut search: Signal<String>,
+    mut tree_scroll_row: Signal<usize>,
+    collections: Vec<Collection>,
+    on_search: EventHandler<String>,
+    on_event: EventHandler<SidebarEvent>,
+) -> Element {
     let mut draft = use_signal(String::new);
     let mut seq = use_signal(|| 0u64);
 
@@ -1881,7 +2073,7 @@ fn SidebarSearchInput(on_search: EventHandler<String>) -> Element {
             class: "sidebar-search",
             r#type: "search",
             placeholder: "Search… (e.g. folder:auth, req:users)",
-            title: "Search tree. Type folder: (or f:) or req: (or r:) to filter by type.",
+            title: "Search tree. ↑↓ navigate, Enter open, Esc clear.",
             value: "{draft}",
             oninput: move |evt: Event<FormData>| {
                 let val = evt.value();
@@ -1900,15 +2092,111 @@ fn SidebarSearchInput(on_search: EventHandler<String>) -> Element {
                 }
             },
             onkeydown: move |evt: KeyboardEvent| {
-                if evt.key() == Key::Enter {
-                    seq.set(seq() + 1);
-                    on_search.call(draft());
-                } else if evt.key() == Key::Escape {
+                if evt.key() == Key::Escape {
                     draft.set(String::new());
                     seq.set(seq() + 1);
                     on_search.call(String::new());
+                    return;
+                }
+                if !query_active || rows.is_empty() {
+                    return;
+                }
+                let cur_pos = focused_row()
+                    .and_then(|sel| rows.iter().position(|r| r.id == sel.id))
+                    .unwrap_or(0);
+                match evt.key() {
+                    Key::ArrowDown => {
+                        evt.prevent_default();
+                        if let Some(row) = rows.get((cur_pos + 1).min(rows.len() - 1)) {
+                            focused_row.set(Some(TreeSelection {
+                                id: row.id,
+                                collection_id: row.collection_id,
+                                kind: row.kind.clone(),
+                            }));
+                            if let Some(pos) = rows.iter().position(|r| r.id == row.id) {
+                                tree_scroll_row.set(pos.saturating_sub(6));
+                            }
+                        }
+                    }
+                    Key::ArrowUp => {
+                        evt.prevent_default();
+                        let pick = if cur_pos == 0 {
+                            rows.first()
+                        } else {
+                            rows.get(cur_pos - 1)
+                        };
+                        if let Some(row) = pick {
+                            focused_row.set(Some(TreeSelection {
+                                id: row.id,
+                                collection_id: row.collection_id,
+                                kind: row.kind.clone(),
+                            }));
+                            if let Some(pos) = rows.iter().position(|r| r.id == row.id) {
+                                tree_scroll_row.set(pos.saturating_sub(6));
+                            }
+                        }
+                    }
+                    Key::Enter => {
+                        evt.prevent_default();
+                        let sel = focused_row().or_else(|| {
+                            rows.first().map(|row| TreeSelection {
+                                id: row.id,
+                                collection_id: row.collection_id,
+                                kind: row.kind.clone(),
+                            })
+                        });
+                        let Some(sel) = sel else {
+                            return;
+                        };
+                        reveal_search_selection(
+                            &collections,
+                            &mut expanded,
+                            &mut search,
+                            &mut tree_scroll_row,
+                            sel.id,
+                            &sel.kind,
+                        );
+                        draft.set(String::new());
+                        on_search.call(String::new());
+                        match sel.kind {
+                            TreeRowKind::Request { .. } => {
+                                on_event.call(SidebarEvent::new(
+                                    SidebarAction::SelectRequest,
+                                    Some(sel.id),
+                                    Some(sel.collection_id),
+                                ));
+                            }
+                            TreeRowKind::Collection => {
+                                on_event.call(SidebarEvent::new(
+                                    SidebarAction::SelectCollection,
+                                    Some(sel.id),
+                                    Some(sel.collection_id),
+                                ));
+                            }
+                            _ => {}
+                        }
+                    }
+                    _ => {}
                 }
             },
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::tree_window;
+
+    #[test]
+    fn short_tree_renders_every_row() {
+        assert_eq!(tree_window(10, 0), (0, 10));
+    }
+
+    #[test]
+    fn long_tree_keeps_a_window_around_the_anchor() {
+        let (start, end) = tree_window(500, 200);
+        assert!(start <= 200 && end > 200);
+        assert!(end - start <= 64);
+        assert_eq!(tree_window(500, 0).0, 0);
     }
 }

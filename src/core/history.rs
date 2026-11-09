@@ -4,7 +4,7 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use super::request::{HttpMethod, RequestDraft};
+use super::request::{HttpMethod, RequestDraft, SavedExample};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct HistoryEntry {
@@ -16,6 +16,9 @@ pub struct HistoryEntry {
     pub elapsed_ms: Option<u128>,
     /// Snapshot of the draft at send time (for reopen).
     pub draft: RequestDraft,
+    /// Last response snapshot (for save-as-example).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub response_example: Option<SavedExample>,
 }
 
 impl HistoryEntry {
@@ -24,6 +27,7 @@ impl HistoryEntry {
         resolved_url: &str,
         status: Option<u16>,
         elapsed_ms: Option<u128>,
+        response_example: Option<SavedExample>,
     ) -> Self {
         Self {
             id: Uuid::new_v4(),
@@ -33,6 +37,7 @@ impl HistoryEntry {
             status,
             elapsed_ms,
             draft: draft.clone(),
+            response_example,
         }
     }
 }
@@ -58,7 +63,7 @@ mod tests {
         for _ in 0..5 {
             push_history(
                 &mut h,
-                HistoryEntry::from_send(&RequestDraft::default(), "https://x", Some(200), Some(1)),
+                HistoryEntry::from_send(&RequestDraft::default(), "https://x", Some(200), Some(1), None),
                 3,
             );
         }

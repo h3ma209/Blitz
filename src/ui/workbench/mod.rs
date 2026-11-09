@@ -15,7 +15,8 @@ use crate::core::{
     add_folder_under, add_request_under, apply_collection_map, apply_collection_var_edit,
     apply_env_var_edit, apply_environment_map, batch_duplicate_across, batch_move_items,
     check_for_updates, delete_needs_confirmation, detect_git_conflicts, duplicate_across,
-    export_collection_v21, find_environment, find_request_across, flatten_collections,
+    export_collection_v21, find_environment, find_request_across, flatten_collections, import_curl,
+    lint_collections, lint_error_count,
     generate_static_doc_html, generate_swagger_ui_html, grpc_unary_with_headers, insert_item_under,
     is_draft_dirty, move_item_to, push_console, push_history, remint_pasted_item, remove_across,
     rename_across, reorder_before, request_tab_display_name, resolve_ancestor_auth,
@@ -35,11 +36,14 @@ use crate::ui::sidebar::{Sidebar, SidebarAction, SidebarEvent};
 use crate::ui::workbench::modals::{VarsPage, WorkbenchModals};
 use crate::ui::workbench::protocol_actions::run_protocol_action;
 use crate::ui::workbench::state::{
-    ensure_cloud_defaults, execute_tree_delete, sync_env_vars, ImpexModal, PaneDrag,
-    PendingCloseTab, PendingDelete, TreeClipboard, WorkbenchState,
+    apply_collection_env_pin, ensure_cloud_defaults, execute_tree_delete, sync_env_vars, ImpexModal,
+    PaneDrag, PendingCloseTab, PendingDelete, TreeClipboard, WorkbenchState,
 };
 use crate::ui::workbench::top_bar::TopBar;
-use crate::ui::{CollectionEditor, ConflictResolver, ConflictState, DismissBackdrop, ToastContainer, ToastLevel};
+use crate::ui::{
+    CollectionEditor, ConflictResolver, ConflictState, DismissBackdrop, ToastContainer,
+    ToastLevel,
+};
 
 fn tree_item_label(collections: &[Collection], id: Uuid) -> String {
     flatten_collections(collections)
@@ -61,7 +65,7 @@ pub fn Workbench() -> Element {
     let mut send_cancel = st.send_cancel;
     let mut collections = st.collections;
     let mut environments = st.environments;
-    let active_env_id = st.active_env_id;
+    let mut active_env_id = st.active_env_id;
     let mut active_collection_id = st.active_collection_id;
     let mut active_request_id = st.active_request_id;
     let mut vars = st.vars;
@@ -108,6 +112,7 @@ pub fn Workbench() -> Element {
     let mut tree_clipboard = st.tree_clipboard;
     let mut available_update = st.available_update;
     let mut show_runner = st.show_runner;
+    let _show_lint = st.show_lint;
     let mut show_env_manager = st.show_env_manager;
     let mut show_tab_menu = st.show_tab_menu;
     let mut drag_tab_idx = st.drag_tab_idx;
@@ -124,8 +129,10 @@ pub fn Workbench() -> Element {
         if let Ok(store) = JsonStore::open_default() {
             match store.load() {
                 Ok(snap) => {
-                    data_root.set(store.root().display().to_string());
-                    st.apply_snapshot(snap, store.root());
+                    let active_store = JsonStore::open_for_settings(&snap.settings).unwrap_or(store);
+                    let snap = active_store.load().unwrap_or(snap);
+                    data_root.set(active_store.root().display().to_string());
+                    st.apply_snapshot(snap, active_store.root());
                 }
                 Err(e) => status_msg.set(format!("load error: {e}")),
             }
@@ -531,7 +538,7 @@ pub fn Workbench() -> Element {
             send_cancel.set(None);
             sending.set(false);
             status_msg.set("cancelled".into());
-            response.set(Some(ResponseView {
+            response.set(Some(Arc::new(ResponseView {
                 status: 0,
                 status_text: "CANCELLED".into(),
                 headers: vec![],
@@ -546,11 +553,18 @@ pub fn Workbench() -> Element {
                 visualizer_html: String::new(),
                 sent_headers: vec![],
                 sent_body: None,
-            }));
+            })));
             return;
         }
 
         let mut req = draft();
+
+        let lint_errs = lint_error_count(&lint_collections(&collections(), &vars()));
+        if lint_errs > 0 {
+            status_msg.set(format!(
+                "lint: {lint_errs} error(s) — Tools → Collection lint"
+            ));
+        }
 
         // Snapshot previous response for diffing before sending new one
         let cur_resp = response();
@@ -711,7 +725,7 @@ pub fn Workbench() -> Element {
                 }
                 console_lines.set(lines);
                 protocol_log.set(view.pipeline_log.clone());
-                response.set(Some(view));
+                response.set(Some(Arc::new(view)));
                 sending.set(false);
                 send_cancel.set(None);
             });
@@ -876,6 +890,11 @@ pub fn Workbench() -> Element {
                 } else {
                     view.resolved_url.clone()
                 };
+                let captured = if view.error.is_none() && view.status > 0 {
+                    Some(SavedExample::from_response("History capture", &view))
+                } else {
+                    None
+                };
                 let entry = HistoryEntry::from_send(
                     &draft_snap,
                     &hist_url,
@@ -889,6 +908,7 @@ pub fn Workbench() -> Element {
                     } else {
                         Some(view.elapsed_ms)
                     },
+                    captured,
                 );
                 push_history(&mut hist, entry, HISTORY_MAX);
                 history.set(hist);
@@ -990,9 +1010,10 @@ pub fn Workbench() -> Element {
             }
 
             let draft_id = draft().id;
-            response.set(Some(view.clone()));
+            let shared = Arc::new(view);
+            response.set(Some(shared.clone()));
             let mut resp_map = responses();
-            resp_map.insert(draft_id, view.clone());
+            resp_map.insert(draft_id, shared);
             responses.set(resp_map);
             sending.set(false);
             send_cancel.set(None);
@@ -1000,12 +1021,20 @@ pub fn Workbench() -> Element {
         });
     });
 
-    let on_sidebar = move |evt: SidebarEvent| {
+    // shortcut: a fresh EventHandler fails Dioxus memo, URL keystrokes rebuild Sidebar and ResponseViewer; pass the collections signal if that PartialEq gets hot
+    let on_sidebar = use_callback(move |evt: SidebarEvent| {
         let mut st = st;
         match evt.action {
             SidebarAction::SelectRequest => {
                 if let Some(id) = evt.id {
                     if let Some((col_id, req)) = find_request_across(&collections(), id) {
+                        apply_collection_env_pin(
+                            &collections(),
+                            Some(col_id),
+                            &environments(),
+                            &mut active_env_id,
+                            &mut vars,
+                        );
                         let mut tabs = open_tabs();
                         let cur = draft();
                         if tabs.iter().any(|t| t.id == cur.id) {
@@ -1042,6 +1071,13 @@ pub fn Workbench() -> Element {
             }
             SidebarAction::SelectCollection => {
                 let col_id = evt.collection_id.or(evt.id);
+                apply_collection_env_pin(
+                    &collections(),
+                    col_id,
+                    &environments(),
+                    &mut active_env_id,
+                    &mut vars,
+                );
                 active_collection_id.set(col_id);
                 editing_collection_id.set(col_id);
                 active_request_id.set(None);
@@ -1358,6 +1394,27 @@ pub fn Workbench() -> Element {
                     }
                 }
             }
+            SidebarAction::SaveHistoryAsExample => {
+                if let Some(id) = evt.id {
+                    if let Some(entry) = history().into_iter().find(|h| h.id == id) {
+                        let Some(mut ex) = entry.response_example.clone() else {
+                            status_msg.set("no response body in history entry".into());
+                            return;
+                        };
+                        let req_id = entry.draft.id;
+                        ex.name = format!("History {}", entry.at.format("%Y-%m-%d %H:%M"));
+                        if find_request_across(&collections(), req_id).is_some() {
+                            let mut cols = collections();
+                            let _ = save_example_to_request(&mut cols, req_id, ex);
+                            collections.set(cols);
+                            st.persist();
+                            status_msg.set("saved history response as example".into());
+                        } else {
+                            status_msg.set("history request not in a collection".into());
+                        }
+                    }
+                }
+            }
             SidebarAction::SaveHistoryToCollection => {
                 if let Some(id) = evt.id {
                     if let Some(entry) = history().into_iter().find(|h| h.id == id) {
@@ -1473,7 +1530,7 @@ pub fn Workbench() -> Element {
                 st.persist();
             }
         }
-    };
+    });
 
     let ui = app_settings().ui.clone().clamped();
     let live_sidebar_w = if sidebar_drag().is_some() {
@@ -1518,6 +1575,47 @@ pub fn Workbench() -> Element {
     };
     let top_nav_menus_open = file_menu_open() || tools_menu_open() || cloud_menu_open();
 
+    let on_save_example = use_callback(move |_| {
+        let mut st = st;
+        if let Some(view) = response() {
+            let mut d = draft();
+            let name = format!("Example {}", d.examples.len() + 1);
+            let ex = SavedExample::from_response(name, &view);
+            d.examples.push(ex.clone());
+            let req_id = d.id;
+            draft.set(d);
+            let mut cols = collections();
+            let _ = save_example_to_request(&mut cols, req_id, ex);
+            for col in cols.iter_mut() {
+                let _ = col.update_request(draft());
+            }
+            collections.set(cols);
+            st.persist();
+            status_msg.set("saved response as example".into());
+        }
+    });
+    let on_auto_assert = use_callback(move |_| {
+        let Some(view) = response() else { return; };
+        if view.error.is_some() || view.status == 0 {
+            status_msg.set("auto-assert: no successful response to learn from".into());
+            return;
+        }
+        let suggested = crate::core::suggest_from_response(
+            view.status,
+            &view.headers,
+            &view.body,
+            view.elapsed_ms,
+        );
+        let mut d = draft();
+        let added = crate::core::merge_assertions(&mut d.assertions, suggested);
+        draft.set(d);
+        status_msg.set(if added == 0 {
+            "auto-assert: all assertions already present".into()
+        } else {
+            format!("auto-assert: added {added} assertion(s) — review in Tests tab, ⌘S to save")
+        });
+    });
+
     let on_settings_event = move |evt: SettingsEvent| {
         let mut st = st;
         match evt {
@@ -1527,11 +1625,16 @@ pub fn Workbench() -> Element {
             }
             SettingsEvent::Save(s) => {
                 let enabling_cloud = s.cloud_sync.enabled;
-                app_settings.set(s);
+                let prev_root = app_settings().storage_root.clone();
+                app_settings.set(s.clone());
                 if enabling_cloud {
                     ensure_cloud_defaults(st);
                 }
-                st.persist();
+                if !s.storage_root.trim().is_empty() && s.storage_root != prev_root {
+                    st.reload_storage_root(&s.storage_root);
+                } else {
+                    st.persist();
+                }
                 status_msg.set("settings saved".into());
             }
         }
@@ -1678,6 +1781,52 @@ pub fn Workbench() -> Element {
                     Key::Character(c) if meta && alt && c.eq_ignore_ascii_case("c") => {
                         evt.prevent_default();
                         console_open.set(!console_open());
+                    }
+                    Key::Character(c) if meta && shift && c.eq_ignore_ascii_case("v") => {
+                        evt.prevent_default();
+                        let parent = active_collection_id();
+                        let cols = collections();
+                        spawn(async move {
+                            let script = r#"
+                                (async () => {
+                                    try {
+                                        return await navigator.clipboard.readText();
+                                    } catch (e) {
+                                        return "";
+                                    }
+                                })()
+                            "#;
+                            let trimmed = document::eval(script)
+                                .await
+                                .ok()
+                                .and_then(|v| v.as_str().map(|s| s.trim().to_string()))
+                                .unwrap_or_default();
+                            if trimmed.is_empty() {
+                                return;
+                            }
+                            if let Ok(mut imported) = import_curl(&trimmed) {
+                                imported.name = if imported.name.is_empty() {
+                                    "Imported cURL".into()
+                                } else {
+                                    imported.name
+                                };
+                                let mut cols = cols;
+                                let owner = parent
+                                    .or_else(|| cols.first().map(|c| c.id))
+                                    .unwrap_or(Uuid::nil());
+                                if add_request_under(&mut cols, owner, imported.clone()) {
+                                    collections.set(cols.clone());
+                                    draft.set(imported.clone());
+                                    active_collection_id.set(Some(owner));
+                                    active_request_id.set(Some(imported.id));
+                                    let mut st = st;
+                                    st.persist();
+                                    status_msg.set("pasted cURL into collection".into());
+                                }
+                            } else {
+                                status_msg.set("clipboard is not valid cURL".into());
+                            }
+                        });
                     }
                     _ if meta
                         && (evt.code() == Code::Equal
@@ -2185,6 +2334,7 @@ pub fn Workbench() -> Element {
                     } else if let Some(col) = editing_collection_id().and_then(|cid| collections().into_iter().find(|c| c.id == cid)) {
                         CollectionEditor {
                             collection: col.clone(),
+                            environments: environments(),
                             vars: vars(),
                             active_env_id: active_env_id(),
                             on_change: move |updated_col: Collection| {
@@ -2524,46 +2674,8 @@ pub fn Workbench() -> Element {
                                             examples: draft().examples,
                                             sending: sending(),
                                             default_tab: app_settings().ui.default_response_tab,
-                                            on_save_example: move |_| {
-                                                let mut st = st;
-                                                if let Some(view) = response() {
-                                                    let mut d = draft();
-                                                    let name = format!("Example {}", d.examples.len() + 1);
-                                                    let ex = SavedExample::from_response(name, &view);
-                                                    d.examples.push(ex.clone());
-                                                    let req_id = d.id;
-                                                    draft.set(d);
-                                                    let mut cols = collections();
-                                                    let _ = save_example_to_request(&mut cols, req_id, ex);
-                                                    for col in cols.iter_mut() {
-                                                        let _ = col.update_request(draft());
-                                                    }
-                                                    collections.set(cols);
-                                                    st.persist();
-                                                    status_msg.set("saved response as example".into());
-                                                }
-                                            },
-                                            on_auto_assert: move |_| {
-                                                let Some(view) = response() else { return; };
-                                                if view.error.is_some() || view.status == 0 {
-                                                    status_msg.set("auto-assert: no successful response to learn from".into());
-                                                    return;
-                                                }
-                                                let suggested = crate::core::suggest_from_response(
-                                                    view.status,
-                                                    &view.headers,
-                                                    &view.body,
-                                                    view.elapsed_ms,
-                                                );
-                                                let mut d = draft();
-                                                let added = crate::core::merge_assertions(&mut d.assertions, suggested);
-                                                draft.set(d);
-                                                status_msg.set(if added == 0 {
-                                                    "auto-assert: all assertions already present".into()
-                                                } else {
-                                                    format!("auto-assert: added {added} assertion(s) — review in Tests tab, ⌘S to save")
-                                                });
-                                            },
+                                            on_save_example: on_save_example,
+                                            on_auto_assert: on_auto_assert,
                                         }
                                     }
                                 }

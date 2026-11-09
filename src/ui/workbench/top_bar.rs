@@ -34,6 +34,7 @@ pub fn TopBar(st: WorkbenchState) -> Element {
     let mut status_msg = st.status_msg;
     let mut impex_modal = st.impex_modal;
     let mut show_runner = st.show_runner;
+    let mut show_lint = st.show_lint;
     let mut show_perf = st.show_perf;
     let mut mock_port = st.mock_port;
     let mut proxy_port = st.proxy_port;
@@ -455,6 +456,14 @@ pub fn TopBar(st: WorkbenchState) -> Element {
                                 class: "menu-item",
                                 onclick: move |_| {
                                     tools_menu_open.set(false);
+                                    show_lint.set(true);
+                                },
+                                "Collection lint…"
+                            }
+                            button {
+                                class: "menu-item",
+                                onclick: move |_| {
+                                    tools_menu_open.set(false);
                                     show_perf.set(true);
                                 },
                                 "Performance…"
@@ -526,6 +535,7 @@ pub fn TopBar(st: WorkbenchState) -> Element {
                                                         &cap.url,
                                                         cap.status,
                                                         cap.elapsed_ms,
+                                                        None,
                                                     );
                                                     push_history(&mut hist, entry, HISTORY_MAX);
                                                     history.set(hist);

@@ -1,8 +1,13 @@
+use std::sync::Arc;
+
 use dioxus::prelude::*;
 use uuid::Uuid;
 
 use crate::core::{diff_bodies, DefaultResponseTab, DiffLine, ResponseView, SavedExample};
-use super::json_highlight::{render_json_highlight_html, render_json_highlight_html_with_fold, should_highlight_json};
+use super::json_highlight::{
+    json_paint_range, render_json_highlight_html, render_json_highlight_html_with_fold,
+    should_highlight_json, JSON_PAINT_CAP,
+};
 use super::loading::SkeletonBars;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -34,8 +39,8 @@ fn resp_tab_from_default(tab: DefaultResponseTab) -> RespTab {
 
 #[component]
 pub fn ResponseViewer(
-    response: Option<ResponseView>,
-    #[props(default)] prev_response: Option<ResponseView>,
+    response: Option<Arc<ResponseView>>,
+    #[props(default)] prev_response: Option<Arc<ResponseView>>,
     #[props(default)] examples: Vec<SavedExample>,
     sending: bool,
     #[props(default)] default_tab: DefaultResponseTab,
@@ -53,6 +58,7 @@ pub fn ResponseViewer(
     let mut filter_open = use_signal(|| false);
     let mut all_collapsed = use_signal(|| false);
     let mut enable_folding = use_signal(|| true);
+    let paint_off = use_signal(|| (0usize, 0usize));
 
     rsx! {
         section { class: "response-pane",
@@ -305,7 +311,12 @@ pub fn ResponseViewer(
 
                 match tab() {
                     RespTab::Pretty => {
-                        let is_json = should_highlight_json(&resp.body, &resp.headers);
+                        let paint_key = resp.body.len();
+                        let off = if paint_off().0 == paint_key { paint_off().1 } else { 0 };
+                        let (pretty, start, end) = pretty_body(&resp.body, off);
+                        let paged = start > 0 || end < resp.body.len();
+                        let is_json =
+                            !paged && should_highlight_json(&resp.body, &resp.headers);
                         let parsed_json = if is_json {
                             serde_json::from_str::<serde_json::Value>(resp.body.trim()).ok()
                         } else {
@@ -383,7 +394,6 @@ pub fn ResponseViewer(
                                         }
                                     }
                                     Err(err) => {
-                                        let pretty = pretty_body(&resp.body);
                                         let html = render_json_highlight_html_with_fold(&pretty, enable_folding());
                                         rsx! {
                                             div { class: "jsonpath-status status-err",
@@ -398,14 +408,23 @@ pub fn ResponseViewer(
                                 }
                             } else {
                                 {
-                                    let pretty = pretty_body(&resp.body);
                                     let query = search_query();
                                     if !query.is_empty() {
                                         let highlighted = highlight_search_matches(&pretty, &query);
                                         rsx! {
+                                            {paint_controls(resp.body.len(), start, end, paint_off)}
                                             pre {
                                                 class: "response-body",
                                                 dangerous_inner_html: "{highlighted}",
+                                            }
+                                        }
+                                    } else if paged {
+                                        let html = render_json_highlight_html_with_fold(&pretty, enable_folding());
+                                        rsx! {
+                                            {paint_controls(resp.body.len(), start, end, paint_off)}
+                                            pre {
+                                                class: "response-body response-body-json",
+                                                dangerous_inner_html: "{html}",
                                             }
                                         }
                                     } else if is_json {
@@ -456,8 +475,11 @@ pub fn ResponseViewer(
                         } else {
                             p { class: "hint", "Preview is for HTML responses. Showing Pretty instead." }
                             {
-                                let pretty = pretty_body(&resp.body);
-                                if should_highlight_json(&resp.body, &resp.headers) {
+                                let paint_key = resp.body.len();
+                                let off = if paint_off().0 == paint_key { paint_off().1 } else { 0 };
+                                let (pretty, start, end) = pretty_body(&resp.body, off);
+                                let full = start == 0 && end == resp.body.len();
+                                if full && should_highlight_json(&resp.body, &resp.headers) {
                                     let html = render_json_highlight_html(&pretty);
                                     rsx! {
                                         pre {
@@ -467,6 +489,7 @@ pub fn ResponseViewer(
                                     }
                                 } else {
                                     rsx! {
+                                        {paint_controls(resp.body.len(), start, end, paint_off)}
                                         pre { class: "response-body", "{pretty}" }
                                     }
                                 }
@@ -779,11 +802,41 @@ fn TimelineBar(label: &'static str, ms: u128, total: u128) -> Element {
     }
 }
 
-fn pretty_body(body: &str) -> String {
-    if let Ok(v) = serde_json::from_str::<serde_json::Value>(body) {
-        serde_json::to_string_pretty(&v).unwrap_or_else(|_| body.to_string())
+fn pretty_body(body: &str, offset: usize) -> (String, usize, usize) {
+    let (start, end) = json_paint_range(body, offset);
+    let window = &body[start..end];
+    let text = if start == 0 && end == body.len() {
+        if let Ok(v) = serde_json::from_str::<serde_json::Value>(window) {
+            serde_json::to_string_pretty(&v).unwrap_or_else(|_| window.to_string())
+        } else {
+            window.to_string()
+        }
     } else {
-        body.to_string()
+        window.to_string()
+    };
+    (text, start, end)
+}
+
+fn paint_controls(len: usize, start: usize, end: usize, mut paint_off: Signal<(usize, usize)>) -> Element {
+    if start == 0 && end == len {
+        return rsx! {};
+    }
+    let earlier = start.saturating_sub(JSON_PAINT_CAP);
+    let later = end;
+    rsx! {
+        div { class: "json-large-warning",
+            button {
+                disabled: start == 0,
+                onclick: move |_| paint_off.set((len, earlier)),
+                "Earlier"
+            }
+            " bytes {start}–{end} of {len}. Stored body is complete. "
+            button {
+                disabled: end == len,
+                onclick: move |_| paint_off.set((len, later)),
+                "Later"
+            }
+        }
     }
 }
 

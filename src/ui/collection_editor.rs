@@ -1,7 +1,10 @@
 use dioxus::prelude::*;
 use uuid::Uuid;
 
-use crate::core::{AuthConfig, Collection, KeyValue, VariableContext};
+use crate::core::{
+    mark_collection_spec_synced, reconcile_openapi3_collection, AuthConfig, Collection,
+    Environment, KeyValue, VariableContext,
+};
 use crate::runtime::{run_collection_with_config, RunnerConfig, RunnerReport};
 use crate::ui::request_builder::{AuthEditor, ScriptsEditor};
 use crate::ui::var_hover::VarHoverInput;
@@ -20,6 +23,7 @@ pub enum CollectionEditorTab {
 #[component]
 pub fn CollectionEditor(
     collection: Collection,
+    environments: Vec<Environment>,
     vars: VariableContext,
     active_env_id: Option<Uuid>,
     on_change: EventHandler<Collection>,
@@ -35,6 +39,7 @@ pub fn CollectionEditor(
     let mut runner_data_file = use_signal(String::new);
     let mut runner_running = use_signal(|| false);
     let mut runner_report = use_signal(|| None::<RunnerReport>);
+    let mut status_toast = use_signal(String::new);
 
     let col_id = collection.id;
     let col_name = collection.name.clone();
@@ -119,6 +124,92 @@ pub fn CollectionEditor(
                                     }
                                 }
                             }
+                            label { class: "col-field-label", "Pinned environment" }
+                            p { class: "hint",
+                                "When this collection is selected, switch to the pinned environment automatically."
+                            }
+                            select {
+                                class: "input-select",
+                                value: "{collection.pinned_environment_id.map(|id| id.to_string()).unwrap_or_default()}",
+                                onchange: {
+                                    let collection = collection.clone();
+                                    move |evt| {
+                                        let mut c = collection.clone();
+                                        let val = evt.value();
+                                        c.pinned_environment_id = if val.is_empty() {
+                                            None
+                                        } else if let Ok(id) = Uuid::parse_str(&val) {
+                                            Some(id)
+                                        } else {
+                                            c.pinned_environment_id
+                                        };
+                                        on_change.call(c);
+                                    }
+                                },
+                                option { value: "", "None (use global env)" }
+                                for env in environments.iter() {
+                                    option {
+                                        value: "{env.id}",
+                                        selected: collection.pinned_environment_id == Some(env.id),
+                                        "{env.name}"
+                                    }
+                                }
+                            }
+
+                            label { class: "col-field-label", "OpenAPI spec (local)" }
+                            p { class: "hint",
+                                "Watch `openapi.yaml` on disk. Sidebar shows • spec when the file changed since last sync."
+                            }
+                            input {
+                                class: "input-text",
+                                value: "{collection.openapi_spec_path}",
+                                placeholder: "/path/to/openapi.yaml",
+                                oninput: {
+                                    let collection = collection.clone();
+                                    move |evt| {
+                                        let mut c = collection.clone();
+                                        c.openapi_spec_path = evt.value();
+                                        on_change.call(c);
+                                    }
+                                }
+                            }
+                            button {
+                                class: "btn btn-secondary btn-sm",
+                                style: "margin-top: 8px;",
+                                disabled: collection.openapi_spec_path.trim().is_empty(),
+                                onclick: {
+                                    let collection = collection.clone();
+                                    move |_| {
+                                        let path = collection.openapi_spec_path.trim();
+                                        if path.is_empty() {
+                                            return;
+                                        }
+                                        match std::fs::read_to_string(path) {
+                                            Ok(text) => {
+                                                let mut c = collection.clone();
+                                                match reconcile_openapi3_collection(&mut c, &text) {
+                                                    Ok((added, _preserved)) => {
+                                                        mark_collection_spec_synced(&mut c);
+                                                        on_change.call(c);
+                                                        if added > 0 {
+                                                            status_toast.set(format!("synced spec — {added} request(s) added"));
+                                                        } else {
+                                                            status_toast.set("spec in sync".into());
+                                                        }
+                                                    }
+                                                    Err(e) => status_toast.set(format!("openapi sync: {e:?}")),
+                                                }
+                                            }
+                                            Err(e) => status_toast.set(format!("read spec: {e}")),
+                                        }
+                                    }
+                                },
+                                "Sync from OpenAPI"
+                            }
+                            if !status_toast().is_empty() {
+                                p { class: "hint", "{status_toast()}" }
+                            }
+
                             div { class: "col-meta-box",
                                 div { class: "col-meta-row",
                                     span { class: "col-meta-key", "Collection ID:" }

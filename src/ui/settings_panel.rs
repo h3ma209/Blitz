@@ -19,6 +19,7 @@ pub enum SettingsTab {
     Network,
     Certificates,
     CloudSync,
+    Workspace,
 }
 
 /// Full-page settings editor with modern category sidebar, segmented cards, and clean controls.
@@ -28,6 +29,7 @@ pub fn SettingsPanel(
     data_root: String,
     on_event: EventHandler<SettingsEvent>,
 ) -> Element {
+    let data_root_show = data_root.clone();
     let mut active_tab = use_signal(|| SettingsTab::Appearance);
 
     let mut proxy_mode = use_signal(|| settings.proxy.mode);
@@ -48,6 +50,9 @@ pub fn SettingsPanel(
     let mut theme = use_signal(|| settings.ui.theme);
     let mut accent = use_signal(|| settings.ui.accent_intensity);
     let mut reduce_motion = use_signal(|| settings.ui.reduce_motion);
+    let mut storage_root = use_signal(|| settings.storage_root.clone());
+    let mut storage_roots = use_signal(|| settings.storage_roots.clone());
+    let mut bookmark_draft = use_signal(String::new);
     let mut show_status = use_signal(|| settings.ui.show_status_bar);
     let mut default_resp_tab = use_signal(|| settings.ui.default_response_tab);
     let mut workbench_layout = use_signal(|| settings.ui.layout);
@@ -59,7 +64,7 @@ pub fn SettingsPanel(
     let cloud_last_status = settings.cloud_sync.last_status.clone();
     let cloud_last_branch = settings.cloud_sync.last_branch.clone();
     let history_collapsed = settings.ui.history_collapsed;
-    let default_clone_hint = format!("{data_root}/cloud");
+    let default_clone_hint = format!("{data_root_show}/cloud");
 
     let mode_str = match proxy_mode() {
         ProxyMode::Env => "env",
@@ -98,7 +103,7 @@ pub fn SettingsPanel(
             div { class: "settings-page-head",
                 div { class: "settings-header-meta",
                     h3 { "Settings & Preferences" }
-                    span { class: "settings-data-path", title: "{data_root}", "Data: {data_root}" }
+                    span { class: "settings-data-path", title: "{data_root_show}", "Data: {data_root_show}" }
                 }
                 button {
                     class: "modal-close",
@@ -138,6 +143,15 @@ pub fn SettingsPanel(
                         div { class: "settings-nav-text",
                             span { class: "settings-nav-title", "Certificates" }
                             span { class: "settings-nav-desc", "Client PEM identities" }
+                        }
+                    }
+                    button {
+                        class: if active_tab() == SettingsTab::Workspace { "settings-nav-item active" } else { "settings-nav-item" },
+                        onclick: move |_| active_tab.set(SettingsTab::Workspace),
+                        span { class: "settings-nav-icon", "📁" }
+                        div { class: "settings-nav-text",
+                            span { class: "settings-nav-title", "Workspace" }
+                            span { class: "settings-nav-desc", "Data directory" }
                         }
                     }
                     button {
@@ -554,7 +568,7 @@ pub fn SettingsPanel(
                                     label { "PEM Certificate File Path" }
                                     input {
                                         r#type: "text",
-                                        placeholder: "{data_root}/certs/client.pem",
+                                        placeholder: "{data_root_show}/certs/client.pem",
                                         value: "{cert_path}",
                                         oninput: move |evt| cert_path.set(evt.value()),
                                     }
@@ -571,7 +585,81 @@ pub fn SettingsPanel(
                                 div { class: "settings-callout",
                                     span { class: "callout-icon", "💡" }
                                     p { class: "hint",
-                                        "PEM cert + key bundled in a single file is automatically wired when enabled. For encrypted secrets and tokens, use the local Vault ({data_root}/vault.json) via {{{{vault:key}}}}."
+                                        "PEM cert + key bundled in a single file is automatically wired when enabled. For encrypted secrets and tokens, use the local Vault ({data_root_show}/vault.json) via {{{{vault:key}}}}."
+                                    }
+                                }
+                            }
+                        },
+
+                        SettingsTab::Workspace => rsx! {
+                            div { class: "settings-card",
+                                div { class: "settings-card-head",
+                                    h4 { "Workspace storage" }
+                                    p { class: "hint", "Switch Blitz data directory (collections, envs, vault). Use project-local `.blitz` for git repos." }
+                                }
+                                div { class: "settings-field",
+                                    label { "Active data directory" }
+                                    input {
+                                        r#type: "text",
+                                        placeholder: "{data_root_show}",
+                                        value: "{storage_root}",
+                                        oninput: move |evt| storage_root.set(evt.value()),
+                                    }
+                                }
+                                div { class: "settings-field",
+                                    label { "Bookmarked workspaces" }
+                                    {
+                                        let roots = storage_roots();
+                                        rsx! {
+                                            for path in roots.iter() {
+                                                {
+                                                    let path = path.clone();
+                                                    rsx! {
+                                                        div { class: "settings-workspace-row",
+                                                            button {
+                                                                class: "btn btn-ghost btn-sm",
+                                                                onclick: move |_| storage_root.set(path.clone()),
+                                                                "{path}"
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                    div { class: "settings-inline-row",
+                                        input {
+                                            r#type: "text",
+                                            placeholder: "Add path…",
+                                            value: "{bookmark_draft}",
+                                            oninput: move |evt| bookmark_draft.set(evt.value()),
+                                        }
+                                        button {
+                                            class: "btn btn-secondary btn-sm",
+                                            onclick: move |_| {
+                                                let p = bookmark_draft().trim().to_string();
+                                                if p.is_empty() { return; }
+                                                let mut list = storage_roots();
+                                                if !list.iter().any(|x| x == &p) {
+                                                    list.push(p);
+                                                    storage_roots.set(list);
+                                                }
+                                                bookmark_draft.set(String::new());
+                                            },
+                                            "Bookmark"
+                                        }
+                                        button {
+                                            class: "btn btn-secondary btn-sm",
+                                            onclick: {
+                                                let root = data_root_show.clone();
+                                                move |_| {
+                                                    if !root.is_empty() {
+                                                        storage_root.set(root.clone());
+                                                    }
+                                                }
+                                            },
+                                            "Use current"
+                                        }
                                     }
                                 }
                             }
@@ -694,6 +782,11 @@ pub fn SettingsPanel(
                                 last_status: cloud_last_status.clone(),
                                 last_branch: cloud_last_branch.clone(),
                             },
+                            storage_root: {
+                                let r = storage_root().trim().to_string();
+                                if r.is_empty() { data_root.clone() } else { r }
+                            },
+                            storage_roots: storage_roots(),
                         }));
                     },
                     "Save Changes"

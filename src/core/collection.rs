@@ -99,6 +99,15 @@ pub struct Collection {
     /// Per-environment overrides (optional, for team sync without git branch switching).
     #[serde(default, skip_serializing_if = "CollectionEnvOverrides::is_empty")]
     pub environment_overrides: CollectionEnvOverrides,
+    /// When set, selecting this collection switches the active environment.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pinned_environment_id: Option<Uuid>,
+    /// Absolute or workspace-relative OpenAPI 3 YAML/JSON for drift watch + sync.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub openapi_spec_path: String,
+    /// Mtime (seconds) when spec last matched collection via reconcile.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub openapi_synced_mtime: Option<u64>,
 }
 
 impl CollectionEnvOverrides {
@@ -125,6 +134,9 @@ impl Default for Collection {
             test_script: String::new(),
             variables: vec![],
             environment_overrides: CollectionEnvOverrides::default(),
+            pinned_environment_id: None,
+            openapi_spec_path: String::new(),
+            openapi_synced_mtime: None,
         }
     }
 }
@@ -145,6 +157,9 @@ impl Collection {
             test_script: String::new(),
             variables: vec![],
             environment_overrides: CollectionEnvOverrides::default(),
+            pinned_environment_id: None,
+            openapi_spec_path: String::new(),
+            openapi_synced_mtime: None,
         }
     }
 
@@ -1013,6 +1028,42 @@ pub fn ancestor_ids_for_request(
     Vec::new()
 }
 
+/// Collection id plus ancestor folder ids needed to reveal a tree node in the sidebar.
+pub fn ancestor_ids_for_tree_node(collections: &[Collection], node_id: Uuid) -> Vec<Uuid> {
+    if collections.iter().any(|c| c.find_request(node_id).is_some()) {
+        return ancestor_ids_for_request(collections, node_id);
+    }
+    for col in collections {
+        if col.id == node_id {
+            return vec![col.id];
+        }
+        let mut chain = Vec::new();
+        if folder_chain_to_id(&col.items, node_id, &mut chain) {
+            let mut ids = Vec::with_capacity(chain.len() + 1);
+            ids.push(col.id);
+            ids.extend(chain);
+            return ids;
+        }
+    }
+    Vec::new()
+}
+
+fn folder_chain_to_id(items: &[CollectionItem], target: Uuid, chain: &mut Vec<Uuid>) -> bool {
+    for item in items {
+        if let CollectionItem::Folder(f) = item {
+            if f.id == target {
+                return true;
+            }
+            chain.push(f.id);
+            if folder_chain_to_id(&f.items, target, chain) {
+                return true;
+            }
+            chain.pop();
+        }
+    }
+    false
+}
+
 /// Path of folders from collection root to a request (for script inheritance).
 pub fn folder_path_to_request(col: &Collection, request_id: Uuid) -> Vec<Folder> {
     let mut path = Vec::new();
@@ -1830,6 +1881,25 @@ mod tests {
 
         let ancestors = ancestor_ids_for_request(&cols, req_id);
         assert_eq!(ancestors, vec![col_id, folder_id]);
+    }
+
+    #[test]
+    fn ancestor_ids_for_tree_node_covers_folder_and_request() {
+        let mut cols = demo_collections();
+        let col_id = cols[0].id;
+        let folder = Folder::new("Nested");
+        let folder_id = folder.id;
+        assert!(add_folder_under(&mut cols, col_id, folder));
+        let req = RequestDraft::default();
+        let req_id = req.id;
+        assert!(add_request_under(&mut cols, folder_id, req));
+
+        assert_eq!(ancestor_ids_for_tree_node(&cols, col_id), vec![col_id]);
+        assert_eq!(ancestor_ids_for_tree_node(&cols, folder_id), vec![col_id]);
+        assert_eq!(
+            ancestor_ids_for_tree_node(&cols, req_id),
+            vec![col_id, folder_id]
+        );
     }
 
     #[test]

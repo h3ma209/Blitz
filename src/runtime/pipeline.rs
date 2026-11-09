@@ -1,10 +1,11 @@
 //! Primary request send path (reports/07 pseudocode, simplified).
 
+use std::collections::HashMap;
 use std::error::Error as StdError;
 use std::fs;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc;
-use std::sync::Arc;
+use std::sync::{Arc, LazyLock, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -22,7 +23,7 @@ use crate::core::{
     SandboxExtras, SandboxResponse, TestResult, TimingBreakdown, VariableContext,
     AppSettings, ClientCertSettings, ProxyMode, ProxySettings,
 };
-use crate::runtime::decode_body::decode_response_body;
+use crate::runtime::decode_body::finalize_response_body;
 use crate::runtime::postman_defaults::{
     inject_postman_system_headers, prepare_raw_body_for_send,
 };
@@ -620,6 +621,88 @@ fn absorb_script_side_effects(
     }
 }
 
+#[derive(Clone, PartialEq, Eq, Hash)]
+struct ClientKey {
+    timeout_ms: u64,
+    follow_redirects: bool,
+    ssl_verify: bool,
+    proxy_mode: u8,
+    proxy_url: String,
+    cert_enabled: bool,
+    cert_path: String,
+    cert_pass: String,
+    cert_mtime: u64,
+}
+
+fn cert_mtime_secs(path: &str) -> u64 {
+    fs::metadata(path)
+        .and_then(|m| m.modified())
+        .ok()
+        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+        .map(|d| d.as_secs())
+        .unwrap_or(0)
+}
+
+fn client_key(settings: &RequestSettings, app: Option<&AppSettings>) -> ClientKey {
+    let (proxy_mode, proxy_url) = match app.map(|a| a.proxy.mode) {
+        Some(ProxyMode::None) => (1u8, String::new()),
+        Some(ProxyMode::Custom) => (
+            3,
+            app.and_then(|a| a.custom_proxy_url()).unwrap_or_default(),
+        ),
+        _ => (2, String::new()),
+    };
+    let (cert_enabled, cert_path, cert_pass, cert_mtime) = match app {
+        Some(app) if app.client_cert.enabled && !app.client_cert.cert_path.trim().is_empty() => {
+            let path = app.client_cert.cert_path.trim().to_string();
+            let mtime = cert_mtime_secs(&path);
+            (true, path, app.client_cert.passphrase.clone(), mtime)
+        }
+        _ => (false, String::new(), String::new(), 0),
+    };
+    ClientKey {
+        timeout_ms: settings.timeout_ms,
+        follow_redirects: settings.follow_redirects,
+        ssl_verify: settings.ssl_verify,
+        proxy_mode,
+        proxy_url,
+        cert_enabled,
+        cert_path,
+        cert_pass,
+        cert_mtime,
+    }
+}
+
+// shortcut: pool drops every client at 8 configs, switch to LRU if cert/proxy rotation is common
+const CLIENT_POOL_MAX: usize = 8;
+static CLIENT_POOL: LazyLock<Mutex<HashMap<ClientKey, Client>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
+
+fn pooled_client(
+    settings: &RequestSettings,
+    app: Option<&AppSettings>,
+    log: &mut Vec<String>,
+) -> Result<Client, SendError> {
+    let key = client_key(settings, app);
+    {
+        let guard = CLIENT_POOL.lock().unwrap_or_else(|e| e.into_inner());
+        if let Some(client) = guard.get(&key) {
+            log.push("http: reused pooled client".into());
+            return Ok(client.clone());
+        }
+    }
+    let client = build_client(settings, app, log)?;
+    let mut guard = CLIENT_POOL.lock().unwrap_or_else(|e| e.into_inner());
+    if let Some(existing) = guard.get(&key) {
+        return Ok(existing.clone());
+    }
+    if guard.len() >= CLIENT_POOL_MAX {
+        guard.clear();
+    }
+    guard.insert(key, client.clone());
+    Ok(client)
+}
+
 fn build_client(
     settings: &RequestSettings,
     app: Option<&AppSettings>,
@@ -910,11 +993,20 @@ pub fn send_request_with_options(
         });
     }
 
-    // 2. Variable + vault resolution
-    let mut resolved = resolve_draft(draft, ctx, secrets_ref);
+    // 2. Inherit auth before {{…}} resolution so collection/folder token templates resolve.
+    let mut draft_for_send = draft.clone();
+    resolve_inherit_auth(
+        &mut draft_for_send,
+        opts.ancestor_auth,
+        opts.collection_auth,
+        &mut log,
+    );
+
+    // 2a. Variable + vault resolution
+    let mut resolved = resolve_draft(&draft_for_send, ctx, secrets_ref);
     log.push("vars: resolved {{…}} / {{vault:…}}".into());
 
-    // 2a. Headers from blitz.request.headers.upsert (pre-request scripts)
+    // 2b. Headers from blitz.request.headers.upsert (pre-request scripts)
     if !header_upserts.is_empty() {
         apply_request_header_upserts(&mut resolved, &header_upserts);
         log.push(format!(
@@ -922,14 +1014,6 @@ pub fn send_request_with_options(
             header_upserts.len()
         ));
     }
-
-    // 2b. Inherit auth
-    resolve_inherit_auth(
-        &mut resolved,
-        opts.ancestor_auth,
-        opts.collection_auth,
-        &mut log,
-    );
 
     // 2c. secret:// in auth
     if auth_has_secret_refs(&resolved) {
@@ -1061,7 +1145,7 @@ pub fn send_request_with_options(
 
     // 5. HTTP client
     check_cancelled(&opts.cancel)?;
-    let client = build_client(&resolved.settings, opts.app_settings, &mut log)?;
+    let client = pooled_client(&resolved.settings, opts.app_settings, &mut log)?;
     let method = method_from(resolved.method);
     let headers = build_headers(&resolved)?;
 
@@ -1222,7 +1306,7 @@ pub fn send_request_with_options(
         ));
     }
     check_cancelled(&opts.cancel)?;
-    let body = decode_response_body(&raw_bytes, &resp_headers, &mut log);
+    let body = finalize_response_body(&raw_bytes, &resp_headers, &mut log);
     let download_ms = started.elapsed().as_millis().saturating_sub(ttfb_ms);
     log.push(format!("http: {status} in {elapsed_ms}ms"));
     console.push(format!(
@@ -1364,6 +1448,41 @@ mod tests {
         assert_eq!(draft2.auth.api_key_header, "X-Folder-Key");
         assert_eq!(draft2.auth.token, "f-123");
         assert!(log2.iter().any(|l| l.contains("folder 'V1'")));
+    }
+
+    #[test]
+    fn pooled_client_reuses_same_settings() {
+        let settings = RequestSettings::default();
+        let mut first = Vec::new();
+        let mut second = Vec::new();
+        pooled_client(&settings, None, &mut first).expect("first client");
+        pooled_client(&settings, None, &mut second).expect("second client");
+        assert!(
+            second.iter().any(|l| l.contains("reused pooled client")),
+            "{second:?}"
+        );
+    }
+
+    #[test]
+    fn inherit_auth_resolves_collection_var_templates() {
+        use crate::core::VariableContext;
+
+        let mut draft = RequestDraft::default();
+        draft.auth.auth_type = AuthType::Inherit;
+        let col_auth = AuthConfig {
+            auth_type: AuthType::Bearer,
+            token: "{{apiToken}}".into(),
+            ..Default::default()
+        };
+        let mut draft_with_auth = draft.clone();
+        let mut log = Vec::new();
+        resolve_inherit_auth(&mut draft_with_auth, None, Some(&col_auth), &mut log);
+
+        let mut ctx = VariableContext::default();
+        ctx.environment.insert("apiToken".into(), "resolved-bearer".into());
+        let resolved = resolve_draft(&draft_with_auth, &ctx, None);
+        assert_eq!(resolved.auth.auth_type, AuthType::Bearer);
+        assert_eq!(resolved.auth.token, "resolved-bearer");
     }
 
     #[test]

@@ -10777,6 +10777,29 @@ kbd,
   margin-top: 8px;
 }
 
-
-
+.lint-modal .lint-summary {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+.lint-stat {
+  font-size: var(--fs-caption);
+  color: var(--text-muted);
+}
+.lint-stat-err {
+  color: #f87171;
+}
+.lint-list {
+  max-height: 50vh;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.lint-row {
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  padding: 8px 10px;
+  background: var(--bg-surface-elevated);
+}
 

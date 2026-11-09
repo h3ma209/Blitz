@@ -19,7 +19,9 @@ pub mod env_diff;
 pub mod environment;
 pub mod history;
 pub mod impex;
+pub mod collection_lint;
 pub mod json_lint;
+pub mod openapi_watch;
 pub mod json_query;
 pub mod mock_server;
 pub mod mcp_server;
@@ -49,7 +51,8 @@ pub use capture_proxy::{
 };
 pub use codegen::{generate_snippet, generate_snippet_resolved, snippet_languages};
 pub use collection::{
-    add_folder_under, add_request_under, ancestor_ids_for_request, batch_duplicate_across,
+    add_folder_under, add_request_under, ancestor_ids_for_request, ancestor_ids_for_tree_node,
+    batch_duplicate_across,
     batch_move_items, collapsed_except_expanded, collapsible_tree_ids, collect_all_subtree_ids,
     delete_needs_confirmation, demo_collections, duplicate_across, filter_tree_rows,
     find_request_across, flatten_collections, flatten_collections_filtered,
@@ -74,7 +77,9 @@ pub use environment::{
     import_environment_json, import_environment_texts, EnvVar,
     Environment, DEFAULT_ENV_NAMES,
 };
+pub use collection_lint::{lint_collections, lint_error_count, LintIssue, LintSeverity};
 pub use history::{push_history, HistoryEntry, HISTORY_MAX};
+pub use openapi_watch::{collection_spec_drift, mark_collection_spec_synced, spec_mtime_secs};
 pub use impex::{
     bundled_postman_collections, export_collection_v21, export_openapi3, export_request_item,
     import_collection_v21, import_curl, import_har, import_openapi3,
@@ -82,7 +87,6 @@ pub use impex::{
 };
 pub use json_lint::{beautify_json_body, lint_json_body};
 pub use json_query::{query_json, root_keys};
-#[cfg(test)]
 pub use impex::reconcile_openapi3_collection;
 pub use mock_server::{
     routes_from_collections, save_example_to_request, start_mock, MockHandle,
@@ -101,7 +105,8 @@ pub use request::{
     build_url_with_params, extract_path_param_keys, extract_url_path, extract_url_query_params,
     substitute_path_params, sync_path_params, AuthConfig, AuthExtra, AuthType, BodyMode,
     FormDataField, HttpMethod, KeyValue, OAuth2Config, OAuth2Grant, RequestDraft, RequestProtocol,
-    ResponseView, SavedExample, TestResult, TimingBreakdown, WsPreset,
+    compact_response_for_disk, ResponseView, SavedExample, TestResult, TimingBreakdown,
+    WsPreset,
 };
 pub use response_diff::{diff_bodies, normalize_body_for_diff, DiffLine, DiffStats};
 pub use sandbox::{

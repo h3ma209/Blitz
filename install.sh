@@ -10,7 +10,7 @@ if [ "$VERSION" = "latest" ]; then
   echo "⚡ Fetching latest release tag of Blitz..."
   VERSION=$(curl -fsSL -H "User-Agent: Blitz-Installer" "https://api.github.com/repos/${REPO}/releases/latest" 2>/dev/null | grep '"tag_name":' | head -1 | sed -E 's/.*"([^"]+)".*/\1/' || true)
   if [ -z "$VERSION" ]; then
-    VERSION="v0.2.5"
+    VERSION="v0.2.6"
   fi
 fi
 

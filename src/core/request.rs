@@ -804,6 +804,50 @@ pub struct ResponseView {
     pub sent_body: Option<String>,
 }
 
+/// Body bytes kept in `snapshot.json`. Full body stays in memory for the session.
+pub const PERSISTED_BODY_CAP: usize = 256 * 1024;
+
+fn cap_persisted_str(s: &str, cap: usize) -> String {
+    if s.len() <= cap {
+        return s.to_string();
+    }
+    let mut end = cap;
+    while end > 0 && !s.is_char_boundary(end) {
+        end -= 1;
+    }
+    let mut out = s[..end].to_string();
+    out.push_str("\n…[truncated on save]");
+    out
+}
+
+/// Shrink a response before it hits disk. Drops pipeline/console logs (duplicated in the live console).
+pub fn compact_response_for_disk(view: &ResponseView) -> ResponseView {
+    ResponseView {
+        status: view.status,
+        status_text: view.status_text.clone(),
+        headers: view.headers.clone(),
+        body: cap_persisted_str(&view.body, PERSISTED_BODY_CAP),
+        elapsed_ms: view.elapsed_ms,
+        error: view.error.clone(),
+        pipeline_log: Vec::new(),
+        console_messages: Vec::new(),
+        test_results: view.test_results.clone(),
+        resolved_url: view.resolved_url.clone(),
+        timing: view.timing.clone(),
+        visualizer_html: if view.visualizer_html.len() > PERSISTED_BODY_CAP {
+            String::new()
+        } else {
+            view.visualizer_html.clone()
+        },
+        sent_headers: view.sent_headers.clone(),
+        sent_body: view
+            .sent_body
+            .as_ref()
+            .filter(|b| b.len() <= 64 * 1024)
+            .cloned(),
+    }
+}
+
 impl ResponseView {
     pub fn size_bytes(&self) -> usize {
         self.body.len()
@@ -965,6 +1009,21 @@ pub fn substitute_path_params(url: &str, path_params: &[KeyValue]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn compact_response_caps_body_and_drops_logs() {
+        let mut view = ResponseView::error("nope", vec!["pipeline".into()]);
+        view.body = "x".repeat(PERSISTED_BODY_CAP + 100);
+        view.console_messages = vec!["console".into()];
+        view.sent_body = Some("y".repeat(70 * 1024));
+        let disk = compact_response_for_disk(&view);
+        assert!(disk.body.len() < view.body.len());
+        assert!(disk.body.contains("truncated on save"));
+        assert!(disk.pipeline_log.is_empty());
+        assert!(disk.console_messages.is_empty());
+        assert!(disk.sent_body.is_none());
+        assert_eq!(view.body.len(), PERSISTED_BODY_CAP + 100);
+    }
 
     #[test]
     fn test_extract_and_build_query_params() {

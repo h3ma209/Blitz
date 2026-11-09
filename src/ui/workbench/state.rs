@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::path::Path;
 use std::sync::atomic::AtomicBool;
 use std::sync::{Arc, Mutex};
+use std::time::Duration;
 use uuid::Uuid;
 
 use dioxus::prelude::*;
@@ -10,11 +11,19 @@ use crate::core::{
     collect_all_subtree_ids, ensure_default_environments, find_environment, find_request_across,
     remove_across, sync_on_save, trash_collection, AppSettings, CaptureProxyHandle, Collection,
     CollectionItem, ConsoleLine, CookieJar, Environment, HistoryEntry, MockHandle, PerfReport,
-    RequestDraft, ResponseView, TeamActivity, UpdateInfo, VariableContext, VaultStore, WsSession,
+    compact_response_for_disk, RequestDraft, ResponseView, TeamActivity, UpdateInfo,
+    VariableContext, VaultStore, WsSession,
 };
 use crate::runtime::RunnerReport;
 use crate::storage::{AppSnapshot, JsonStore};
 use crate::ui::{push_toast, ConflictState, Toast, ToastLevel};
+
+struct SavePending {
+    gen: u64,
+    cloud: bool,
+}
+
+static SAVE_PENDING: Mutex<SavePending> = Mutex::new(SavePending { gen: 0, cloud: false });
 
 pub static MOCK_HANDLE: Mutex<Option<MockHandle>> = Mutex::new(None);
 pub static WS_SESSION: Mutex<Option<WsSession>> = Mutex::new(None);
@@ -76,9 +85,9 @@ pub enum ImpexModal {
 #[derive(Clone, Copy, PartialEq)]
 pub struct WorkbenchState {
     pub draft: Signal<RequestDraft>,
-    pub response: Signal<Option<ResponseView>>,
-    pub responses: Signal<HashMap<Uuid, ResponseView>>,
-    pub prev_responses: Signal<HashMap<Uuid, ResponseView>>,
+    pub response: Signal<Option<Arc<ResponseView>>>,
+    pub responses: Signal<HashMap<Uuid, Arc<ResponseView>>>,
+    pub prev_responses: Signal<HashMap<Uuid, Arc<ResponseView>>>,
     pub sending: Signal<bool>,
     pub send_gen: Signal<u64>,
     pub send_cancel: Signal<Option<Arc<AtomicBool>>>,
@@ -123,6 +132,7 @@ pub struct WorkbenchState {
     pub ws_auto_ping: Signal<bool>,
     pub protocol_log: Signal<Vec<String>>,
     pub proxy_port: Signal<Option<u16>>,
+    pub show_lint: Signal<bool>,
     pub show_perf: Signal<bool>,
     pub perf_running: Signal<bool>,
     pub perf_report: Signal<Option<PerfReport>>,
@@ -167,9 +177,9 @@ impl WorkbenchState {
         let console_h = use_signal(|| app_settings().ui.console_height_px as f64);
         Self {
             draft: use_signal(RequestDraft::default),
-            response: use_signal(|| None::<ResponseView>),
-            responses: use_signal(HashMap::<Uuid, ResponseView>::new),
-            prev_responses: use_signal(HashMap::<Uuid, ResponseView>::new),
+            response: use_signal(|| None::<Arc<ResponseView>>),
+            responses: use_signal(HashMap::<Uuid, Arc<ResponseView>>::new),
+            prev_responses: use_signal(HashMap::<Uuid, Arc<ResponseView>>::new),
             sending: use_signal(|| false),
             send_gen: use_signal(|| 0u64),
             send_cancel: use_signal(|| None::<Arc<AtomicBool>>),
@@ -214,6 +224,7 @@ impl WorkbenchState {
             ws_auto_ping: use_signal(|| false),
             protocol_log: use_signal(Vec::<String>::new),
             proxy_port: use_signal(|| None::<u16>),
+            show_lint: use_signal(|| false),
             show_perf: use_signal(|| false),
             perf_running: use_signal(|| false),
             perf_report: use_signal(|| None::<PerfReport>),
@@ -302,7 +313,10 @@ impl WorkbenchState {
             settings,
             trash: (self.trash)(),
             open_tabs: tabs,
-            responses: (self.responses)(),
+            responses: (self.responses)()
+                .iter()
+                .map(|(id, view)| (*id, compact_response_for_disk(view)))
+                .collect(),
             show_vars: (self.show_vars)(),
             show_settings: (self.show_settings)(),
             show_runner: (self.show_runner)(),
@@ -312,38 +326,65 @@ impl WorkbenchState {
         }
     }
 
-    /// Write snapshot (+ vault) without git push — for Cloud menu / after explicit sync.
+    /// Coalesce bursts of saves. Latest state wins. Quit inside the window can drop the last edit.
     pub fn persist_local(&self) {
-        if let Ok(store) = JsonStore::open_default() {
-            let active_environment = find_environment(&(self.environments)(), (self.active_env_id)())
-                .map(|e| e.name.clone())
-                .unwrap_or_else(|| "No Environment".into());
-            let v = (self.vars)();
-            let _ = v.vault.save(store.root());
-            let settings = (self.app_settings)();
-            let snap = self.build_snapshot(settings, active_environment);
-            let _ = store.save(&snap);
-        }
+        self.schedule_save(false);
     }
 
     pub fn persist(&mut self) {
-        if let Ok(store) = JsonStore::open_default() {
+        self.schedule_save(true);
+    }
+
+    fn schedule_save(&self, with_cloud: bool) {
+        let gen = {
+            let mut pending = SAVE_PENDING.lock().unwrap_or_else(|e| e.into_inner());
+            pending.gen = pending.gen.wrapping_add(1);
+            pending.cloud |= with_cloud;
+            pending.gen
+        };
+        let mut st = *self;
+        spawn(async move {
+            tokio::time::sleep(Duration::from_millis(400)).await;
+            let do_cloud = {
+                let mut pending = SAVE_PENDING.lock().unwrap_or_else(|e| e.into_inner());
+                if pending.gen != gen {
+                    return;
+                }
+                let cloud = pending.cloud;
+                pending.cloud = false;
+                cloud
+            };
+            st.write_snapshot(do_cloud);
+        });
+    }
+
+    fn write_snapshot(&mut self, with_cloud: bool) {
+        let root = (self.data_root)();
+        let store = if !root.trim().is_empty() {
+            JsonStore::open_path(&root)
+        } else {
+            JsonStore::open_for_settings(&(self.app_settings)())
+        };
+        if let Ok(store) = store {
             let active_environment = find_environment(&(self.environments)(), (self.active_env_id)())
                 .map(|e| e.name.clone())
                 .unwrap_or_else(|| "No Environment".into());
             let v = (self.vars)();
             let _ = v.vault.save(store.root());
-            let settings = (self.app_settings)();
-            let snap = self.build_snapshot(settings.clone(), active_environment.clone());
+            let mut settings = (self.app_settings)();
+            if settings.storage_root.trim().is_empty() {
+                settings.storage_root = store.root().display().to_string();
+            }
+            let mut snap = self.build_snapshot(settings.clone(), active_environment.clone());
             match store.save(&snap) {
                 Ok(()) => {
                     let base = format!("saved · {}", store.root().display());
                     self.status_msg.set(base.clone());
-                    if settings.cloud_sync.enabled && !(self.cloud_busy)() {
+                    if with_cloud && settings.cloud_sync.enabled && !(self.cloud_busy)() {
                         let mut st = *self;
                         let root = store.root().to_path_buf();
                         let mut settings_bg = settings;
-                        let cols = (self.collections)();
+                        let cols = std::mem::take(&mut snap.collections);
                         let envs = (self.environments)();
                         st.cloud_busy.set(true);
                         spawn(async move {
@@ -363,7 +404,7 @@ impl WorkbenchState {
                             if let Ok((result, updated_settings)) = res {
                                 st.app_settings.set(updated_settings);
                                 st.status_msg.set(format!("{base} · {}", result.message));
-                                st.persist_local();
+                                st.write_snapshot(false);
                             }
                         });
                     }
@@ -389,7 +430,12 @@ impl WorkbenchState {
         self.app_settings.set(settings);
         self.trash.set(snap.trash);
         self.open_tabs.set(snap.open_tabs);
-        self.responses.set(snap.responses);
+        self.responses.set(
+            snap.responses
+                .into_iter()
+                .map(|(id, view)| (id, Arc::new(compact_response_for_disk(&view))))
+                .collect(),
+        );
         self.show_vars.set(snap.show_vars);
         self.show_settings.set(snap.show_settings);
         self.settings_tab_open.set(snap.show_settings);
@@ -410,8 +456,51 @@ impl WorkbenchState {
             }
         }
 
+        self.data_root.set(root.display().to_string());
         self.status_msg.set(format!("storage: {}", root.display()));
     }
+
+    pub fn reload_storage_root(&mut self, root: &str) {
+        let Ok(store) = JsonStore::open_path(root) else {
+            self.status_msg.set(format!("invalid storage path: {root}"));
+            return;
+        };
+        match store.load() {
+            Ok(snap) => {
+                let mut settings = snap.settings.clone();
+                if settings.storage_root.is_empty() {
+                    settings.storage_root = store.root().display().to_string();
+                }
+                self.app_settings.set(settings);
+                self.apply_snapshot(snap, store.root());
+                self.fold_epoch.set((self.fold_epoch)() + 1);
+                self.status_msg.set(format!("switched workspace: {}", store.root().display()));
+            }
+            Err(e) => self.status_msg.set(format!("load error: {e}")),
+        }
+    }
+}
+
+pub fn apply_collection_env_pin(
+    collections: &[Collection],
+    col_id: Option<Uuid>,
+    environments: &[Environment],
+    active_env_id: &mut Signal<Option<Uuid>>,
+    vars: &mut Signal<VariableContext>,
+) {
+    let Some(cid) = col_id else {
+        return;
+    };
+    let Some(col) = collections.iter().find(|c| c.id == cid) else {
+        return;
+    };
+    let Some(env_id) = col.pinned_environment_id else {
+        return;
+    };
+    active_env_id.set(Some(env_id));
+    let mut ctx = vars();
+    sync_env_vars(environments, Some(env_id), &mut ctx);
+    vars.set(ctx);
 }
 
 pub fn sync_env_vars(envs: &[Environment], id: Option<Uuid>, v: &mut VariableContext) {

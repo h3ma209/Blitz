@@ -545,6 +545,12 @@ pub struct AppSettings {
     pub ui: UiSettings,
     #[serde(default)]
     pub cloud_sync: CloudSyncSettings,
+    /// Active storage directory; empty = platform default (`dirs::data_dir()/blitz`).
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub storage_root: String,
+    /// Bookmarked storage roots (project `.blitz` dirs, etc.).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub storage_roots: Vec<String>,
 }
 
 impl AppSettings {

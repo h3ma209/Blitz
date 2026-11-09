@@ -29,7 +29,9 @@ use crate::core::protocols::{
     graphql_ws_subscribe, grpc_unary, mqtt_publish, mqtt_subscribe_once, socketio_session,
     sse_listen, ws_connect_session, WsSessionEvent,
 };
-use crate::core::request::{HttpMethod, KeyValue, RequestDraft, SavedExample};
+use crate::core::request::{
+    compact_response_for_disk, HttpMethod, KeyValue, RequestDraft, SavedExample,
+};
 use crate::core::response_diff::{diff_bodies, DiffLine};
 use crate::runtime::pipeline::{send_request_with_options, SendOptions};
 use crate::runtime::runner::{run_collection_with_config, RunnerConfig};
@@ -1206,10 +1208,13 @@ fn execute_mcp_tool(name: &str, args: &JsonValue) -> Result<String, String> {
                     &view.resolved_url,
                     Some(view.status),
                     Some(view.elapsed_ms),
+                    Some(crate::core::SavedExample::from_response("MCP capture", &view)),
                 ),
                 HISTORY_MAX,
             );
-            snap_for_save.responses.insert(req.id, view.clone());
+            snap_for_save
+                .responses
+                .insert(req.id, compact_response_for_disk(&view));
 
             // Auto-extract response vars into active/target environment
             let save_to_env = args.get("save_to_env").and_then(|s| s.as_object());
@@ -1321,6 +1326,7 @@ fn execute_mcp_tool(name: &str, args: &JsonValue) -> Result<String, String> {
                     &view.resolved_url,
                     Some(view.status),
                     Some(view.elapsed_ms),
+                    Some(crate::core::SavedExample::from_response("MCP capture", &view)),
                 ),
                 HISTORY_MAX,
             );
