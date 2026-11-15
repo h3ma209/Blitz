@@ -1923,12 +1923,13 @@ button.env-menu-row:hover,
 .tree-row {
   display: flex;
   align-items: center;
+  justify-content: flex-start;
+  width: 100%;
   gap: 4px;
   border-radius: 6px;
   min-height: 32px;
   padding-right: 4px;
   border: 1px solid transparent;
-  transition: background 120ms ease, border-color 120ms ease;
   contain: layout style;
   position: relative;
 }
@@ -1976,13 +1977,13 @@ button.env-menu-row:hover,
 .tree-row:hover .tree-guide-elbow,
 .tree-row:hover .tree-guide-arm,
 .tree-row:hover .tree-guide-vertical {
-  filter: brightness(1.4);
+  opacity: 0.9;
 }
 
 .tree-row.active .tree-guide-elbow,
 .tree-row.active .tree-guide-arm,
 .tree-row.active .tree-guide-vertical {
-  filter: brightness(1.7);
+  opacity: 1;
 }
 
 .tree-row:hover {
@@ -2010,9 +2011,10 @@ button.env-menu-row:hover,
 }
 
 .tree-main {
-  flex: 1;
+  flex: 1 1 0%;
   display: flex;
   align-items: center;
+  justify-content: flex-start;
   gap: 5px;
   min-width: 0;
   text-align: left;

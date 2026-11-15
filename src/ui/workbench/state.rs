@@ -628,3 +628,112 @@ pub fn ensure_cloud_defaults(mut st: WorkbenchState) {
         st.environments.set(envs);
     }
 }
+
+const MAX_CACHED_RESPONSES: usize = 32;
+const MAX_CACHED_PREV_RESPONSES: usize = 12;
+const IN_MEM_COMPACT_THRESHOLD: usize = 256 * 1024;
+
+/// Bound in-memory response caches so closed tabs and large payloads do not pin RAM.
+pub fn prune_response_cache(
+    responses: &mut std::collections::HashMap<Uuid, Arc<ResponseView>>,
+    prev_responses: &mut std::collections::HashMap<Uuid, Arc<ResponseView>>,
+    open_tabs: &[RequestDraft],
+    active_id: Option<Uuid>,
+) {
+    let mut pinned: std::collections::HashSet<Uuid> =
+        open_tabs.iter().map(|t| t.id).collect();
+    if let Some(id) = active_id {
+        pinned.insert(id);
+    }
+
+    // Diff snapshots are only meaningful for open/active requests.
+    prev_responses.retain(|id, _| pinned.contains(id));
+    if prev_responses.len() > MAX_CACHED_PREV_RESPONSES {
+        let drop_ids: Vec<Uuid> = prev_responses
+            .keys()
+            .copied()
+            .filter(|id| active_id != Some(*id))
+            .take(prev_responses.len() - MAX_CACHED_PREV_RESPONSES)
+            .collect();
+        for id in drop_ids {
+            prev_responses.remove(&id);
+        }
+    }
+
+    // Compact oversized payloads on non-pinned entries so metadata remains viewable without pinning multi-MB bodies.
+    for (id, view) in responses.iter_mut() {
+        if !pinned.contains(id)
+            && (view.body.len() > IN_MEM_COMPACT_THRESHOLD
+                || view.visualizer_html.len() > IN_MEM_COMPACT_THRESHOLD)
+        {
+            *view = Arc::new(compact_response_for_disk(view));
+        }
+    }
+
+    if responses.len() > MAX_CACHED_RESPONSES {
+        let drop_ids: Vec<Uuid> = responses
+            .keys()
+            .copied()
+            .filter(|id| !pinned.contains(id))
+            .take(responses.len() - MAX_CACHED_RESPONSES)
+            .collect();
+        for id in drop_ids {
+            responses.remove(&id);
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::prune_response_cache;
+    use crate::core::{RequestDraft, ResponseView};
+    use std::collections::HashMap;
+    use std::sync::Arc;
+    use uuid::Uuid;
+
+    #[test]
+    fn prune_response_cache_compacts_closed_large_bodies_and_drops_closed_diffs() {
+        let open_id = Uuid::new_v4();
+        let closed_id = Uuid::new_v4();
+        let open_tab = RequestDraft {
+            id: open_id,
+            ..RequestDraft::default()
+        };
+
+        let mut large = ResponseView::error("ok", vec!["log".into()]);
+        large.status = 200;
+        large.body = "x".repeat(512 * 1024);
+
+        let mut responses = HashMap::from([
+            (open_id, Arc::new(large.clone())),
+            (closed_id, Arc::new(large.clone())),
+        ]);
+        let mut prev_responses = HashMap::from([
+            (open_id, Arc::new(large.clone())),
+            (closed_id, Arc::new(large)),
+        ]);
+
+        prune_response_cache(&mut responses, &mut prev_responses, &[open_tab], Some(open_id));
+
+        assert_eq!(responses[&open_id].body.len(), 512 * 1024);
+        assert!(responses[&closed_id].body.len() < 512 * 1024);
+        assert!(prev_responses.contains_key(&open_id));
+        assert!(!prev_responses.contains_key(&closed_id));
+    }
+
+    #[test]
+    fn prune_response_cache_caps_closed_entries() {
+        let active_id = Uuid::new_v4();
+        let mut responses = HashMap::new();
+        let mut prev_responses = HashMap::new();
+        for _ in 0..45 {
+            responses.insert(Uuid::new_v4(), Arc::new(ResponseView::error("e", vec![])));
+        }
+        responses.insert(active_id, Arc::new(ResponseView::error("a", vec![])));
+
+        prune_response_cache(&mut responses, &mut prev_responses, &[], Some(active_id));
+
+        assert!(responses.len() <= 32);
+        assert!(responses.contains_key(&active_id));
+    }
+}

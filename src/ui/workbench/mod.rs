@@ -433,13 +433,19 @@ pub fn Workbench() -> Element {
             active_request_id.set(None);
             response.set(None);
             draft.set(RequestDraft::default());
-            open_tabs.set(tabs);
+            open_tabs.set(tabs.clone());
+            let mut resp_map = responses();
+            let mut prev_map = prev_responses();
+            state::prune_response_cache(&mut resp_map, &mut prev_map, &tabs, None);
+            responses.set(resp_map);
+            prev_responses.set(prev_map);
             let mut st = st;
             st.persist();
             status_msg.set("tab closed".into());
             return;
         }
 
+        let mut next_active = Some(cur.id);
         if closing_active {
             let next_idx = if idx < tabs.len() {
                 idx
@@ -447,6 +453,7 @@ pub fn Workbench() -> Element {
                 tabs.len() - 1
             };
             let next = tabs[next_idx].clone();
+            next_active = Some(next.id);
             draft.set(next.clone());
             active_request_id.set(Some(next.id));
             let resp_map = responses();
@@ -456,6 +463,11 @@ pub fn Workbench() -> Element {
                 response.set(None);
             }
         }
+        let mut resp_map = responses();
+        let mut prev_map = prev_responses();
+        state::prune_response_cache(&mut resp_map, &mut prev_map, &tabs, next_active);
+        responses.set(resp_map);
+        prev_responses.set(prev_map);
         open_tabs.set(tabs);
         let mut st = st;
         st.persist();
@@ -559,6 +571,11 @@ pub fn Workbench() -> Element {
                     }
                 }
             }
+            let mut resp_map = responses();
+            let mut prev_map = prev_responses();
+            state::prune_response_cache(&mut resp_map, &mut prev_map, &tabs, active_request_id());
+            responses.set(resp_map);
+            prev_responses.set(prev_map);
             open_tabs.set(tabs);
             let mut st = st;
             st.persist();
@@ -571,6 +588,11 @@ pub fn Workbench() -> Element {
         active_request_id.set(None);
         response.set(None);
         draft.set(RequestDraft::default());
+        let mut resp_map = responses();
+        let mut prev_map = prev_responses();
+        state::prune_response_cache(&mut resp_map, &mut prev_map, &[], None);
+        responses.set(resp_map);
+        prev_responses.set(prev_map);
         let mut st = st;
         st.persist();
         status_msg.set("all tabs closed".into());
@@ -1075,8 +1097,11 @@ pub fn Workbench() -> Element {
             let shared = Arc::new(view);
             response.set(Some(shared.clone()));
             let mut resp_map = responses();
+            let mut prev_map = prev_responses();
             resp_map.insert(draft_id, shared);
+            state::prune_response_cache(&mut resp_map, &mut prev_map, &open_tabs(), Some(draft_id));
             responses.set(resp_map);
+            prev_responses.set(prev_map);
             sending.set(false);
             send_cancel.set(None);
             st.persist();
@@ -1953,10 +1978,10 @@ pub fn Workbench() -> Element {
             div { class: "sidebar-slot",
                 Sidebar {
                     key: "{fold_epoch()}",
-                    collections: collections(),
+                    collections: collections,
                     active_collection_id: active_collection_id(),
                     active_request_id: if show_settings() { None } else { active_request_id() },
-                    history: history(),
+                    history: history,
                     history_collapsed: app_settings().ui.history_collapsed,
                     on_event: on_sidebar,
                 }
