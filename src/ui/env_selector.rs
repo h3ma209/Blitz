@@ -134,13 +134,13 @@ pub fn EnvSelector(
                                             if query_lower.is_empty() { "No variables in this environment." } else { "No matching variables." }
                                         }
                                     } else {
-                                        for v in vars_matching {
+                                        for (v_idx, v) in vars_matching.into_iter().enumerate() {
                                             {
                                                 let key = v.key.clone();
                                                 let eff = v.effective().to_string();
                                                 let is_copied = copied_key() == Some(key.clone());
                                                 rsx! {
-                                                    div { key: "{key}", class: "env-quicklook-row",
+                                                    div { key: "envvar-{v_idx}-{key}", class: "env-quicklook-row",
                                                         span { class: "env-quicklook-key", title: "{{{key}}}", "{{{{{key}}}}}" }
                                                         span { class: "env-quicklook-val", title: "{eff}", "{eff}" }
                                                         button {
@@ -192,13 +192,13 @@ pub fn EnvSelector(
                                         if globals_matching.is_empty() {
                                             div { class: "env-quicklook-empty", "No matching globals." }
                                         } else {
-                                            for (k, v) in globals_matching {
+                                            for (g_idx, (k, v)) in globals_matching.into_iter().enumerate() {
                                                 {
                                                     let key = k.clone();
                                                     let val = v.clone();
                                                     let is_copied = copied_key() == Some(format!("global_{key}"));
                                                     rsx! {
-                                                        div { key: "global-{key}", class: "env-quicklook-row",
+                                                        div { key: "global-{g_idx}-{key}", class: "env-quicklook-row",
                                                             span { class: "env-quicklook-key", title: "{{{key}}}", "{{{{{key}}}}}" }
                                                             span { class: "env-quicklook-val", title: "{val}", "{val}" }
                                                             button {
@@ -282,7 +282,7 @@ pub fn EnvSelector(
 
                     if !environments.is_empty() {
                         div { class: "env-menu-header", "Environments" }
-                        for env in environments.iter() {
+                        for (e_idx, env) in environments.iter().enumerate() {
                             {
                                 let id = env.id;
                                 let name = env.name.clone();
@@ -296,7 +296,7 @@ pub fn EnvSelector(
                                 };
                                 rsx! {
                                     button {
-                                        key: "{id}",
+                                        key: "{e_idx}-{id}",
                                         class: "{row_class}",
                                         title: "Select {name} ({tier})",
                                         onclick: move |_| {

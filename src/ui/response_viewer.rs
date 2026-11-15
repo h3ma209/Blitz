@@ -354,12 +354,12 @@ pub fn ResponseViewer(
                                     }
                                     if !root_pills.is_empty() && json_filter().is_empty() {
                                         div { class: "jsonpath-pills",
-                                            for key in root_pills {
+                                            for (pi, key) in root_pills.into_iter().enumerate() {
                                                 {
                                                     let k = key.clone();
                                                     rsx! {
                                                         button {
-                                                            key: "{k}",
+                                                            key: "{k}-{pi}",
                                                             class: "jsonpath-pill",
                                                             title: "Filter by .{k}",
                                                             onclick: move |_| json_filter.set(k.clone()),
@@ -538,8 +538,10 @@ pub fn ResponseViewer(
                                     "No test results. Add blitz.test(\"name\", function() {{ … }}) in Scripts."
                                 }
                             } else {
-                                for t in resp.test_results.iter() {
-                                    div { class: if t.passed { "test-pass" } else { "test-fail" },
+                                for (i, t) in resp.test_results.iter().enumerate() {
+                                    div {
+                                        key: "{t.name}-{i}",
+                                        class: if t.passed { "test-pass" } else { "test-fail" },
                                         span { if t.passed { "PASS" } else { "FAIL" } }
                                         " {t.name} — {t.message}"
                                     }
@@ -608,9 +610,9 @@ pub fn ResponseViewer(
                                                 "Previous run (none yet)"
                                             }
                                         }
-                                        for ex in examples.iter() {
+                                        for (ei, ex) in examples.iter().enumerate() {
                                             option {
-                                                key: "{ex.id}",
+                                                key: "{ex.id}-{ei}",
                                                 value: "ex:{ex.id}",
                                                 selected: diff_baseline() == DiffBaseline::Example(ex.id),
                                                 "Saved Example: {ex.name} ({ex.status})"

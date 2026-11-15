@@ -1288,13 +1288,16 @@ pub fn send_request_with_options(
         use std::io::Read;
         let mut buf = Vec::new();
         let mut reader = response.take(MAX_RESPONSE_BODY_BYTES + 1);
-        let _ = reader.read_to_end(&mut buf);
+        if let Err(e) = reader.read_to_end(&mut buf) {
+            return Ok(Err(format!("response body read failed: {e}")));
+        }
         let is_truncated = buf.len() as u64 > MAX_RESPONSE_BODY_BYTES;
         if is_truncated {
             buf.truncate(MAX_RESPONSE_BODY_BYTES as usize);
         }
-        Ok((buf, is_truncated))
-    })?;
+        Ok(Ok((buf, is_truncated)))
+    })?
+    .map_err(SendError::Http)?;
     if truncated {
         log.push(format!(
             "response: payload exceeded {} MB limit — truncated",

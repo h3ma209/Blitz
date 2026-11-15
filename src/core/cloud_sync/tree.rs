@@ -10,7 +10,7 @@ use thiserror::Error;
 use uuid::Uuid;
 
 use crate::core::collection::{Collection, CollectionItem, Folder};
-use crate::core::environment::{import_environment_json, Environment};
+use crate::core::environment::{deduplicate_environments_by_id, import_environment_json, Environment};
 use crate::core::impex::{
     export_request_item, import_collection_v21, import_request_item, ImpexError,
 };
@@ -604,6 +604,7 @@ pub fn import_workspace_tree(
         }
     }
 
+    deduplicate_environments_by_id(&mut environments);
     Ok((collections, environments))
 }
 
@@ -690,6 +691,26 @@ fn read_collection_split(dir: &Path) -> Result<Collection, CloudTreeError> {
     }
 }
 
+fn safe_child_path(root: &Path, rel: &str) -> Result<PathBuf, CloudTreeError> {
+    if rel.trim().is_empty() {
+        return Err(CloudTreeError::Msg("empty relative path".into()));
+    }
+    let rel_path = Path::new(rel);
+    for comp in rel_path.components() {
+        match comp {
+            std::path::Component::Normal(_) | std::path::Component::CurDir => {}
+            std::path::Component::ParentDir
+            | std::path::Component::RootDir
+            | std::path::Component::Prefix(_) => {
+                return Err(CloudTreeError::Msg(format!(
+                    "unsafe path escapes collection root: {rel}"
+                )));
+            }
+        }
+    }
+    Ok(root.join(rel_path))
+}
+
 fn read_order_items(col_root: &Path, item: &Value) -> Result<Vec<CollectionItem>, CloudTreeError> {
     let arr = item
         .as_array()
@@ -703,7 +724,8 @@ fn read_order_items(col_root: &Path, item: &Value) -> Result<Vec<CollectionItem>
                     .get("path")
                     .and_then(|v| v.as_str())
                     .ok_or_else(|| CloudTreeError::Msg("request missing path".into()))?;
-                let text = fs::read_to_string(col_root.join(path))?;
+                let req_path = safe_child_path(col_root, path)?;
+                let text = fs::read_to_string(req_path)?;
                 out.push(CollectionItem::Request(import_request_item(&text)?));
             }
             "folder" => {
@@ -711,7 +733,7 @@ fn read_order_items(col_root: &Path, item: &Value) -> Result<Vec<CollectionItem>
                     .get("path")
                     .and_then(|v| v.as_str())
                     .ok_or_else(|| CloudTreeError::Msg("folder missing path".into()))?;
-                let folder_dir = col_root.join(path);
+                let folder_dir = safe_child_path(col_root, path)?;
                 let mut folder = Folder::new(
                     entry
                         .get("name")

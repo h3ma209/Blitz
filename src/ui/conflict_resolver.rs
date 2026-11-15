@@ -30,7 +30,7 @@ pub fn ConflictResolver(
     let files_len = conflict.files.len();
 
     rsx! {
-        div { class: "conflict-resolver-pane", style: "display: flex; flex-direction: column; height: 100%; width: 100%; background: var(--bg-surface); overflow: hidden;",
+        div { class: "conflict-resolver-pane",
             // Header
             div { class: "col-editor-header", style: "border-bottom: var(--glass-border); padding: 12px 20px; display: flex; justify-content: space-between; align-items: center; background: var(--bg-surface-elevated);",
                 div {
@@ -88,7 +88,9 @@ pub fn ConflictResolver(
                             let file_name = file.clone();
                             rsx! {
                                 button {
+                                    key: "{file_name}-{i}",
                                     class: if is_active { "builder-tab active" } else { "builder-tab" },
+                                    r#type: "button",
                                     style: "font-size: 12px; padding: 4px 12px; border-radius: 4px;",
                                     onclick: move |_| selected_idx.set(i),
                                     "📄 {file_name}"

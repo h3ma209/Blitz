@@ -5,8 +5,9 @@ use crate::core::{
     export_environment_json, generate_static_doc_html, generate_swagger_ui_html,
     import_collection_v21, import_environment_texts, import_har, import_openapi3,
     interceptor_limits_blurb, open_browser_url, push_history, routes_from_collections,
-    start_capture_proxy, start_mock, HistoryEntry, HttpMethod, RequestDraft, UiSettings,
-    UiTheme, WorkbenchLayout, default_zoom_percent, HISTORY_MAX,
+    start_capture_proxy, start_mock, upsert_collection, upsert_environments, HistoryEntry,
+    HttpMethod, RequestDraft, UiSettings, UiTheme, WorkbenchLayout, default_zoom_percent,
+    HISTORY_MAX,
 };
 use crate::ui::env_selector::EnvSelector;
 use crate::ui::theme_selector::ThemeSelector;
@@ -116,14 +117,21 @@ pub fn TopBar(st: WorkbenchState) -> Element {
                                         };
                                         let mut cols = collections();
                                         let mut imported_n = 0usize;
+                                        let mut created_n = 0usize;
+                                        let mut updated_n = 0usize;
                                         let mut last_id = None;
                                         let mut errs = Vec::new();
                                         for path in paths {
                                             match std::fs::read_to_string(&path) {
                                                 Ok(text) => match import_collection_v21(&text) {
                                                     Ok(col) => {
-                                                        last_id = Some(col.id);
-                                                        cols.push(col);
+                                                        let stats = upsert_collection(&mut cols, col);
+                                                        last_id = Some(stats.collection_id);
+                                                        if stats.created_new {
+                                                            created_n += 1;
+                                                        } else {
+                                                            updated_n += 1;
+                                                        }
                                                         imported_n += 1;
                                                     }
                                                     Err(e) => errs.push(format!(
@@ -141,6 +149,19 @@ pub fn TopBar(st: WorkbenchState) -> Element {
                                         }
                                         if imported_n > 0 {
                                             collections.set(cols.clone());
+                                            let mut st_ref = st;
+                                            st_ref.open_tabs.with_mut(|tabs| {
+                                                for tab in tabs.iter_mut() {
+                                                    if let Some(updated) = cols.iter().find_map(|c| c.find_request(tab.id)) {
+                                                        *tab = updated.clone();
+                                                    }
+                                                }
+                                            });
+                                            if let Some(active_id) = (st.active_request_id)() {
+                                                if let Some(updated) = cols.iter().find_map(|c| c.find_request(active_id)) {
+                                                    st_ref.draft.set(updated.clone());
+                                                }
+                                            }
                                             if let Some(id) = last_id {
                                                 active_collection_id.set(Some(id));
                                                 if let Some(col) = cols.iter().find(|c| c.id == id) {
@@ -155,11 +176,11 @@ pub fn TopBar(st: WorkbenchState) -> Element {
                                         is_loading.set(false);
                                         if errs.is_empty() {
                                             status_msg.set(format!(
-                                                "imported {imported_n} Postman collection(s)"
+                                                "imported {created_n} new, updated {updated_n} existing collection(s)"
                                             ));
                                         } else {
                                             status_msg.set(format!(
-                                                "imported {imported_n}; errors: {}",
+                                                "imported {created_n} / updated {updated_n}; errors: {}",
                                                 errs.join("; ")
                                             ));
                                         }
@@ -297,17 +318,16 @@ pub fn TopBar(st: WorkbenchState) -> Element {
                                             .collect();
                                         match import_environment_texts(&texts) {
                                             Ok(envs) => {
-                                                let count = envs.len();
                                                 let mut store = environments();
-                                                for env in envs {
-                                                    let id = env.id;
-                                                    store.push(env);
-                                                    active_env_id.set(Some(id));
+                                                let (ids, created_n, updated_n) =
+                                                    upsert_environments(&mut store, envs);
+                                                if let Some(&last_id) = ids.last() {
+                                                    active_env_id.set(Some(last_id));
                                                 }
                                                 environments.set(store);
                                                 st.persist();
                                                 status_msg.set(format!(
-                                                    "imported {count} environment(s)"
+                                                    "env import: {created_n} added, {updated_n} updated"
                                                 ));
                                             }
                                             Err(e) => status_msg.set(format!("env import: {e}")),
@@ -395,17 +415,27 @@ pub fn TopBar(st: WorkbenchState) -> Element {
                                                 };
                                                 match col {
                                                     Ok(c) => {
-                                                        let id = c.id;
-                                                        let mut v = vars();
-                                                        v.collection = c.variables_map();
-                                                        vars.set(v);
                                                         let mut cols = collections();
-                                                        cols.push(c);
+                                                        let stats = upsert_collection(&mut cols, c);
+                                                        let id = stats.collection_id;
+                                                        let mut v = vars();
+                                                        if let Some(col_ref) = cols.iter().find(|x| x.id == id) {
+                                                            v.collection = col_ref.variables_map();
+                                                        }
+                                                        vars.set(v);
                                                         collections.set(cols);
                                                         active_collection_id.set(Some(id));
                                                         fold_epoch.set(fold_epoch() + 1);
                                                         st.persist();
-                                                        status_msg.set("imported HAR/OpenAPI/collection".into());
+                                                        if stats.created_new {
+                                                            status_msg.set("imported HAR/OpenAPI/collection".into());
+                                                        } else {
+                                                            status_msg.set(format!(
+                                                                "updated existing collection (+{} / ~{} reqs)",
+                                                                stats.added_requests,
+                                                                stats.updated_requests
+                                                            ));
+                                                        }
                                                     }
                                                     Err(e) => {
                                                         status_msg.set(format!("import: {e}"))

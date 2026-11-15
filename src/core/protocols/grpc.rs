@@ -41,25 +41,46 @@ pub fn grpc_unary_with_headers(
     let started = Instant::now();
     let mut log = vec![format!("grpc: unary with {} headers (Struct JSON encode)", headers.len())];
 
-    let rt = match Runtime::new() {
-        Ok(r) => r,
-        Err(e) => {
-            return GrpcUnaryResult {
-                status: "ERROR".into(),
-                grpc_status: -1,
-                grpc_message: String::new(),
-                body_json: String::new(),
-                elapsed_ms: 0,
-                error: Some(format!("runtime: {e}")),
-                log,
-            };
-        }
+    let ep = endpoint.to_string();
+    let meth = method.to_string();
+    let body = json_body.to_string();
+    let hdrs = headers.to_vec();
+    let base_log = log.clone();
+
+    let run = move || -> (Result<GrpcUnaryResult, String>, Vec<String>) {
+        let mut worker_log = base_log;
+        let rt = match Runtime::new() {
+            Ok(r) => r,
+            Err(e) => return (Err(format!("runtime: {e}")), worker_log),
+        };
+        let res = rt.block_on(unary_async(&ep, &meth, &body, &hdrs, &mut worker_log));
+        (res, worker_log)
     };
 
-    match rt.block_on(unary_async(endpoint, method, json_body, headers, &mut log)) {
+    let (res, worker_log) = if tokio::runtime::Handle::try_current().is_ok() {
+        match std::thread::spawn(run).join() {
+            Ok(pair) => pair,
+            Err(_) => {
+                log.push("grpc: worker thread panicked".into());
+                return GrpcUnaryResult {
+                    status: "ERROR".into(),
+                    grpc_status: -1,
+                    grpc_message: String::new(),
+                    body_json: String::new(),
+                    elapsed_ms: started.elapsed().as_millis(),
+                    error: Some("grpc worker thread panicked".into()),
+                    log,
+                };
+            }
+        }
+    } else {
+        run()
+    };
+
+    match res {
         Ok(mut r) => {
             r.elapsed_ms = started.elapsed().as_millis();
-            r.log = log;
+            r.log = worker_log;
             r
         }
         Err(e) => GrpcUnaryResult {
@@ -69,7 +90,7 @@ pub fn grpc_unary_with_headers(
             body_json: String::new(),
             elapsed_ms: started.elapsed().as_millis(),
             error: Some(e),
-            log,
+            log: worker_log,
         },
     }
 }

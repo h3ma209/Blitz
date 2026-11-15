@@ -161,14 +161,17 @@ pub fn ConsolePanel(
                         }
                         if !cur_search.is_empty() {
                             button {
-                                class: "console-btn-text",
+                                class: "console-btn-text console-btn-clear-search",
+                                r#type: "button",
                                 title: "Clear search query",
                                 onclick: move |_| search.set(String::new()),
                                 "✕"
                             }
                         }
                         button {
-                            class: "console-btn-text",
+                            class: if copied() { "console-btn-text console-btn-copied" } else { "console-btn-text" },
+                            r#type: "button",
+                            disabled: copy_text.is_empty(),
                             title: "Copy filtered logs to clipboard",
                             onclick: {
                                 let txt = copy_text.clone();
@@ -180,6 +183,8 @@ pub fn ConsolePanel(
                                         );
                                         spawn(async move {
                                             let _ = document::eval(&script).await;
+                                            tokio::time::sleep(std::time::Duration::from_millis(1600)).await;
+                                            copied.set(false);
                                         });
                                         copied.set(true);
                                     }
@@ -188,7 +193,9 @@ pub fn ConsolePanel(
                             if copied() { "✓ Copied" } else { "Copy" }
                         }
                         button {
-                            class: "console-btn-text",
+                            class: "console-btn-text console-btn-danger",
+                            r#type: "button",
+                            disabled: all_count == 0,
                             title: "Clear all logs",
                             onclick: move |_| on_clear.call(()),
                             "Clear"

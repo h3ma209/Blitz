@@ -1,16 +1,231 @@
+use std::sync::Arc;
 use std::time::Duration;
 
 use dioxus::prelude::*;
 
 use crate::core::{
-    graphql_ws_subscribe_with_headers, grpc_reflection_list, mcp_call_tool, mcp_list_tools,
-    mqtt_publish, mqtt_subscribe_once, socketio_session, split_mcp_args, sse_listen,
-    ws_connect_session_with_headers, MqttActionResult,
+    build_url_with_params, graphql_ws_subscribe_with_headers, grpc_reflection_list,
+    mcp_call_tool, mcp_list_tools, mqtt_publish, mqtt_subscribe_once, socketio_session,
+    split_mcp_args, sse_stream_with_options, substitute_path_params,
+    ws_connect_session_with_headers, BodyMode, HttpMethod, MqttActionResult, ResponseView,
+    TimingBreakdown,
 };
 use crate::ui::workbench::state::{WorkbenchState, WS_SESSION};
 
+fn parse_sse_action_params(action: &str) -> Option<(usize, u64)> {
+    if action == "sse_listen" {
+        return Some((40, 20_000));
+    }
+    let rest = action.strip_prefix("sse_listen:")?;
+    let mut parts = rest.split(':');
+    let max_events = parts
+        .next()
+        .and_then(|s| s.parse::<usize>().ok())
+        .unwrap_or(40)
+        .clamp(1, 500);
+    let timeout_ms = parts
+        .next()
+        .and_then(|s| s.parse::<u64>().ok())
+        .unwrap_or(20_000)
+        .clamp(1_000, 300_000);
+    Some((max_events, timeout_ms))
+}
+
 pub fn run_protocol_action(mut st: WorkbenchState, action: String) {
     let req = (st.draft)();
+    if let Some((max_events, timeout_ms)) = parse_sse_action_params(&action) {
+        st.sending.set(true);
+        let vars = st.vars.peek();
+        let resolved_url = vars.resolve_string(&req.url);
+        let resolved_url = substitute_path_params(&resolved_url, &req.path_params);
+        let url = build_url_with_params(&resolved_url, &req.params);
+        let method_str = req.method.as_str().to_string();
+        let body_opt = if req.method != HttpMethod::Get
+            && req.method != HttpMethod::Head
+            && req.body_mode == BodyMode::Raw
+        {
+            let resolved_body = vars.resolve_string(&req.body);
+            if resolved_body.trim().is_empty() {
+                None
+            } else {
+                Some(resolved_body)
+            }
+        } else {
+            None
+        };
+        st.log_network(format!(
+            "🌊 [SSE] Connecting ({method_str}) to {url} (max {max_events} events, {}s timeout)",
+            timeout_ms / 1_000
+        ));
+        let mut headers: Vec<(String, String)> = req
+            .headers
+            .iter()
+            .filter(|h| {
+                h.enabled
+                    && !h.key.trim().is_empty()
+                    && !h.value.trim().eq_ignore_ascii_case("<calculated at runtime>")
+            })
+            .map(|h| (vars.resolve_string(&h.key), vars.resolve_string(&h.value)))
+            .collect();
+        match &req.auth.auth_type {
+            crate::core::AuthType::Bearer => {
+                let token = vars.resolve_string(&req.auth.token);
+                if !token.is_empty()
+                    && !headers
+                        .iter()
+                        .any(|(k, _)| k.eq_ignore_ascii_case("authorization"))
+                {
+                    headers.push(("Authorization".into(), format!("Bearer {token}")));
+                }
+            }
+            crate::core::AuthType::ApiKey => {
+                let key = vars.resolve_string(&req.auth.api_key_header);
+                let val = vars.resolve_string(&req.auth.token);
+                let hdr_name = if key.trim().is_empty() {
+                    "X-Api-Key".to_string()
+                } else {
+                    key
+                };
+                if !val.is_empty()
+                    && !headers
+                        .iter()
+                        .any(|(k, _)| k.eq_ignore_ascii_case(&hdr_name))
+                {
+                    headers.push((hdr_name, val));
+                }
+            }
+            _ => {}
+        }
+        let req_id = req.id;
+        let url_bg = url.clone();
+        let method_bg = method_str.clone();
+        let body_bg = body_opt.clone();
+        let headers_bg = headers.clone();
+        spawn(async move {
+            let result = tokio::task::spawn_blocking(move || {
+                sse_stream_with_options(
+                    &method_bg,
+                    &url_bg,
+                    &headers_bg,
+                    body_bg.as_deref(),
+                    max_events,
+                    timeout_ms,
+                )
+            })
+            .await;
+            match result {
+                Ok(Ok(stream_res)) => {
+                    st.log_network(format!(
+                        "🌊 [SSE] {} {} -> HTTP {} ({} events in {} ms)",
+                        method_str,
+                        url,
+                        stream_res.status,
+                        stream_res.events.len(),
+                        stream_res.elapsed_ms
+                    ));
+                    if let Some(ref w) = stream_res.warning {
+                        st.log_warn(format!("🌊 [SSE] {w}"));
+                    }
+                    if st.app_settings.peek().ui.console_log_error_payloads {
+                        let mut sent = format!("─── SSE Connection Sent ───\n{method_str} {url}");
+                        if !headers.is_empty() {
+                            sent.push_str("\nHeaders:");
+                            for (k, v) in &headers {
+                                sent.push_str(&format!("\n  {k}: {v}"));
+                            }
+                        }
+                        if let Some(ref b) = body_opt {
+                            sent.push_str(&format!("\nBody:\n{b}"));
+                        }
+                        st.log_network(sent);
+                    }
+                    let mut structured_log = Vec::with_capacity(stream_res.events.len() + 1);
+                    let meta_json = serde_json::json!({
+                        "status": stream_res.status,
+                        "status_text": stream_res.status_text,
+                        "elapsed_ms": stream_res.elapsed_ms,
+                        "ttfb_ms": stream_res.ttfb_ms,
+                        "count": stream_res.events.len(),
+                        "warning": stream_res.warning,
+                        "method": method_str,
+                        "url": url,
+                    });
+                    structured_log.push(format!("SSE_META:{meta_json}"));
+                    let mut reconstructed = String::new();
+                    for ev in &stream_res.events {
+                        let ev_json = serde_json::json!({
+                            "index": ev.index,
+                            "event": ev.event,
+                            "id": ev.id,
+                            "elapsed_ms": ev.elapsed_ms,
+                            "data": ev.data,
+                        });
+                        structured_log.push(format!("SSE_EVENT:{ev_json}"));
+                        if !reconstructed.is_empty() {
+                            reconstructed.push('\n');
+                        }
+                        if !ev.id.is_empty() {
+                            reconstructed.push_str(&format!("id: {}\n", ev.id));
+                        }
+                        reconstructed.push_str(&format!("event: {}\n", ev.event));
+                        for line in ev.data.lines() {
+                            reconstructed.push_str(&format!("data: {line}\n"));
+                        }
+                    }
+                    let resp_view = Arc::new(ResponseView {
+                        status: stream_res.status,
+                        status_text: stream_res.status_text,
+                        headers: stream_res.response_headers,
+                        body: reconstructed,
+                        elapsed_ms: stream_res.elapsed_ms,
+                        error: None,
+                        pipeline_log: stream_res.log,
+                        console_messages: Vec::new(),
+                        test_results: Vec::new(),
+                        resolved_url: url,
+                        timing: TimingBreakdown {
+                            ttfb_ms: stream_res.ttfb_ms.unwrap_or(0),
+                            download_ms: stream_res
+                                .elapsed_ms
+                                .saturating_sub(stream_res.ttfb_ms.unwrap_or(0)),
+                            ..Default::default()
+                        },
+                        visualizer_html: String::new(),
+                        sent_headers: headers,
+                        sent_body: body_opt,
+                    });
+                    st.response.set(Some(resp_view.clone()));
+                    st.responses.write().insert(req_id, resp_view);
+                    st.protocol_log.set(structured_log);
+                }
+                Ok(Err(e)) => {
+                    st.log_error(format!("🌊 [SSE] Error: {e}"));
+                    if st.app_settings.peek().ui.console_log_error_payloads {
+                        let mut sent = format!("─── SSE Connection Sent ───\n{method_str} {url}");
+                        if !headers.is_empty() {
+                            sent.push_str("\nHeaders:");
+                            for (k, v) in &headers {
+                                sent.push_str(&format!("\n  {k}: {v}"));
+                            }
+                        }
+                        if let Some(ref b) = body_opt {
+                            sent.push_str(&format!("\nBody:\n{b}"));
+                        }
+                        st.log_network(sent);
+                        st.log_error(format!("─── Received on Error ───\nError: {e}"));
+                    }
+                    let err_json = serde_json::json!({ "error": e, "method": method_str, "url": url });
+                    st.protocol_log.set(vec![format!("SSE_ERR:{err_json}")]);
+                }
+                Err(e) => {
+                    st.log_error(format!("🌊 [SSE] Join error: {e}"));
+                    st.protocol_log.set(vec![format!("SSE_ERR:{}", serde_json::json!({ "error": format!("join: {e}") }))]);
+                }
+            }
+            st.sending.set(false);
+        });
+        return;
+    }
     match action.as_str() {
         "ws_connect" => {
             if let Ok(mut g) = WS_SESSION.lock() {
@@ -94,8 +309,12 @@ pub fn run_protocol_action(mut st: WorkbenchState, action: String) {
                                     crate::core::WsSessionEvent::Error(e) => format!("! Error: {e}"),
                                 })
                                 .collect();
-                            st.protocol_log.set(lines);
-                            st.ws_timeline.set(timeline);
+                            if *st.protocol_log.peek() != lines {
+                                st.protocol_log.set(lines);
+                            }
+                            if *st.ws_timeline.peek() != timeline {
+                                st.ws_timeline.set(timeline);
+                            }
 
                             // Auto-ping if enabled every 15s (100 * 150ms)
                             if (st.ws_auto_ping)() {
@@ -371,81 +590,6 @@ pub fn run_protocol_action(mut st: WorkbenchState, action: String) {
                     }
                     Err(e) => {
                         st.log_error(format!("⚡ [Socket.IO] Join error: {e}"));
-                        st.protocol_log.set(vec![format!("join: {e}")]);
-                    }
-                }
-                st.sending.set(false);
-            });
-        }
-        "sse_listen" => {
-            st.sending.set(true);
-            let vars = st.vars.peek();
-            let url = vars.resolve_string(&req.url);
-            st.log_network(format!("🌊 [SSE] Connecting to {url}"));
-            let mut headers: Vec<(String, String)> = req
-                .headers
-                .iter()
-                .filter(|h| {
-                    h.enabled
-                        && !h.key.trim().is_empty()
-                        && !h.value.trim().eq_ignore_ascii_case("<calculated at runtime>")
-                })
-                .map(|h| (vars.resolve_string(&h.key), vars.resolve_string(&h.value)))
-                .collect();
-            match &req.auth.auth_type {
-                crate::core::AuthType::Bearer => {
-                    let token = vars.resolve_string(&req.auth.token);
-                    if !token.is_empty() {
-                        headers.push(("Authorization".into(), format!("Bearer {token}")));
-                    }
-                }
-                crate::core::AuthType::ApiKey => {
-                    let key = vars.resolve_string(&req.auth.api_key_header);
-                    let val = vars.resolve_string(&req.auth.token);
-                    if !key.is_empty() && !val.is_empty() {
-                        headers.push((key, val));
-                    }
-                }
-                _ => {}
-            }
-            let url_bg = url.clone();
-            let headers_bg = headers.clone();
-            spawn(async move {
-                let result =
-                    tokio::task::spawn_blocking(move || sse_listen(&url_bg, &headers_bg, 20, 15_000))
-                        .await;
-                match result {
-                    Ok(Ok((lines, _))) => {
-                        st.log_network(format!("🌊 [SSE] Received {} events", lines.len()));
-                        if st.app_settings.peek().ui.console_log_error_payloads {
-                            let mut sent = format!("─── SSE Connection Sent ───\nURL: {url}");
-                            if !headers.is_empty() {
-                                sent.push_str("\nHeaders:");
-                                for (k, v) in &headers {
-                                    sent.push_str(&format!("\n  {k}: {v}"));
-                                }
-                            }
-                            st.log_network(sent);
-                        }
-                        st.protocol_log.set(lines);
-                    }
-                    Ok(Err(e)) => {
-                        st.log_error(format!("🌊 [SSE] Error: {e}"));
-                        if st.app_settings.peek().ui.console_log_error_payloads {
-                            let mut sent = format!("─── SSE Connection Sent ───\nURL: {url}");
-                            if !headers.is_empty() {
-                                sent.push_str("\nHeaders:");
-                                for (k, v) in &headers {
-                                    sent.push_str(&format!("\n  {k}: {v}"));
-                                }
-                            }
-                            st.log_network(sent);
-                            st.log_error(format!("─── Received on Error ───\nError: {e}"));
-                        }
-                        st.protocol_log.set(vec![e]);
-                    }
-                    Err(e) => {
-                        st.log_error(format!("🌊 [SSE] Join error: {e}"));
                         st.protocol_log.set(vec![format!("join: {e}")]);
                     }
                 }

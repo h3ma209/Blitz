@@ -115,6 +115,88 @@ pub fn ensure_default_environments(environments: &mut Vec<Environment>) -> bool 
     changed
 }
 
+fn merge_env_into(existing: &mut Environment, incoming: Environment) {
+    if existing.name.trim().is_empty() && !incoming.name.trim().is_empty() {
+        existing.name = incoming.name;
+    }
+    for iv in incoming.values {
+        if iv.key.trim().is_empty() {
+            continue;
+        }
+        if let Some(ev) = existing
+            .values
+            .iter_mut()
+            .find(|v| v.key.trim() == iv.key.trim())
+        {
+            ev.initial_value = iv.initial_value;
+            if !iv.current_value.is_empty() || ev.current_value.is_empty() {
+                ev.current_value = iv.current_value;
+            }
+            ev.enabled = iv.enabled;
+        } else {
+            existing.values.push(iv);
+        }
+    }
+}
+
+/// Collapse duplicate environment entries sharing the same UUID by merging variables in place.
+/// Returns the number of duplicate entries removed.
+pub fn deduplicate_environments_by_id(envs: &mut Vec<Environment>) -> usize {
+    let original_len = envs.len();
+    let mut out: Vec<Environment> = Vec::with_capacity(original_len);
+    for env in envs.drain(..) {
+        if let Some(existing) = out.iter_mut().find(|e| e.id == env.id) {
+            merge_env_into(existing, env);
+        } else {
+            out.push(env);
+        }
+    }
+    *envs = out;
+    original_len.saturating_sub(envs.len())
+}
+
+/// Upsert imported environments into `store` by matching UUID or case-insensitive name.
+/// Updates existing variables in place (preserving local non-empty `current_value` if incoming
+/// `current_value` is empty) instead of duplicating environments.
+pub fn upsert_environments(
+    store: &mut Vec<Environment>,
+    incoming: Vec<Environment>,
+) -> (Vec<Uuid>, usize, usize) {
+    let mut ids = Vec::with_capacity(incoming.len());
+    let mut created = 0usize;
+    let mut updated = 0usize;
+
+    for inc in incoming {
+        let pos = store
+            .iter()
+            .position(|e| e.id == inc.id)
+            .or_else(|| {
+                let name = inc.name.trim();
+                if name.is_empty() {
+                    None
+                } else {
+                    store
+                        .iter()
+                        .position(|e| e.name.trim().eq_ignore_ascii_case(name))
+                }
+            });
+
+        if let Some(idx) = pos {
+            let existing = &mut store[idx];
+            merge_env_into(existing, inc);
+            ids.push(existing.id);
+            updated += 1;
+        } else {
+            let id = inc.id;
+            store.push(inc);
+            ids.push(id);
+            created += 1;
+        }
+    }
+
+    (ids, created, updated)
+}
+
 pub fn find_environment(
     environments: &[Environment],
     id: Option<Uuid>,
@@ -282,5 +364,54 @@ mod tests {
         let json = export_environment_json(&env).unwrap();
         let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
         assert_eq!(parsed["values"][0]["value"], "secret_123");
+    }
+
+    #[test]
+    fn upsert_environments_updates_matching_without_duplicating() {
+        let mut store = vec![Environment::new("Production")];
+        store[0].values.push(EnvVar::new("baseUrl", "https://old.api"));
+        store[0].values.push(EnvVar {
+            key: "secret".into(),
+            initial_value: "init".into(),
+            current_value: "local-override".into(),
+            enabled: true,
+        });
+
+        let mut inc = Environment::new("production");
+        inc.values.push(EnvVar::new("baseUrl", "https://new.api"));
+        inc.values.push(EnvVar::new("secret", ""));
+        inc.values.push(EnvVar::new("apiKey", "k-1"));
+
+        let (ids, created, updated) = upsert_environments(&mut store, vec![inc]);
+        assert_eq!(store.len(), 1, "must not duplicate env");
+        assert_eq!(created, 0);
+        assert_eq!(updated, 1);
+        assert_eq!(ids, vec![store[0].id]);
+        assert_eq!(store[0].values.iter().find(|v| v.key == "baseUrl").unwrap().current_value, "https://new.api");
+        assert_eq!(store[0].values.iter().find(|v| v.key == "secret").unwrap().current_value, "local-override");
+        assert_eq!(store[0].values.iter().find(|v| v.key == "apiKey").unwrap().current_value, "k-1");
+    }
+
+    #[test]
+    fn deduplicate_environments_by_id_merges_and_collapses() {
+        let shared = Uuid::new_v4();
+        let mut a = Environment::new("Cloud API");
+        a.id = shared;
+        a.values.push(EnvVar::new("token", "local"));
+
+        let mut b = Environment::new("Cloud API");
+        b.id = shared;
+        b.values.push(EnvVar::new("token", ""));
+        b.values.push(EnvVar::new("baseUrl", "https://api.example.com"));
+
+        let mut list = vec![a, b, Environment::new("Other")];
+        let removed = deduplicate_environments_by_id(&mut list);
+        assert_eq!(removed, 1);
+        assert_eq!(list.len(), 2);
+        assert_eq!(list[0].values.len(), 2);
+        assert_eq!(
+            list[0].values.iter().find(|v| v.key == "token").unwrap().current_value,
+            "local"
+        );
     }
 }

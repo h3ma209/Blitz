@@ -118,7 +118,7 @@ pub fn ensure_clone(remote: &str, path: &Path) -> Result<(), CloudGitError> {
         .ok_or_else(|| CloudGitError::Cmd("invalid clone path".into()))?;
     // Clone into parent/name
     let output = Command::new("git")
-        .args(["clone", remote, name])
+        .args(["clone", "--", remote, name])
         .current_dir(parent)
         .output()
         .map_err(|e| {

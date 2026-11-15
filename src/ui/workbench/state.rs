@@ -28,6 +28,30 @@ static SAVE_PENDING: Mutex<SavePending> = Mutex::new(SavePending { gen: 0, cloud
 pub static MOCK_HANDLE: Mutex<Option<MockHandle>> = Mutex::new(None);
 pub static WS_SESSION: Mutex<Option<WsSession>> = Mutex::new(None);
 pub static PROXY_HANDLE: Mutex<Option<CaptureProxyHandle>> = Mutex::new(None);
+static GUI_COLLECTIONS_MTIME: Mutex<Option<(std::path::PathBuf, u128)>> = Mutex::new(None);
+
+pub(crate) fn record_gui_collections_mtime(root: &Path) {
+    let col_path = root.join("collections.json");
+    if let Some(mtime) = JsonStore::file_mtime_nanos(&col_path) {
+        if let Ok(mut guard) = GUI_COLLECTIONS_MTIME.lock() {
+            *guard = Some((col_path, mtime));
+        }
+    }
+}
+
+pub(crate) fn external_collections_mtime_changed(root: &Path) -> bool {
+    let col_path = root.join("collections.json");
+    let Some(disk_mtime) = JsonStore::file_mtime_nanos(&col_path) else {
+        return false;
+    };
+    let Ok(guard) = GUI_COLLECTIONS_MTIME.lock() else {
+        return false;
+    };
+    match &*guard {
+        Some((p, seen)) if p == &col_path => *seen != disk_mtime,
+        Some(_) | None => true,
+    }
+}
 
 /// Vertical pane drag state — handled on `.workbench`, never as bare `.app-shell` grid children.
 #[derive(Clone, Copy, PartialEq)]
@@ -378,6 +402,7 @@ impl WorkbenchState {
             let mut snap = self.build_snapshot(settings.clone(), active_environment.clone());
             match store.save(&snap) {
                 Ok(()) => {
+                    record_gui_collections_mtime(store.root());
                     let base = format!("saved · {}", store.root().display());
                     self.status_msg.set(base.clone());
                     if with_cloud && settings.cloud_sync.enabled && !(self.cloud_busy)() {
@@ -457,6 +482,7 @@ impl WorkbenchState {
         }
 
         self.data_root.set(root.display().to_string());
+        record_gui_collections_mtime(root);
         self.status_msg.set(format!("storage: {}", root.display()));
     }
 
@@ -465,14 +491,26 @@ impl WorkbenchState {
             self.status_msg.set(format!("invalid storage path: {root}"));
             return;
         };
+        let keep_settings = (self.show_settings)();
+        let keep_settings_tab = (self.settings_tab_open)();
+        let prev_bookmarks = (self.app_settings)().storage_roots;
         match store.load() {
             Ok(snap) => {
-                let mut settings = snap.settings.clone();
-                if settings.storage_root.is_empty() {
-                    settings.storage_root = store.root().display().to_string();
-                }
-                self.app_settings.set(settings);
                 self.apply_snapshot(snap, store.root());
+                let mut merged = (self.app_settings)();
+                merged.storage_root = store.root().display().to_string();
+                for path in prev_bookmarks {
+                    if !merged.storage_roots.iter().any(|p| p == &path) {
+                        merged.storage_roots.push(path);
+                    }
+                }
+                self.app_settings.set(merged);
+                if keep_settings {
+                    self.show_settings.set(true);
+                }
+                if keep_settings_tab {
+                    self.settings_tab_open.set(true);
+                }
                 self.fold_epoch.set((self.fold_epoch)() + 1);
                 self.status_msg.set(format!("switched workspace: {}", store.root().display()));
             }

@@ -122,8 +122,30 @@ impl JsonStore {
         self.root.join("responses.json")
     }
 
-    fn collections_path(&self) -> PathBuf {
+    pub fn collections_path(&self) -> PathBuf {
         self.root.join("collections.json")
+    }
+
+    pub fn load_collections_from_disk(
+        &self,
+    ) -> Result<Option<Vec<CollectionCompat>>, StorageError> {
+        let collections_path = self.collections_path();
+        if !collections_path.exists() {
+            return Ok(None);
+        }
+        let raw = fs::read_to_string(&collections_path)?;
+        let cols: Vec<CollectionCompat> = serde_json::from_str(&raw)?;
+        Ok(Some(cols))
+    }
+
+    pub fn file_mtime_nanos(path: &Path) -> Option<u128> {
+        fs::metadata(path)
+            .ok()?
+            .modified()
+            .ok()?
+            .duration_since(std::time::UNIX_EPOCH)
+            .ok()
+            .map(|d| d.as_nanos())
     }
 
     /// Write every file to a temp, then replace the destinations. If a replace fails,
@@ -223,14 +245,20 @@ fn restore_backups(backups: &[(PathBuf, PathBuf)]) {
         // Side file wins. Missing file keeps collections embedded in older snapshots.
         let collections_path = self.collections_path();
         if collections_path.exists() {
-            if let Ok(cols) = fs::read_to_string(&collections_path).and_then(|text| {
-                serde_json::from_str(&text)
-                    .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))
-            }) {
-                snap.collections = cols;
+            let col_text = fs::read_to_string(&collections_path)?;
+            match serde_json::from_str::<Vec<CollectionCompat>>(&col_text) {
+                Ok(cols) => snap.collections = cols,
+                Err(e) => {
+                    let backup_path = self.root.join(format!(
+                        "collections.json.corrupt.{}",
+                        chrono::Utc::now().timestamp()
+                    ));
+                    let _ = fs::copy(&collections_path, &backup_path);
+                    return Err(StorageError::Json(e));
+                }
             }
         }
-        if snap.collections.is_empty() {
+        if !collections_path.exists() && snap.collections.is_empty() {
             snap.collections = bundled_postman_collections();
         }
 
@@ -257,8 +285,13 @@ fn restore_backups(backups: &[(PathBuf, PathBuf)]) {
                 }
             }
         } else {
+            crate::core::deduplicate_environments_by_id(&mut snap.environments);
             // Always keep Local / Development / Production present (don't wipe others).
             let _ = ensure_default_environments(&mut snap.environments);
+        }
+        {
+            let mut seen_tabs = std::collections::HashSet::new();
+            snap.open_tabs.retain(|t| seen_tabs.insert(t.id));
         }
         if snap.active_environment_id.is_none() {
             if !snap.active_environment.is_empty() {
@@ -510,6 +543,25 @@ mod tests {
         let has_corrupt_backup = entries
             .filter_map(|e| e.ok())
             .any(|e| e.file_name().to_string_lossy().starts_with("snapshot.json.corrupt."));
+        assert!(has_corrupt_backup);
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn corrupt_collections_creates_backup_and_returns_error() {
+        let root = temp_root();
+        let store = JsonStore::open(&root).unwrap();
+        store.save(&JsonStore::default_snapshot()).unwrap();
+        let cols_path = store.collections_path();
+        fs::write(&cols_path, "[{ broken collections json").unwrap();
+
+        let load_res = store.load();
+        assert!(load_res.is_err());
+
+        let has_corrupt_backup = fs::read_dir(&root)
+            .unwrap()
+            .filter_map(|e| e.ok())
+            .any(|e| e.file_name().to_string_lossy().starts_with("collections.json.corrupt."));
         assert!(has_corrupt_backup);
         let _ = fs::remove_dir_all(&root);
     }

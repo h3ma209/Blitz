@@ -305,17 +305,18 @@ pub fn MultilineCodeField(
     let mut last_sent = use_signal(|| value.clone());
     let mut history = use_signal(|| TextHistory::new(&value));
 
-    if value != last_sent() {
-        let prev = current_val();
-        if prev != value {
-            let len = prev.len();
-            history.write().push_explicit_checkpoint(&prev, len);
+    use_effect(use_reactive((&value,), move |(next_val,)| {
+        if next_val != last_sent() {
+            let prev = current_val();
+            if prev != next_val {
+                let len = prev.len();
+                history.write().push_explicit_checkpoint(&prev, len);
+            }
+            current_val.set(next_val.clone());
+            last_sent.set(next_val);
         }
-        current_val.set(value.clone());
-        last_sent.set(value.clone());
-    }
+    }));
 
-    let value_for_fallback = current_val();
     let rows_attr = rows.unwrap_or("");
     let field_id = use_signal(|| format!("np-code-{}", uuid::Uuid::new_v4()));
     let mut var_menu = use_signal(|| None::<VarSuggestMenu>);
@@ -492,7 +493,7 @@ pub fn MultilineCodeField(
                                 let start = m.replace_start;
                                 let snippet = snippet.clone();
                                 let id = field_id();
-                                let value = value_for_fallback.clone();
+                                let value = current_val();
                                 spawn(async move {
                                     let caret = read_textarea_caret(&id).await;
                                     history.write().push_explicit_checkpoint(&value, caret);
@@ -599,9 +600,9 @@ pub fn MultilineCodeField(
                     return;
                 }
                 evt.prevent_default();
-                let fallback = value_for_fallback.clone();
                 let id = field_id();
                 let cur = current_val();
+                let fallback = cur.clone();
                 spawn(async move {
                     let caret = read_textarea_caret(&id).await;
                     history.write().push_explicit_checkpoint(&cur, caret);
@@ -726,12 +727,13 @@ pub fn MultilineCodeField(
                         onmousedown: move |evt| evt.prevent_default(),
                         for (idx, (label, _snippet)) in menu.items.iter().enumerate() {
                             button {
+                                key: "{label}-{idx}",
                                 class: if idx == menu.selected { "var-suggest-item active" } else { "var-suggest-item" },
                                 r#type: "button",
                                 onclick: {
                                     let snippet = menu.items[idx].1.clone();
                                     let start = menu.replace_start;
-                                    let value = value.clone();
+                                    let value = current_val();
                                     move |_| {
                                         let id = field_id();
                                         let value = value.clone();

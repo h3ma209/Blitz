@@ -27,7 +27,7 @@ pub fn AssertionsEditor(
             }
             for (i, a) in assertions.iter().enumerate() {
                 AssertionRow {
-                    key: "{a.id}",
+                    key: "{a.id}-{i}",
                     assertion: a.clone(),
                     on_change: {
                         let list = assertions.clone();

@@ -50,6 +50,16 @@ pub fn import_collection_v21(text: &str) -> Result<Collection, ImpexError> {
     let items = import_items(&items_val, &col_headers, None)?;
 
     let mut col = Collection::new(name);
+    if let Some(id_str) = root
+        .pointer("/info/_postman_id")
+        .or_else(|| root.pointer("/info/_blitz_id"))
+        .or_else(|| root.pointer("/info/id"))
+        .and_then(|v| v.as_str())
+    {
+        if let Ok(u) = Uuid::parse_str(id_str) {
+            col.id = u;
+        }
+    }
     col.description = description;
     col.items = items;
     col.auth = root
@@ -97,17 +107,53 @@ fn extract_headers(val: Option<&Value>) -> Vec<KeyValue> {
     if let Some(arr) = val.as_array() {
         arr.iter()
             .filter_map(|h| {
-                let key = h.get("key").and_then(|k| k.as_str())?.to_string();
+                if let Some(line) = h.as_str() {
+                    let line = line.trim();
+                    let (k, v) = line.split_once(':')?;
+                    let key = k.trim();
+                    if key.is_empty() {
+                        return None;
+                    }
+                    return Some(KeyValue {
+                        key: key.trim_start_matches("//").trim().to_string(),
+                        value: v.trim().to_string(),
+                        enabled: !key.starts_with("//"),
+                    });
+                }
+                let key = h
+                    .get("key")
+                    .or_else(|| h.get("name"))
+                    .and_then(|k| k.as_str())?
+                    .trim()
+                    .to_string();
                 if key.is_empty() {
                     return None;
                 }
-                let value = h.get("value").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                let value = match h.get("value") {
+                    Some(Value::String(s)) => s.clone(),
+                    Some(Value::Number(n)) => n.to_string(),
+                    Some(Value::Bool(b)) => b.to_string(),
+                    _ => String::new(),
+                };
                 let disabled = h.get("disabled").and_then(|v| v.as_bool()).unwrap_or(false);
                 Some(KeyValue {
                     key,
                     value,
                     enabled: !disabled,
                 })
+            })
+            .collect()
+    } else if let Some(obj) = val.as_object() {
+        obj.iter()
+            .filter(|(k, _)| !k.trim().is_empty())
+            .map(|(k, v)| {
+                let value = match v {
+                    Value::String(s) => s.clone(),
+                    Value::Number(n) => n.to_string(),
+                    Value::Bool(b) => b.to_string(),
+                    _ => String::new(),
+                };
+                KeyValue::new(k.trim(), value)
             })
             .collect()
     } else if let Some(s) = val.as_str() {
@@ -118,10 +164,11 @@ fn extract_headers(val: Option<&Value>) -> Vec<KeyValue> {
                     return None;
                 }
                 let (k, v) = line.split_once(':')?;
+                let key = k.trim();
                 Some(KeyValue {
-                    key: k.trim().to_string(),
+                    key: key.trim_start_matches("//").trim().to_string(),
                     value: v.trim().to_string(),
-                    enabled: !k.trim().starts_with("//"),
+                    enabled: !key.starts_with("//"),
                 })
             })
             .collect()
@@ -1335,6 +1382,222 @@ pub fn import_har(text: &str) -> Result<Collection, ImpexError> {
     Ok(col)
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UpsertCollectionResult {
+    pub collection_id: Uuid,
+    pub created_new: bool,
+    pub added_requests: usize,
+    pub updated_requests: usize,
+    pub added_folders: usize,
+    pub updated_folders: usize,
+}
+
+fn normalize_url_key(url: &str) -> String {
+    let no_query = url.split('?').next().unwrap_or(url);
+    no_query.trim().trim_end_matches('/').to_ascii_lowercase()
+}
+
+fn upsert_key_values(existing: &mut Vec<KeyValue>, incoming: &[KeyValue]) {
+    for inc in incoming {
+        let key = inc.key.trim();
+        if key.is_empty() {
+            continue;
+        }
+        if let Some(cur) = existing
+            .iter_mut()
+            .find(|e| e.key.trim().eq_ignore_ascii_case(key))
+        {
+            cur.value = inc.value.clone();
+            cur.enabled = inc.enabled;
+        } else {
+            let insert_pos = if existing.last().map(|r| r.key.is_empty()).unwrap_or(false) {
+                existing.len() - 1
+            } else {
+                existing.len()
+            };
+            existing.insert(insert_pos, inc.clone());
+        }
+    }
+}
+
+fn merge_request_in_place(existing: &mut RequestDraft, incoming: RequestDraft) {
+    let keep_id = existing.id;
+    let keep_sort = existing.sort_key;
+    let existing_ws_presets = std::mem::take(&mut existing.ws_presets);
+    *existing = incoming;
+    existing.id = keep_id;
+    existing.sort_key = keep_sort;
+    if existing.ws_presets.is_empty() {
+        existing.ws_presets = existing_ws_presets;
+    }
+}
+
+fn find_matching_request_idx(items: &[CollectionItem], inc: &RequestDraft) -> Option<usize> {
+    if let Some(pos) = items
+        .iter()
+        .position(|i| matches!(i, CollectionItem::Request(r) if r.id == inc.id))
+    {
+        return Some(pos);
+    }
+    let inc_url = normalize_url_key(&inc.url);
+    if !inc_url.is_empty() {
+        if let Some(pos) = items.iter().position(|i| {
+            matches!(i, CollectionItem::Request(r)
+                if r.protocol == inc.protocol
+                && r.method == inc.method
+                && normalize_url_key(&r.url) == inc_url
+                && r.name.trim().eq_ignore_ascii_case(inc.name.trim()))
+        }) {
+            return Some(pos);
+        }
+        if let Some(pos) = items.iter().position(|i| {
+            matches!(i, CollectionItem::Request(r)
+                if r.protocol == inc.protocol
+                && r.method == inc.method
+                && normalize_url_key(&r.url) == inc_url)
+        }) {
+            return Some(pos);
+        }
+    }
+    items.iter().position(|i| {
+        matches!(i, CollectionItem::Request(r)
+            if !inc.name.trim().is_empty()
+            && r.name.trim().eq_ignore_ascii_case(inc.name.trim())
+            && r.method == inc.method)
+    })
+}
+
+fn merge_items_recursive(
+    existing: &mut Vec<CollectionItem>,
+    incoming: Vec<CollectionItem>,
+    stats: &mut UpsertCollectionResult,
+) {
+    for item in incoming {
+        match item {
+            CollectionItem::Request(inc_req) => {
+                if let Some(pos) = find_matching_request_idx(existing, &inc_req) {
+                    if let CollectionItem::Request(cur_req) = &mut existing[pos] {
+                        merge_request_in_place(cur_req, inc_req);
+                        stats.updated_requests += 1;
+                    }
+                } else {
+                    existing.push(CollectionItem::Request(inc_req));
+                    stats.added_requests += 1;
+                }
+            }
+            CollectionItem::Folder(inc_folder) => {
+                let matched_pos = existing
+                    .iter()
+                    .position(|i| matches!(i, CollectionItem::Folder(f) if f.id == inc_folder.id))
+                    .or_else(|| {
+                        existing.iter().position(|i| {
+                            matches!(i, CollectionItem::Folder(f)
+                                if f.name.trim().eq_ignore_ascii_case(inc_folder.name.trim()))
+                        })
+                    });
+                if let Some(pos) = matched_pos {
+                    if let CollectionItem::Folder(cur_f) = &mut existing[pos] {
+                        if !inc_folder.description.is_empty() {
+                            cur_f.description = inc_folder.description;
+                        }
+                        if inc_folder.auth.auth_type != AuthType::Inherit {
+                            cur_f.auth = inc_folder.auth;
+                        }
+                        if !inc_folder.pre_request_script.is_empty() {
+                            cur_f.pre_request_script = inc_folder.pre_request_script;
+                        }
+                        if !inc_folder.test_script.is_empty() {
+                            cur_f.test_script = inc_folder.test_script;
+                        }
+                        stats.updated_folders += 1;
+                        merge_items_recursive(&mut cur_f.items, inc_folder.items, stats);
+                    }
+                } else {
+                    stats.added_folders += 1;
+                    stats.added_requests += count_requests(&inc_folder.items);
+                    existing.push(CollectionItem::Folder(inc_folder));
+                }
+            }
+        }
+    }
+}
+
+fn count_requests(items: &[CollectionItem]) -> usize {
+    items
+        .iter()
+        .map(|it| match it {
+            CollectionItem::Request(_) => 1,
+            CollectionItem::Folder(f) => count_requests(&f.items),
+        })
+        .sum()
+}
+
+/// Insert an imported collection or update an existing matching collection in place
+/// (matched by UUID or case-insensitive name), preventing duplicate collections/requests
+/// when re-importing Postman/HAR/OpenAPI exports.
+pub fn upsert_collection(
+    collections: &mut Vec<Collection>,
+    incoming: Collection,
+) -> UpsertCollectionResult {
+    let existing_pos = collections
+        .iter()
+        .position(|c| c.id == incoming.id)
+        .or_else(|| {
+            let inc_name = incoming.name.trim();
+            if inc_name.is_empty() {
+                None
+            } else {
+                collections
+                    .iter()
+                    .position(|c| c.name.trim().eq_ignore_ascii_case(inc_name))
+            }
+        });
+
+    if let Some(pos) = existing_pos {
+        let col = &mut collections[pos];
+        let mut stats = UpsertCollectionResult {
+            collection_id: col.id,
+            created_new: false,
+            added_requests: 0,
+            updated_requests: 0,
+            added_folders: 0,
+            updated_folders: 0,
+        };
+        if !incoming.description.is_empty() {
+            col.description = incoming.description;
+        }
+        if incoming.auth.auth_type != AuthType::Inherit && incoming.auth.auth_type != AuthType::NoAuth {
+            col.auth = incoming.auth;
+        }
+        if !incoming.pre_request_script.is_empty() {
+            col.pre_request_script = incoming.pre_request_script;
+        }
+        if !incoming.test_script.is_empty() {
+            col.test_script = incoming.test_script;
+        }
+        upsert_key_values(&mut col.variables, &incoming.variables);
+        merge_items_recursive(&mut col.items, incoming.items, &mut stats);
+        stats
+    } else {
+        let id = incoming.id;
+        let reqs = count_requests(&incoming.items);
+        let folders = incoming
+            .items
+            .iter()
+            .filter(|i| matches!(i, CollectionItem::Folder(_)))
+            .count();
+        collections.push(incoming);
+        UpsertCollectionResult {
+            collection_id: id,
+            created_new: true,
+            added_requests: reqs,
+            updated_requests: 0,
+            added_folders: folders,
+            updated_folders: 0,
+        }
+    }
+}
+
 #[cfg(test)]
 mod import_extra_tests {
     use super::*;
@@ -1733,5 +1996,89 @@ mod tests {
         // Check user custom headers are preserved
         assert!(req.headers.iter().any(|h| h.key == "Authorization" && h.value == "{{ttoken_hakki}}"));
         assert!(req.headers.iter().any(|h| h.key == "x-auth-host" && h.value == "snbhakki.rcell.me"));
+    }
+
+    #[test]
+    fn test_upsert_collection_updates_existing_without_duplicating() {
+        let initial_json = r#"{
+            "info": {
+                "name": "AI Platform",
+                "_postman_id": "11111111-1111-1111-1111-111111111111"
+            },
+            "item": [
+                {
+                    "name": "Chat",
+                    "item": [
+                        {
+                            "name": "Stream Completion",
+                            "request": {
+                                "method": "POST",
+                                "url": "https://api.example.com/v1/chat",
+                                "header": [
+                                    { "key": "X-Old", "value": "1" },
+                                    "X-String-Hdr: abc"
+                                ]
+                            }
+                        }
+                    ]
+                }
+            ]
+        }"#;
+        let updated_json = r#"{
+            "info": {
+                "name": "AI Platform",
+                "_postman_id": "11111111-1111-1111-1111-111111111111"
+            },
+            "item": [
+                {
+                    "name": "Chat",
+                    "item": [
+                        {
+                            "name": "Stream Completion",
+                            "request": {
+                                "method": "POST",
+                                "url": "https://api.example.com/v1/chat",
+                                "header": [
+                                    { "key": "X-New", "value": "2" },
+                                    { "key": "X-Num", "value": 42 }
+                                ]
+                            }
+                        },
+                        {
+                            "name": "List Models",
+                            "request": {
+                                "method": "GET",
+                                "url": "https://api.example.com/v1/models"
+                            }
+                        }
+                    ]
+                }
+            ]
+        }"#;
+
+        let mut workspace = Vec::new();
+        let c1 = import_collection_v21(initial_json).unwrap();
+        let s1 = upsert_collection(&mut workspace, c1);
+        assert!(s1.created_new);
+        assert_eq!(workspace.len(), 1);
+
+        let c2 = import_collection_v21(updated_json).unwrap();
+        let s2 = upsert_collection(&mut workspace, c2);
+        assert!(!s2.created_new);
+        assert_eq!(workspace.len(), 1, "must not duplicate collection");
+        assert_eq!(s2.updated_requests, 1);
+        assert_eq!(s2.added_requests, 1);
+
+        let folder = match &workspace[0].items[0] {
+            CollectionItem::Folder(f) => f,
+            _ => panic!("expected folder"),
+        };
+        assert_eq!(folder.items.len(), 2);
+        let req = match &folder.items[0] {
+            CollectionItem::Request(r) => r,
+            _ => panic!("expected request"),
+        };
+        assert!(req.headers.iter().any(|h| h.key == "X-New" && h.value == "2"));
+        assert!(req.headers.iter().any(|h| h.key == "X-Num" && h.value == "42"));
     }
 }

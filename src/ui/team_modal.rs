@@ -130,7 +130,7 @@ pub fn TeamModal(
                                     div { class: "team-commits-list",
                                         for (idx, commit) in activity.recent_commits.iter().enumerate() {
                                             div {
-                                                key: "{commit.hash}",
+                                                key: "{commit.hash}-{idx}",
                                                 class: if selected_commit_idx() == Some(idx) { "commit-row selected" } else { "commit-row" },
                                                 onclick: move |_| selected_commit_idx.set(Some(idx)),
                                                 div { class: "commit-header",
@@ -168,8 +168,8 @@ pub fn TeamModal(
                                                             "Touched Files ({files_len})"
                                                         }
                                                         ul { class: "detail-files-list",
-                                                            for file in &commit.files {
-                                                                li { key: "{file}",
+                                                            for (fi, file) in commit.files.iter().enumerate() {
+                                                                li { key: "{file}-{fi}",
                                                                     span { class: "file-icon", "📄" }
                                                                     span { class: "file-path", "{file}" }
                                                                 }
@@ -201,8 +201,8 @@ pub fn TeamModal(
                                             }
                                         }
                                         tbody {
-                                            for file in &activity.uncommitted_changes {
-                                                tr { key: "{file.path}",
+                                            for (fi, file) in activity.uncommitted_changes.iter().enumerate() {
+                                                tr { key: "{file.path}-{fi}",
                                                     td {
                                                         span {
                                                             class: match file.status.as_str() {
@@ -241,8 +241,8 @@ pub fn TeamModal(
                                 }
                             } else {
                                 div { class: "team-members-grid",
-                                    for member in &visible_members {
-                                        div { key: "{member.email}", class: "team-member-card",
+                                    for (mi, member) in visible_members.iter().enumerate() {
+                                        div { key: "{member.email}-{mi}", class: "team-member-card",
                                             div { class: "member-avatar",
                                                 "{member.name.chars().next().unwrap_or('?')}"
                                             }

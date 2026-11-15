@@ -25,45 +25,140 @@ pub enum SettingsTab {
 /// Full-page settings editor with modern category sidebar, segmented cards, and clean controls.
 #[component]
 pub fn SettingsPanel(
-    settings: AppSettings,
-    data_root: String,
+    settings: ReadSignal<AppSettings>,
+    data_root: ReadSignal<String>,
     on_event: EventHandler<SettingsEvent>,
 ) -> Element {
-    let data_root_show = data_root.clone();
+    let s_now = settings();
+    let data_root_show = data_root();
     let mut active_tab = use_signal(|| SettingsTab::Appearance);
+    let mut last_prop = use_signal(|| s_now.clone());
 
-    let mut proxy_mode = use_signal(|| settings.proxy.mode);
-    let mut host_port = use_signal(|| settings.proxy.host_port.clone());
-    let mut cert_path = use_signal(|| settings.client_cert.cert_path.clone());
-    let mut cert_pass = use_signal(|| settings.client_cert.passphrase.clone());
-    let mut cert_enabled = use_signal(|| settings.client_cert.enabled);
-    let mut zoom = use_signal(|| settings.ui.zoom_percent);
-    let mut ui_font = use_signal(|| settings.ui.ui_font_size_px);
-    let mut editor_font = use_signal(|| settings.ui.editor_font_size_px);
-    let mut sidebar_w = use_signal(|| settings.ui.sidebar_width_px);
-    let mut request_h = use_signal(|| settings.ui.request_pane_height_px);
-    let mut console_h = use_signal(|| settings.ui.console_height_px);
-    let mut toolbar_h = use_signal(|| settings.ui.toolbar_height_px);
-    let mut density = use_signal(|| settings.ui.density);
-    let mut wrap_editor = use_signal(|| settings.ui.wrap_editor_text);
-    let mut tab_size = use_signal(|| settings.ui.tab_size);
-    let mut theme = use_signal(|| settings.ui.theme);
-    let mut accent = use_signal(|| settings.ui.accent_intensity);
-    let mut reduce_motion = use_signal(|| settings.ui.reduce_motion);
-    let mut storage_root = use_signal(|| settings.storage_root.clone());
-    let mut storage_roots = use_signal(|| settings.storage_roots.clone());
+    let mut proxy_mode = use_signal(|| s_now.proxy.mode);
+    let mut host_port = use_signal(|| s_now.proxy.host_port.clone());
+    let mut cert_path = use_signal(|| s_now.client_cert.cert_path.clone());
+    let mut cert_pass = use_signal(|| s_now.client_cert.passphrase.clone());
+    let mut cert_enabled = use_signal(|| s_now.client_cert.enabled);
+    let mut zoom = use_signal(|| s_now.ui.zoom_percent);
+    let mut ui_font = use_signal(|| s_now.ui.ui_font_size_px);
+    let mut editor_font = use_signal(|| s_now.ui.editor_font_size_px);
+    let mut sidebar_w = use_signal(|| s_now.ui.sidebar_width_px);
+    let mut request_h = use_signal(|| s_now.ui.request_pane_height_px);
+    let mut console_h = use_signal(|| s_now.ui.console_height_px);
+    let mut toolbar_h = use_signal(|| s_now.ui.toolbar_height_px);
+    let mut density = use_signal(|| s_now.ui.density);
+    let mut wrap_editor = use_signal(|| s_now.ui.wrap_editor_text);
+    let mut tab_size = use_signal(|| s_now.ui.tab_size);
+    let mut theme = use_signal(|| s_now.ui.theme);
+    let mut accent = use_signal(|| s_now.ui.accent_intensity);
+    let mut reduce_motion = use_signal(|| s_now.ui.reduce_motion);
+    let mut storage_root = use_signal(|| s_now.storage_root.clone());
+    let mut storage_roots = use_signal(|| s_now.storage_roots.clone());
     let mut bookmark_draft = use_signal(String::new);
-    let mut show_status = use_signal(|| settings.ui.show_status_bar);
-    let mut default_resp_tab = use_signal(|| settings.ui.default_response_tab);
-    let mut workbench_layout = use_signal(|| settings.ui.layout);
-    let mut splash_ms = use_signal(|| settings.ui.splash_min_ms);
-    let mut cloud_enabled = use_signal(|| settings.cloud_sync.enabled);
-    let mut cloud_remote = use_signal(|| settings.cloud_sync.remote_url.clone());
-    let mut cloud_clone = use_signal(|| settings.cloud_sync.clone_path.clone());
-    let mut cloud_commit_msg = use_signal(|| settings.cloud_sync.commit_message.clone());
-    let cloud_last_status = settings.cloud_sync.last_status.clone();
-    let cloud_last_branch = settings.cloud_sync.last_branch.clone();
-    let history_collapsed = settings.ui.history_collapsed;
+    let mut show_status = use_signal(|| s_now.ui.show_status_bar);
+    let mut default_resp_tab = use_signal(|| s_now.ui.default_response_tab);
+    let mut workbench_layout = use_signal(|| s_now.ui.layout);
+    let mut splash_ms = use_signal(|| s_now.ui.splash_min_ms);
+    let mut cloud_enabled = use_signal(|| s_now.cloud_sync.enabled);
+    let mut cloud_remote = use_signal(|| s_now.cloud_sync.remote_url.clone());
+    let mut cloud_clone = use_signal(|| s_now.cloud_sync.clone_path.clone());
+    let mut cloud_commit_msg = use_signal(|| s_now.cloud_sync.commit_message.clone());
+
+    use_effect(move || {
+        let s = settings();
+        let prev = last_prop.peek().clone();
+        if s == prev {
+            return;
+        }
+        if s.proxy.mode != prev.proxy.mode {
+            proxy_mode.set(s.proxy.mode);
+        }
+        if s.proxy.host_port != prev.proxy.host_port {
+            host_port.set(s.proxy.host_port.clone());
+        }
+        if s.client_cert.cert_path != prev.client_cert.cert_path {
+            cert_path.set(s.client_cert.cert_path.clone());
+        }
+        if s.client_cert.passphrase != prev.client_cert.passphrase {
+            cert_pass.set(s.client_cert.passphrase.clone());
+        }
+        if s.client_cert.enabled != prev.client_cert.enabled {
+            cert_enabled.set(s.client_cert.enabled);
+        }
+        if s.ui.zoom_percent != prev.ui.zoom_percent {
+            zoom.set(s.ui.zoom_percent);
+        }
+        if s.ui.ui_font_size_px != prev.ui.ui_font_size_px {
+            ui_font.set(s.ui.ui_font_size_px);
+        }
+        if s.ui.editor_font_size_px != prev.ui.editor_font_size_px {
+            editor_font.set(s.ui.editor_font_size_px);
+        }
+        if s.ui.sidebar_width_px != prev.ui.sidebar_width_px {
+            sidebar_w.set(s.ui.sidebar_width_px);
+        }
+        if s.ui.request_pane_height_px != prev.ui.request_pane_height_px {
+            request_h.set(s.ui.request_pane_height_px);
+        }
+        if s.ui.console_height_px != prev.ui.console_height_px {
+            console_h.set(s.ui.console_height_px);
+        }
+        if s.ui.toolbar_height_px != prev.ui.toolbar_height_px {
+            toolbar_h.set(s.ui.toolbar_height_px);
+        }
+        if s.ui.density != prev.ui.density {
+            density.set(s.ui.density);
+        }
+        if s.ui.wrap_editor_text != prev.ui.wrap_editor_text {
+            wrap_editor.set(s.ui.wrap_editor_text);
+        }
+        if s.ui.tab_size != prev.ui.tab_size {
+            tab_size.set(s.ui.tab_size);
+        }
+        if s.ui.theme != prev.ui.theme {
+            theme.set(s.ui.theme);
+        }
+        if s.ui.accent_intensity != prev.ui.accent_intensity {
+            accent.set(s.ui.accent_intensity);
+        }
+        if s.ui.reduce_motion != prev.ui.reduce_motion {
+            reduce_motion.set(s.ui.reduce_motion);
+        }
+        if s.ui.show_status_bar != prev.ui.show_status_bar {
+            show_status.set(s.ui.show_status_bar);
+        }
+        if s.ui.default_response_tab != prev.ui.default_response_tab {
+            default_resp_tab.set(s.ui.default_response_tab);
+        }
+        if s.ui.layout != prev.ui.layout {
+            workbench_layout.set(s.ui.layout);
+        }
+        if s.ui.splash_min_ms != prev.ui.splash_min_ms {
+            splash_ms.set(s.ui.splash_min_ms);
+        }
+        if s.storage_root != prev.storage_root {
+            storage_root.set(s.storage_root.clone());
+        }
+        if s.storage_roots != prev.storage_roots {
+            storage_roots.set(s.storage_roots.clone());
+        }
+        if s.cloud_sync.enabled != prev.cloud_sync.enabled {
+            cloud_enabled.set(s.cloud_sync.enabled);
+        }
+        if s.cloud_sync.remote_url != prev.cloud_sync.remote_url {
+            cloud_remote.set(s.cloud_sync.remote_url.clone());
+        }
+        if s.cloud_sync.clone_path != prev.cloud_sync.clone_path {
+            cloud_clone.set(s.cloud_sync.clone_path.clone());
+        }
+        if s.cloud_sync.commit_message != prev.cloud_sync.commit_message {
+            cloud_commit_msg.set(s.cloud_sync.commit_message.clone());
+        }
+        last_prop.set(s);
+    });
+
+    let cloud_last_status = s_now.cloud_sync.last_status.clone();
+    let cloud_last_branch = s_now.cloud_sync.last_branch.clone();
     let default_clone_hint = format!("{data_root_show}/cloud");
 
     let mode_str = match proxy_mode() {
@@ -119,6 +214,7 @@ pub fn SettingsPanel(
                 // Left Navigation Sidebar
                 aside { class: "settings-nav",
                     button {
+                        r#type: "button",
                         class: if active_tab() == SettingsTab::Appearance { "settings-nav-item active" } else { "settings-nav-item" },
                         onclick: move |_| active_tab.set(SettingsTab::Appearance),
                         span { class: "settings-nav-icon", "🎨" }
@@ -128,6 +224,7 @@ pub fn SettingsPanel(
                         }
                     }
                     button {
+                        r#type: "button",
                         class: if active_tab() == SettingsTab::Network { "settings-nav-item active" } else { "settings-nav-item" },
                         onclick: move |_| active_tab.set(SettingsTab::Network),
                         span { class: "settings-nav-icon", "🌐" }
@@ -137,6 +234,7 @@ pub fn SettingsPanel(
                         }
                     }
                     button {
+                        r#type: "button",
                         class: if active_tab() == SettingsTab::Certificates { "settings-nav-item active" } else { "settings-nav-item" },
                         onclick: move |_| active_tab.set(SettingsTab::Certificates),
                         span { class: "settings-nav-icon", "🔒" }
@@ -146,6 +244,7 @@ pub fn SettingsPanel(
                         }
                     }
                     button {
+                        r#type: "button",
                         class: if active_tab() == SettingsTab::Workspace { "settings-nav-item active" } else { "settings-nav-item" },
                         onclick: move |_| active_tab.set(SettingsTab::Workspace),
                         span { class: "settings-nav-icon", "📁" }
@@ -155,6 +254,7 @@ pub fn SettingsPanel(
                         }
                     }
                     button {
+                        r#type: "button",
                         class: if active_tab() == SettingsTab::CloudSync { "settings-nav-item active" } else { "settings-nav-item" },
                         onclick: move |_| active_tab.set(SettingsTab::CloudSync),
                         span { class: "settings-nav-icon", "☁️" }
@@ -484,6 +584,7 @@ pub fn SettingsPanel(
 
                                 div { class: "settings-card-foot",
                                     button {
+                                        r#type: "button",
                                         class: "btn btn-ghost",
                                         onclick: move |_| {
                                             let d = UiSettings::default();
@@ -501,6 +602,7 @@ pub fn SettingsPanel(
                                             reduce_motion.set(d.reduce_motion);
                                             show_status.set(d.show_status_bar);
                                             default_resp_tab.set(d.default_response_tab);
+                                            workbench_layout.set(d.layout);
                                             splash_ms.set(d.splash_min_ms);
                                             toolbar_h.set(d.toolbar_height_px);
                                         },
@@ -611,15 +713,32 @@ pub fn SettingsPanel(
                                     {
                                         let roots = storage_roots();
                                         rsx! {
-                                            for path in roots.iter() {
-                                                {
-                                                    let path = path.clone();
-                                                    rsx! {
-                                                        div { class: "settings-workspace-row",
-                                                            button {
-                                                                class: "btn btn-ghost btn-sm",
-                                                                onclick: move |_| storage_root.set(path.clone()),
-                                                                "{path}"
+                                            if !roots.is_empty() {
+                                                div { class: "settings-workspace-list",
+                                                    for (ri, path) in roots.iter().enumerate() {
+                                                        {
+                                                            let path = path.clone();
+                                                            let path_rm = path.clone();
+                                                            rsx! {
+                                                                div { key: "{ri}-{path}", class: "settings-workspace-row",
+                                                                    button {
+                                                                        r#type: "button",
+                                                                        class: "btn btn-ghost btn-sm settings-workspace-pick",
+                                                                        onclick: move |_| storage_root.set(path.clone()),
+                                                                        "{path}"
+                                                                    }
+                                                                    button {
+                                                                        r#type: "button",
+                                                                        class: "btn btn-ghost btn-sm",
+                                                                        title: "Remove bookmark",
+                                                                        onclick: move |_| {
+                                                                            let mut list = storage_roots();
+                                                                            list.retain(|p| p != &path_rm);
+                                                                            storage_roots.set(list);
+                                                                        },
+                                                                        "×"
+                                                                    }
+                                                                }
                                                             }
                                                         }
                                                     }
@@ -635,6 +754,7 @@ pub fn SettingsPanel(
                                             oninput: move |evt| bookmark_draft.set(evt.value()),
                                         }
                                         button {
+                                            r#type: "button",
                                             class: "btn btn-secondary btn-sm",
                                             onclick: move |_| {
                                                 let p = bookmark_draft().trim().to_string();
@@ -649,13 +769,12 @@ pub fn SettingsPanel(
                                             "Bookmark"
                                         }
                                         button {
+                                            r#type: "button",
                                             class: "btn btn-secondary btn-sm",
-                                            onclick: {
-                                                let root = data_root_show.clone();
-                                                move |_| {
-                                                    if !root.is_empty() {
-                                                        storage_root.set(root.clone());
-                                                    }
+                                            onclick: move |_| {
+                                                let root = data_root();
+                                                if !root.is_empty() {
+                                                    storage_root.set(root);
                                                 }
                                             },
                                             "Use current"
@@ -727,13 +846,16 @@ pub fn SettingsPanel(
 
             div { class: "settings-page-actions",
                 button {
+                    r#type: "button",
                     class: "btn btn-ghost",
                     onclick: move |_| on_event.call(SettingsEvent::Close),
                     "Cancel"
                 }
                 button {
+                    r#type: "button",
                     class: "btn btn-send",
                     onclick: move |_| {
+                        let cur = settings();
                         let remote = {
                             let r = cloud_remote().trim().to_string();
                             if r.is_empty() {
@@ -769,9 +891,9 @@ pub fn SettingsPanel(
                                 layout: workbench_layout(),
                                 splash_min_ms: splash_ms(),
                                 zoom_percent: zoom(),
-                                history_collapsed,
+                                history_collapsed: cur.ui.history_collapsed,
                                 toolbar_height_px: toolbar_h(),
-                                console_log_error_payloads: settings.ui.console_log_error_payloads,
+                                console_log_error_payloads: cur.ui.console_log_error_payloads,
                             }
                             .clamped(),
                             cloud_sync: CloudSyncSettings {
@@ -779,12 +901,12 @@ pub fn SettingsPanel(
                                 remote_url: remote,
                                 clone_path: cloud_clone().trim().to_string(),
                                 commit_message: cloud_commit_msg().trim().to_string(),
-                                last_status: cloud_last_status.clone(),
-                                last_branch: cloud_last_branch.clone(),
+                                last_status: cur.cloud_sync.last_status,
+                                last_branch: cur.cloud_sync.last_branch,
                             },
                             storage_root: {
                                 let r = storage_root().trim().to_string();
-                                if r.is_empty() { data_root.clone() } else { r }
+                                if r.is_empty() { data_root() } else { r }
                             },
                             storage_roots: storage_roots(),
                         }));

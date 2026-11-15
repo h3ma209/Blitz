@@ -30,15 +30,21 @@ pub fn graphql_ws_subscribe_with_headers(
     max_events: usize,
     timeout_ms: u64,
 ) -> Result<Vec<String>, String> {
-    let rt = Runtime::new().map_err(|e| e.to_string())?;
-    rt.block_on(subscribe_async(
-        ws_url,
-        query,
-        variables_json,
-        headers,
-        max_events,
-        timeout_ms,
-    ))
+    let url = ws_url.to_string();
+    let q = query.to_string();
+    let vars = variables_json.to_string();
+    let hdrs = headers.to_vec();
+    let run = move || -> Result<Vec<String>, String> {
+        let rt = Runtime::new().map_err(|e| e.to_string())?;
+        rt.block_on(subscribe_async(&url, &q, &vars, &hdrs, max_events, timeout_ms))
+    };
+    if tokio::runtime::Handle::try_current().is_ok() {
+        std::thread::spawn(run)
+            .join()
+            .map_err(|_| "graphql-ws worker thread panicked".to_string())?
+    } else {
+        run()
+    }
 }
 
 async fn subscribe_async(
@@ -118,11 +124,25 @@ async fn subscribe_async(
             log.push("graphql-ws: timeout".into());
             break;
         }
-        let msg = tokio::time::timeout(remaining, ws.next())
-            .await
-            .map_err(|_| "timeout".to_string())?
-            .ok_or_else(|| "ws closed".to_string())?
-            .map_err(|e| e.to_string())?;
+        let msg = match tokio::time::timeout(remaining, ws.next()).await {
+            Ok(Some(Ok(m))) => m,
+            Ok(Some(Err(e))) => {
+                log.push(format!("graphql-ws: stream error: {e}"));
+                return if events > 0 {
+                    Ok(log)
+                } else {
+                    Err(e.to_string())
+                };
+            }
+            Ok(None) => {
+                log.push("graphql-ws: ws closed".into());
+                break;
+            }
+            Err(_) => {
+                log.push("graphql-ws: timeout".into());
+                break;
+            }
+        };
 
         let text = match msg {
             Message::Text(t) => t.to_string(),

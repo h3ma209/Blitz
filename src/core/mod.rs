@@ -73,17 +73,17 @@ pub use env_diff::{
     DiffStatus, EnvDiffReport, VarDiffRow,
 };
 pub use environment::{
-    demo_environments, ensure_default_environments, export_environment_json, find_environment,
-    import_environment_json, import_environment_texts, EnvVar,
-    Environment, DEFAULT_ENV_NAMES,
+    deduplicate_environments_by_id, demo_environments, ensure_default_environments,
+    export_environment_json, find_environment, import_environment_json, import_environment_texts,
+    upsert_environments, EnvVar, Environment, DEFAULT_ENV_NAMES,
 };
 pub use collection_lint::{lint_collections, lint_error_count, LintIssue, LintSeverity};
 pub use history::{push_history, HistoryEntry, HISTORY_MAX};
 pub use openapi_watch::{collection_spec_drift, mark_collection_spec_synced, spec_mtime_secs};
 pub use impex::{
     bundled_postman_collections, export_collection_v21, export_openapi3, export_request_item,
-    import_collection_v21, import_curl, import_har, import_openapi3,
-    import_request_item, limitations_blurb, ImpexError,
+    import_collection_v21, import_curl, import_har, import_openapi3, import_request_item,
+    limitations_blurb, upsert_collection, ImpexError, UpsertCollectionResult,
 };
 pub use json_lint::{beautify_json_body, lint_json_body};
 pub use json_query::{query_json, root_keys};
@@ -98,8 +98,9 @@ pub use protocols::{
     graphql_ws_subscribe, graphql_ws_subscribe_with_headers, grpc_reflection_list,
     grpc_server_stream_stub, grpc_unary, grpc_unary_with_headers, mcp_call_tool, mcp_list_tools,
     mqtt_publish, mqtt_subscribe_once, socketio_session, split_mcp_args, sse_listen,
-    ws_connect_session, ws_connect_session_with_headers, GrpcUnaryResult, McpToolInfo,
-    MqttActionResult, SseEvent, WsDirection, WsFrameItem, WsSession, WsSessionEvent,
+    sse_stream_with_options, ws_connect_session, ws_connect_session_with_headers, GrpcUnaryResult,
+    McpToolInfo, MqttActionResult, SseEvent, SseStreamEvent, SseStreamResult, WsDirection,
+    WsFrameItem, WsSession, WsSessionEvent,
 };
 pub use request::{
     build_url_with_params, extract_path_param_keys, extract_url_path, extract_url_query_params,

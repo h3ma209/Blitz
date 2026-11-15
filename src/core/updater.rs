@@ -259,6 +259,33 @@ pub fn install_update_and_restart(installer_path: &Path) -> Result<(), String> {
     }
 }
 
+fn path_str(path: &Path) -> Result<&str, String> {
+    path.to_str()
+        .ok_or_else(|| format!("non-UTF8 path: {}", path.display()))
+}
+
+#[cfg_attr(target_os = "windows", allow(dead_code))]
+fn shell_single_quote(path: &Path) -> String {
+    let raw = path.to_string_lossy();
+    let escaped = raw.replace('\'', "'\\''");
+    format!("'{escaped}'")
+}
+
+#[cfg(target_os = "windows")]
+fn ps_single_quote(path: &Path) -> String {
+    let raw = path.to_string_lossy().replace('\'', "''");
+    format!("'{raw}'")
+}
+
+#[cfg(target_os = "windows")]
+fn bat_safe_path(path: &Path) -> Result<String, String> {
+    let s = path_str(path)?;
+    if s.contains(['\r', '\n', '"', '%', '&', '|', '<', '>', '^']) {
+        return Err(format!("unsafe characters in updater path: {s}"));
+    }
+    Ok(s.to_string())
+}
+
 #[cfg(target_os = "macos")]
 fn install_and_restart_macos(installer_path: &Path) -> Result<(), String> {
     let pid = std::process::id();
@@ -300,22 +327,26 @@ fn install_and_restart_macos(installer_path: &Path) -> Result<(), String> {
 
         let app_source = mount_dir.join("Blitz.app");
         if !app_source.exists() {
-            let _ = std::process::Command::new("hdiutil")
-                .args(["detach", mount_dir.to_str().unwrap(), "-force"])
-                .status();
+            if let Ok(m) = path_str(&mount_dir) {
+                let _ = std::process::Command::new("hdiutil")
+                    .args(["detach", m, "-force"])
+                    .status();
+            }
             let _ = std::fs::remove_dir_all(&mount_dir);
             return Err("Blitz.app not found inside DMG".into());
         }
 
         // Copy Blitz.app out of DMG into local staging directory
         let cp_res = std::process::Command::new("cp")
-            .args(["-R", app_source.to_str().unwrap(), staged_app.to_str().unwrap()])
+            .args(["-R", path_str(&app_source)?, path_str(&staged_app)?])
             .status();
 
         // Detach DMG immediately
-        let _ = std::process::Command::new("hdiutil")
-            .args(["detach", mount_dir.to_str().unwrap(), "-force"])
-            .status();
+        if let Ok(m) = path_str(&mount_dir) {
+            let _ = std::process::Command::new("hdiutil")
+                .args(["detach", m, "-force"])
+                .status();
+        }
         let _ = std::fs::remove_dir_all(&mount_dir);
 
         let cp_status = cp_res.map_err(|e| format!("cp Blitz.app failed: {e}"))?;
@@ -324,7 +355,7 @@ fn install_and_restart_macos(installer_path: &Path) -> Result<(), String> {
         }
     } else {
         let status = std::process::Command::new("tar")
-            .args(["-xzf", installer_path.to_str().unwrap(), "-C", stage_dir.to_str().unwrap()])
+            .args(["-xzf", path_str(installer_path)?, "-C", path_str(&stage_dir)?])
             .status()
             .map_err(|e| format!("tar extract failed: {e}"))?;
         if !status.success() {
@@ -333,9 +364,11 @@ fn install_and_restart_macos(installer_path: &Path) -> Result<(), String> {
     }
 
     // Strip quarantine flag on staged app
-    let _ = std::process::Command::new("xattr")
-        .args(["-cr", staged_app.to_str().unwrap()])
-        .status();
+    if let Ok(s) = path_str(&staged_app) {
+        let _ = std::process::Command::new("xattr")
+            .args(["-cr", s])
+            .status();
+    }
 
     // Determine target location: existing running bundle or /Applications/Blitz.app
     let target_app = current_app_bundle().unwrap_or_else(|| {
@@ -352,12 +385,13 @@ fn install_and_restart_macos(installer_path: &Path) -> Result<(), String> {
 
     // Write supervisor restart script that waits for old process to exit, swaps app bundle, and launches new one
     let script_path = std::env::temp_dir().join(format!("blitz-updater-{pid}.sh"));
+    let backup_path = PathBuf::from(format!("{}.old", target_app.display()));
     let script_content = format!(
         r#"#!/bin/bash
 PID={pid}
-STAGED="{staged}"
-TARGET="{target}"
-BACKUP="{target}.old.$$"
+STAGED={staged}
+TARGET={target}
+BACKUP={backup}.$$
 
 for i in $(seq 1 100); do
     if ! kill -0 "$PID" 2>/dev/null; then
@@ -380,8 +414,9 @@ rm -f "$0" 2>/dev/null || true
 open -a "$TARGET" 2>/dev/null || open "$TARGET" 2>/dev/null
 "#,
         pid = pid,
-        staged = staged_app.display(),
-        target = target_app.display()
+        staged = shell_single_quote(&staged_app),
+        target = shell_single_quote(&target_app),
+        backup = shell_single_quote(&backup_path)
     );
 
     std::fs::write(&script_path, script_content).map_err(|e| format!("write updater script: {e}"))?;
@@ -410,7 +445,7 @@ fn install_and_restart_linux(installer_path: &Path) -> Result<(), String> {
     std::fs::create_dir_all(&stage_dir).map_err(|e| format!("create stage dir: {e}"))?;
 
     let status = std::process::Command::new("tar")
-        .args(["-xzf", installer_path.to_str().unwrap(), "-C", stage_dir.to_str().unwrap()])
+        .args(["-xzf", path_str(installer_path)?, "-C", path_str(&stage_dir)?])
         .status()
         .map_err(|e| format!("tar extract failed: {e}"))?;
     if !status.success() {
@@ -426,8 +461,9 @@ fn install_and_restart_linux(installer_path: &Path) -> Result<(), String> {
     let script_content = format!(
         r#"#!/bin/bash
 PID={pid}
-STAGED="{staged}"
-TARGET="{target}"
+STAGED={staged}
+TARGET={target}
+STAGEDIR={stage_dir}
 
 for i in $(seq 1 100); do
     if ! kill -0 "$PID" 2>/dev/null; then
@@ -438,15 +474,15 @@ done
 
 cp "$STAGED" "$TARGET" 2>/dev/null
 chmod +x "$TARGET" 2>/dev/null
-rm -rf "{stage_dir}" 2>/dev/null
+rm -rf "$STAGEDIR" 2>/dev/null
 rm -f "$0" 2>/dev/null
 
 nohup "$TARGET" >/dev/null 2>&1 &
 "#,
         pid = pid,
-        staged = staged_bin.display(),
-        target = target_bin.display(),
-        stage_dir = stage_dir.display()
+        staged = shell_single_quote(&staged_bin),
+        target = shell_single_quote(&target_bin),
+        stage_dir = shell_single_quote(&stage_dir)
     );
 
     std::fs::write(&script_path, script_content).map_err(|e| format!("write updater script: {e}"))?;
@@ -473,9 +509,9 @@ fn install_and_restart_windows(installer_path: &Path) -> Result<(), String> {
     std::fs::create_dir_all(&stage_dir).map_err(|e| format!("create stage dir: {e}"))?;
 
     let ps_cmd = format!(
-        "Expand-Archive -Path '{}' -DestinationPath '{}' -Force",
-        installer_path.display(),
-        stage_dir.display()
+        "Expand-Archive -Path {} -DestinationPath {} -Force",
+        ps_single_quote(installer_path),
+        ps_single_quote(&stage_dir)
     );
     let status = std::process::Command::new("powershell.exe")
         .args(["-NoProfile", "-Command", &ps_cmd])
@@ -487,13 +523,15 @@ fn install_and_restart_windows(installer_path: &Path) -> Result<(), String> {
 
     let staged_exe = stage_dir.join("blitz.exe");
     let target_exe = std::env::current_exe().map_err(|e| format!("current_exe: {e}"))?;
+    let staged_bat = bat_safe_path(&staged_exe)?;
+    let target_bat = bat_safe_path(&target_exe)?;
 
     let bat_path = std::env::temp_dir().join(format!("blitz-updater-{pid}.bat"));
     let bat_content = format!(
         r#"@echo off
 set PID={pid}
-set STAGED="{staged}"
-set TARGET="{target}"
+set "STAGED={staged}"
+set "TARGET={target}"
 
 :waitloop
 tasklist /FI "PID eq %PID%" 2>NUL | find /I "%PID%" >NUL
@@ -507,14 +545,14 @@ start "" "%TARGET%"
 del "%~f0" & exit
 "#,
         pid = pid,
-        staged = staged_exe.display(),
-        target = target_exe.display()
+        staged = staged_bat,
+        target = target_bat
     );
 
     std::fs::write(&bat_path, bat_content).map_err(|e| format!("write bat: {e}"))?;
 
     std::process::Command::new("cmd.exe")
-        .args(["/C", "start", "", bat_path.to_str().unwrap()])
+        .args(["/C", "start", "", path_str(&bat_path)?])
         .spawn()
         .map_err(|e| format!("spawn updater: {e}"))?;
 

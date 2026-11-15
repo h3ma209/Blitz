@@ -147,8 +147,9 @@ pub fn CollectionEditor(
                                     }
                                 },
                                 option { value: "", "None (use global env)" }
-                                for env in environments.iter() {
+                                for (e_idx, env) in environments.iter().enumerate() {
                                     option {
+                                        key: "{e_idx}-{env.id}",
                                         value: "{env.id}",
                                         selected: collection.pinned_environment_id == Some(env.id),
                                         "{env.name}"
@@ -597,8 +598,9 @@ pub fn CollectionEditor(
                                             }
                                         }
                                         tbody {
-                                            for r in rep.results.iter() {
+                                            for (i, r) in rep.results.iter().enumerate() {
                                                 tr {
+                                                    key: "{i}-{r.iteration}",
                                                     td { "{r.iteration}" }
                                                     td {
                                                         span {

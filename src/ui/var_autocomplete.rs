@@ -79,6 +79,7 @@ pub fn VarSuggestDropdown(
             onmousedown: move |evt| evt.prevent_default(),
             for (idx, item) in menu.items.iter().enumerate() {
                 button {
+                    key: "{item.label}-{idx}",
                     class: if idx == menu.selected { "var-suggest-item active" } else { "var-suggest-item" },
                     r#type: "button",
                     role: "option",
@@ -141,7 +142,7 @@ pub async fn apply_var_completion_dom(
             openPos += ch.length;
         }}
         const caretPos = el.selectionStart ?? val.length;
-        const token = "{token}";
+        const token = {token};
         const before = val.slice(0, openPos);
         const rest = val.slice(caretPos);
         let replaceEnd = caretPos;
@@ -170,7 +171,7 @@ pub async fn apply_var_completion_dom(
         "#,
         id = serde_json::to_string(element_id).unwrap_or_else(|_| "\"\"".into()),
         open_bytes = open_bytes,
-        token = token
+        token = serde_json::to_string(&token).unwrap_or_else(|_| "\"\"".into())
     );
     let v = document::eval(&script).await.ok()?;
     v.as_str().map(|s| s.to_string())

@@ -1,8 +1,9 @@
 //! Minimal MCP client over STDIO (JSON-RPC 2.0).
 //! Connect → initialize → tools/list → tools/call.
 
-use std::io::{BufRead, BufReader, Write};
+use std::io::{BufRead, BufReader, Read, Write};
 use std::process::{Child, ChildStdin, Command, Stdio};
+use std::sync::mpsc;
 use std::time::Duration;
 
 use serde_json::{json, Value as JsonValue};
@@ -16,8 +17,68 @@ pub struct McpToolInfo {
 pub struct McpSession {
     child: Child,
     stdin: ChildStdin,
-    reader: BufReader<std::process::ChildStdout>,
+    rx: mpsc::Receiver<Result<JsonValue, String>>,
     next_id: u64,
+}
+
+fn spawn_mcp_reader(stdout: std::process::ChildStdout) -> mpsc::Receiver<Result<JsonValue, String>> {
+    let (tx, rx) = mpsc::channel();
+    std::thread::spawn(move || {
+        let mut reader = BufReader::new(stdout);
+        loop {
+            let mut headers = String::new();
+            loop {
+                let mut line = String::new();
+                match reader.read_line(&mut line) {
+                    Ok(0) => {
+                        let _ = tx.send(Err("mcp stdout eof".into()));
+                        return;
+                    }
+                    Ok(_) => {
+                        if line == "\r\n" || line == "\n" {
+                            break;
+                        }
+                        headers.push_str(&line);
+                    }
+                    Err(e) => {
+                        let _ = tx.send(Err(format!("read: {e}")));
+                        return;
+                    }
+                }
+            }
+            let mut content_len = 0usize;
+            for line in headers.lines() {
+                if let Some(v) = line.to_ascii_lowercase().strip_prefix("content-length:") {
+                    content_len = v.trim().parse().unwrap_or(0);
+                }
+            }
+            if content_len == 0 {
+                continue;
+            }
+            const MAX_MCP_MESSAGE_BYTES: usize = 32 * 1024 * 1024;
+            if content_len > MAX_MCP_MESSAGE_BYTES {
+                let _ = tx.send(Err(format!("mcp message too large: {content_len} bytes")));
+                return;
+            }
+            let mut buf = vec![0u8; content_len];
+            if let Err(e) = reader.read_exact(&mut buf) {
+                let _ = tx.send(Err(format!("body: {e}")));
+                return;
+            }
+            match serde_json::from_slice::<JsonValue>(&buf) {
+                Ok(v) => {
+                    if tx.send(Ok(v)).is_err() {
+                        return;
+                    }
+                }
+                Err(e) => {
+                    let _ = tx.send(Err(format!("json: {e}")));
+                    return;
+                }
+            }
+        }
+    });
+    rx
 }
 
 impl McpSession {
@@ -37,7 +98,7 @@ impl McpSession {
         let mut sess = Self {
             child,
             stdin,
-            reader: BufReader::new(stdout),
+            rx: spawn_mcp_reader(stdout),
             next_id: 1,
         };
         // MCP initialize
@@ -137,57 +198,28 @@ impl McpSession {
 
     fn read_response(&mut self, expect_id: u64) -> Result<JsonValue, String> {
         let deadline = std::time::Instant::now() + Duration::from_secs(15);
-        while std::time::Instant::now() < deadline {
-            let mut headers = String::new();
-            // Read headers until blank line
-            loop {
-                let mut line = String::new();
-                let n = self
-                    .reader
-                    .read_line(&mut line)
-                    .map_err(|e| format!("read: {e}"))?;
-                if n == 0 {
-                    return Err("mcp stdout eof".into());
-                }
-                if line == "\r\n" || line == "\n" {
-                    break;
-                }
-                headers.push_str(&line);
+        loop {
+            let now = std::time::Instant::now();
+            if now >= deadline {
+                return Err("mcp response timeout".into());
             }
-            let mut content_len = 0usize;
-            for line in headers.lines() {
-                if let Some(v) = line
-                    .to_ascii_lowercase()
-                    .strip_prefix("content-length:")
-                {
-                    content_len = v.trim().parse().unwrap_or(0);
-                }
-            }
-            if content_len == 0 {
-                continue;
-            }
-            const MAX_MCP_MESSAGE_BYTES: usize = 32 * 1024 * 1024;
-            if content_len > MAX_MCP_MESSAGE_BYTES {
-                return Err(format!("mcp message too large: {content_len} bytes"));
-            }
-            let mut buf = vec![0u8; content_len];
-            use std::io::Read;
-            self.reader
-                .read_exact(&mut buf)
-                .map_err(|e| format!("body: {e}"))?;
-            let v: JsonValue =
-                serde_json::from_slice(&buf).map_err(|e| format!("json: {e}"))?;
+            let remaining = deadline.saturating_duration_since(now);
+            let msg = match self.rx.recv_timeout(remaining) {
+                Ok(Ok(v)) => v,
+                Ok(Err(e)) => return Err(e),
+                Err(mpsc::RecvTimeoutError::Timeout) => return Err("mcp response timeout".into()),
+                Err(mpsc::RecvTimeoutError::Disconnected) => return Err("mcp stdout eof".into()),
+            };
             // Skip notifications
-            if v.get("id").is_none() && v.get("method").is_some() {
+            if msg.get("id").is_none() && msg.get("method").is_some() {
                 continue;
             }
-            if v.get("id").and_then(|i| i.as_u64()) == Some(expect_id)
-                || v.get("id").and_then(|i| i.as_i64()) == Some(expect_id as i64)
+            if msg.get("id").and_then(|i| i.as_u64()) == Some(expect_id)
+                || msg.get("id").and_then(|i| i.as_i64()) == Some(expect_id as i64)
             {
-                return Ok(v);
+                return Ok(msg);
             }
         }
-        Err("mcp response timeout".into())
     }
 }
 

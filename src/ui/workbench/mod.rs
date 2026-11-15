@@ -163,6 +163,58 @@ pub fn Workbench() -> Element {
                 }
             }
         });
+
+        // Watch collections.json for external MCP / CLI writes so running GUI adopts them instead of reverting.
+        let mut watch_st = st;
+        spawn(async move {
+            loop {
+                tokio::time::sleep(Duration::from_millis(1500)).await;
+                if (watch_st.cloud_busy)() {
+                    continue;
+                }
+                let root = (watch_st.data_root)();
+                let store = if !root.trim().is_empty() {
+                    JsonStore::open_path(&root)
+                } else {
+                    JsonStore::open_for_settings(&(watch_st.app_settings)())
+                };
+                let Ok(store) = store else {
+                    continue;
+                };
+                if !crate::ui::workbench::state::external_collections_mtime_changed(store.root()) {
+                    continue;
+                }
+                if let Ok(Some(disk_cols)) = store.load_collections_from_disk() {
+                    crate::ui::workbench::state::record_gui_collections_mtime(store.root());
+                    let old_cols = (watch_st.collections)();
+                    if disk_cols != old_cols {
+                        let cur_draft = (watch_st.draft)();
+                        if !is_draft_dirty(&cur_draft, &old_cols) {
+                            if let Some((_, updated)) = find_request_across(&disk_cols, cur_draft.id) {
+                                watch_st.draft.set(updated.clone());
+                            }
+                        }
+                        let mut tabs = (watch_st.open_tabs)();
+                        let mut tabs_changed = false;
+                        for tab in tabs.iter_mut() {
+                            if !is_draft_dirty(tab, &old_cols) {
+                                if let Some((_, updated)) = find_request_across(&disk_cols, tab.id) {
+                                    if *tab != *updated {
+                                        *tab = updated.clone();
+                                        tabs_changed = true;
+                                    }
+                                }
+                            }
+                        }
+                        if tabs_changed {
+                            watch_st.open_tabs.set(tabs);
+                        }
+                        watch_st.collections.set(disk_cols);
+                        watch_st.status_msg.set("synced external collection update".into());
+                    }
+                }
+            }
+        });
     });
 
     use_effect(move || {
@@ -382,6 +434,8 @@ pub fn Workbench() -> Element {
             response.set(None);
             draft.set(RequestDraft::default());
             open_tabs.set(tabs);
+            let mut st = st;
+            st.persist();
             status_msg.set("tab closed".into());
             return;
         }
@@ -403,6 +457,8 @@ pub fn Workbench() -> Element {
             }
         }
         open_tabs.set(tabs);
+        let mut st = st;
+        st.persist();
         status_msg.set("tab closed".into());
     });
 
@@ -482,6 +538,8 @@ pub fn Workbench() -> Element {
             }
         }
         open_tabs.set(tabs);
+        let mut st = st;
+        st.persist();
         status_msg.set("other tabs closed".into());
     });
 
@@ -502,6 +560,8 @@ pub fn Workbench() -> Element {
                 }
             }
             open_tabs.set(tabs);
+            let mut st = st;
+            st.persist();
             status_msg.set("tabs to right closed".into());
         }
     });
@@ -511,6 +571,8 @@ pub fn Workbench() -> Element {
         active_request_id.set(None);
         response.set(None);
         draft.set(RequestDraft::default());
+        let mut st = st;
+        st.persist();
         status_msg.set("all tabs closed".into());
     });
 
@@ -1564,14 +1626,20 @@ pub fn Workbench() -> Element {
         if is_resizing_pane {
             classes.push("pane-resizing-v");
         }
-        if show_settings() {
-            classes.push("settings-open");
-        }
         classes.join(" ")
     };
-    let workbench_class = match pane_drag() {
-        Some(PaneDrag::Request { .. } | PaneDrag::Console { .. }) => "workbench pane-resizing-v",
-        None => "workbench",
+    let workbench_class = {
+        let mut classes = vec!["workbench"];
+        if show_settings() {
+            classes.push("workbench-settings");
+        }
+        if matches!(
+            pane_drag(),
+            Some(PaneDrag::Request { .. } | PaneDrag::Console { .. })
+        ) {
+            classes.push("pane-resizing-v");
+        }
+        classes.join(" ")
     };
     let top_nav_menus_open = file_menu_open() || tools_menu_open() || cloud_menu_open();
 
@@ -1623,19 +1691,37 @@ pub fn Workbench() -> Element {
                 settings_tab_open.set(false);
                 show_settings.set(false);
             }
-            SettingsEvent::Save(s) => {
+            SettingsEvent::Save(mut s) => {
                 let enabling_cloud = s.cloud_sync.enabled;
-                let prev_root = app_settings().storage_root.clone();
+                let cur_root = data_root();
+                let target_root = if s.storage_root.trim().is_empty() {
+                    JsonStore::open_default()
+                        .map(|store| store.root().display().to_string())
+                        .unwrap_or_else(|_| cur_root.clone())
+                } else {
+                    s.storage_root.trim().to_string()
+                };
+                s.storage_root = target_root.clone();
                 app_settings.set(s.clone());
                 if enabling_cloud {
                     ensure_cloud_defaults(st);
                 }
-                if !s.storage_root.trim().is_empty() && s.storage_root != prev_root {
-                    st.reload_storage_root(&s.storage_root);
+                let root_changed =
+                    std::path::Path::new(&target_root) != std::path::Path::new(&cur_root);
+                if root_changed {
+                    // Remember chosen workspace & bookmarks in the default store so restart opens it.
+                    if let Ok(def_store) = JsonStore::open_default() {
+                        if let Ok(mut def_snap) = def_store.load() {
+                            def_snap.settings.storage_root = target_root.clone();
+                            def_snap.settings.storage_roots = s.storage_roots.clone();
+                            let _ = def_store.save(&def_snap);
+                        }
+                    }
+                    st.reload_storage_root(&target_root);
                 } else {
                     st.persist();
+                    status_msg.set("settings saved".into());
                 }
-                status_msg.set("settings saved".into());
             }
         }
     };
@@ -1785,7 +1871,6 @@ pub fn Workbench() -> Element {
                     Key::Character(c) if meta && shift && c.eq_ignore_ascii_case("v") => {
                         evt.prevent_default();
                         let parent = active_collection_id();
-                        let cols = collections();
                         spawn(async move {
                             let script = r#"
                                 (async () => {
@@ -1810,12 +1895,17 @@ pub fn Workbench() -> Element {
                                 } else {
                                     imported.name
                                 };
-                                let mut cols = cols;
+                                let mut cols = collections();
                                 let owner = parent
                                     .or_else(|| cols.first().map(|c| c.id))
                                     .unwrap_or(Uuid::nil());
                                 if add_request_under(&mut cols, owner, imported.clone()) {
                                     collections.set(cols.clone());
+                                    open_tabs.with_mut(|tabs| {
+                                        if !tabs.iter().any(|t| t.id == imported.id) {
+                                            tabs.push(imported.clone());
+                                        }
+                                    });
                                     draft.set(imported.clone());
                                     active_collection_id.set(Some(owner));
                                     active_request_id.set(Some(imported.id));
@@ -1858,48 +1948,7 @@ pub fn Workbench() -> Element {
                 }
             },
 
-            if top_nav_menus_open {
-                DismissBackdrop {
-                    z_index: 35,
-                    on_dismiss: move |_| {
-                        file_menu_open.set(false);
-                        tools_menu_open.set(false);
-                        cloud_menu_open.set(false);
-                    },
-                }
-            }
-
-            button {
-                id: "blitz-btn-zoom-in",
-                style: "display:none;",
-                tabindex: "-1",
-                aria_hidden: "true",
-                onclick: move |_| do_zoom_in(()),
-            }
-            button {
-                id: "blitz-btn-zoom-out",
-                style: "display:none;",
-                tabindex: "-1",
-                aria_hidden: "true",
-                onclick: move |_| do_zoom_out(()),
-            }
-            button {
-                id: "blitz-btn-zoom-reset",
-                style: "display:none;",
-                tabindex: "-1",
-                aria_hidden: "true",
-                onclick: move |_| do_zoom_reset(()),
-            }
-
-            if let Some((pct, _)) = zoom_overlay() {
-                div {
-                    class: "zoom-overlay-indicator",
-                    "Zoom: {pct}%"
-                }
-            }
-
             TopBar { st }
-            VarsPage { st }
 
             div { class: "sidebar-slot",
                 Sidebar {
@@ -1930,11 +1979,7 @@ pub fn Workbench() -> Element {
             }
 
             main {
-                class: if show_settings() {
-                    "workbench workbench-settings"
-                } else {
-                    workbench_class
-                },
+                class: "{workbench_class}",
                 style: "{workbench_style}",
                 div { class: "tab-strip",
                     div { class: "tab-strip-fixed",
@@ -1945,7 +1990,7 @@ pub fn Workbench() -> Element {
                                 "btn btn-save"
                             },
                             disabled: show_settings(),
-                            title: if show_settings() { "Settings auto-save on change" } else { "Save request (⌘S)" },
+                            title: if show_settings() { "Save request (⌘S) — use Save Changes in Settings" } else { "Save request (⌘S)" },
                             onclick: move |_| {
                                 if !show_settings() {
                                     do_save(());
@@ -1970,6 +2015,7 @@ pub fn Workbench() -> Element {
                                     let is_dirty = is_draft_dirty(&tab_draft, &collections());
                                     rsx! {
                                         div {
+                                            key: "{tid}-{idx}",
                                             class: if active { "tab active" } else { "tab" },
                                             role: "button",
                                             tabindex: "0",
@@ -2187,7 +2233,7 @@ pub fn Workbench() -> Element {
                                         let idx_label = if i < 9 { format!("⌘{}", i + 1) } else { String::new() };
                                         rsx! {
                                             div {
-                                                key: "{tid}",
+                                                key: "{tid}-{i}",
                                                 class: if active { "tab-dropdown-item active" } else { "tab-dropdown-item" },
                                                 onclick: move |_| {
                                                     show_tab_menu.set(false);
@@ -2303,10 +2349,11 @@ pub fn Workbench() -> Element {
                             }
                         }
 
+                    div { class: "workbench-stage",
                     if show_settings() {
                         SettingsPanel {
-                            settings: app_settings(),
-                            data_root: data_root(),
+                            settings: app_settings,
+                            data_root: data_root,
                             on_event: on_settings_event,
                         }
                     } else if let Some(conflict) = conflict_state() {
@@ -2683,6 +2730,7 @@ pub fn Workbench() -> Element {
                         }
                     }
                     }
+                    }
 
                     ConsolePanel {
                         open: console_open(),
@@ -2727,57 +2775,103 @@ pub fn Workbench() -> Element {
                 }
             }
 
-            WorkbenchModals {
-                st,
-                on_send: move |_| do_send(()),
-                on_save: move |_| do_save(()),
-                on_new_tab: move |_| do_new_tab(()),
-            }
+            // Out-of-flow portal layer: overlays, backdrops, modals & hidden triggers
+            // never enter `.app-shell` CSS grid auto-placement.
+            div { class: "app-portal-layer",
+                if top_nav_menus_open {
+                    DismissBackdrop {
+                        z_index: 35,
+                        on_dismiss: move |_| {
+                            file_menu_open.set(false);
+                            tools_menu_open.set(false);
+                            cloud_menu_open.set(false);
+                        },
+                    }
+                }
 
-            ToastContainer { toasts: st.toasts }
+                button {
+                    id: "blitz-btn-zoom-in",
+                    style: "display:none;",
+                    tabindex: "-1",
+                    aria_hidden: "true",
+                    onclick: move |_| do_zoom_in(()),
+                }
+                button {
+                    id: "blitz-btn-zoom-out",
+                    style: "display:none;",
+                    tabindex: "-1",
+                    aria_hidden: "true",
+                    onclick: move |_| do_zoom_out(()),
+                }
+                button {
+                    id: "blitz-btn-zoom-reset",
+                    style: "display:none;",
+                    tabindex: "-1",
+                    aria_hidden: "true",
+                    onclick: move |_| do_zoom_reset(()),
+                }
 
-            if splash_visible() {
-                div {
-                    class: if splash_leaving() {
-                        "startup-splash leaving"
-                    } else {
-                        "startup-splash"
-                    },
-                    div { class: "startup-splash-inner",
-                        img {
-                            class: "brand-logo brand-logo-splash",
-                            src: "{crate::brand::LOGO_SRC.as_str()}",
-                            alt: "Blitz",
-                        }
-                        div { class: "startup-splash-wordmark",
-                            span { class: "brand-name", "Blitz" }
-                        }
-                        div { class: "startup-splash-dots", aria_hidden: "true",
-                            span {}
-                            span {}
-                            span {}
+                if let Some((pct, _)) = zoom_overlay() {
+                    div {
+                        class: "zoom-overlay-indicator",
+                        "Zoom: {pct}%"
+                    }
+                }
+
+                VarsPage { st }
+
+                WorkbenchModals {
+                    st,
+                    on_send: move |_| do_send(()),
+                    on_save: move |_| do_save(()),
+                    on_new_tab: move |_| do_new_tab(()),
+                }
+
+                ToastContainer { toasts: st.toasts }
+
+                if splash_visible() {
+                    div {
+                        class: if splash_leaving() {
+                            "startup-splash leaving"
+                        } else {
+                            "startup-splash"
+                        },
+                        div { class: "startup-splash-inner",
+                            img {
+                                class: "brand-logo brand-logo-splash",
+                                src: "{crate::brand::LOGO_SRC.as_str()}",
+                                alt: "Blitz",
+                            }
+                            div { class: "startup-splash-wordmark",
+                                span { class: "brand-name", "Blitz" }
+                            }
+                            div { class: "startup-splash-dots", aria_hidden: "true",
+                                span {}
+                                span {}
+                                span {}
+                            }
                         }
                     }
                 }
-            }
 
-            if let Some(name) = env_switch_overlay() {
-                div { class: "env-switch-overlay",
-                    div { class: "env-switch-card",
-                        img {
-                            class: "brand-logo brand-logo-env",
-                            src: "{crate::brand::LOGO_SRC.as_str()}",
-                            alt: "Blitz",
-                        }
-                        div { class: "loading-row",
-                            Spinner { }
-                            span { class: "loading-text", "Switching environment…" }
-                        }
-                        div { class: "env-switch-name", "{name}" }
-                        div { class: "env-switch-dots", aria_hidden: "true",
-                            span {}
-                            span {}
-                            span {}
+                if let Some(name) = env_switch_overlay() {
+                    div { class: "env-switch-overlay",
+                        div { class: "env-switch-card",
+                            img {
+                                class: "brand-logo brand-logo-env",
+                                src: "{crate::brand::LOGO_SRC.as_str()}",
+                                alt: "Blitz",
+                            }
+                            div { class: "loading-row",
+                                Spinner { }
+                                span { class: "loading-text", "Switching environment…" }
+                            }
+                            div { class: "env-switch-name", "{name}" }
+                            div { class: "env-switch-dots", aria_hidden: "true",
+                                span {}
+                                span {}
+                                span {}
+                            }
                         }
                     }
                 }

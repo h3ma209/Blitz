@@ -164,14 +164,14 @@ pub fn RequestBuilder(
                     option { value: "{p}", selected: *p == draft.protocol, "{p}" }
                 }
             }
-            if draft.protocol == RequestProtocol::Http {
+            if draft.protocol == RequestProtocol::Http || draft.protocol == RequestProtocol::Sse {
                 select {
                     class: "method-select method-{method_class}",
                     value: "{draft.method}",
                     title: "HTTP method",
                     onchange: set_method,
                     for m in HttpMethod::all() {
-                        option { value: "{m}", selected: *m == draft.method, "{m}" }
+                        option { key: "{m}", value: "{m}", selected: *m == draft.method, "{m}" }
                     }
                 }
             }
@@ -237,9 +237,10 @@ pub fn RequestBuilder(
                 },
                 on_var_edit,
             }
-            if draft.protocol == RequestProtocol::Http {
+            if draft.protocol == RequestProtocol::Http || draft.protocol == RequestProtocol::Sse {
                 button {
                     class: if copied_curl() { "btn btn-ghost btn-copy-curl copied" } else { "btn btn-ghost btn-copy-curl" },
+                    r#type: "button",
                     style: "font-family: var(--mono); font-size: 11px; font-weight: 600; padding: 0 9px; display: inline-flex; align-items: center; gap: 4px;",
                     title: "Copy resolved request as cURL command to clipboard",
                     onclick: {
@@ -269,6 +270,7 @@ pub fn RequestBuilder(
                 }
                 button {
                     class: "btn btn-ghost",
+                    r#type: "button",
                     style: "font-family: var(--mono); font-weight: 700; padding: 0 10px;",
                     title: "Generate Code Snippet (cURL, Python, TS, Rust…)",
                     onclick: move |_| on_open_code.call(()),
@@ -278,6 +280,7 @@ pub fn RequestBuilder(
             if draft.protocol == RequestProtocol::Http || draft.protocol == RequestProtocol::Grpc {
                 button {
                     class: if sending { "btn btn-ghost btn-cancel" } else { "btn btn-send" },
+                    r#type: "button",
                     title: if sending { "Cancel in-flight request" } else { "Send request (⌘↵)" },
                     onclick: move |_| on_send.call(()),
                     if sending {
@@ -288,6 +291,21 @@ pub fn RequestBuilder(
                     } else {
                         span { class: "action-icon action-icon-bolt", style: "width: 12px; height: 12px; margin-right: 4px;", aria_hidden: "true" }
                         span { "Send" }
+                    }
+                }
+            } else if draft.protocol == RequestProtocol::Sse {
+                button {
+                    class: if sending { "btn btn-ghost btn-cancel" } else { "btn btn-send" },
+                    r#type: "button",
+                    disabled: sending,
+                    title: "Connect & stream SSE events",
+                    onclick: move |_| on_protocol_action.call("sse_listen".into()),
+                    if sending {
+                        span { class: "loading-spinner-cancel" }
+                        span { "Streaming…" }
+                    } else {
+                        span { class: "action-icon action-icon-bolt", style: "width: 12px; height: 12px; margin-right: 4px;", aria_hidden: "true" }
+                        span { "Stream" }
                     }
                 }
             }
@@ -362,7 +380,7 @@ pub fn RequestBuilder(
                                     }
                                     tbody {
                                         for (i, row) in path_vars.iter().enumerate() {
-                                            tr {
+                                            tr { key: "pv-{row.key}-{i}",
                                                 td {
                                                     input {
                                                         r#type: "text",
@@ -408,6 +426,7 @@ pub fn RequestBuilder(
                         vars: vars.clone(),
                         is_headers: true,
                         protocol: Some(draft.protocol),
+                        body_mode: Some(draft.body_mode),
                         on_var_edit,
                         on_change: {
                             let draft = draft.clone();
@@ -845,7 +864,7 @@ fn ProtocolFields(
                                         if draft.ws_presets.is_empty() {
                                             div { class: "ws-presets-empty", "No presets yet. Click + Preset to save common messages." }
                                         }
-                                        for preset in draft.ws_presets.iter() {
+                                        for (pi, preset) in draft.ws_presets.iter().enumerate() {
                                             {
                                                 let p_id = preset.id;
                                                 let p_msg = preset.message.clone();
@@ -857,7 +876,7 @@ fn ProtocolFields(
                                                 rsx! {
                                                     div {
                                                         class: "{card_class}",
-                                                        key: "{p_id}",
+                                                        key: "{p_id}-{pi}",
                                                         onclick: {
                                                             let draft = draft.clone();
                                                             let msg = p_msg.clone();
@@ -1023,7 +1042,7 @@ fn ProtocolFields(
                                                 div { class: "ws-stream-empty-text", "WebSocket stream is empty. Connect and send messages or presets to see live bidirectional traffic." }
                                             }
                                         }
-                                        for frame in ws_timeline.iter() {
+                                        for (fi, frame) in ws_timeline.iter().enumerate() {
                                             {
                                                 let f_dir = frame.direction;
                                                 let f_text = frame.text.clone();
@@ -1039,7 +1058,7 @@ fn ProtocolFields(
                                                     crate::core::WsDirection::System => "ℹ SYS",
                                                 };
                                                 rsx! {
-                                                    div { class: "ws-frame-row {dir_class}", key: "{frame.id}",
+                                                    div { class: "ws-frame-row {dir_class}", key: "{frame.id}-{fi}",
                                                         div { class: "ws-frame-bubble",
                                                             div { class: "ws-frame-meta",
                                                                 span { class: "ws-frame-badge", "{badge_label}" }
@@ -1534,14 +1553,13 @@ fn ProtocolFields(
                     }
                 },
                 RequestProtocol::Sse => rsx! {
-                    p { class: "hint", "SSE GET stream — URL bar is EventSource endpoint." }
-                    div { class: "kv-actions",
-                        button {
-                            class: "btn btn-send",
-                            disabled: sending,
-                            onclick: move |_| on_protocol_action.call("sse_listen".into()),
-                            "Listen (max 20 events)"
-                        }
+                    SseWorkbench {
+                        draft: draft.clone(),
+                        vars: vars.clone(),
+                        sending,
+                        protocol_log: protocol_log.clone(),
+                        on_change,
+                        on_protocol_action,
                     }
                 },
                 RequestProtocol::GraphqlWs => rsx! {
@@ -1625,11 +1643,431 @@ fn ProtocolFields(
                 },
                 RequestProtocol::Http => rsx! {},
             }
-            if !protocol_log.is_empty() && (draft.protocol != RequestProtocol::WebSocket || !draft.ws_deck_mode) {
+            if !protocol_log.is_empty()
+                && draft.protocol != RequestProtocol::Sse
+                && (draft.protocol != RequestProtocol::WebSocket || !draft.ws_deck_mode)
+            {
                 div { class: "protocol-log",
                     h4 { "Protocol log" }
-                    for line in protocol_log.iter() {
-                        pre { class: "console-line", "{line}" }
+                    for (idx, line) in protocol_log.iter().enumerate() {
+                        pre { key: "plog-{idx}", class: "console-line", "{line}" }
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
+struct SseParsedMeta {
+    status: u16,
+    status_text: String,
+    elapsed_ms: u64,
+    ttfb_ms: Option<u64>,
+    count: usize,
+    warning: Option<String>,
+    method: String,
+    url: String,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+struct SseParsedEvent {
+    index: usize,
+    event: String,
+    id: String,
+    elapsed_ms: u64,
+    data: String,
+}
+
+fn parse_sse_log(protocol_log: &[String]) -> (Option<SseParsedMeta>, Vec<SseParsedEvent>, Option<String>) {
+    let mut meta = None;
+    let mut events = Vec::new();
+    let mut err_msg = None;
+
+    for line in protocol_log {
+        if let Some(raw) = line.strip_prefix("SSE_META:") {
+            if let Ok(v) = serde_json::from_str::<serde_json::Value>(raw) {
+                meta = Some(SseParsedMeta {
+                    status: v.get("status").and_then(|x| x.as_u64()).unwrap_or(200) as u16,
+                    status_text: v.get("status_text").and_then(|x| x.as_str()).unwrap_or("").to_string(),
+                    elapsed_ms: v.get("elapsed_ms").and_then(|x| x.as_u64()).unwrap_or(0),
+                    ttfb_ms: v.get("ttfb_ms").and_then(|x| x.as_u64()),
+                    count: v.get("count").and_then(|x| x.as_u64()).unwrap_or(0) as usize,
+                    warning: v.get("warning").and_then(|x| x.as_str()).map(|s| s.to_string()),
+                    method: v.get("method").and_then(|x| x.as_str()).unwrap_or("GET").to_string(),
+                    url: v.get("url").and_then(|x| x.as_str()).unwrap_or("").to_string(),
+                });
+            }
+        } else if let Some(raw) = line.strip_prefix("SSE_EVENT:") {
+            if let Ok(v) = serde_json::from_str::<serde_json::Value>(raw) {
+                events.push(SseParsedEvent {
+                    index: v.get("index").and_then(|x| x.as_u64()).unwrap_or((events.len() + 1) as u64) as usize,
+                    event: v.get("event").and_then(|x| x.as_str()).unwrap_or("message").to_string(),
+                    id: v.get("id").and_then(|x| x.as_str()).unwrap_or("").to_string(),
+                    elapsed_ms: v.get("elapsed_ms").and_then(|x| x.as_u64()).unwrap_or(0),
+                    data: v.get("data").and_then(|x| x.as_str()).unwrap_or("").to_string(),
+                });
+            }
+        } else if let Some(raw) = line.strip_prefix("SSE_ERR:") {
+            if let Ok(v) = serde_json::from_str::<serde_json::Value>(raw) {
+                err_msg = v.get("error").and_then(|x| x.as_str()).map(|s| s.to_string());
+            } else {
+                err_msg = Some(raw.to_string());
+            }
+        } else if err_msg.is_none() && !line.trim().is_empty() && meta.is_none() {
+            err_msg = Some(line.clone());
+        }
+    }
+
+    (meta, events, err_msg)
+}
+
+fn extract_ai_delta_text(data: &str) -> Option<String> {
+    let trimmed = data.trim();
+    if trimmed.is_empty() || trimmed == "[DONE]" {
+        return None;
+    }
+    let v: serde_json::Value = serde_json::from_str(trimmed).ok()?;
+    for ptr in [
+        "/choices/0/delta/content",
+        "/choices/0/delta/reasoning_content",
+        "/choices/0/text",
+        "/delta/text",
+        "/message/content",
+        "/response",
+        "/content/0/text",
+        "/token",
+        "/text",
+    ] {
+        if let Some(s) = v.pointer(ptr).and_then(|x| x.as_str()) {
+            if !s.is_empty() {
+                return Some(s.to_string());
+            }
+        }
+    }
+    None
+}
+
+fn format_sse_data_display(data: &str) -> (String, bool) {
+    let t = data.trim();
+    if (t.starts_with('{') || t.starts_with('[')) && t != "[DONE]" {
+        if let Some(pretty) = crate::core::beautify_json_body(t) {
+            return (pretty, true);
+        }
+    }
+    (data.to_string(), false)
+}
+
+#[component]
+fn SseWorkbench(
+    draft: RequestDraft,
+    vars: Option<VariableContext>,
+    sending: bool,
+    protocol_log: Vec<String>,
+    on_change: EventHandler<RequestDraft>,
+    on_protocol_action: EventHandler<String>,
+) -> Element {
+    let mut max_events = use_signal(|| 40usize);
+    let mut timeout_secs = use_signal(|| 20u64);
+    let mut event_filter = use_signal(String::new);
+    let mut raw_view = use_signal(|| false);
+    let mut copied_assembled = use_signal(|| false);
+
+    let (meta_opt, events, err_opt) = parse_sse_log(&protocol_log);
+    let has_done = events.iter().any(|e| e.data.trim() == "[DONE]");
+
+    let assembled_ai_text: String = events
+        .iter()
+        .filter_map(|e| extract_ai_delta_text(&e.data))
+        .collect();
+
+    let filter_lc = event_filter().trim().to_ascii_lowercase();
+    let filtered_events: Vec<&SseParsedEvent> = events
+        .iter()
+        .filter(|e| {
+            filter_lc.is_empty()
+                || e.event.to_ascii_lowercase().contains(&filter_lc)
+                || e.data.to_ascii_lowercase().contains(&filter_lc)
+                || e.id.to_ascii_lowercase().contains(&filter_lc)
+        })
+        .collect();
+
+    let show_body_editor = draft.method != HttpMethod::Get && draft.method != HttpMethod::Head;
+    let vctx = vars.unwrap_or_default();
+
+    rsx! {
+        div { class: "sse-workbench",
+            div { class: "sse-control-bar",
+                div { class: "sse-control-left",
+                    span { class: "sse-proto-badge", "SSE STREAM" }
+                    span { class: "sse-method-pill", "{draft.method}" }
+                    span { class: "sse-hint-inline",
+                        if show_body_editor {
+                            "Streaming HTTP {draft.method} (AI / API JSON body + EventSource frames)"
+                        } else {
+                            "EventSource GET stream — switch method above to POST for AI / LLM streaming APIs"
+                        }
+                    }
+                }
+                div { class: "sse-control-right",
+                    label { class: "sse-inline-field",
+                        span { "Max events" }
+                        select {
+                            class: "sse-compact-select",
+                            value: "{max_events()}",
+                            onchange: move |evt| {
+                                if let Ok(v) = evt.value().parse::<usize>() {
+                                    max_events.set(v);
+                                }
+                            },
+                            option { value: "20", "20" }
+                            option { value: "40", "40" }
+                            option { value: "100", "100" }
+                            option { value: "250", "250" }
+                        }
+                    }
+                    label { class: "sse-inline-field",
+                        span { "Timeout" }
+                        select {
+                            class: "sse-compact-select",
+                            value: "{timeout_secs()}",
+                            onchange: move |evt| {
+                                if let Ok(v) = evt.value().parse::<u64>() {
+                                    timeout_secs.set(v);
+                                }
+                            },
+                            option { value: "15", "15s" }
+                            option { value: "20", "20s" }
+                            option { value: "45", "45s" }
+                            option { value: "90", "90s" }
+                        }
+                    }
+                    button {
+                        class: "btn btn-send sse-stream-btn",
+                        r#type: "button",
+                        disabled: sending,
+                        onclick: move |_| {
+                            on_protocol_action.call(format!(
+                                "sse_listen:{}:{}",
+                                max_events(),
+                                timeout_secs() * 1000
+                            ));
+                        },
+                        if sending { "Streaming…" } else { "Connect & Stream" }
+                    }
+                }
+            }
+
+            if show_body_editor {
+                div { class: "sse-body-card",
+                    div { class: "body-editor-toolbar",
+                        div { class: "body-editor-tools-left",
+                            span { class: "sse-section-title", "JSON Stream Request Payload" }
+                            button {
+                                class: "btn btn-sm btn-ghost",
+                                r#type: "button",
+                                title: "Insert OpenAI-compatible AI streaming request body",
+                                onclick: {
+                                    let draft = draft.clone();
+                                    move |_| {
+                                        let mut d = draft.clone();
+                                        d.body_mode = BodyMode::Raw;
+                                        d.body = "{\n  \"model\": \"gpt-4o-mini\",\n  \"stream\": true,\n  \"messages\": [\n    { \"role\": \"user\", \"content\": \"Hello!\" }\n  ]\n}".to_string();
+                                        on_change.call(d);
+                                    }
+                                },
+                                "✨ AI Stream Template"
+                            }
+                            button {
+                                class: "btn btn-sm btn-ghost",
+                                r#type: "button",
+                                title: "Format and indent JSON body",
+                                onclick: {
+                                    let draft = draft.clone();
+                                    move |_| {
+                                        if let Some(pretty) = crate::core::beautify_json_body(&draft.body) {
+                                            let mut d = draft.clone();
+                                            d.body_mode = BodyMode::Raw;
+                                            d.body = pretty;
+                                            on_change.call(d);
+                                        }
+                                    }
+                                },
+                                "Beautify JSON"
+                            }
+                        }
+                        div { class: "body-editor-tools-right",
+                            match crate::core::lint_json_body(&draft.body) {
+                                Ok(()) if !draft.body.trim().is_empty() => rsx! {
+                                    span { class: "json-lint-badge json-lint-ok", "✓ Valid JSON" }
+                                },
+                                Err((line, col, msg)) => rsx! {
+                                    span {
+                                        class: "json-lint-badge json-lint-err",
+                                        title: "Line {line}, Column {col}: {msg}",
+                                        "⚠ Ln {line}, Col {col}: {msg}"
+                                    }
+                                },
+                                _ => rsx! {}
+                            }
+                        }
+                    }
+                    MultilineCodeField {
+                        class: "body-editor sse-body-editor".to_string(),
+                        value: draft.body.clone(),
+                        placeholder: "{\"stream\": true, \"messages\": [...]}".to_string(),
+                        rows: Some("5"),
+                        vars: Some(vctx),
+                        syntax: EditorSyntax::Json,
+                        on_change: {
+                            let draft = draft.clone();
+                            move |text: String| {
+                                let mut d = draft.clone();
+                                d.body_mode = BodyMode::Raw;
+                                d.body = text;
+                                on_change.call(d);
+                            }
+                        }
+                    }
+                }
+            }
+
+            if let Some(ref err) = err_opt {
+                div { class: "sse-error-card",
+                    div { class: "sse-error-head", "⚠ SSE Stream Error" }
+                    pre { class: "sse-error-body", "{err}" }
+                    p { class: "sse-error-tip",
+                        "Tip: Check HTTP method (GET vs POST for AI APIs), Authorization header, and Headers tab defaults (Accept: text/event-stream)."
+                    }
+                }
+            }
+
+            if let Some(ref meta) = meta_opt {
+                div { class: "sse-telemetry-strip",
+                    span { class: "sse-chip sse-chip-ok", "HTTP {meta.status} {meta.status_text}" }
+                    span { class: "sse-chip", "{meta.count} events" }
+                    if let Some(ttfb) = meta.ttfb_ms {
+                        span { class: "sse-chip", "TTFE {ttfb} ms" }
+                    }
+                    span { class: "sse-chip", "Total {meta.elapsed_ms} ms" }
+                    if has_done {
+                        span { class: "sse-chip sse-chip-done", "✓ [DONE]" }
+                    }
+                    if let Some(ref w) = meta.warning {
+                        span { class: "sse-chip sse-chip-warn", "⚠ {w}" }
+                    }
+                }
+            }
+
+            if !assembled_ai_text.is_empty() {
+                div { class: "sse-ai-preview-card",
+                    div { class: "sse-ai-preview-head",
+                        span { class: "sse-ai-preview-title", "✨ Assembled AI Stream Output" }
+                        button {
+                            class: "console-btn-text",
+                            r#type: "button",
+                            onclick: {
+                                let txt = assembled_ai_text.clone();
+                                move |_| {
+                                    let script = format!(
+                                        "navigator.clipboard.writeText({});",
+                                        serde_json::to_string(&txt).unwrap_or_else(|_| "\"\"".into())
+                                    );
+                                    spawn(async move {
+                                        let _ = document::eval(&script).await;
+                                        tokio::time::sleep(std::time::Duration::from_millis(1600)).await;
+                                        copied_assembled.set(false);
+                                    });
+                                    copied_assembled.set(true);
+                                }
+                            },
+                            if copied_assembled() { "✓ Copied" } else { "Copy Text" }
+                        }
+                    }
+                    pre { class: "sse-ai-preview-body", "{assembled_ai_text}" }
+                }
+            }
+
+            if !events.is_empty() {
+                div { class: "sse-events-toolbar",
+                    span { class: "sse-section-title", "Events ({filtered_events.len()} / {events.len()})" }
+                    div { class: "sse-events-tools-right",
+                        input {
+                            class: "sse-filter-input",
+                            r#type: "text",
+                            placeholder: "Filter event type or payload…",
+                            value: "{event_filter()}",
+                            oninput: move |evt| event_filter.set(evt.value()),
+                        }
+                        button {
+                            class: if !raw_view() { "console-btn-text active" } else { "console-btn-text" },
+                            r#type: "button",
+                            onclick: move |_| raw_view.set(false),
+                            "Cards"
+                        }
+                        button {
+                            class: if raw_view() { "console-btn-text active" } else { "console-btn-text" },
+                            r#type: "button",
+                            onclick: move |_| raw_view.set(true),
+                            "Raw"
+                        }
+                    }
+                }
+                if raw_view() {
+                    pre { class: "sse-raw-stream",
+                        for ev in &filtered_events {
+                            if !ev.id.is_empty() {
+                                "id: {ev.id}\n"
+                            }
+                            "event: {ev.event}\ndata: {ev.data}\n\n"
+                        }
+                    }
+                } else {
+                    div { class: "sse-event-list",
+                        for (ev_i, ev) in filtered_events.iter().enumerate() {
+                            {
+                                let (formatted, is_json) = format_sse_data_display(&ev.data);
+                                let payload_copy = ev.data.clone();
+                                rsx! {
+                                    div { key: "sse-ev-{ev.index}-{ev_i}", class: "sse-event-card",
+                                        div { class: "sse-event-card-head",
+                                            span { class: "sse-ev-idx", "#{ev.index}" }
+                                            span { class: "sse-ev-type", "{ev.event}" }
+                                            if !ev.id.is_empty() {
+                                                span { class: "sse-ev-id", "id: {ev.id}" }
+                                            }
+                                            span { class: "sse-ev-time", "+{ev.elapsed_ms} ms" }
+                                            if is_json {
+                                                span { class: "sse-ev-json-tag", "JSON" }
+                                            }
+                                            button {
+                                                class: "console-btn-text sse-copy-ev-btn",
+                                                r#type: "button",
+                                                title: "Copy event payload",
+                                                onclick: move |_| {
+                                                    let script = format!(
+                                                        "navigator.clipboard.writeText({});",
+                                                        serde_json::to_string(&payload_copy).unwrap_or_else(|_| "\"\"".into())
+                                                    );
+                                                    spawn(async move {
+                                                        let _ = document::eval(&script).await;
+                                                    });
+                                                },
+                                                "Copy"
+                                            }
+                                        }
+                                        pre { class: "sse-event-card-data", "{formatted}" }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            } else if err_opt.is_none() && meta_opt.is_none() && !sending {
+                div { class: "sse-empty-state",
+                    p { class: "sse-empty-title", "Ready to stream Server-Sent Events" }
+                    p { class: "sse-empty-sub",
+                        "Set URL & Headers above (e.g. Authorization: Bearer {{token}}), pick GET or POST (JSON body for AI endpoints), then click Stream / Connect & Stream."
                     }
                 }
             }
@@ -1681,31 +2119,146 @@ fn raw_to_key_values(raw: &str) -> Vec<KeyValue> {
     rows
 }
 
+const HEADER_NAME_SUGGESTIONS: &[&str] = &[
+    "Accept",
+    "Accept-Encoding",
+    "Accept-Language",
+    "Authorization",
+    "Cache-Control",
+    "Connection",
+    "Content-Type",
+    "Cookie",
+    "If-Modified-Since",
+    "If-None-Match",
+    "Last-Event-ID",
+    "OpenAI-Beta",
+    "OpenAI-Organization",
+    "Origin",
+    "Pragma",
+    "Referer",
+    "User-Agent",
+    "X-Api-Key",
+    "X-Correlation-ID",
+    "X-Forwarded-For",
+    "X-Request-ID",
+    "anthropic-version",
+];
+
+fn header_name_suggestions(query: &str) -> Vec<&'static str> {
+    let q = query.trim().to_ascii_lowercase();
+    let mut matches: Vec<&'static str> = HEADER_NAME_SUGGESTIONS
+        .iter()
+        .copied()
+        .filter(|h| q.is_empty() || h.to_ascii_lowercase().contains(&q))
+        .collect();
+    matches.truncate(8);
+    matches
+}
+
+fn header_value_suggestions(key: &str, query: &str) -> Vec<&'static str> {
+    let candidates: &[&str] = match key.trim().to_ascii_lowercase().as_str() {
+        "accept" => &[
+            "text/event-stream",
+            "application/json",
+            "*/*",
+            "text/plain",
+            "application/xml",
+        ],
+        "content-type" => &[
+            "application/json",
+            "application/json; charset=utf-8",
+            "application/x-www-form-urlencoded",
+            "multipart/form-data",
+            "text/plain",
+            "application/grpc",
+            "text/event-stream",
+        ],
+        "authorization" => &[
+            "Bearer {{token}}",
+            "Bearer {{api_key}}",
+            "Basic {{credentials}}",
+            "ApiKey {{api_key}}",
+        ],
+        "accept-encoding" => &["identity", "gzip, deflate, br", "gzip"],
+        "cache-control" => &["no-cache", "no-store", "max-age=0"],
+        "connection" => &["keep-alive", "Upgrade", "close"],
+        "user-agent" => &["Blitz/0.2.6", "PostmanRuntime/7.43.0", "curl/8.6.0"],
+        "anthropic-version" => &["2023-06-01", "2023-01-01"],
+        "openai-beta" => &["assistants=v2", "realtime=v1"],
+        "x-api-key" => &["{{api_key}}", "{{token}}"],
+        _ => &[],
+    };
+    let q = query.trim().to_ascii_lowercase();
+    candidates
+        .iter()
+        .copied()
+        .filter(|v| q.is_empty() || v.to_ascii_lowercase().contains(&q))
+        .take(7)
+        .collect()
+}
+
+fn effective_auto_headers(
+    proto: RequestProtocol,
+    body_mode: Option<BodyMode>,
+) -> Vec<(&'static str, &'static str)> {
+    let mut out = proto.auto_generated_headers().to_vec();
+    if proto == RequestProtocol::Http {
+        if let Some(bm) = body_mode {
+            let ct = match bm {
+                BodyMode::Raw | BodyMode::Graphql => Some("application/json"),
+                BodyMode::Urlencoded => Some("application/x-www-form-urlencoded"),
+                BodyMode::FormData => Some("multipart/form-data"),
+                BodyMode::Binary => Some("application/octet-stream"),
+                BodyMode::None => None,
+            };
+            if let Some(ct_val) = ct {
+                if !out.iter().any(|(k, _)| k.eq_ignore_ascii_case("Content-Type")) {
+                    out.push(("Content-Type", ct_val));
+                }
+            }
+        }
+    }
+    out
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum HdrAcTarget {
+    Key(usize),
+    Value(usize),
+}
+
 #[component]
 fn KvEditor(
     rows: Vec<KeyValue>,
     vars: VariableContext,
     #[props(default)] is_headers: bool,
     #[props(default)] protocol: Option<RequestProtocol>,
+    #[props(default)] body_mode: Option<BodyMode>,
     on_var_edit: EventHandler<VarEditEvent>,
     on_change: EventHandler<Vec<KeyValue>>,
 ) -> Element {
     let mut bulk_mode = use_signal(|| false);
     let mut bulk_text = use_signal(String::new);
-    let mut show_system_headers = use_signal(|| false);
+    let mut show_system_headers = use_signal(|| true);
+    let mut ac_target = use_signal(|| None::<HdrAcTarget>);
+    let mut ac_selected = use_signal(|| 0usize);
 
     let proto = protocol.unwrap_or(RequestProtocol::Http);
-    let auto_headers = proto.auto_generated_headers();
+    let auto_headers = if is_headers {
+        effective_auto_headers(proto, body_mode)
+    } else {
+        Vec::new()
+    };
     let auto_count = auto_headers.len();
     let toggle_label = if show_system_headers() {
-        format!("▾ Hide auto-generated headers ({auto_count})")
+        format!("▾ Hide protocol default headers ({auto_count})")
     } else {
-        format!("▸ {auto_count} auto-generated headers hidden")
+        format!("▸ Show protocol default headers ({auto_count})")
     };
 
     rsx! {
         div { class: "kv-toolbar",
-            div { style: "display: flex; gap: 8px; align-items: center;",
+            div { style: "display: flex; gap: 8px; align-items: center; flex-wrap: wrap;",
                 button {
                     class: "btn btn-sm btn-ghost",
                     r#type: "button",
@@ -1723,6 +2276,25 @@ fn KvEditor(
                         }
                     },
                     if bulk_mode() { "Table Edit" } else { "Bulk Edit" }
+                }
+                if !bulk_mode() {
+                    button {
+                        class: "btn btn-sm btn-ghost",
+                        r#type: "button",
+                        onclick: {
+                            let rows = rows.clone();
+                            move |_| {
+                                let mut next = rows.clone();
+                                if next.last().map(|r| !r.key.is_empty() || !r.value.is_empty()).unwrap_or(true) {
+                                    next.push(KeyValue::new("", ""));
+                                } else {
+                                    next.insert(next.len().saturating_sub(1), KeyValue::new("", ""));
+                                }
+                                on_change.call(next);
+                            }
+                        },
+                        if is_headers { "+ Add Header" } else { "+ Add Row" }
+                    }
                 }
                 if is_headers && auto_count > 0 {
                     button {
@@ -1751,71 +2323,325 @@ fn KvEditor(
             table { class: "kv-table",
                 thead {
                     tr {
+                        th { class: "kv-col-check", "" }
                         th { "Key" }
                         th { "Value" }
+                        th { class: "kv-col-action", "" }
                     }
                 }
                 tbody {
                     if is_headers && show_system_headers() {
-                        for (k, v) in auto_headers {
-                            tr { class: "system-header-row",
-                                td {
-                                    input {
-                                        r#type: "text",
-                                        readonly: true,
-                                        value: "{k}",
-                                        title: "Auto-generated Postman system header",
-                                    }
-                                }
-                                td {
-                                    input {
-                                        r#type: "text",
-                                        readonly: true,
-                                        value: "{v}",
-                                        title: "Auto-generated Postman system header",
+                        for (ai, (k, v)) in auto_headers.iter().copied().enumerate() {
+                            {
+                                let overridden = rows.iter().any(|r| {
+                                    r.enabled && !r.key.trim().is_empty() && r.key.trim().eq_ignore_ascii_case(k)
+                                });
+                                rsx! {
+                                    tr {
+                                        key: "auto-{ai}-{k}",
+                                        class: if overridden { "system-header-row overridden" } else { "system-header-row" },
+                                        td { class: "kv-col-check",
+                                            span {
+                                                class: if overridden { "kv-auto-badge overridden" } else { "kv-auto-badge" },
+                                                title: if overridden { "Overridden by custom header row below" } else { "Default header automatically applied for {proto}" },
+                                                if overridden { "OVER" } else { "AUTO" }
+                                            }
+                                        }
+                                        td {
+                                            input {
+                                                r#type: "text",
+                                                readonly: true,
+                                                value: "{k}",
+                                                title: "Default header for {proto}",
+                                            }
+                                        }
+                                        td {
+                                            input {
+                                                r#type: "text",
+                                                readonly: true,
+                                                value: "{v}",
+                                                title: "Default value for {proto}",
+                                            }
+                                        }
+                                        td { class: "kv-col-action",
+                                            button {
+                                                class: "kv-override-btn",
+                                                r#type: "button",
+                                                title: "Copy default header into editable table to customize",
+                                                disabled: overridden,
+                                                onclick: {
+                                                    let rows = rows.clone();
+                                                    move |_| {
+                                                        let mut next = rows.clone();
+                                                        if !next.iter().any(|r| r.key.trim().eq_ignore_ascii_case(k)) {
+                                                            let pos = if next.last().map(|r| r.key.is_empty() && r.value.is_empty()).unwrap_or(false) {
+                                                                next.len() - 1
+                                                            } else {
+                                                                next.len()
+                                                            };
+                                                            next.insert(pos, KeyValue::new(k, v));
+                                                            ensure_trailing_empty(&mut next);
+                                                            on_change.call(next);
+                                                        }
+                                                    }
+                                                },
+                                                if overridden { "Active" } else { "Override" }
+                                            }
+                                        }
                                     }
                                 }
                             }
                         }
                     }
                     for (i, row) in rows.iter().enumerate() {
-                        tr {
-                            td {
-                                input {
-                                    r#type: "text",
-                                    value: "{row.key}",
-                                    oninput: {
-                                        let rows = rows.clone();
-                                        move |evt: Event<FormData>| {
-                                            let mut next = rows.clone();
-                                            if let Some(r) = next.get_mut(i) {
-                                                r.key = evt.value();
+                        {
+                            let is_trailing_empty = i + 1 == rows.len() && row.key.is_empty() && row.value.is_empty();
+                            let key_suggestions = if is_headers && ac_target() == Some(HdrAcTarget::Key(i)) {
+                                header_name_suggestions(&row.key)
+                            } else {
+                                Vec::new()
+                            };
+                            let val_suggestions = if is_headers
+                                && ac_target() == Some(HdrAcTarget::Value(i))
+                                && !row.value.contains("{{")
+                            {
+                                header_value_suggestions(&row.key, &row.value)
+                            } else {
+                                Vec::new()
+                            };
+                            let cur_ac_sel = ac_selected();
+                            rsx! {
+                                tr {
+                                    key: "kv-{i}",
+                                    class: if !row.enabled { "kv-row-disabled" } else { "" },
+                                    td { class: "kv-col-check",
+                                        if !is_trailing_empty {
+                                            input {
+                                                r#type: "checkbox",
+                                                checked: row.enabled,
+                                                title: if row.enabled { "Disable row" } else { "Enable row" },
+                                                onchange: {
+                                                    let rows = rows.clone();
+                                                    move |evt: Event<FormData>| {
+                                                        let mut next = rows.clone();
+                                                        if let Some(r) = next.get_mut(i) {
+                                                            r.enabled = evt.checked();
+                                                        }
+                                                        on_change.call(next);
+                                                    }
+                                                }
                                             }
-                                            ensure_trailing_empty(&mut next);
-                                            on_change.call(next);
                                         }
                                     }
-                                }
-                            }
-                            td {
-                                VarHoverInput {
-                                    class: "kv-var-input".to_string(),
-                                    value: row.value.clone(),
-                                    placeholder: String::new(),
-                                    input_id: format!("np-kv-val-{i}"),
-                                    vars: vars.clone(),
-                                    on_input: {
-                                        let rows = rows.clone();
-                                        move |val: String| {
-                                            let mut next = rows.clone();
-                                            if let Some(r) = next.get_mut(i) {
-                                                r.value = val;
+                                    td {
+                                        div { class: "kv-cell-ac-wrap",
+                                            input {
+                                                r#type: "text",
+                                                placeholder: if is_headers { "Header name (e.g. Authorization)" } else { "Key" },
+                                                value: "{row.key}",
+                                                onfocus: move |_| {
+                                                    if is_headers {
+                                                        ac_target.set(Some(HdrAcTarget::Key(i)));
+                                                        ac_selected.set(0);
+                                                    }
+                                                },
+                                                onblur: move |_| {
+                                                    if ac_target() == Some(HdrAcTarget::Key(i)) {
+                                                        ac_target.set(None);
+                                                    }
+                                                },
+                                                onkeydown: {
+                                                    let suggestions = key_suggestions.clone();
+                                                    let rows = rows.clone();
+                                                    move |evt: Event<KeyboardData>| {
+                                                        if suggestions.is_empty() {
+                                                            return;
+                                                        }
+                                                        match evt.key() {
+                                                            Key::ArrowDown => {
+                                                                evt.prevent_default();
+                                                                ac_selected.set((ac_selected() + 1) % suggestions.len());
+                                                            }
+                                                            Key::ArrowUp => {
+                                                                evt.prevent_default();
+                                                                let n = suggestions.len();
+                                                                ac_selected.set((ac_selected() + n - 1) % n);
+                                                            }
+                                                            Key::Enter | Key::Tab => {
+                                                                if let Some(&picked) = suggestions.get(ac_selected()) {
+                                                                    if evt.key() == Key::Enter {
+                                                                        evt.prevent_default();
+                                                                    }
+                                                                    let mut next = rows.clone();
+                                                                    if let Some(r) = next.get_mut(i) {
+                                                                        r.key = picked.to_string();
+                                                                    }
+                                                                    ensure_trailing_empty(&mut next);
+                                                                    on_change.call(next);
+                                                                    ac_target.set(None);
+                                                                }
+                                                            }
+                                                            Key::Escape => {
+                                                                ac_target.set(None);
+                                                            }
+                                                            _ => {}
+                                                        }
+                                                    }
+                                                },
+                                                oninput: {
+                                                    let rows = rows.clone();
+                                                    move |evt: Event<FormData>| {
+                                                        let mut next = rows.clone();
+                                                        if let Some(r) = next.get_mut(i) {
+                                                            r.key = evt.value();
+                                                        }
+                                                        ensure_trailing_empty(&mut next);
+                                                        on_change.call(next);
+                                                        if is_headers {
+                                                            ac_target.set(Some(HdrAcTarget::Key(i)));
+                                                            ac_selected.set(0);
+                                                        }
+                                                    }
+                                                }
                                             }
-                                            ensure_trailing_empty(&mut next);
-                                            on_change.call(next);
+                                            if !key_suggestions.is_empty() {
+                                                div {
+                                                    class: "hdr-ac-menu",
+                                                    onmousedown: move |evt| evt.prevent_default(),
+                                                    for (s_idx, sug) in key_suggestions.iter().enumerate() {
+                                                        button {
+                                                            key: "hk-{i}-{sug}",
+                                                            class: if s_idx == cur_ac_sel { "hdr-ac-item active" } else { "hdr-ac-item" },
+                                                            r#type: "button",
+                                                            onmousedown: {
+                                                                let rows = rows.clone();
+                                                                let picked = (*sug).to_string();
+                                                                move |evt| {
+                                                                    evt.prevent_default();
+                                                                    let mut next = rows.clone();
+                                                                    if let Some(r) = next.get_mut(i) {
+                                                                        r.key = picked.clone();
+                                                                    }
+                                                                    ensure_trailing_empty(&mut next);
+                                                                    on_change.call(next);
+                                                                    ac_target.set(None);
+                                                                }
+                                                            },
+                                                            span { "{sug}" }
+                                                        }
+                                                    }
+                                                }
+                                            }
                                         }
-                                    },
-                                    on_var_edit,
+                                    }
+                                    td {
+                                        div { class: "kv-cell-ac-wrap kv-val-cell",
+                                            div {
+                                                style: "flex: 1 1 auto; min-width: 0;",
+                                                onfocusin: move |_| {
+                                                    if is_headers {
+                                                        ac_target.set(Some(HdrAcTarget::Value(i)));
+                                                        ac_selected.set(0);
+                                                    }
+                                                },
+                                                onfocusout: move |_| {
+                                                    if ac_target() == Some(HdrAcTarget::Value(i)) {
+                                                        ac_target.set(None);
+                                                    }
+                                                },
+                                                VarHoverInput {
+                                                    class: "kv-var-input".to_string(),
+                                                    value: row.value.clone(),
+                                                    placeholder: if is_headers { "Value or {{var}}".to_string() } else { String::new() },
+                                                    input_id: format!("np-kv-val-{i}"),
+                                                    vars: vars.clone(),
+                                                    on_input: {
+                                                        let rows = rows.clone();
+                                                        move |val: String| {
+                                                            let mut next = rows.clone();
+                                                            if let Some(r) = next.get_mut(i) {
+                                                                r.value = val;
+                                                            }
+                                                            ensure_trailing_empty(&mut next);
+                                                            on_change.call(next);
+                                                            if is_headers {
+                                                                ac_target.set(Some(HdrAcTarget::Value(i)));
+                                                                ac_selected.set(0);
+                                                            }
+                                                        }
+                                                    },
+                                                    on_var_edit,
+                                                }
+                                            }
+                                            if is_headers && !header_value_suggestions(&row.key, "").is_empty() {
+                                                button {
+                                                    class: "kv-ac-trigger-btn",
+                                                    r#type: "button",
+                                                    title: "Show suggested values for {row.key}",
+                                                    onmousedown: move |evt| {
+                                                        evt.prevent_default();
+                                                        if ac_target() == Some(HdrAcTarget::Value(i)) {
+                                                            ac_target.set(None);
+                                                        } else {
+                                                            ac_target.set(Some(HdrAcTarget::Value(i)));
+                                                            ac_selected.set(0);
+                                                        }
+                                                    },
+                                                    "▾"
+                                                }
+                                            }
+                                            if !val_suggestions.is_empty() {
+                                                div {
+                                                    class: "hdr-ac-menu",
+                                                    onmousedown: move |evt| evt.prevent_default(),
+                                                    for (s_idx, sug) in val_suggestions.iter().enumerate() {
+                                                        button {
+                                                            key: "hv-{i}-{sug}",
+                                                            class: if s_idx == cur_ac_sel { "hdr-ac-item active" } else { "hdr-ac-item" },
+                                                            r#type: "button",
+                                                            onmousedown: {
+                                                                let rows = rows.clone();
+                                                                let picked = (*sug).to_string();
+                                                                move |evt| {
+                                                                    evt.prevent_default();
+                                                                    let mut next = rows.clone();
+                                                                    if let Some(r) = next.get_mut(i) {
+                                                                        r.value = picked.clone();
+                                                                    }
+                                                                    ensure_trailing_empty(&mut next);
+                                                                    on_change.call(next);
+                                                                    ac_target.set(None);
+                                                                }
+                                                            },
+                                                            span { "{sug}" }
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                    td { class: "kv-col-action",
+                                        if !is_trailing_empty {
+                                            button {
+                                                class: "kv-delete-btn",
+                                                r#type: "button",
+                                                title: "Delete row",
+                                                onclick: {
+                                                    let rows = rows.clone();
+                                                    move |_| {
+                                                        let mut next = rows.clone();
+                                                        if i < next.len() {
+                                                            next.remove(i);
+                                                        }
+                                                        ensure_trailing_empty(&mut next);
+                                                        on_change.call(next);
+                                                        ac_target.set(None);
+                                                    }
+                                                },
+                                                "✕"
+                                            }
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -2179,7 +3005,7 @@ fn FormDataEditor(
             }
             tbody {
                 for (i, row) in rows.iter().enumerate() {
-                    tr {
+                    tr { key: "fd-{i}",
                         td {
                             input {
                                 r#type: "text",
@@ -2319,28 +3145,51 @@ pub(crate) fn AuthEditor(
     let auth_type = auth.auth_type;
     let vctx_opt = vars.clone();
     let token_ph = if auth_type == AuthType::ApiKey { "API key" } else { "Token (or secret://…)" };
+    let auth_badge_text = match auth_type {
+        AuthType::Inherit => "Inherits auth from parent folder or collection",
+        AuthType::NoAuth => "No authorization header attached",
+        AuthType::Bearer => "Sends Authorization: Bearer <token>",
+        AuthType::Basic => "Sends Base64 HTTP Basic credentials",
+        AuthType::ApiKey => "Injects custom API key header",
+        AuthType::Digest => "HTTP Digest challenge-response",
+        AuthType::Oauth2 => "OAuth 2.0 Bearer access token",
+        AuthType::Oauth1 => "HMAC-SHA1 OAuth 1.0a signature",
+        AuthType::Hawk => "Hawk MAC authentication header",
+        AuthType::Ntlm => "Windows NTLM negotiation",
+        AuthType::AwsSigV4 => "AWS Signature Version 4",
+        AuthType::EdgeGrid => "Akamai EdgeGrid authentication",
+    };
     rsx! {
-        select {
-            value: "{auth_type_str(auth_type)}",
-            onchange: {
-                let mut a = auth.clone();
-                move |evt: Event<FormData>| {
-                    a.auth_type = parse_auth(&evt.value());
-                    on_change.call(a.clone());
+        div { class: "auth-type-bar",
+            span { class: "auth-type-field-label", "Authorization Type" }
+            div { class: "auth-type-select-wrap",
+                select {
+                    class: "auth-type-select",
+                    aria_label: "Authorization type",
+                    value: "{auth_type_str(auth_type)}",
+                    onchange: {
+                        let mut a = auth.clone();
+                        move |evt: Event<FormData>| {
+                            a.auth_type = parse_auth(&evt.value());
+                            on_change.call(a.clone());
+                        }
+                    },
+                    option { value: "inherit", "Inherit from parent" }
+                    option { value: "no_auth", "No Auth" }
+                    option { value: "bearer", "Bearer Token" }
+                    option { value: "basic", "Basic Auth" }
+                    option { value: "api_key", "API Key" }
+                    option { value: "digest", "Digest" }
+                    option { value: "oauth2", "OAuth 2.0" }
+                    option { value: "oauth1", "OAuth 1.0" }
+                    option { value: "hawk", "Hawk" }
+                    option { value: "ntlm", "NTLM" }
+                    option { value: "aws_sigv4", "AWS Signature" }
+                    option { value: "edgegrid", "Akamai EdgeGrid" }
                 }
-            },
-            option { value: "inherit", "Inherit from parent" }
-            option { value: "no_auth", "No Auth" }
-            option { value: "bearer", "Bearer Token" }
-            option { value: "basic", "Basic Auth" }
-            option { value: "api_key", "API Key" }
-            option { value: "digest", "Digest" }
-            option { value: "oauth2", "OAuth 2.0" }
-            option { value: "oauth1", "OAuth 1.0" }
-            option { value: "hawk", "Hawk" }
-            option { value: "ntlm", "NTLM" }
-            option { value: "aws_sigv4", "AWS Signature" }
-            option { value: "edgegrid", "Akamai EdgeGrid" }
+                span { class: "auth-type-caret", "aria-hidden": "true", "▾" }
+            }
+            span { class: "auth-type-summary", "{auth_badge_text}" }
         }
         if matches!(auth_type, AuthType::Bearer | AuthType::ApiKey) {
             if let Some(vctx) = &vctx_opt {
@@ -2482,8 +3331,11 @@ pub(crate) fn AuthEditor(
             }
         }
         if auth_type == AuthType::Oauth2 {
-            select {
-                value: if auth.oauth2.grant == OAuth2Grant::AuthorizationCode { "auth_code" } else { "client_creds" },
+            div { class: "auth-type-select-wrap",
+                select {
+                    class: "auth-type-select",
+                    aria_label: "OAuth 2.0 Grant Type",
+                    value: if auth.oauth2.grant == OAuth2Grant::AuthorizationCode { "auth_code" } else { "client_creds" },
                 onchange: {
                     let mut a = auth.clone();
                     move |evt: Event<FormData>| {
@@ -2495,8 +3347,10 @@ pub(crate) fn AuthEditor(
                         on_change.call(a.clone());
                     }
                 },
-                option { value: "client_creds", "Client Credentials" }
-                option { value: "auth_code", "Authorization Code" }
+                    option { value: "client_creds", "Client Credentials" }
+                    option { value: "auth_code", "Authorization Code" }
+                }
+                span { class: "auth-type-caret", "aria-hidden": "true", "▾" }
             }
             if let Some(vctx) = &vctx_opt {
                 VarHoverInput {

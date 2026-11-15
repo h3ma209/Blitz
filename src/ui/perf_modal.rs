@@ -52,8 +52,9 @@ pub fn PerformanceModal(
                                     selected_req_id.set(None);
                                 }
                             },
-                            for c in collections.iter() {
+                            for (ci, c) in collections.iter().enumerate() {
                                 option {
+                                    key: "{c.id}-{ci}",
                                     value: "{c.id}",
                                     selected: selected_col_id() == Some(c.id),
                                     "{c.name}"
@@ -77,8 +78,9 @@ pub fn PerformanceModal(
                                 }
                             },
                             option { value: "", "⚡ All endpoints in collection (sequential loop)" }
-                            for req in requests.iter() {
+                            for (ri, req) in requests.iter().enumerate() {
                                 option {
+                                    key: "{req.id}-{ri}",
                                     value: "{req.id}",
                                     selected: selected_req_id() == Some(req.id),
                                     "[{req.method.as_str()}] {req.name}"
@@ -111,7 +113,9 @@ pub fn PerformanceModal(
                         div { class: "perf-pills",
                             for count in [5u32, 10, 25, 50] {
                                 button {
+                                    key: "{count}",
                                     class: if vus() == count { "perf-pill active" } else { "perf-pill" },
+                                    r#type: "button",
                                     disabled: running,
                                     onclick: move |_| vus.set(count),
                                     "{count} VUs"
@@ -141,7 +145,9 @@ pub fn PerformanceModal(
                         div { class: "perf-pills",
                             for secs in [5u64, 10, 30, 60] {
                                 button {
+                                    key: "{secs}",
                                     class: if duration_secs() == secs { "perf-pill active" } else { "perf-pill" },
+                                    r#type: "button",
                                     disabled: running,
                                     onclick: move |_| duration_secs.set(secs),
                                     "{secs}s"

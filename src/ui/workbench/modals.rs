@@ -9,8 +9,8 @@ use crate::core::{
     find_environment, generate_snippet_resolved, get_team_activity, import_collection_v21,
     import_curl, import_har, import_openapi3, limitations_blurb, pull_workspace, purge_from_trash,
     push_console, push_workspace, restore_from_trash, run_performance, save_request_to_collections,
-    snippet_languages, valid_move_destinations, Collection, ConsoleLine, Cookie, EnvVar,
-    Environment, KeyValue, RequestDraft, VariableContext,
+    snippet_languages, upsert_collection, valid_move_destinations, Collection, ConsoleLine,
+    Cookie, EnvVar, Environment, KeyValue, RequestDraft, VariableContext,
 };
 use crate::runtime::{run_collection_with_config, RunnerConfig};
 use crate::storage::JsonStore;
@@ -104,7 +104,7 @@ pub fn VarsPage(st: WorkbenchState) -> Element {
                             }
                         }
                         div { class: "env-sidebar-list",
-                            for env in environments() {
+                            for (e_idx, env) in environments().into_iter().enumerate() {
                                 {
                                     let id = env.id;
                                     let name = env.name.clone();
@@ -112,7 +112,7 @@ pub fn VarsPage(st: WorkbenchState) -> Element {
                                     let is_active = active_env_id() == Some(id);
                                     rsx! {
                                         div {
-                                            key: "{id}",
+                                            key: "{e_idx}-{id}",
                                             class: if is_editing { "env-sidebar-item active" } else { "env-sidebar-item" },
                                             onclick: move |_| {
                                                 editing_env_id.set(Some(id));
@@ -390,6 +390,7 @@ pub fn VarsPage(st: WorkbenchState) -> Element {
                                             tbody {
                                                 for i in 0..values_len {
                                                     tr {
+                                                        key: "{env_id}-{i}",
                                                         td {
                                                             input {
                                                                 value: "{env.values.get(i).map(|r| r.key.clone()).unwrap_or_default()}",
@@ -549,8 +550,8 @@ pub fn VarsPage(st: WorkbenchState) -> Element {
                                 rsx! { p { class: "hint", "(empty)" } }
                             } else {
                                 rsx! {
-                                    for (k, val) in local.iter() {
-                                        div { class: "eye-row", code { "{k}" } " = " code { "{val}" } }
+                                    for (li, (k, val)) in local.iter().enumerate() {
+                                        div { key: "{k}-{li}", class: "eye-row", code { "{k}" } " = " code { "{val}" } }
                                     }
                                 }
                             }
@@ -765,14 +766,14 @@ pub fn WorkbenchModals(
                             if destinations.is_empty() {
                                 p { class: "hint", "No available destination folders or collections." }
                             } else {
-                                for dest in destinations {
+                                for (di, dest) in destinations.into_iter().enumerate() {
                                     {
                                         let did = dest.id;
                                         let pad = dest.depth * 14 + 10;
                                         let icon = if dest.is_collection { "📦" } else { "📁" };
                                         rsx! {
                                             button {
-                                                key: "{did}",
+                                                key: "{did}-{di}",
                                                 class: "move-target-row",
                                                 style: "padding-left: {pad}px;",
                                                 onclick: {
@@ -859,6 +860,7 @@ pub fn WorkbenchModals(
                                             st.response.set(None);
                                             st.draft.set(RequestDraft::default());
                                             st.open_tabs.set(tabs);
+                                            st.persist();
                                             st.status_msg.set("tab closed".into());
                                             return;
                                         }
@@ -877,6 +879,7 @@ pub fn WorkbenchModals(
                                         }
                                         let mut st = st;
                                         st.open_tabs.set(tabs);
+                                        st.persist();
                                         st.status_msg.set("changes discarded".into());
                                     }
                                 },
@@ -942,11 +945,12 @@ pub fn WorkbenchModals(
                     if trash().is_empty() {
                         p { class: "hint", "Empty." }
                     } else {
-                        for c in trash() {
-                            div { class: "trash-row",
+                        for (ti, c) in trash().into_iter().enumerate() {
+                            div { key: "{c.id}-{ti}", class: "trash-row",
                                 span { "{c.name}" }
                                 button {
                                     class: "btn btn-ghost",
+                                    r#type: "button",
                                     onclick: move |_| {
                                         let mut st = st;
                                         let mut cols = collections();
@@ -1004,7 +1008,7 @@ pub fn WorkbenchModals(
                                         value: "{snippet_lang()}",
                                         onchange: move |evt| snippet_lang.set(evt.value()),
                                         for lang in snippet_languages() {
-                                            option { value: "{lang}", "{lang}" }
+                                            option { key: "{lang}", value: "{lang}", "{lang}" }
                                         }
                                     }
                                 }
@@ -1263,6 +1267,7 @@ pub fn WorkbenchModals(
                         tbody {
                             for (i, c) in cookies().cookies.iter().enumerate() {
                                 tr {
+                                    key: "{c.domain}-{c.name}-{i}",
                                     td {
                                         input {
                                             value: "{c.domain}",
@@ -1646,18 +1651,39 @@ pub fn WorkbenchModals(
                     };
                     match imported {
                         Ok(col) => {
-                            let id = col.id;
-                            let mut v = vars();
-                            v.collection = col.variables_map();
-                            vars.set(v);
                             let mut cols = collections();
-                            cols.push(col);
-                            collections.set(cols);
+                            let stats = upsert_collection(&mut cols, col);
+                            let id = stats.collection_id;
+                            let mut v = vars();
+                            if let Some(col_ref) = cols.iter().find(|c| c.id == id) {
+                                v.collection = col_ref.variables_map();
+                            }
+                            vars.set(v);
+                            collections.set(cols.clone());
+                            st.open_tabs.with_mut(|tabs| {
+                                for tab in tabs.iter_mut() {
+                                    if let Some(updated) = cols.iter().find_map(|c| c.find_request(tab.id)) {
+                                        *tab = updated.clone();
+                                    }
+                                }
+                            });
+                            if let Some(active_id) = (st.active_request_id)() {
+                                if let Some(updated) = cols.iter().find_map(|c| c.find_request(active_id)) {
+                                    st.draft.set(updated.clone());
+                                }
+                            }
                             active_collection_id.set(Some(id));
                             fold_epoch.set(fold_epoch() + 1);
                             impex_modal.set(None);
                             st.persist();
-                            status_msg.set("imported collection".into());
+                            if stats.created_new {
+                                status_msg.set("imported collection".into());
+                            } else {
+                                status_msg.set(format!(
+                                    "updated collection (+{} new, {} updated requests)",
+                                    stats.added_requests, stats.updated_requests
+                                ));
+                            }
                         }
                         Err(e) => status_msg.set(format!("import error: {e}")),
                     }
@@ -1705,6 +1731,7 @@ pub fn MapVarEditor(
             tbody {
                 for (i, (key, val)) in local_rows().iter().enumerate() {
                     tr {
+                        key: "{i}",
                         td {
                             input {
                                 value: "{key}",
@@ -1782,6 +1809,7 @@ pub fn ColVarEditor(
             tbody {
                 for (i, row) in rows.iter().enumerate() {
                     tr {
+                        key: "{cid}-{i}",
                         td {
                             input {
                                 value: "{row.key}",

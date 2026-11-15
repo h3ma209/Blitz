@@ -241,7 +241,7 @@ pub fn EnvDiffView(
                                 }
                             }
                         } else {
-                            for row in filtered_rows {
+                            for (ri, row) in filtered_rows.into_iter().enumerate() {
                                 {
                                     let key = row.key.clone();
                                     let status = row.status;
@@ -265,7 +265,7 @@ pub fn EnvDiffView(
                                     };
 
                                     rsx! {
-                                        tr { key: "{key}", class: "env-diff-row {row_class}",
+                                        tr { key: "{ri}-{key}", class: "env-diff-row {row_class}",
                                             td {
                                                 span { class: "diff-status-pill {status.css_class()}",
                                                     "{status.label()}"

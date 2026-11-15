@@ -30,7 +30,7 @@ use crate::core::protocols::{
     sse_listen, ws_connect_session, WsSessionEvent,
 };
 use crate::core::request::{
-    compact_response_for_disk, HttpMethod, KeyValue, RequestDraft, SavedExample,
+    compact_response_for_disk, BodyMode, HttpMethod, KeyValue, RequestDraft, SavedExample,
 };
 use crate::core::response_diff::{diff_bodies, DiffLine};
 use crate::runtime::pipeline::{send_request_with_options, SendOptions};
@@ -426,7 +426,11 @@ fn list_mcp_tools() -> Vec<JsonValue> {
                     },
                     "body": {
                         "type": "string",
-                        "description": "Optional raw request body."
+                        "description": "Optional raw request body. Automatically sets body_mode to 'raw' when non-empty unless body_mode is specified."
+                    },
+                    "body_mode": {
+                        "type": "string",
+                        "description": "Optional body mode: none, raw, urlencoded, form-data, graphql, binary. Defaults to 'raw' when non-empty body is supplied."
                     },
                     "description": {
                         "type": "string",
@@ -1079,9 +1083,21 @@ fn list_mcp_tools() -> Vec<JsonValue> {
     ]
 }
 
-/// Execute a specific Blitz tool call.
+/// Execute a specific Blitz tool call against the configured workspace store.
 fn execute_mcp_tool(name: &str, args: &JsonValue) -> Result<String, String> {
-    let store = JsonStore::open_default().map_err(|e| format!("Open store: {e}"))?;
+    let def_store = JsonStore::open_default().map_err(|e| format!("Open store: {e}"))?;
+    let def_snap = def_store
+        .load()
+        .map_err(|e| format!("Load snapshot: {e}"))?;
+    let store = JsonStore::open_for_settings(&def_snap.settings).unwrap_or(def_store);
+    execute_mcp_tool_with_store(&store, name, args)
+}
+
+fn execute_mcp_tool_with_store(
+    store: &JsonStore,
+    name: &str,
+    args: &JsonValue,
+) -> Result<String, String> {
     let snapshot = store.load().map_err(|e| format!("Load snapshot: {e}"))?;
 
     match name {
@@ -1227,7 +1243,7 @@ fn execute_mcp_tool(name: &str, args: &JsonValue) -> Result<String, String> {
                 env_name_arg,
             );
 
-            let _ = store.save(&snap_for_save);
+            store.save(&snap_for_save).map_err(|e| format!("Save snapshot: {e}"))?;
 
             let tests_summary: Vec<_> = view
                 .test_results
@@ -1287,12 +1303,17 @@ fn execute_mcp_tool(name: &str, args: &JsonValue) -> Result<String, String> {
                 .and_then(|b| b.as_str())
                 .unwrap_or("")
                 .to_string();
+            let body_mode = parse_body_mode_arg(
+                args.get("body_mode").and_then(|m| m.as_str()),
+                &body_str,
+            );
 
             let draft = RequestDraft {
                 name: "Ad-hoc Request".into(),
                 method,
                 url: url.into(),
                 headers: headers_vec,
+                body_mode,
                 body: body_str,
                 ..Default::default()
             };
@@ -1342,7 +1363,7 @@ fn execute_mcp_tool(name: &str, args: &JsonValue) -> Result<String, String> {
                 env_name_arg,
             );
 
-            let _ = store.save(&snap_for_save);
+            store.save(&snap_for_save).map_err(|e| format!("Save snapshot: {e}"))?;
 
             let mut out = json!({
                 "status": view.status,
@@ -1544,41 +1565,47 @@ fn execute_mcp_tool(name: &str, args: &JsonValue) -> Result<String, String> {
                 .get("url")
                 .and_then(|u| u.as_str())
                 .ok_or_else(|| "Missing required parameter 'url'".to_string())?;
+            let has_method = args.get("method").and_then(|m| m.as_str()).is_some();
             let method_str = args
                 .get("method")
                 .and_then(|m| m.as_str())
                 .unwrap_or("GET");
             let method = parse_http_method(method_str);
 
-            let mut headers = Vec::new();
-            if let Some(h_obj) = args.get("headers").and_then(|h| h.as_object()) {
+            let headers_opt = args.get("headers").and_then(|h| h.as_object()).map(|h_obj| {
+                let mut vec = Vec::new();
                 for (k, v) in h_obj {
                     if let Some(val) = v.as_str() {
-                        headers.push(KeyValue::new(k, val));
+                        vec.push(KeyValue::new(k, val));
                     }
                 }
-            }
+                vec
+            });
 
-            let mut params = Vec::new();
-            if let Some(p_obj) = args.get("params").and_then(|p| p.as_object()) {
+            let params_opt = args.get("params").and_then(|p| p.as_object()).map(|p_obj| {
+                let mut vec = Vec::new();
                 for (k, v) in p_obj {
                     if let Some(val) = v.as_str() {
-                        params.push(KeyValue::new(k, val));
+                        vec.push(KeyValue::new(k, val));
                     }
                 }
-            }
+                vec
+            });
 
-            let body = args
+            let body_opt = args
                 .get("body")
                 .and_then(|b| b.as_str())
-                .unwrap_or("")
-                .to_string();
-            let description = args
+                .map(str::to_string);
+            let body_mode_opt = args.get("body_mode").and_then(|m| m.as_str());
+            let description_opt = args
                 .get("description")
                 .and_then(|d| d.as_str())
-                .unwrap_or("")
-                .to_string();
-            let folder_name = args.get("folder").and_then(|f| f.as_str());
+                .map(str::to_string);
+            let folder_name = args
+                .get("folder")
+                .and_then(|f| f.as_str())
+                .map(str::trim)
+                .filter(|f| !f.is_empty());
             let req_id_opt = args
                 .get("request_id")
                 .and_then(|r| r.as_str())
@@ -1596,61 +1623,83 @@ fn execute_mcp_tool(name: &str, args: &JsonValue) -> Result<String, String> {
                 snapshot.collections.len() - 1
             };
 
-            let col = &mut snapshot.collections[col_idx];
-
-            let draft = RequestDraft {
-                id: req_id_opt.unwrap_or_else(Uuid::new_v4),
-                name: req_name.to_string(),
-                method,
-                url: url.to_string(),
-                headers,
-                params,
-                body,
-                description,
-                ..Default::default()
-            };
-
-            let final_id = draft.id;
-
-            if let Some(f_name) = folder_name {
-                let folder_item = col.items.iter_mut().find_map(|item| match item {
-                    CollectionItem::Folder(f) if f.name.eq_ignore_ascii_case(f_name) => Some(f),
-                    _ => None,
-                });
-
-                if let Some(folder) = folder_item {
-                    if let Some(existing) = folder.items.iter_mut().find_map(|item| match item {
-                        CollectionItem::Request(r)
-                            if r.id == final_id || r.name.eq_ignore_ascii_case(req_name) =>
-                        {
+            let (col_id_str, col_name_str, updated_draft, was_updated) = {
+                let col = &mut snapshot.collections[col_idx];
+                let existing_opt = if let Some(req_id) = req_id_opt {
+                    find_request_in_items_mut(&mut col.items, &req_id.to_string())
+                } else if let Some(f_path) = folder_name {
+                    find_folder_by_path_or_name_mut(&mut col.items, f_path).and_then(|folder| {
+                        folder.items.iter_mut().find_map(|item| match item {
+                            CollectionItem::Request(r) if r.name.eq_ignore_ascii_case(req_name) => {
+                                Some(r)
+                            }
+                            _ => None,
+                        })
+                    })
+                } else {
+                    col.items.iter_mut().find_map(|item| match item {
+                        CollectionItem::Request(r) if r.name.eq_ignore_ascii_case(req_name) => {
                             Some(r)
                         }
                         _ => None,
-                    }) {
-                        *existing = draft;
-                    } else {
-                        folder.add_request(draft);
-                    }
-                } else {
-                    let mut new_folder = Folder::new(f_name);
-                    new_folder.add_request(draft);
-                    col.items.push(CollectionItem::Folder(new_folder));
-                }
-            } else if let Some(existing) = col.items.iter_mut().find_map(|item| match item {
-                CollectionItem::Request(r)
-                    if r.id == final_id || r.name.eq_ignore_ascii_case(req_name) =>
-                {
-                    Some(r)
-                }
-                _ => None,
-            }) {
-                *existing = draft;
-            } else {
-                col.add_request(draft);
-            }
+                    })
+                };
 
-            let col_id_str = col.id.to_string();
-            let col_name_str = col.name.clone();
+                let (draft_snapshot, updated) = if let Some(existing) = existing_opt {
+                    existing.name = req_name.to_string();
+                    existing.url = url.to_string();
+                    if has_method {
+                        existing.method = method;
+                    }
+                    if let Some(h) = headers_opt {
+                        existing.headers = h;
+                    }
+                    if let Some(p) = params_opt {
+                        existing.params = p;
+                    }
+                    if let Some(b) = body_opt {
+                        existing.body = b;
+                        existing.body_mode = parse_body_mode_arg(body_mode_opt, &existing.body);
+                    } else if let Some(bm) = body_mode_opt {
+                        existing.body_mode = parse_body_mode_arg(Some(bm), &existing.body);
+                    }
+                    if let Some(desc) = description_opt {
+                        existing.description = desc;
+                    }
+                    (existing.clone(), true)
+                } else {
+                    let body = body_opt.unwrap_or_default();
+                    let body_mode = parse_body_mode_arg(body_mode_opt, &body);
+                    let draft = RequestDraft {
+                        id: req_id_opt.unwrap_or_else(Uuid::new_v4),
+                        name: req_name.to_string(),
+                        method,
+                        url: url.to_string(),
+                        headers: headers_opt.unwrap_or_default(),
+                        params: params_opt.unwrap_or_default(),
+                        body_mode,
+                        body,
+                        description: description_opt.unwrap_or_default(),
+                        ..Default::default()
+                    };
+                    if let Some(f_path) = folder_name {
+                        let folder = upsert_folder_path_mut(&mut col.items, f_path);
+                        folder.add_request(draft.clone());
+                    } else {
+                        col.add_request(draft.clone());
+                    }
+                    (draft, false)
+                };
+                (col.id.to_string(), col.name.clone(), draft_snapshot, updated)
+            };
+
+            if let Some(tab) = snapshot
+                .open_tabs
+                .iter_mut()
+                .find(|t| t.id == updated_draft.id)
+            {
+                *tab = updated_draft.clone();
+            }
 
             store
                 .save(&snapshot)
@@ -1658,12 +1707,14 @@ fn execute_mcp_tool(name: &str, args: &JsonValue) -> Result<String, String> {
 
             let res = json!({
                 "status": "ok",
+                "updated": was_updated,
                 "collection_id": col_id_str,
                 "collection_name": col_name_str,
-                "request_id": final_id.to_string(),
-                "name": req_name,
-                "method": method_str,
-                "url": url
+                "request_id": updated_draft.id.to_string(),
+                "name": updated_draft.name,
+                "method": updated_draft.method.as_str(),
+                "url": updated_draft.url,
+                "body_mode": format!("{:?}", updated_draft.body_mode).to_lowercase()
             });
             serde_json::to_string_pretty(&res).map_err(|e| e.to_string())
         }
@@ -1745,11 +1796,16 @@ fn execute_mcp_tool(name: &str, args: &JsonValue) -> Result<String, String> {
                     .and_then(|b| b.as_str())
                     .unwrap_or("")
                     .to_string();
+                let body_mode = parse_body_mode_arg(
+                    args.get("body_mode").and_then(|m| m.as_str()),
+                    &body,
+                );
                 RequestDraft {
                     name: "Snippet Request".into(),
                     method,
                     url: url.into(),
                     headers,
+                    body_mode,
                     body,
                     ..Default::default()
                 }
@@ -2670,12 +2726,15 @@ fn execute_mcp_tool(name: &str, args: &JsonValue) -> Result<String, String> {
             let col_name = col.name.clone();
             let req_count = count_requests_in_items(&col.items);
             let mut snapshot = snapshot;
-            snapshot.collections.push(col);
+            let stats = crate::core::upsert_collection(&mut snapshot.collections, col);
             store.save(&snapshot).map_err(|e| format!("Save snapshot: {e}"))?;
 
             let res = json!({
                 "status": "ok",
                 "collection": col_name,
+                "created_new": stats.created_new,
+                "added_requests": stats.added_requests,
+                "updated_requests": stats.updated_requests,
                 "request_count": req_count
             });
             serde_json::to_string_pretty(&res).map_err(|e| e.to_string())
@@ -2783,15 +2842,20 @@ fn execute_mcp_tool(name: &str, args: &JsonValue) -> Result<String, String> {
             }
 
             let mut messages = Vec::new();
+            let mut seen_events = 0usize;
             let collect_limit = Duration::from_millis(timeout_ms);
             while start.elapsed() < collect_limit && messages.len() < max_msgs {
                 let evs = sess.events_snapshot();
-                for ev in evs {
-                    if let WsSessionEvent::Message(m) = ev {
-                        if !messages.contains(&m) {
-                            messages.push(m);
+                if evs.len() > seen_events {
+                    for ev in &evs[seen_events..] {
+                        if let WsSessionEvent::Message(m) = ev {
+                            messages.push(m.clone());
+                            if messages.len() >= max_msgs {
+                                break;
+                            }
                         }
                     }
+                    seen_events = evs.len();
                 }
                 std::thread::sleep(Duration::from_millis(25));
             }
@@ -3033,6 +3097,75 @@ fn execute_mcp_tool(name: &str, args: &JsonValue) -> Result<String, String> {
     }
 }
 
+fn parse_body_mode_arg(mode_opt: Option<&str>, body: &str) -> BodyMode {
+    match mode_opt.map(|s| s.trim().to_ascii_lowercase()).as_deref() {
+        Some("none") => BodyMode::None,
+        Some("raw") => BodyMode::Raw,
+        Some("urlencoded") | Some("x-www-form-urlencoded") => BodyMode::Urlencoded,
+        Some("form-data") | Some("formdata") | Some("form_data") => BodyMode::FormData,
+        Some("graphql") => BodyMode::Graphql,
+        Some("binary") => BodyMode::Binary,
+        _ => {
+            if body.trim().is_empty() {
+                BodyMode::None
+            } else {
+                BodyMode::Raw
+            }
+        }
+    }
+}
+
+fn upsert_folder_path_mut<'a>(items: &'a mut Vec<CollectionItem>, folder_path: &str) -> &'a mut Folder {
+    if !folder_path.contains('/') {
+        let found_idx = items.iter().position(|item| match item {
+            CollectionItem::Folder(f) => f.name.eq_ignore_ascii_case(folder_path),
+            _ => false,
+        });
+        let idx = match found_idx {
+            Some(i) => i,
+            None => {
+                items.push(CollectionItem::Folder(Folder::new(folder_path)));
+                items.len() - 1
+            }
+        };
+        match &mut items[idx] {
+            CollectionItem::Folder(f) => f,
+            _ => unreachable!(),
+        }
+    } else {
+        let mut cur_items = items;
+        let segments: Vec<&str> = folder_path
+            .split('/')
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .collect();
+        for (idx_seg, seg) in segments.iter().enumerate() {
+            let found_idx = cur_items.iter().position(|item| match item {
+                CollectionItem::Folder(f) => f.name.eq_ignore_ascii_case(seg),
+                _ => false,
+            });
+            let pos = match found_idx {
+                Some(i) => i,
+                None => {
+                    cur_items.push(CollectionItem::Folder(Folder::new(*seg)));
+                    cur_items.len() - 1
+                }
+            };
+            if idx_seg + 1 == segments.len() {
+                return match &mut cur_items[pos] {
+                    CollectionItem::Folder(f) => f,
+                    _ => unreachable!(),
+                };
+            }
+            cur_items = match &mut cur_items[pos] {
+                CollectionItem::Folder(f) => &mut f.items,
+                _ => unreachable!(),
+            };
+        }
+        unreachable!("non-empty folder_path must produce at least one segment")
+    }
+}
+
 fn find_request_in_items_mut<'a>(
     items: &'a mut [CollectionItem],
     id_or_name: &str,
@@ -3058,6 +3191,31 @@ fn find_folder_by_path_or_name_mut<'a>(
     items: &'a mut [CollectionItem],
     query: &str,
 ) -> Option<&'a mut Folder> {
+    if query.contains('/') {
+        let mut cur = items;
+        let segments: Vec<&str> = query
+            .split('/')
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .collect();
+        for (idx_seg, seg) in segments.iter().enumerate() {
+            let pos = cur.iter().position(|item| match item {
+                CollectionItem::Folder(f) => f.name.eq_ignore_ascii_case(seg),
+                _ => false,
+            })?;
+            if idx_seg + 1 == segments.len() {
+                return match &mut cur[pos] {
+                    CollectionItem::Folder(f) => Some(f),
+                    _ => None,
+                };
+            }
+            cur = match &mut cur[pos] {
+                CollectionItem::Folder(f) => &mut f.items,
+                _ => return None,
+            };
+        }
+        return None;
+    }
     for item in items.iter_mut() {
         if let CollectionItem::Folder(f) = item {
             if f.name.eq_ignore_ascii_case(query) {
@@ -3997,5 +4155,82 @@ mod tests {
         });
         let resp = handle_mcp_message(&req).expect("response expected");
         assert_eq!(resp["error"]["code"], -32601);
+    }
+
+    #[test]
+    fn test_tool_upsert_request_sets_body_mode_and_preserves_body_on_partial_update() {
+        let dir = std::env::temp_dir().join(format!("blitz_mcp_upsert_{}", Uuid::new_v4()));
+        let _ = std::fs::create_dir_all(&dir);
+        let store = JsonStore::open(&dir).expect("temp store");
+
+        let mut col = Collection::new("Driver");
+        let existing_id = Uuid::new_v4();
+        let existing_req = RequestDraft {
+            id: existing_id,
+            name: "Create Login".into(),
+            method: HttpMethod::Post,
+            url: "https://api.example.com/login".into(),
+            body_mode: BodyMode::Raw,
+            body: "{\"email\":\"a@b.com\"}".into(),
+            pre_request_script: "// keep me".into(),
+            ..Default::default()
+        };
+        let mut f = Folder::new("Auth");
+        f.add_request(existing_req);
+        col.items.push(CollectionItem::Folder(f));
+        let snap = AppSnapshot {
+            collections: vec![col],
+            ..Default::default()
+        };
+        store.save(&snap).expect("seed save");
+
+        // Partial update by request_id omitting body must preserve body, body_mode, and scripts.
+        let update_res = execute_mcp_tool_with_store(
+            &store,
+            "blitz_upsert_request",
+            &json!({
+                "collection": "Driver",
+                "request_id": existing_id.to_string(),
+                "name": "Create Login",
+                "method": "POST",
+                "url": "https://api.example.com/v2/login"
+            }),
+        )
+        .expect("partial upsert succeeds");
+        let parsed_upd: JsonValue = serde_json::from_str(&update_res).unwrap();
+        assert_eq!(parsed_upd["updated"], true);
+        assert_eq!(parsed_upd["body_mode"], "raw");
+
+        // Creating a new POST request with body must automatically set body_mode = Raw.
+        let create_res = execute_mcp_tool_with_store(
+            &store,
+            "blitz_upsert_request",
+            &json!({
+                "collection": "Driver",
+                "folder": "Auth",
+                "name": "Driver Smoke",
+                "method": "POST",
+                "url": "https://api.example.com/smoke",
+                "body": "{\"ping\":true}"
+            }),
+        )
+        .expect("create upsert succeeds");
+        let parsed_new: JsonValue = serde_json::from_str(&create_res).unwrap();
+        assert_eq!(parsed_new["updated"], false);
+        assert_eq!(parsed_new["body_mode"], "raw");
+
+        let reloaded = store.load().expect("reload");
+        let (_, upd) = find_request_across(&reloaded.collections, existing_id).unwrap();
+        assert_eq!(upd.url, "https://api.example.com/v2/login");
+        assert_eq!(upd.body_mode, BodyMode::Raw);
+        assert_eq!(upd.body, "{\"email\":\"a@b.com\"}");
+        assert_eq!(upd.pre_request_script, "// keep me");
+
+        let new_id = Uuid::parse_str(parsed_new["request_id"].as_str().unwrap()).unwrap();
+        let (_, created) = find_request_across(&reloaded.collections, new_id).unwrap();
+        assert_eq!(created.body_mode, BodyMode::Raw);
+        assert_eq!(created.body, "{\"ping\":true}");
+
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

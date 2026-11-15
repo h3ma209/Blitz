@@ -44,8 +44,9 @@ pub fn RunnerPanel(
                             sel.set(Some(id));
                         }
                     },
-                    for c in collections.iter() {
+                    for (ci, c) in collections.iter().enumerate() {
                         option {
+                            key: "{c.id}-{ci}",
                             value: "{c.id}",
                             selected: sel() == Some(c.id),
                             "{c.name}"
@@ -185,8 +186,9 @@ pub fn RunnerPanel(
                             }
                         }
                         tbody {
-                            for r in rep.results.iter() {
+                            for (i, r) in rep.results.iter().enumerate() {
                                 tr {
+                                    key: "{i}-{r.iteration}",
                                     td { "{r.iteration}" }
                                     td {
                                         span {
