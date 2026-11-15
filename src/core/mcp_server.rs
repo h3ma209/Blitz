@@ -3583,6 +3583,26 @@ mod tests {
     use super::*;
     static MCP_TEST_LOCK: Mutex<()> = Mutex::new(());
 
+    struct TempMcpStore {
+        dir: std::path::PathBuf,
+        store: JsonStore,
+    }
+
+    impl TempMcpStore {
+        fn new(prefix: &str) -> Self {
+            let dir = std::env::temp_dir().join(format!("blitz_{prefix}_{}", Uuid::new_v4()));
+            let _ = std::fs::create_dir_all(&dir);
+            let store = JsonStore::open(&dir).expect("temp store");
+            Self { dir, store }
+        }
+    }
+
+    impl Drop for TempMcpStore {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.dir);
+        }
+    }
+
     #[test]
     fn test_initialize_handshake() {
         let req = json!({
@@ -3690,22 +3710,15 @@ mod tests {
 
     #[test]
     fn test_tool_import_curl() {
-        let _guard = MCP_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-        let req = json!({
-            "jsonrpc": "2.0",
-            "id": 5,
-            "method": "tools/call",
-            "params": {
-                "name": "blitz_import_curl",
-                "arguments": {
-                    "curl": "curl -X POST https://api.test.com/login -H 'Content-Type: application/json' -d '{\"user\":\"test\"}'"
-                }
-            }
-        });
-        let resp = handle_mcp_message(&req).expect("response expected");
-        assert_eq!(resp["jsonrpc"], "2.0");
-        assert_eq!(resp["id"], 5);
-        let content = resp["result"]["content"][0]["text"].as_str().unwrap();
+        let temp = TempMcpStore::new("mcp_import_curl");
+        let content = execute_mcp_tool_with_store(
+            &temp.store,
+            "blitz_import_curl",
+            &json!({
+                "curl": "curl -X POST https://api.test.com/login -H 'Content-Type: application/json' -d '{\"user\":\"test\"}'"
+            }),
+        )
+        .expect("import_curl succeeds");
         assert!(content.contains("https://api.test.com/login"));
         assert!(content.contains("POST"));
     }
@@ -3846,7 +3859,7 @@ mod tests {
 
     #[test]
     fn test_tool_sync_openapi_creates_collection() {
-        let _guard = MCP_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let temp = TempMcpStore::new("mcp_sync_openapi");
         let unique_title = format!("Petstore Minimal {}", Uuid::new_v4());
         let minimal_spec = json!({
             "openapi": "3.0.0",
@@ -3865,21 +3878,15 @@ mod tests {
                 }
             }
         });
-        let req = json!({
-            "jsonrpc": "2.0",
-            "id": 12,
-            "method": "tools/call",
-            "params": {
-                "name": "blitz_sync_openapi",
-                "arguments": {
-                    "spec": serde_json::to_string(&minimal_spec).unwrap()
-                }
-            }
-        });
-        let resp = handle_mcp_message(&req).expect("response expected");
-        assert_eq!(resp["id"], 12);
-        let text = resp["result"]["content"][0]["text"].as_str().unwrap();
-        let val: JsonValue = serde_json::from_str(text).unwrap();
+        let text = execute_mcp_tool_with_store(
+            &temp.store,
+            "blitz_sync_openapi",
+            &json!({
+                "spec": serde_json::to_string(&minimal_spec).unwrap()
+            }),
+        )
+        .expect("sync_openapi succeeds");
+        let val: JsonValue = serde_json::from_str(&text).unwrap();
         assert_eq!(val["status"], "ok");
         assert_eq!(val["created_new"], true);
         assert_eq!(val["added_routes"], 1);
@@ -3910,160 +3917,108 @@ mod tests {
     #[test]
     fn test_tool_start_and_stop_mock() {
         let _guard = MCP_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-        let start_req = json!({
-            "jsonrpc": "2.0",
-            "id": 14,
-            "method": "tools/call",
-            "params": {
-                "name": "blitz_start_mock",
-                "arguments": {
-                    "port": 0
-                }
-            }
-        });
-        let start_resp = handle_mcp_message(&start_req).expect("response expected");
-        assert_eq!(start_resp["id"], 14);
-        let start_text = start_resp["result"]["content"][0]["text"].as_str().unwrap();
-        let start_val: JsonValue = serde_json::from_str(start_text).unwrap();
+        let temp = TempMcpStore::new("mcp_mock");
+        let start_text = execute_mcp_tool_with_store(
+            &temp.store,
+            "blitz_start_mock",
+            &json!({ "port": 0 }),
+        )
+        .expect("start_mock succeeds");
+        let start_val: JsonValue = serde_json::from_str(&start_text).unwrap();
         assert_eq!(start_val["status"], "running");
         assert!(start_val["port"].as_u64().unwrap() > 0);
 
-        let stop_req = json!({
-            "jsonrpc": "2.0",
-            "id": 15,
-            "method": "tools/call",
-            "params": {
-                "name": "blitz_stop_mock",
-                "arguments": {}
-            }
-        });
-        let stop_resp = handle_mcp_message(&stop_req).expect("response expected");
-        assert_eq!(stop_resp["id"], 15);
-        let stop_text = stop_resp["result"]["content"][0]["text"].as_str().unwrap();
-        let stop_val: JsonValue = serde_json::from_str(stop_text).unwrap();
+        let stop_text = execute_mcp_tool_with_store(
+            &temp.store,
+            "blitz_stop_mock",
+            &json!({}),
+        )
+        .expect("stop_mock succeeds");
+        let stop_val: JsonValue = serde_json::from_str(&stop_text).unwrap();
         assert_eq!(stop_val["status"], "stopped");
     }
 
     #[test]
     fn test_tool_folder_lifecycle_and_docs() {
-        let _guard = MCP_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let temp = TempMcpStore::new("mcp_folder_docs");
         let unique_col = format!("DocFolderCol_{}", Uuid::new_v4());
 
         // 1. Create collection with blitz_import_curl
-        let import_req = json!({
-            "jsonrpc": "2.0",
-            "id": 101,
-            "method": "tools/call",
-            "params": {
-                "name": "blitz_import_curl",
-                "arguments": {
-                    "curl": "curl -X GET https://api.example.com/items",
-                    "collection": unique_col
-                }
-            }
-        });
-        let import_res = handle_mcp_message(&import_req).expect("response");
-        assert_eq!(import_res["id"], 101);
+        execute_mcp_tool_with_store(
+            &temp.store,
+            "blitz_import_curl",
+            &json!({
+                "curl": "curl -X GET https://api.example.com/items",
+                "collection": unique_col
+            }),
+        )
+        .expect("import_curl succeeds");
 
         // 2. Create folder
-        let create_fold_req = json!({
-            "jsonrpc": "2.0",
-            "id": 102,
-            "method": "tools/call",
-            "params": {
-                "name": "blitz_create_folder",
-                "arguments": {
-                    "collection": unique_col,
-                    "name": "Auth API"
-                }
-            }
-        });
-        let fold_res = handle_mcp_message(&create_fold_req).expect("response");
-        let fold_text = fold_res["result"]["content"][0]["text"].as_str().unwrap();
-        let fold_val: JsonValue = serde_json::from_str(fold_text).unwrap();
+        let fold_text = execute_mcp_tool_with_store(
+            &temp.store,
+            "blitz_create_folder",
+            &json!({
+                "collection": unique_col,
+                "name": "Auth API"
+            }),
+        )
+        .expect("create_folder succeeds");
+        let fold_val: JsonValue = serde_json::from_str(&fold_text).unwrap();
         assert_eq!(fold_val["status"], "ok");
 
         // 3. Generate Docs (static)
-        let docs_req = json!({
-            "jsonrpc": "2.0",
-            "id": 103,
-            "method": "tools/call",
-            "params": {
-                "name": "blitz_generate_docs",
-                "arguments": {
-                    "collection": unique_col,
-                    "format": "static"
-                }
-            }
-        });
-        let docs_res = handle_mcp_message(&docs_req).expect("response");
-        let docs_text = docs_res["result"]["content"][0]["text"].as_str().unwrap();
+        let docs_text = execute_mcp_tool_with_store(
+            &temp.store,
+            "blitz_generate_docs",
+            &json!({
+                "collection": unique_col,
+                "format": "static"
+            }),
+        )
+        .expect("generate_docs succeeds");
         assert!(docs_text.contains(&unique_col) || docs_text.contains("<!DOCTYPE html>"));
 
         // 4. Delete folder
-        let del_fold_req = json!({
-            "jsonrpc": "2.0",
-            "id": 104,
-            "method": "tools/call",
-            "params": {
-                "name": "blitz_delete_folder",
-                "arguments": {
-                    "collection": unique_col,
-                    "folder": "Auth API"
-                }
-            }
-        });
-        let del_res = handle_mcp_message(&del_fold_req).expect("response");
-        let del_text = del_res["result"]["content"][0]["text"].as_str().unwrap();
-        let del_val: JsonValue = serde_json::from_str(del_text).unwrap();
+        let del_text = execute_mcp_tool_with_store(
+            &temp.store,
+            "blitz_delete_folder",
+            &json!({
+                "collection": unique_col,
+                "folder": "Auth API"
+            }),
+        )
+        .expect("delete_folder succeeds");
+        let del_val: JsonValue = serde_json::from_str(&del_text).unwrap();
         assert_eq!(del_val["status"], "deleted");
 
         // 5. Cleanup collection
-        let del_col_req = json!({
-            "jsonrpc": "2.0",
-            "id": 105,
-            "method": "tools/call",
-            "params": {
-                "name": "blitz_delete_collection",
-                "arguments": {
-                    "collection": unique_col
-                }
-            }
-        });
-        let _ = handle_mcp_message(&del_col_req);
+        let _ = execute_mcp_tool_with_store(
+            &temp.store,
+            "blitz_delete_collection",
+            &json!({ "collection": unique_col }),
+        );
     }
 
     #[test]
     fn test_tool_manage_cookies_and_clear_history() {
-        let _guard = MCP_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-        let cookie_req = json!({
-            "jsonrpc": "2.0",
-            "id": 201,
-            "method": "tools/call",
-            "params": {
-                "name": "blitz_manage_cookies",
-                "arguments": {
-                    "action": "clear"
-                }
-            }
-        });
-        let cookie_res = handle_mcp_message(&cookie_req).expect("response");
-        let cookie_text = cookie_res["result"]["content"][0]["text"].as_str().unwrap();
-        let cookie_val: JsonValue = serde_json::from_str(cookie_text).unwrap();
+        let temp = TempMcpStore::new("mcp_cookies_history");
+        let cookie_text = execute_mcp_tool_with_store(
+            &temp.store,
+            "blitz_manage_cookies",
+            &json!({ "action": "clear" }),
+        )
+        .expect("manage_cookies succeeds");
+        let cookie_val: JsonValue = serde_json::from_str(&cookie_text).unwrap();
         assert_eq!(cookie_val["status"], "cleared");
 
-        let hist_req = json!({
-            "jsonrpc": "2.0",
-            "id": 202,
-            "method": "tools/call",
-            "params": {
-                "name": "blitz_clear_history",
-                "arguments": {}
-            }
-        });
-        let hist_res = handle_mcp_message(&hist_req).expect("response");
-        let hist_text = hist_res["result"]["content"][0]["text"].as_str().unwrap();
-        let hist_val: JsonValue = serde_json::from_str(hist_text).unwrap();
+        let hist_text = execute_mcp_tool_with_store(
+            &temp.store,
+            "blitz_clear_history",
+            &json!({}),
+        )
+        .expect("clear_history succeeds");
+        let hist_val: JsonValue = serde_json::from_str(&hist_text).unwrap();
         assert_eq!(hist_val["status"], "cleared");
     }
 
