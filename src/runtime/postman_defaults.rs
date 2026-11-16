@@ -10,7 +10,7 @@ use crate::core::{BodyMode, KeyValue, RequestDraft};
 /// Mimic Postman desktop system headers (only fill gaps; never override user headers).
 pub fn inject_postman_system_headers(draft: &mut RequestDraft, log: &mut Vec<String>) {
     let defaults = [
-        ("User-Agent", "PostmanRuntime/7.43.0"),
+        ("User-Agent", crate::core::BLITZ_USER_AGENT),
         ("Accept", "*/*"),
         ("Accept-Encoding", "gzip, deflate, br"),
         ("Connection", "keep-alive"),

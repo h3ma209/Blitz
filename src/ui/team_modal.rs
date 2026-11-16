@@ -47,7 +47,7 @@ pub fn TeamModal(
                     div { class: "team-repo-info",
                         span { class: "team-badge", "Git Cloud" }
                         span { class: "team-branch-pill",
-                            span { class: "action-icon action-icon-branch", style: "margin-right: 4px;", aria_hidden: "true" }
+                            super::icons::ActionIcon { name: "branch", size: 14, style: "margin-right: 4px;".to_string() }
                             "{activity.branch}"
                         }
                         if !activity.remote_url.is_empty() {
@@ -170,7 +170,7 @@ pub fn TeamModal(
                                                         ul { class: "detail-files-list",
                                                             for (fi, file) in commit.files.iter().enumerate() {
                                                                 li { key: "{file}-{fi}",
-                                                                    span { class: "file-icon", "📄" }
+                                                                    span { class: "file-icon", super::icons::ActionIcon { name: "file", size: 14 } }
                                                                     span { class: "file-path", "{file}" }
                                                                 }
                                                             }
@@ -251,7 +251,7 @@ pub fn TeamModal(
                                                 div { class: "member-email", "{member.email}" }
                                                 div { class: "member-stats",
                                                     span { class: "member-commits",
-                                                        span { class: "action-icon action-icon-commit", style: "margin-right: 4px;", aria_hidden: "true" }
+                                                        super::icons::ActionIcon { name: "commit", size: 14, style: "margin-right: 4px;".to_string() }
                                                         "{member.commit_count} commits"
                                                     }
                                                     span { class: "member-active", "Active {member.last_active}" }

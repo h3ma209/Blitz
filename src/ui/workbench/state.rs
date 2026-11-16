@@ -145,6 +145,7 @@ pub struct WorkbenchState {
     pub data_root: Signal<String>,
     pub show_settings: Signal<bool>,
     pub settings_tab_open: Signal<bool>,
+    pub settings_tab: Signal<crate::ui::settings_panel::SettingsTab>,
     pub show_runner: Signal<bool>,
     pub runner_running: Signal<bool>,
     pub runner_report: Signal<Option<RunnerReport>>,
@@ -199,6 +200,9 @@ pub struct WorkbenchState {
     pub toasts: Signal<Vec<Toast>>,
     pub drag_tab_idx: Signal<Option<usize>>,
     pub show_tab_menu: Signal<bool>,
+    pub tab_groups_enabled: Signal<bool>,
+    pub collapsed_tab_groups: Signal<std::collections::HashSet<String>>,
+    pub custom_tab_groups: Signal<HashMap<Uuid, String>>,
 }
 
 impl WorkbenchState {
@@ -239,6 +243,7 @@ impl WorkbenchState {
             data_root: use_signal(String::new),
             show_settings: use_signal(|| false),
             settings_tab_open: use_signal(|| false),
+            settings_tab: use_signal(crate::ui::settings_panel::SettingsTab::default),
             show_runner: use_signal(|| false),
             runner_running: use_signal(|| false),
             runner_report: use_signal(|| None::<RunnerReport>),
@@ -293,6 +298,9 @@ impl WorkbenchState {
             toasts: use_signal(Vec::<Toast>::new),
             drag_tab_idx: use_signal(|| None::<usize>),
             show_tab_menu: use_signal(|| false),
+            tab_groups_enabled: use_signal(|| false),
+            collapsed_tab_groups: use_signal(std::collections::HashSet::<String>::new),
+            custom_tab_groups: use_signal(HashMap::<Uuid, String>::new),
         }
     }
 

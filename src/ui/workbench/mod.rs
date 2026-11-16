@@ -113,9 +113,12 @@ pub fn Workbench() -> Element {
     let mut available_update = st.available_update;
     let mut show_runner = st.show_runner;
     let _show_lint = st.show_lint;
-    let mut show_env_manager = st.show_env_manager;
     let mut show_tab_menu = st.show_tab_menu;
     let mut drag_tab_idx = st.drag_tab_idx;
+    let mut tab_groups_enabled = st.tab_groups_enabled;
+    let mut collapsed_tab_groups = st.collapsed_tab_groups;
+    let custom_tab_groups = st.custom_tab_groups;
+    let mut selected_menu_tabs = use_signal(std::collections::HashSet::<Uuid>::new);
     let mut renaming_tab_id = use_signal(|| None::<Uuid>);
     let mut rename_tab_draft = use_signal(String::new);
     let mut tab_ctx_menu = use_signal(|| None::<(Uuid, f64, f64)>);
@@ -585,6 +588,76 @@ pub fn Workbench() -> Element {
         st.cleanup_closed_tabs(&[], None);
         st.persist();
         status_msg.set("all tabs closed".into());
+    });
+
+    let mut apply_retained_tabs = move |mut tabs: Vec<RequestDraft>, msg: &str| {
+        let mut st = st;
+        let cur = draft();
+        if tabs.is_empty() {
+            open_tabs.set(Vec::new());
+            active_request_id.set(None);
+            response.set(None);
+            draft.set(RequestDraft::default());
+            st.cleanup_closed_tabs(&[], None);
+        } else {
+            let next_active = if tabs.iter().any(|t| t.id == cur.id) {
+                cur.id
+            } else {
+                let target = tabs.last().cloned().unwrap();
+                let tid = target.id;
+                draft.set(target);
+                active_request_id.set(Some(tid));
+                let resp_map = responses();
+                response.set(resp_map.get(&tid).cloned());
+                tid
+            };
+            if let Some(slot) = tabs.iter_mut().find(|t| t.id == cur.id) {
+                *slot = cur;
+            }
+            open_tabs.set(tabs.clone());
+            st.cleanup_closed_tabs(&tabs, Some(next_active));
+        }
+        st.persist();
+        status_msg.set(msg.into());
+    };
+
+    let do_close_tabs_to_left = use_callback(move |target_id: Uuid| {
+        let mut tabs = open_tabs();
+        if let Some(pos) = tabs.iter().position(|t| t.id == target_id) {
+            if pos > 0 {
+                tabs.drain(0..pos);
+                apply_retained_tabs(tabs, "tabs to left closed");
+            }
+        }
+    });
+
+    let do_close_clean_tabs = use_callback(move |_| {
+        let cols = collections();
+        let cur = draft();
+        let mut tabs = open_tabs();
+        tabs.retain(|t| {
+            let check = if t.id == cur.id { &cur } else { t };
+            is_draft_dirty(check, &cols)
+        });
+        apply_retained_tabs(tabs, "unmodified tabs closed");
+    });
+
+    let do_close_group_tabs = use_callback(move |group_key: String| {
+        let cols = collections();
+        let custom = custom_tab_groups();
+        let mut tabs = open_tabs();
+        tabs.retain(|t| tab_group_key_and_label(&cols, &custom, t.id).0 != group_key);
+        apply_retained_tabs(tabs, "tab group closed");
+    });
+
+    let do_close_selected_tabs = use_callback(move |ids: std::collections::HashSet<Uuid>| {
+        if ids.is_empty() {
+            return;
+        }
+        let mut tabs = open_tabs();
+        let count = tabs.iter().filter(|t| ids.contains(&t.id)).count();
+        tabs.retain(|t| !ids.contains(&t.id));
+        apply_retained_tabs(tabs, &format!("closed {count} tab(s)"));
     });
 
     let do_duplicate_tab = use_callback(move |target_id: Uuid| {
@@ -1877,6 +1950,24 @@ pub fn Workbench() -> Element {
                             show_settings.set(true);
                         }
                     }
+                    Key::Character(c) if meta && !shift && c.eq_ignore_ascii_case("e") => {
+                        evt.prevent_default();
+                        let mut sig = st.show_vars;
+                        if sig() {
+                            let mut st = st;
+                            sig.set(false);
+                            st.persist();
+                        } else {
+                            st.vars_active_tab.set(0);
+                            sig.set(true);
+                        }
+                    }
+                    Key::Character(c) if meta && !shift && c.eq_ignore_ascii_case("o") => {
+                        evt.prevent_default();
+                        impex_modal.set(Some(crate::ui::workbench::state::ImpexModal::Import {
+                            text: String::new(),
+                        }));
+                    }
                     Key::Character(c)
                         if meta
                             && !shift
@@ -1983,6 +2074,76 @@ pub fn Workbench() -> Element {
                         evt.prevent_default();
                         do_zoom_reset(());
                     }
+                    _ if evt.key() == Key::Escape => {
+                        let mut closed = true;
+                        if (st.pending_delete)().is_some() {
+                            let mut sig = st.pending_delete;
+                            sig.set(None);
+                        } else if (st.pending_close_tab)().is_some() {
+                            let mut sig = st.pending_close_tab;
+                            sig.set(None);
+                        } else if (st.pending_batch_move)().is_some() {
+                            let mut sig = st.pending_batch_move;
+                            sig.set(None);
+                        } else if tab_ctx_menu().is_some() {
+                            tab_ctx_menu.set(None);
+                        } else if (st.show_tab_menu)() {
+                            let mut sig = st.show_tab_menu;
+                            sig.set(false);
+                        } else if (st.file_menu_open)() || (st.tools_menu_open)() || (st.cloud_menu_open)() {
+                            let mut f = st.file_menu_open;
+                            let mut t = st.tools_menu_open;
+                            let mut c = st.cloud_menu_open;
+                            f.set(false);
+                            t.set(false);
+                            c.set(false);
+                        } else if (st.show_palette)() {
+                            let mut sig = st.show_palette;
+                            sig.set(false);
+                        } else if (st.impex_modal)().is_some() {
+                            let mut sig = st.impex_modal;
+                            sig.set(None);
+                        } else if (st.show_snippets)() {
+                            let mut sig = st.show_snippets;
+                            sig.set(false);
+                        } else if show_col_vars() {
+                            let mut st = st;
+                            show_col_vars.set(false);
+                            st.persist();
+                        } else if (st.show_cookies)() {
+                            let mut sig = st.show_cookies;
+                            sig.set(false);
+                        } else if (st.show_team)() {
+                            let mut sig = st.show_team;
+                            sig.set(false);
+                        } else if (st.show_runner)() {
+                            let mut sig = st.show_runner;
+                            sig.set(false);
+                        } else if (st.show_perf)() {
+                            let mut sig = st.show_perf;
+                            sig.set(false);
+                        } else if (st.show_lint)() {
+                            let mut sig = st.show_lint;
+                            sig.set(false);
+                        } else if (st.show_trash)() {
+                            let mut sig = st.show_trash;
+                            sig.set(false);
+                        } else if (st.show_vars)() {
+                            let mut st = st;
+                            let mut sig = st.show_vars;
+                            sig.set(false);
+                            st.persist();
+                        } else if show_settings() {
+                            show_settings.set(false);
+                        } else if editing_collection_id().is_some() {
+                            editing_collection_id.set(None);
+                        } else {
+                            closed = false;
+                        }
+                        if closed {
+                            evt.prevent_default();
+                        }
+                    }
                     _ => {}
                 }
             },
@@ -2035,165 +2196,307 @@ pub fn Workbench() -> Element {
                                     do_save(());
                                 }
                             },
-                            span { class: "action-icon action-icon-save", "aria-hidden": "true" }
+                            crate::ui::icons::ActionIcon { name: "save", size: 16 }
                             span { "Save" }
                         }
                     }
                     div { class: "tab-strip-scrollable",
-                        for (idx, t) in open_tabs().into_iter().enumerate() {
-                            {
-                                let tid = t.id;
-                                let tname = request_tab_display_name(&collections(), tid);
-                                let active = !show_settings() && draft().id == tid;
-                                    let is_tab_renaming = renaming_tab_id() == Some(tid);
-                                    let tab_draft = if active {
-                                        draft()
-                                    } else {
-                                        t.clone()
-                                    };
-                                    let is_dirty = is_draft_dirty(&tab_draft, &collections());
-                                    rsx! {
-                                        div {
-                                            key: "{tid}-{idx}",
-                                            class: if active { "tab active" } else { "tab" },
-                                            role: "button",
-                                            tabindex: "0",
-                                            draggable: !is_tab_renaming,
-                                            ondragstart: move |_| {
-                                                drag_tab_idx.set(Some(idx));
-                                            },
-                                            ondragover: move |evt| {
-                                                evt.prevent_default();
-                                            },
-                                            ondrop: move |evt| {
-                                                evt.prevent_default();
-                                                if let Some(from) = drag_tab_idx() {
-                                                    do_reorder_tab((from, idx));
-                                                    drag_tab_idx.set(None);
-                                                }
-                                            },
-                                            oncontextmenu: move |evt: MouseEvent| {
-                                                evt.prevent_default();
-                                                evt.stop_propagation();
-                                                let coords = evt.client_coordinates();
-                                                tab_ctx_menu.set(Some((tid, coords.x, coords.y)));
-                                            },
-                                            onmouseup: move |evt: MouseEvent| {
-                                                if evt.trigger_button() == Some(dioxus::html::input_data::MouseButton::Auxiliary) {
-                                                    evt.prevent_default();
-                                                    evt.stop_propagation();
-                                                    do_close_tab(tid);
-                                                }
-                                            },
-                                            onclick: move |_| {
-                                                if is_tab_renaming {
-                                                    return;
-                                                }
-                                                tab_ctx_menu.set(None);
-                                                do_switch_tab(tid);
-                                            },
-                                            if t.protocol != RequestProtocol::Http {
-                                                span {
-                                                    class: "tab-method method-{t.protocol.badge_class()}",
-                                                    "{t.protocol.badge_label()}"
-                                                }
-                                            } else {
-                                                span {
-                                                    class: "tab-method method-{method_class(t.method)}",
-                                                    "{t.method.as_str()}"
+                        {
+                            let cols_snap = collections();
+                            let custom_snap = custom_tab_groups();
+                            let tabs_snap = open_tabs();
+                            let grouped_mode = tab_groups_enabled();
+                            let display_groups = if grouped_mode {
+                                group_tabs_for_strip(&tabs_snap, &cols_snap, &custom_snap)
+                            } else {
+                                vec![(
+                                    String::new(),
+                                    String::new(),
+                                    tabs_snap.into_iter().enumerate().collect(),
+                                )]
+                            };
+                            let collapsed_snap = collapsed_tab_groups();
+                            let cur_draft_id = draft().id;
+                            let settings_active = show_settings();
+
+                            rsx! {
+                                for (gkey, glabel, gtabs) in display_groups {
+                                    {
+                                        let is_collapsed = grouped_mode && !gkey.is_empty() && collapsed_snap.contains(&gkey);
+                                        let gcolor = tab_group_accent_color(&gkey);
+                                        let gcount = gtabs.len();
+                                        let group_has_active = !settings_active && gtabs.iter().any(|(_, t)| t.id == cur_draft_id);
+                                        let gkey_toggle = gkey.clone();
+                                        let gkey_close = gkey.clone();
+                                        rsx! {
+                                            if grouped_mode && !gkey.is_empty() {
+                                                div {
+                                                    key: "grp-{gkey}",
+                                                    class: if group_has_active { "tab-group-pill has-active" } else { "tab-group-pill" },
+                                                    style: "--tab-group-color: {gcolor};",
+                                                    title: if is_collapsed {
+                                                        format!("Expand group '{glabel}' ({gcount} tabs)")
+                                                    } else {
+                                                        format!("Collapse group '{glabel}' ({gcount} tabs)")
+                                                    },
+                                                    onclick: move |_| {
+                                                        let mut set = collapsed_tab_groups();
+                                                        if set.contains(&gkey_toggle) {
+                                                            set.remove(&gkey_toggle);
+                                                        } else {
+                                                            set.insert(gkey_toggle.clone());
+                                                        }
+                                                        collapsed_tab_groups.set(set);
+                                                    },
+                                                    span { class: "tab-group-dot" }
+                                                    span { class: "tab-group-name", "{glabel}" }
+                                                    span { class: "tab-group-count", "{gcount}" }
+                                                    span { class: "tab-group-chevron", if is_collapsed { "▸" } else { "▾" } }
+                                                    button {
+                                                        class: "tab-group-close",
+                                                        r#type: "button",
+                                                        title: "Close all tabs in group '{glabel}'",
+                                                        onclick: move |evt: MouseEvent| {
+                                                            evt.stop_propagation();
+                                                            do_close_group_tabs(gkey_close.clone());
+                                                        },
+                                                        "×"
+                                                    }
                                                 }
                                             }
-                                            if is_tab_renaming {
-                                                input {
-                                                    class: "tab-rename-input",
-                                                    value: "{rename_tab_draft()}",
-                                                    autofocus: true,
-                                                    onclick: move |evt| evt.stop_propagation(),
-                                                    onmousedown: move |evt| evt.stop_propagation(),
-                                                    oninput: move |evt| {
-                                                        rename_tab_draft.set(evt.value());
-                                                    },
-                                                    onblur: move |_| {
-                                                        let raw = rename_tab_draft();
-                                                        let next = sanitize_rename_name(&raw);
-                                                        renaming_tab_id.set(None);
-                                                        rename_tab_draft.set(String::new());
-                                                        if !next.is_empty() {
-                                                            let mut cols = collections();
-                                                            if rename_across(&mut cols, tid, next.clone()) {
-                                                                collections.set(cols);
-                                                                st.persist();
-                                                            }
-                                                            if draft().id == tid {
-                                                                let mut d = draft();
-                                                                d.name = next.clone();
-                                                                draft.set(d);
-                                                            }
-                                                            let mut tabs = open_tabs();
-                                                            if let Some(tab_slot) = tabs.iter_mut().find(|x| x.id == tid) {
-                                                                tab_slot.name = next.clone();
-                                                            }
-                                                            open_tabs.set(tabs);
-                                                        }
-                                                    },
-                                                    onkeydown: move |evt| {
-                                                        evt.stop_propagation();
-                                                        match evt.key() {
-                                                            Key::Enter => {
-                                                                let raw = rename_tab_draft();
-                                                                let next = sanitize_rename_name(&raw);
-                                                                renaming_tab_id.set(None);
-                                                                rename_tab_draft.set(String::new());
-                                                                if !next.is_empty() {
-                                                                    let mut cols = collections();
-                                                                    if rename_across(&mut cols, tid, next.clone()) {
-                                                                        collections.set(cols);
-                                                                        st.persist();
+                                            if !is_collapsed {
+                                                for (idx, t) in gtabs {
+                                                    {
+                                                        let tid = t.id;
+                                                        let tname = request_tab_display_name(&cols_snap, tid);
+                                                        let active = !settings_active && cur_draft_id == tid;
+                                                        let is_tab_renaming = renaming_tab_id() == Some(tid);
+                                                        let tab_draft = if active { draft() } else { t.clone() };
+                                                        let is_dirty = is_draft_dirty(&tab_draft, &cols_snap);
+                                                        let tab_style = if grouped_mode && !gkey.is_empty() {
+                                                            format!("border-top: 2px solid {gcolor};")
+                                                        } else {
+                                                            String::new()
+                                                        };
+                                                        rsx! {
+                                                            div {
+                                                                key: "{tid}-{idx}",
+                                                                class: if active { "tab active" } else { "tab" },
+                                                                style: "{tab_style}",
+                                                                role: "button",
+                                                                tabindex: "0",
+                                                                draggable: !is_tab_renaming,
+                                                                ondragstart: move |_| {
+                                                                    drag_tab_idx.set(Some(idx));
+                                                                },
+                                                                ondragover: move |evt| {
+                                                                    evt.prevent_default();
+                                                                },
+                                                                ondrop: move |evt| {
+                                                                    evt.prevent_default();
+                                                                    if let Some(from) = drag_tab_idx() {
+                                                                        do_reorder_tab((from, idx));
+                                                                        drag_tab_idx.set(None);
                                                                     }
-                                                                    if draft().id == tid {
-                                                                        let mut d = draft();
-                                                                        d.name = next.clone();
-                                                                        draft.set(d);
+                                                                },
+                                                                oncontextmenu: move |evt: MouseEvent| {
+                                                                    evt.prevent_default();
+                                                                    evt.stop_propagation();
+                                                                    let coords = evt.client_coordinates();
+                                                                    tab_ctx_menu.set(Some((tid, coords.x, coords.y)));
+                                                                },
+                                                                onmouseup: move |evt: MouseEvent| {
+                                                                    if evt.trigger_button() == Some(dioxus::html::input_data::MouseButton::Auxiliary) {
+                                                                        evt.prevent_default();
+                                                                        evt.stop_propagation();
+                                                                        do_close_tab(tid);
                                                                     }
-                                                                    let mut tabs = open_tabs();
-                                                                    if let Some(tab_slot) = tabs.iter_mut().find(|x| x.id == tid) {
-                                                                        tab_slot.name = next.clone();
+                                                                },
+                                                                onclick: move |_| {
+                                                                    if is_tab_renaming {
+                                                                        return;
                                                                     }
-                                                                    open_tabs.set(tabs);
+                                                                    tab_ctx_menu.set(None);
+                                                                    do_switch_tab(tid);
+                                                                },
+                                                                if t.protocol != RequestProtocol::Http {
+                                                                    span {
+                                                                        class: "tab-method method-{t.protocol.badge_class()}",
+                                                                        "{t.protocol.badge_label()}"
+                                                                    }
+                                                                } else {
+                                                                    span {
+                                                                        class: "tab-method method-{method_class(t.method)}",
+                                                                        "{t.method.as_str()}"
+                                                                    }
+                                                                }
+                                                                if is_tab_renaming {
+                                                                    input {
+                                                                        class: "tab-rename-input",
+                                                                        value: "{rename_tab_draft()}",
+                                                                        autofocus: true,
+                                                                        onclick: move |evt| evt.stop_propagation(),
+                                                                        onmousedown: move |evt| evt.stop_propagation(),
+                                                                        oninput: move |evt| {
+                                                                            rename_tab_draft.set(evt.value());
+                                                                        },
+                                                                        onblur: move |_| {
+                                                                            let raw = rename_tab_draft();
+                                                                            let next = sanitize_rename_name(&raw);
+                                                                            renaming_tab_id.set(None);
+                                                                            rename_tab_draft.set(String::new());
+                                                                            if !next.is_empty() {
+                                                                                let mut cols = collections();
+                                                                                if rename_across(&mut cols, tid, next.clone()) {
+                                                                                    collections.set(cols);
+                                                                                    st.persist();
+                                                                                }
+                                                                                if draft().id == tid {
+                                                                                    let mut d = draft();
+                                                                                    d.name = next.clone();
+                                                                                    draft.set(d);
+                                                                                }
+                                                                                let mut tabs = open_tabs();
+                                                                                if let Some(tab_slot) = tabs.iter_mut().find(|x| x.id == tid) {
+                                                                                    tab_slot.name = next.clone();
+                                                                                }
+                                                                                open_tabs.set(tabs);
+                                                                            }
+                                                                        },
+                                                                        onkeydown: move |evt| {
+                                                                            evt.stop_propagation();
+                                                                            match evt.key() {
+                                                                                Key::Enter => {
+                                                                                    let raw = rename_tab_draft();
+                                                                                    let next = sanitize_rename_name(&raw);
+                                                                                    renaming_tab_id.set(None);
+                                                                                    rename_tab_draft.set(String::new());
+                                                                                    if !next.is_empty() {
+                                                                                        let mut cols = collections();
+                                                                                        if rename_across(&mut cols, tid, next.clone()) {
+                                                                                            collections.set(cols);
+                                                                                            st.persist();
+                                                                                        }
+                                                                                        if draft().id == tid {
+                                                                                            let mut d = draft();
+                                                                                            d.name = next.clone();
+                                                                                            draft.set(d);
+                                                                                        }
+                                                                                        let mut tabs = open_tabs();
+                                                                                        if let Some(tab_slot) = tabs.iter_mut().find(|x| x.id == tid) {
+                                                                                            tab_slot.name = next.clone();
+                                                                                        }
+                                                                                        open_tabs.set(tabs);
+                                                                                    }
+                                                                                }
+                                                                                Key::Escape => {
+                                                                                    renaming_tab_id.set(None);
+                                                                                    rename_tab_draft.set(String::new());
+                                                                                }
+                                                                                _ if evt.key() == Key::Escape => {
+                        let mut closed = true;
+                        if (st.pending_delete)().is_some() {
+                            let mut sig = st.pending_delete;
+                            sig.set(None);
+                        } else if (st.pending_close_tab)().is_some() {
+                            let mut sig = st.pending_close_tab;
+                            sig.set(None);
+                        } else if (st.pending_batch_move)().is_some() {
+                            let mut sig = st.pending_batch_move;
+                            sig.set(None);
+                        } else if tab_ctx_menu().is_some() {
+                            tab_ctx_menu.set(None);
+                        } else if (st.show_tab_menu)() {
+                            let mut sig = st.show_tab_menu;
+                            sig.set(false);
+                        } else if (st.file_menu_open)() || (st.tools_menu_open)() || (st.cloud_menu_open)() {
+                            let mut f = st.file_menu_open;
+                            let mut t = st.tools_menu_open;
+                            let mut c = st.cloud_menu_open;
+                            f.set(false);
+                            t.set(false);
+                            c.set(false);
+                        } else if (st.show_palette)() {
+                            let mut sig = st.show_palette;
+                            sig.set(false);
+                        } else if (st.impex_modal)().is_some() {
+                            let mut sig = st.impex_modal;
+                            sig.set(None);
+                        } else if (st.show_snippets)() {
+                            let mut sig = st.show_snippets;
+                            sig.set(false);
+                        } else if show_col_vars() {
+                            let mut st = st;
+                            show_col_vars.set(false);
+                            st.persist();
+                        } else if (st.show_cookies)() {
+                            let mut sig = st.show_cookies;
+                            sig.set(false);
+                        } else if (st.show_team)() {
+                            let mut sig = st.show_team;
+                            sig.set(false);
+                        } else if (st.show_runner)() {
+                            let mut sig = st.show_runner;
+                            sig.set(false);
+                        } else if (st.show_perf)() {
+                            let mut sig = st.show_perf;
+                            sig.set(false);
+                        } else if (st.show_lint)() {
+                            let mut sig = st.show_lint;
+                            sig.set(false);
+                        } else if (st.show_trash)() {
+                            let mut sig = st.show_trash;
+                            sig.set(false);
+                        } else if (st.show_vars)() {
+                            let mut st = st;
+                            let mut sig = st.show_vars;
+                            sig.set(false);
+                            st.persist();
+                        } else if show_settings() {
+                            show_settings.set(false);
+                        } else if editing_collection_id().is_some() {
+                            editing_collection_id.set(None);
+                        } else {
+                            closed = false;
+                        }
+                        if closed {
+                            evt.prevent_default();
+                        }
+                    }
+                    _ => {}
+                                                                            }
+                                                                        },
+                                                                    }
+                                                                } else {
+                                                                    span { class: "tab-label", "{tname}" }
+                                                                }
+                                                                if is_dirty {
+                                                                    span {
+                                                                        class: "tab-dirty-dot",
+                                                                        title: "Unsaved changes",
+                                                                        "•"
+                                                                    }
+                                                                }
+                                                                button {
+                                                                    class: "tab-close",
+                                                                    r#type: "button",
+                                                                    title: "Close tab",
+                                                                    onclick: move |evt| {
+                                                                        evt.stop_propagation();
+                                                                        do_close_tab(tid);
+                                                                    },
+                                                                    "×"
                                                                 }
                                                             }
-                                                            Key::Escape => {
-                                                                renaming_tab_id.set(None);
-                                                                rename_tab_draft.set(String::new());
-                                                            }
-                                                            _ => {}
                                                         }
-                                                    },
+                                                    }
                                                 }
-                                            } else {
-                                                span { class: "tab-label", "{tname}" }
-                                            }
-                                            if is_dirty {
-                                                span {
-                                                    class: "tab-dirty-dot",
-                                                    title: "Unsaved changes",
-                                                    "•"
-                                                }
-                                            }
-                                            button {
-                                                class: "tab-close",
-                                                r#type: "button",
-                                                title: "Close tab",
-                                                onclick: move |evt| {
-                                                    evt.stop_propagation();
-                                                    do_close_tab(tid);
-                                                },
-                                                "×"
                                             }
                                         }
                                     }
                                 }
                             }
+                        }
                             if settings_tab_open() {
                                 div {
                                     class: if show_settings() { "tab active tab-settings" } else { "tab tab-settings" },
@@ -2233,14 +2536,25 @@ pub fn Workbench() -> Element {
                                 class: "tab tab-add",
                                 title: "New request tab (⌘T)",
                                 onclick: move |_| do_new_tab(()),
-                                "+"
+                                crate::ui::icons::ActionIcon { name: "add", size: 16 }
+                                span { "New" }
                             }
                             if !open_tabs().is_empty() {
                                 button {
+                                    class: if tab_groups_enabled() { "tab tab-more active" } else { "tab tab-more" },
+                                    title: if tab_groups_enabled() { "Tab groups: On (click for flat strip)" } else { "Tab groups: Off (click to group by collection)" },
+                                    onclick: move |_| tab_groups_enabled.set(!tab_groups_enabled()),
+                                    crate::ui::icons::ActionIcon { name: "layers", size: 15 }
+                                    span { if tab_groups_enabled() { "Grouped" } else { "Flat" } }
+                                }
+                                button {
                                     class: if show_tab_menu() { "tab tab-more active" } else { "tab tab-more" },
-                                    title: "All open tabs",
-                                    onclick: move |_| show_tab_menu.set(!show_tab_menu()),
-                                    "▼"
+                                    title: "All open tabs & multi-close",
+                                    onclick: move |_| {
+                                        selected_menu_tabs.set(std::collections::HashSet::new());
+                                        show_tab_menu.set(!show_tab_menu());
+                                    },
+                                    "Tabs ▾"
                                 }
                             }
                         }
@@ -2249,52 +2563,139 @@ pub fn Workbench() -> Element {
                                 z_index: 950,
                                 on_dismiss: move |_| show_tab_menu.set(false),
                             }
-                            div {
-                                class: "tab-dropdown-menu",
-                                div { class: "tab-dropdown-header",
-                                    span { "Open Tabs ({open_tabs().len()})" }
-                                    button {
-                                        class: "tab-dropdown-footer-btn",
-                                        onclick: move |_| {
-                                            show_tab_menu.set(false);
-                                            do_close_all_tabs(());
-                                        },
-                                        "Close All"
-                                    }
-                                }
-                                for (i, t) in open_tabs().into_iter().enumerate() {
-                                    {
-                                        let tid = t.id;
-                                        let tname = request_tab_display_name(&collections(), tid);
-                                        let active = draft().id == tid;
-                                        let tab_draft = if active { draft() } else { t.clone() };
-                                        let is_dirty = is_draft_dirty(&tab_draft, &collections());
-                                        let idx_label = if i < 9 { format!("⌘{}", i + 1) } else { String::new() };
-                                        rsx! {
-                                            div {
-                                                key: "{tid}-{i}",
-                                                class: if active { "tab-dropdown-item active" } else { "tab-dropdown-item" },
-                                                onclick: move |_| {
-                                                    show_tab_menu.set(false);
-                                                    do_switch_tab(tid);
-                                                },
-                                                if t.protocol != RequestProtocol::Http {
-                                                    span {
-                                                        class: "tab-method method-{t.protocol.badge_class()}",
-                                                        "{t.protocol.badge_label()}"
-                                                    }
-                                                } else {
-                                                    span {
-                                                        class: "tab-method method-{method_class(t.method)}",
-                                                        "{t.method.as_str()}"
+                            {
+                                let cols_snap = collections();
+                                let custom_snap = custom_tab_groups();
+                                let tabs_snap = open_tabs();
+                                let total_tabs = tabs_snap.len();
+                                let grouped_menu = group_tabs_for_strip(&tabs_snap, &cols_snap, &custom_snap);
+                                let sel_count = selected_menu_tabs().len();
+                                rsx! {
+                                    div {
+                                        class: "tab-dropdown-menu",
+                                        div { class: "tab-dropdown-header",
+                                            span { "Open Tabs ({total_tabs})" }
+                                            div { class: "tab-dropdown-header-actions",
+                                                if sel_count > 0 {
+                                                    button {
+                                                        class: "tab-dropdown-footer-btn",
+                                                        onclick: move |_| {
+                                                            let ids = selected_menu_tabs();
+                                                            selected_menu_tabs.set(std::collections::HashSet::new());
+                                                            do_close_selected_tabs(ids);
+                                                        },
+                                                        "Close ({sel_count})"
                                                     }
                                                 }
-                                                span { class: "tab-dropdown-name", "{tname}" }
-                                                if is_dirty {
-                                                    span { class: "tab-dirty-dot", title: "Unsaved changes", "•" }
+                                                button {
+                                                    class: "tab-dropdown-footer-btn tab-dropdown-action-subtle",
+                                                    title: "Close all unmodified tabs",
+                                                    onclick: move |_| {
+                                                        selected_menu_tabs.set(std::collections::HashSet::new());
+                                                        do_close_clean_tabs(());
+                                                    },
+                                                    "Close Clean"
                                                 }
-                                                if !idx_label.is_empty() {
-                                                    span { class: "tab-dropdown-idx", "{idx_label}" }
+                                                button {
+                                                    class: "tab-dropdown-footer-btn",
+                                                    onclick: move |_| {
+                                                        show_tab_menu.set(false);
+                                                        do_close_all_tabs(());
+                                                    },
+                                                    "Close All"
+                                                }
+                                            }
+                                        }
+                                        for (gkey, glabel, gtabs) in grouped_menu {
+                                            {
+                                                let gkey_close = gkey.clone();
+                                                let gcolor = tab_group_accent_color(&gkey);
+                                                let gcount = gtabs.len();
+                                                rsx! {
+                                                    div {
+                                                        key: "menu-grp-{gkey}",
+                                                        class: "tab-dropdown-group-head",
+                                                        span {
+                                                            class: "tab-group-dot",
+                                                            style: "background: {gcolor};",
+                                                        }
+                                                        span { class: "tab-dropdown-group-title", "{glabel} ({gcount})" }
+                                                        button {
+                                                            class: "tab-dropdown-footer-btn",
+                                                            title: "Close all tabs in {glabel}",
+                                                            onclick: move |evt: MouseEvent| {
+                                                                evt.stop_propagation();
+                                                                do_close_group_tabs(gkey_close.clone());
+                                                            },
+                                                            "Close Group"
+                                                        }
+                                                    }
+                                                    for (i, t) in gtabs {
+                                                        {
+                                                            let tid = t.id;
+                                                            let tname = request_tab_display_name(&cols_snap, tid);
+                                                            let active = draft().id == tid;
+                                                            let tab_draft = if active { draft() } else { t.clone() };
+                                                            let is_dirty = is_draft_dirty(&tab_draft, &cols_snap);
+                                                            let is_checked = selected_menu_tabs().contains(&tid);
+                                                            let idx_label = if i < 9 { format!("⌘{}", i + 1) } else { String::new() };
+                                                            rsx! {
+                                                                div {
+                                                                    key: "menu-{tid}-{i}",
+                                                                    class: if active { "tab-dropdown-item active" } else { "tab-dropdown-item" },
+                                                                    onclick: move |_| {
+                                                                        show_tab_menu.set(false);
+                                                                        do_switch_tab(tid);
+                                                                    },
+                                                                    input {
+                                                                        class: "tab-dropdown-check",
+                                                                        r#type: "checkbox",
+                                                                        checked: is_checked,
+                                                                        onclick: move |evt: MouseEvent| {
+                                                                            evt.stop_propagation();
+                                                                        },
+                                                                        onchange: move |_| {
+                                                                            let mut set = selected_menu_tabs();
+                                                                            if set.contains(&tid) {
+                                                                                set.remove(&tid);
+                                                                            } else {
+                                                                                set.insert(tid);
+                                                                            }
+                                                                            selected_menu_tabs.set(set);
+                                                                        },
+                                                                    }
+                                                                    if t.protocol != RequestProtocol::Http {
+                                                                        span {
+                                                                            class: "tab-method method-{t.protocol.badge_class()}",
+                                                                            "{t.protocol.badge_label()}"
+                                                                        }
+                                                                    } else {
+                                                                        span {
+                                                                            class: "tab-method method-{method_class(t.method)}",
+                                                                            "{t.method.as_str()}"
+                                                                        }
+                                                                    }
+                                                                    span { class: "tab-dropdown-name", "{tname}" }
+                                                                    if is_dirty {
+                                                                        span { class: "tab-dirty-dot", title: "Unsaved changes", "•" }
+                                                                    }
+                                                                    if !idx_label.is_empty() {
+                                                                        span { class: "tab-dropdown-idx", "{idx_label}" }
+                                                                    }
+                                                                    button {
+                                                                        class: "tab-dropdown-item-close",
+                                                                        r#type: "button",
+                                                                        title: "Close tab",
+                                                                        onclick: move |evt: MouseEvent| {
+                                                                            evt.stop_propagation();
+                                                                            do_close_tab(tid);
+                                                                        },
+                                                                        "×"
+                                                                    }
+                                                                }
+                                                            }
+                                                        }
+                                                    }
                                                 }
                                             }
                                         }
@@ -2309,42 +2710,73 @@ pub fn Workbench() -> Element {
                                 z_index: 1040,
                                 on_dismiss: move |_| tab_ctx_menu.set(None),
                             }
-                            div {
-                                class: "tab-context-menu",
-                                style: "top: {ctx_y}px; left: {ctx_x}px;",
-                                button {
-                                    class: "tab-context-item",
-                                    onclick: move |_| {
-                                        tab_ctx_menu.set(None);
-                                        do_close_tab(ctx_tid);
-                                    },
-                                    span { "Close Tab" }
-                                    span { class: "tab-context-shortcut", "⌘W" }
-                                }
-                                button {
-                                    class: "tab-context-item",
-                                    onclick: move |_| {
-                                        tab_ctx_menu.set(None);
-                                        do_close_other_tabs(ctx_tid);
-                                    },
-                                    span { "Close Other Tabs" }
-                                }
-                                button {
-                                    class: "tab-context-item",
-                                    onclick: move |_| {
-                                        tab_ctx_menu.set(None);
-                                        do_close_tabs_to_right(ctx_tid);
-                                    },
-                                    span { "Close Tabs to Right" }
-                                }
-                                button {
-                                    class: "tab-context-item danger",
-                                    onclick: move |_| {
-                                        tab_ctx_menu.set(None);
-                                        do_close_all_tabs(());
-                                    },
-                                    span { "Close All Tabs" }
-                                }
+                            {
+                                let (ctx_gkey, ctx_glabel) = tab_group_key_and_label(
+                                    &collections(),
+                                    &custom_tab_groups(),
+                                    ctx_tid,
+                                );
+                                rsx! {
+                                    div {
+                                        class: "tab-context-menu",
+                                        style: "top: {ctx_y}px; left: {ctx_x}px;",
+                                        button {
+                                            class: "tab-context-item",
+                                            onclick: move |_| {
+                                                tab_ctx_menu.set(None);
+                                                do_close_tab(ctx_tid);
+                                            },
+                                            span { "Close Tab" }
+                                            span { class: "tab-context-shortcut", "⌘W" }
+                                        }
+                                        button {
+                                            class: "tab-context-item",
+                                            onclick: move |_| {
+                                                tab_ctx_menu.set(None);
+                                                do_close_other_tabs(ctx_tid);
+                                            },
+                                            span { "Close Other Tabs" }
+                                        }
+                                        button {
+                                            class: "tab-context-item",
+                                            onclick: move |_| {
+                                                tab_ctx_menu.set(None);
+                                                do_close_tabs_to_left(ctx_tid);
+                                            },
+                                            span { "Close Tabs to Left" }
+                                        }
+                                        button {
+                                            class: "tab-context-item",
+                                            onclick: move |_| {
+                                                tab_ctx_menu.set(None);
+                                                do_close_tabs_to_right(ctx_tid);
+                                            },
+                                            span { "Close Tabs to Right" }
+                                        }
+                                        button {
+                                            class: "tab-context-item",
+                                            onclick: move |_| {
+                                                tab_ctx_menu.set(None);
+                                                do_close_clean_tabs(());
+                                            },
+                                            span { "Close Unmodified Tabs" }
+                                        }
+                                        button {
+                                            class: "tab-context-item",
+                                            onclick: move |_| {
+                                                tab_ctx_menu.set(None);
+                                                do_close_group_tabs(ctx_gkey.clone());
+                                            },
+                                            span { "Close Group ({ctx_glabel})" }
+                                        }
+                                        button {
+                                            class: "tab-context-item danger",
+                                            onclick: move |_| {
+                                                tab_ctx_menu.set(None);
+                                                do_close_all_tabs(());
+                                            },
+                                            span { "Close All Tabs" }
+                                        }
                                 div { class: "menu-divider" }
                                 button {
                                     class: "tab-context-item",
@@ -2386,6 +2818,8 @@ pub fn Workbench() -> Element {
                                     span { "Copy URL" }
                                 }
                             }
+                                }
+                            }
                         }
 
                     div { class: "workbench-stage",
@@ -2393,6 +2827,7 @@ pub fn Workbench() -> Element {
                         SettingsPanel {
                             settings: app_settings,
                             data_root: data_root,
+                            active_tab: st.settings_tab,
                             on_event: on_settings_event,
                         }
                     } else if let Some(conflict) = conflict_state() {
@@ -2451,53 +2886,33 @@ pub fn Workbench() -> Element {
                                         class: "workbench-empty-content",
                                         div { class: "workbench-empty-hero",
                                             div { class: "workbench-empty-icon",
-                                                span { class: "action-icon action-icon-bolt", aria_hidden: "true" }
+                                                img {
+                                                    src: crate::brand::LOGO_SRC.as_str(),
+                                                    alt: "Blitz",
+                                                    class: "workbench-empty-logo",
+                                                }
                                             }
                                             h2 { class: "workbench-empty-title", "Blitz Cockpit" }
                                             p { class: "workbench-empty-subtitle",
-                                                "No open request tab. Pick a request from sidebar, trigger a command, or create a fresh draft."
+                                                "No open request tab. Pick a request from the sidebar, trigger a command, or create a fresh draft."
                                             }
                                             div { class: "workbench-empty-actions",
                                                 button {
                                                     class: "btn btn-primary workbench-hero-btn",
                                                     onclick: move |_| do_new_tab(()),
-                                                    "+ New Request ("
+                                                    span { "+ New Request" }
                                                     kbd { "{m_pfx}T" }
-                                                    ")"
                                                 }
                                                 button {
                                                     class: "btn btn-secondary workbench-hero-btn",
                                                     onclick: move |_| show_palette.set(true),
-                                                    "Command Palette ("
+                                                    span { "Command Palette" }
                                                     kbd { "{m_pfx}K" }
-                                                    ")"
                                                 }
                                             }
                                         }
 
                                         div { class: "workbench-empty-grid",
-                                            div {
-                                                class: "workbench-empty-card",
-                                                onclick: move |_| show_palette.set(true),
-                                                div { class: "empty-card-head",
-                                                    span { class: "empty-card-tag", "QUICK ACTION" }
-                                                    kbd { class: "empty-card-kbd", "{m_pfx}K" }
-                                                }
-                                                div { class: "empty-card-title", "Command Palette" }
-                                                div { class: "empty-card-desc", "Search requests, switch environments, toggle themes, or run tools instantly." }
-                                            }
-
-                                            div {
-                                                class: "workbench-empty-card",
-                                                onclick: move |_| do_new_tab(()),
-                                                div { class: "empty-card-head",
-                                                    span { class: "empty-card-tag", "DRAFT" }
-                                                    kbd { class: "empty-card-kbd", "{m_pfx}T" }
-                                                }
-                                                div { class: "empty-card-title", "New Request" }
-                                                div { class: "empty-card-desc", "Spawn a new tab to compose GET, POST, GraphQL, WebSocket or gRPC calls." }
-                                            }
-
                                             div {
                                                 class: "workbench-empty-card",
                                                 onclick: move |_| impex_modal.set(Some(crate::ui::workbench::state::ImpexModal::Import { text: String::new() })),
@@ -2511,7 +2926,10 @@ pub fn Workbench() -> Element {
 
                                             div {
                                                 class: "workbench-empty-card",
-                                                onclick: move |_| show_env_manager.set(true),
+                                                onclick: move |_| {
+                                                    st.vars_active_tab.set(0);
+                                                    st.show_vars.set(true);
+                                                },
                                                 div { class: "empty-card-head",
                                                     span { class: "empty-card-tag", "VARS" }
                                                     kbd { class: "empty-card-kbd", "{m_pfx}E" }
@@ -2529,6 +2947,31 @@ pub fn Workbench() -> Element {
                                                 }
                                                 div { class: "empty-card-title", "Collection Runner" }
                                                 div { class: "empty-card-desc", "Execute automated multi-request batches with tests, scripts, and HTML reports." }
+                                            }
+
+                                            div {
+                                                class: "workbench-empty-card",
+                                                onclick: move |_| {
+                                                    let mut sig = st.show_perf;
+                                                    sig.set(true);
+                                                },
+                                                div { class: "empty-card-head",
+                                                    span { class: "empty-card-tag", "LOAD TEST" }
+                                                }
+                                                div { class: "empty-card-title", "Performance Runner" }
+                                                div { class: "empty-card-desc", "Benchmark endpoints with concurrent virtual users, latency percentiles, and throughput." }
+                                            }
+
+                                            div {
+                                                class: "workbench-empty-card",
+                                                onclick: move |_| {
+                                                    crate::ui::workbench::cloud::open_team_activity(st, true);
+                                                },
+                                                div { class: "empty-card-head",
+                                                    span { class: "empty-card-tag", "TEAM & SYNC" }
+                                                }
+                                                div { class: "empty-card-title", "Team & Git Cloud" }
+                                                div { class: "empty-card-desc", "Inspect team commits, edited files, contributors, and sync workspace changes." }
                                             }
 
                                             div {
@@ -3260,4 +3703,87 @@ mod tests {
         assert!(lines[1].message.contains("Status: 200 OK (82 ms)"));
         assert!(lines[1].message.contains(r#"{"id": 42, "name": "bob"}"#));
     }
+
+    #[test]
+    fn group_tabs_for_strip_groups_by_collection_and_custom_group() {
+        let mut c1 = Collection::new("Users API");
+        let mut c2 = Collection::new("Billing API");
+        let r1 = RequestDraft { name: "List Users".into(), ..Default::default() };
+        let r2 = RequestDraft { name: "Charge".into(), ..Default::default() };
+        let r3 = RequestDraft { name: "Create User".into(), ..Default::default() };
+        let r_scratch = RequestDraft { name: "Scratch".into(), ..Default::default() };
+        c1.add_request(r1.clone());
+        c1.add_request(r3.clone());
+        c2.add_request(r2.clone());
+
+        let cols = vec![c1, c2];
+        let tabs = vec![r1.clone(), r2.clone(), r3.clone(), r_scratch.clone()];
+        let mut custom = std::collections::HashMap::new();
+        custom.insert(r_scratch.id, "Pinned".to_string());
+
+        let grouped = super::group_tabs_for_strip(&tabs, &cols, &custom);
+        assert_eq!(grouped.len(), 3);
+        assert_eq!(grouped[0].1, "Users API");
+        assert_eq!(grouped[0].2.len(), 2);
+        assert_eq!(grouped[0].2[0].0, 0);
+        assert_eq!(grouped[0].2[1].0, 2);
+        assert_eq!(grouped[1].1, "Billing API");
+        assert_eq!(grouped[1].2.len(), 1);
+        assert_eq!(grouped[2].1, "Pinned");
+        assert_eq!(grouped[2].2.len(), 1);
+    }
+}
+
+fn tab_group_key_and_label(
+    cols: &[Collection],
+    custom_groups: &std::collections::HashMap<Uuid, String>,
+    req_id: Uuid,
+) -> (String, String) {
+    if let Some(name) = custom_groups.get(&req_id) {
+        let trimmed = name.trim();
+        if !trimmed.is_empty() {
+            return (format!("custom:{trimmed}"), trimmed.to_string());
+        }
+    }
+    if let Some(col) = cols.iter().find(|c| c.find_request(req_id).is_some()) {
+        return (format!("col:{}", col.id), col.name.clone());
+    }
+    ("scratch".to_string(), "Scratch".to_string())
+}
+
+fn tab_group_accent_color(group_key: &str) -> &'static str {
+    const PALETTE: &[&str] = &[
+        "#1db954",
+        "#38bdf8",
+        "#a78bfa",
+        "#f59e0b",
+        "#f472b6",
+        "#2dd4bf",
+        "#fb7185",
+        "#60a5fa",
+    ];
+    let mut hash: usize = 5381;
+    for b in group_key.bytes() {
+        hash = hash.wrapping_mul(33).wrapping_add(b as usize);
+    }
+    PALETTE[hash % PALETTE.len()]
+}
+
+type TabStripGroup = (String, String, Vec<(usize, RequestDraft)>);
+
+fn group_tabs_for_strip(
+    tabs: &[RequestDraft],
+    cols: &[Collection],
+    custom_groups: &std::collections::HashMap<Uuid, String>,
+) -> Vec<TabStripGroup> {
+    let mut groups: Vec<TabStripGroup> = Vec::new();
+    for (idx, t) in tabs.iter().enumerate() {
+        let (key, label) = tab_group_key_and_label(cols, custom_groups, t.id);
+        if let Some(existing) = groups.iter_mut().find(|(k, _, _)| *k == key) {
+            existing.2.push((idx, t.clone()));
+        } else {
+            groups.push((key, label, vec![(idx, t.clone())]));
+        }
+    }
+    groups
 }

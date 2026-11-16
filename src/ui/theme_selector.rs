@@ -1,6 +1,7 @@
 use dioxus::prelude::*;
 
 use crate::core::UiTheme;
+use super::icons::ActionIcon;
 use super::DismissBackdrop;
 
 /// Compact theme icon button with popup picker for the top bar.
@@ -21,7 +22,8 @@ pub fn ThemeSelector(theme: UiTheme, on_change: EventHandler<UiTheme>) -> Elemen
                 title: format!("Theme: {}", theme.label()),
                 aria_label: "Theme",
                 onclick: move |_| menu_open.set(!menu_open()),
-                span { class: "action-icon action-icon-theme", aria_hidden: "true" }
+                ActionIcon { name: "theme", size: 17 }
+                span { "Theme" }
             }
             if menu_open() {
                 div { class: "theme-menu",

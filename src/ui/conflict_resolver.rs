@@ -2,6 +2,7 @@ use dioxus::prelude::*;
 use std::path::PathBuf;
 
 use crate::core::{get_conflict_file_versions, resolve_git_conflicts};
+use super::icons::ActionIcon;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ConflictState {
@@ -35,7 +36,7 @@ pub fn ConflictResolver(
             div { class: "col-editor-header", style: "border-bottom: var(--glass-border); padding: 12px 20px; display: flex; justify-content: space-between; align-items: center; background: var(--bg-surface-elevated);",
                 div {
                     h3 { style: "margin: 0; font-size: 15px; font-weight: 700; display: flex; align-items: center; gap: 8px;",
-                        span { class: "action-icon action-icon-git-merge", aria_hidden: "true" }
+                        ActionIcon { name: "git-merge", size: 17 }
                         span { "Git Merge Conflict Resolver" }
                         span { class: "status-chip status-err", style: "font-size: 11px;", "{files_len} conflicting files" }
                     }

@@ -1,6 +1,6 @@
 [package]
 name = "blitz"
-version = "0.2.10"
+version = "0.2.11"
 edition = "2021"
 description = "Local-first API client (Rust + Dioxus) — ⚡ Blitz"
 license = "MIT"
@@ -8,6 +8,7 @@ readme = "README.md"
 
 [dependencies]
 dioxus = { version = "0.7.10", features = ["desktop"] }
+lucide-dioxus = { version = "3.63.0", features = ["all-icons"] }
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "blocking", "multipart", "socks", "gzip", "deflate", "brotli"] }
 flate2 = "1"
 brotli = "7"

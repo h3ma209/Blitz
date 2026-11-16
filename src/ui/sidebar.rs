@@ -271,7 +271,7 @@ pub fn Sidebar(
                 h3 { class: "type-label", "Collections" }
                 div { class: "sidebar-actions",
                     button {
-                        class: "btn-icon",
+                        class: "btn-icon sidebar-action-pill",
                         title: "Import Postman v2.1 JSON",
                         aria_label: "Import Postman v2.1 JSON",
                         onclick: move |_| on_event.call(SidebarEvent::new(
@@ -279,10 +279,11 @@ pub fn Sidebar(
                             None,
                             active_collection_id,
                         )),
-                        span { class: "action-icon action-icon-import", aria_hidden: "true" }
+                        super::icons::ActionIcon { name: "import", size: 17 }
+                        span { "Import" }
                     }
                     button {
-                        class: "btn-icon",
+                        class: "btn-icon sidebar-action-pill",
                         title: "Export active collection",
                         aria_label: "Export active collection",
                         onclick: move |_| on_event.call(SidebarEvent::new(
@@ -290,10 +291,11 @@ pub fn Sidebar(
                             None,
                             active_collection_id,
                         )),
-                        span { class: "action-icon action-icon-export", aria_hidden: "true" }
+                        super::icons::ActionIcon { name: "export", size: 17 }
+                        span { "Export" }
                     }
                     button {
-                        class: "btn-icon",
+                        class: "btn-icon sidebar-action-pill",
                         title: "Sort favorites + folders first",
                         aria_label: "Sort favorites and folders first",
                         onclick: move |_| on_event.call(SidebarEvent::new(
@@ -301,10 +303,11 @@ pub fn Sidebar(
                             None,
                             active_collection_id,
                         )),
-                        span { class: "action-icon action-icon-sort", aria_hidden: "true" }
+                        super::icons::ActionIcon { name: "sort", size: 17 }
+                        span { "Sort" }
                     }
                     button {
-                        class: "btn-icon",
+                        class: "btn-icon sidebar-action-pill",
                         title: "New collection",
                         aria_label: "New collection",
                         onclick: move |_| on_event.call(SidebarEvent::new(
@@ -312,7 +315,8 @@ pub fn Sidebar(
                             None,
                             None,
                         )),
-                        span { class: "action-icon action-icon-add", aria_hidden: "true" }
+                        super::icons::ActionIcon { name: "add", size: 17 }
+                        span { "New" }
                     }
                 }
             }
@@ -767,6 +771,8 @@ pub fn Sidebar(
                             let name = row.name.clone();
                             let kind = row.kind.clone();
                             let favorite = row.favorite;
+                            let row_icon = row.icon.clone();
+                            let row_color = row.icon_color.clone();
                             let is_req = matches!(kind, TreeRowKind::Request { .. });
                             let is_col = matches!(kind, TreeRowKind::Collection);
                             let is_folder = matches!(kind, TreeRowKind::Folder);
@@ -1114,10 +1120,10 @@ pub fn Sidebar(
                                             "{glyph}"
                                         }
                                         if is_col {
-                                            span {
-                                                class: "tree-icon tree-icon-collection",
-                                                title: "Collection",
-                                                aria_hidden: "true",
+                                            super::icons::CollectionIcon {
+                                                icon: row_icon,
+                                                color: row_color,
+                                                size: 16,
                                             }
                                         } else if is_folder {
                                             span {
@@ -1188,7 +1194,7 @@ pub fn Sidebar(
                                                         Some(col_id),
                                                     ));
                                                 },
-                                                span { class: "action-icon action-icon-sliders", aria_hidden: "true" }
+                                                super::icons::ActionIcon { name: "sliders", size: 17 }
                                             }
                                             button {
                                                 class: "btn-icon",
@@ -1202,7 +1208,7 @@ pub fn Sidebar(
                                                         Some(col_id),
                                                     ));
                                                 },
-                                                span { class: "action-icon action-icon-star", aria_hidden: "true" }
+                                                super::icons::ActionIcon { name: "star", size: 17 }
                                             }
                                             button {
                                                 class: "btn-icon",
@@ -1216,7 +1222,7 @@ pub fn Sidebar(
                                                         Some(col_id),
                                                     ));
                                                 },
-                                                span { class: "action-icon action-icon-duplicate", aria_hidden: "true" }
+                                                super::icons::ActionIcon { name: "duplicate", size: 17 }
                                             }
                                             button {
                                                 class: "btn-icon",
@@ -1230,7 +1236,7 @@ pub fn Sidebar(
                                                         Some(col_id),
                                                     ));
                                                 },
-                                                span { class: "action-icon action-icon-request", aria_hidden: "true" }
+                                                super::icons::ActionIcon { name: "request", size: 17 }
                                             }
                                             button {
                                                 class: "btn-icon",
@@ -1244,7 +1250,7 @@ pub fn Sidebar(
                                                         Some(col_id),
                                                     ));
                                                 },
-                                                span { class: "action-icon action-icon-folder-new", aria_hidden: "true" }
+                                                super::icons::ActionIcon { name: "folder-new", size: 17 }
                                             }
                                         }
                                         if is_folder {
@@ -1260,7 +1266,7 @@ pub fn Sidebar(
                                                         Some(col_id),
                                                     ));
                                                 },
-                                                span { class: "action-icon action-icon-request", aria_hidden: "true" }
+                                                super::icons::ActionIcon { name: "request", size: 17 }
                                             }
                                             button {
                                                 class: "btn-icon",
@@ -1274,7 +1280,7 @@ pub fn Sidebar(
                                                         Some(col_id),
                                                     ));
                                                 },
-                                                span { class: "action-icon action-icon-folder-new", aria_hidden: "true" }
+                                                super::icons::ActionIcon { name: "folder-new", size: 17 }
                                             }
                                             button {
                                                 class: "btn-icon",
@@ -1288,7 +1294,7 @@ pub fn Sidebar(
                                                         Some(col_id),
                                                     ));
                                                 },
-                                                span { class: "action-icon action-icon-duplicate", aria_hidden: "true" }
+                                                super::icons::ActionIcon { name: "duplicate", size: 17 }
                                             }
                                         }
                                         if is_req {
@@ -1304,7 +1310,7 @@ pub fn Sidebar(
                                                         Some(col_id),
                                                     ));
                                                 },
-                                                span { class: "action-icon action-icon-duplicate", aria_hidden: "true" }
+                                                super::icons::ActionIcon { name: "duplicate", size: 17 }
                                             }
                                         }
                                         button {
@@ -1317,7 +1323,7 @@ pub fn Sidebar(
                                                 renaming_id.set(Some(row_id));
                                                 rename_draft.set(start_name.clone());
                                             },
-                                            span { class: "action-icon action-icon-edit", aria_hidden: "true" }
+                                            super::icons::ActionIcon { name: "edit", size: 17 }
                                         }
                                         button {
                                             class: "btn-icon danger",
@@ -1342,7 +1348,7 @@ pub fn Sidebar(
                                                     ));
                                                 }
                                             },
-                                            span { class: "action-icon action-icon-delete", aria_hidden: "true" }
+                                            super::icons::ActionIcon { name: "delete", size: 17 }
                                         }
                                     }
                                 }
@@ -1436,7 +1442,7 @@ pub fn Sidebar(
                                                     Some(id),
                                                     active_collection_id,
                                                 )),
-                                                span { class: "action-icon action-icon-save", aria_hidden: "true" }
+                                                super::icons::ActionIcon { name: "save", size: 17 }
                                             }
                                             button {
                                                 class: "btn-icon",
@@ -1447,7 +1453,7 @@ pub fn Sidebar(
                                                     Some(id),
                                                     None,
                                                 )),
-                                                span { class: "action-icon action-icon-duplicate", aria_hidden: "true" }
+                                                super::icons::ActionIcon { name: "duplicate", size: 17 }
                                             }
                                         }
                                     }
@@ -1547,7 +1553,7 @@ pub fn Sidebar(
                                     TreeRowKind::Collection => {
                                         rsx! {
                                             CtxMenuItem {
-                                                label: "Edit Collection",
+                                                label: "Edit Collection / Icon…",
                                                 onclick: move |_| {
                                                     ctx_menu.set(None);
                                                     on_event.call(SidebarEvent::new(

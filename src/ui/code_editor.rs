@@ -684,7 +684,8 @@ pub fn MultilineCodeField(
                             });
                         }
                     },
-                    span { class: "action-icon action-icon-undo", aria_hidden: "true" }
+                    super::icons::ActionIcon { name: "undo", size: 15 }
+                    span { "Undo" }
                 }
                 button {
                     class: "code-action-btn",
@@ -709,7 +710,8 @@ pub fn MultilineCodeField(
                             });
                         }
                     },
-                    span { class: "action-icon action-icon-redo", aria_hidden: "true" }
+                    super::icons::ActionIcon { name: "redo", size: 15 }
+                    span { "Redo" }
                 }
             }
             if let Some(menu) = var_menu() {

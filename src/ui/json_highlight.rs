@@ -180,9 +180,13 @@ pub fn json_paint_range(text: &str, offset: usize) -> (usize, usize) {
     (start, end)
 }
 
+fn strip_utf8_bom_and_trim(s: &str) -> &str {
+    s.trim().trim_start_matches('\u{feff}').trim()
+}
+
 /// True when Content-Type looks like JSON or body parses as JSON.
 pub fn should_highlight_json(body: &str, headers: &[(String, String)]) -> bool {
-    let trimmed = body.trim();
+    let trimmed = strip_utf8_bom_and_trim(body);
     if trimmed.is_empty() {
         return false;
     }
@@ -203,6 +207,13 @@ pub fn should_highlight_json(body: &str, headers: &[(String, String)]) -> bool {
     serde_json::from_str::<Value>(trimmed).is_ok()
 }
 
+/// Render an already-parsed JSON [`Value`] as beautified syntax-highlighted HTML.
+pub fn render_json_value_html(v: &Value, enable_folding: bool) -> String {
+    let mut out = String::with_capacity(1024);
+    render_node(None, v, false, &mut out, 0, enable_folding);
+    out
+}
+
 /// Pretty-print + wrap tokens in `<span class="json-*">`. Falls back to escaped plain text.
 pub fn render_json_highlight_html(body: &str) -> String {
     render_json_highlight_html_with_fold(body, true)
@@ -210,7 +221,7 @@ pub fn render_json_highlight_html(body: &str) -> String {
 
 /// Pretty-print with optional `<details>` collapsible tree folding.
 pub fn render_json_highlight_html_with_fold(body: &str, enable_folding: bool) -> String {
-    let trimmed = body.trim();
+    let trimmed = strip_utf8_bom_and_trim(body);
     let (window, truncated) = json_paint_window(trimmed);
     if truncated {
         let mut html = String::with_capacity(window.len().saturating_mul(2) + 80);
@@ -223,11 +234,7 @@ pub fn render_json_highlight_html_with_fold(body: &str, enable_folding: bool) ->
         return html;
     }
     match serde_json::from_str::<Value>(window) {
-        Ok(v) => {
-            let mut out = String::with_capacity(trimmed.len().saturating_mul(3));
-            render_node(None, &v, false, &mut out, 0, enable_folding);
-            out
-        }
+        Ok(v) => render_json_value_html(&v, enable_folding),
         Err(_) => escape_html(body),
     }
 }

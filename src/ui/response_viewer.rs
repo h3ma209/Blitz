@@ -5,8 +5,9 @@ use uuid::Uuid;
 
 use crate::core::{diff_bodies, DefaultResponseTab, DiffLine, ResponseView, SavedExample};
 use super::json_highlight::{
-    json_paint_range, render_json_highlight_html, render_json_highlight_html_with_fold,
-    should_highlight_json, JSON_PAINT_CAP,
+    highlight_json_fragment, json_paint_range, render_json_highlight_html,
+    render_json_highlight_html_with_fold, render_json_value_html, should_highlight_json,
+    JSON_PAINT_CAP,
 };
 use super::loading::SkeletonBars;
 
@@ -64,7 +65,7 @@ pub fn ResponseViewer(
         section { class: "response-pane",
             if sending {
                 div { class: "response-sending",
-                    span { class: "action-icon action-icon-bolt bolt-flight-pulse", style: "width: 28px; height: 28px; color: var(--spot-green-bright); margin-bottom: 8px;", aria_hidden: "true" }
+                    super::icons::ActionIcon { name: "bolt", size: 28, class: "bolt-flight-pulse".to_string(), style: "color: var(--spot-green-bright); margin-bottom: 8px;".to_string() }
                     p { class: "hint", style: "font-weight: 600; font-size: 13px; color: var(--text); margin-bottom: 12px;", "Sending request…" }
                     SkeletonBars { n: 4 }
                 }
@@ -118,10 +119,10 @@ pub fn ResponseViewer(
                                 }
                             },
                             if copied_body() {
-                                span { class: "action-icon action-icon-check", aria_hidden: "true" }
+                                super::icons::ActionIcon { name: "check", size: 15 }
                                 span { "Copied" }
                             } else {
-                                span { class: "action-icon action-icon-copy", aria_hidden: "true" }
+                                super::icons::ActionIcon { name: "copy", size: 15 }
                                 span { "Copy" }
                             }
                         }
@@ -155,14 +156,14 @@ pub fn ResponseViewer(
                                     });
                                 }
                             },
-                            span { class: "action-icon action-icon-save", aria_hidden: "true" }
+                            super::icons::ActionIcon { name: "save", size: 15 }
                             span { "Save" }
                         }
                         button {
                             class: if search_open() { "btn btn-ghost active" } else { "btn btn-ghost" },
                             title: "Find in response (⌘F)",
                             onclick: move |_| search_open.set(!search_open()),
-                            span { class: "action-icon action-icon-search", aria_hidden: "true" }
+                            super::icons::ActionIcon { name: "search", size: 15 }
                             span { "Find" }
                         }
                         if tab() == RespTab::Pretty && resp.error.is_none() {
@@ -170,7 +171,7 @@ pub fn ResponseViewer(
                                 class: if filter_open() || !json_filter().is_empty() { "btn btn-ghost active" } else { "btn btn-ghost" },
                                 title: "Filter response using JSONPath (e.g. $.items[0])",
                                 onclick: move |_| filter_open.set(!filter_open()),
-                                span { class: "action-icon action-icon-filter", aria_hidden: "true" }
+                                super::icons::ActionIcon { name: "filter", size: 15 }
                                 span { "Filter" }
                                 if !json_filter().is_empty() {
                                     span { class: "meta-active-badge", "1" }
@@ -192,10 +193,10 @@ pub fn ResponseViewer(
                                         });
                                     },
                                     if all_collapsed() {
-                                        span { class: "action-icon action-icon-expand", aria_hidden: "true" }
+                                        super::icons::ActionIcon { name: "expand", size: 15 }
                                         span { "Expand" }
                                     } else {
-                                        span { class: "action-icon action-icon-fold", aria_hidden: "true" }
+                                        super::icons::ActionIcon { name: "fold", size: 15 }
                                         span { "Collapse" }
                                     }
                                 }
@@ -204,7 +205,7 @@ pub fn ResponseViewer(
                                 class: if enable_folding() { "btn btn-ghost" } else { "btn btn-ghost active" },
                                 title: if enable_folding() { "Disable tree folding (view plain syntax-highlighted JSON)" } else { "Enable interactive tree folding" },
                                 onclick: move |_| enable_folding.set(!enable_folding()),
-                                span { class: "action-icon action-icon-format", aria_hidden: "true" }
+                                super::icons::ActionIcon { name: "format", size: 15 }
                                 span { if enable_folding() { "Fold: On" } else { "Fold: Off" } }
                             }
                         }
@@ -212,14 +213,14 @@ pub fn ResponseViewer(
                             class: "btn btn-ghost",
                             title: "Generate Tests from this response: status, content-type, JSON fields, time ceiling. Review them in the Tests tab.",
                             onclick: move |_| on_auto_assert.call(()),
-                            span { class: "action-icon action-icon-check", aria_hidden: "true" }
+                            super::icons::ActionIcon { name: "check", size: 15 }
                             span { "Auto-assert" }
                         }
                         button {
                             class: "btn btn-ghost",
                             title: "Save response as mock route example (served by local Mock Server)",
                             onclick: move |_| on_save_example.call(()),
-                            span { class: "action-icon action-icon-bolt", aria_hidden: "true" }
+                            super::icons::ActionIcon { name: "bolt", size: 15 }
                             span { "Save to Mock" }
                         }
                     }
@@ -313,15 +314,11 @@ pub fn ResponseViewer(
                     RespTab::Pretty => {
                         let paint_key = resp.body.len();
                         let off = if paint_off().0 == paint_key { paint_off().1 } else { 0 };
-                        let (pretty, start, end) = pretty_body(&resp.body, off);
-                        let paged = start > 0 || end < resp.body.len();
-                        let is_json =
-                            !paged && should_highlight_json(&resp.body, &resp.headers);
-                        let parsed_json = if is_json {
-                            serde_json::from_str::<serde_json::Value>(resp.body.trim()).ok()
-                        } else {
-                            None
-                        };
+                        let (pretty, start, end, total_len, parsed_json) =
+                            pretty_body(&resp.body, off);
+                        let paged = start > 0 || end < total_len;
+                        let is_json = parsed_json.is_some()
+                            || (!paged && should_highlight_json(&resp.body, &resp.headers));
 
                         let filter_text = json_filter().trim().to_string();
                         let filter_result = if let (Some(root_val), false) = (&parsed_json, filter_text.is_empty()) {
@@ -412,16 +409,24 @@ pub fn ResponseViewer(
                                     if !query.is_empty() {
                                         let highlighted = highlight_search_matches(&pretty, &query);
                                         rsx! {
-                                            {paint_controls(resp.body.len(), start, end, paint_off)}
+                                            {paint_controls(resp.body.len(), total_len, start, end, paint_off)}
                                             pre {
                                                 class: "response-body",
                                                 dangerous_inner_html: "{highlighted}",
                                             }
                                         }
                                     } else if paged {
-                                        let html = render_json_highlight_html_with_fold(&pretty, enable_folding());
+                                        let html = highlight_json_fragment(&pretty);
                                         rsx! {
-                                            {paint_controls(resp.body.len(), start, end, paint_off)}
+                                            {paint_controls(resp.body.len(), total_len, start, end, paint_off)}
+                                            pre {
+                                                class: "response-body response-body-json",
+                                                dangerous_inner_html: "{html}",
+                                            }
+                                        }
+                                    } else if let Some(ref val) = parsed_json {
+                                        let html = render_json_value_html(val, enable_folding());
+                                        rsx! {
                                             pre {
                                                 class: "response-body response-body-json",
                                                 dangerous_inner_html: "{html}",
@@ -477,9 +482,17 @@ pub fn ResponseViewer(
                             {
                                 let paint_key = resp.body.len();
                                 let off = if paint_off().0 == paint_key { paint_off().1 } else { 0 };
-                                let (pretty, start, end) = pretty_body(&resp.body, off);
-                                let full = start == 0 && end == resp.body.len();
-                                if full && should_highlight_json(&resp.body, &resp.headers) {
+                                let (pretty, start, end, total_len, parsed_preview) = pretty_body(&resp.body, off);
+                                let full = start == 0 && end == total_len;
+                                if full && parsed_preview.is_some() {
+                                    let html = render_json_value_html(parsed_preview.as_ref().unwrap(), true);
+                                    rsx! {
+                                        pre {
+                                            class: "response-body response-body-json",
+                                            dangerous_inner_html: "{html}",
+                                        }
+                                    }
+                                } else if full && should_highlight_json(&resp.body, &resp.headers) {
                                     let html = render_json_highlight_html(&pretty);
                                     rsx! {
                                         pre {
@@ -489,7 +502,7 @@ pub fn ResponseViewer(
                                     }
                                 } else {
                                     rsx! {
-                                        {paint_controls(resp.body.len(), start, end, paint_off)}
+                                        {paint_controls(resp.body.len(), total_len, start, end, paint_off)}
                                         pre { class: "response-body", "{pretty}" }
                                     }
                                 }
@@ -757,7 +770,11 @@ pub fn ResponseViewer(
             } else {
                 div { class: "response-empty-hero",
                     div { class: "response-empty-icon-wrap",
-                        span { class: "action-icon action-icon-bolt response-empty-bolt", aria_hidden: "true" }
+                        img {
+                            src: crate::brand::LOGO_SRC.as_str(),
+                            alt: "Blitz",
+                            class: "response-empty-logo",
+                        }
                     }
                     h4 { class: "response-empty-title", "Ready to Send" }
                     p { class: "response-empty-desc",
@@ -804,22 +821,35 @@ fn TimelineBar(label: &'static str, ms: u128, total: u128) -> Element {
     }
 }
 
-fn pretty_body(body: &str, offset: usize) -> (String, usize, usize) {
-    let (start, end) = json_paint_range(body, offset);
-    let window = &body[start..end];
-    let text = if start == 0 && end == body.len() {
-        if let Ok(v) = serde_json::from_str::<serde_json::Value>(window) {
-            serde_json::to_string_pretty(&v).unwrap_or_else(|_| window.to_string())
-        } else {
-            window.to_string()
+fn pretty_body(body: &str, offset: usize) -> (String, usize, usize, usize, Option<serde_json::Value>) {
+    let trimmed = body.trim().trim_start_matches('\u{feff}').trim();
+    if !trimmed.is_empty() && trimmed.len() <= 2 * 1024 * 1024 {
+        if let Ok(v) = serde_json::from_str::<serde_json::Value>(trimmed) {
+            if let Ok(beautified) = serde_json::to_string_pretty(&v) {
+                let total_len = beautified.len();
+                let (start, end) = json_paint_range(&beautified, offset);
+                return (
+                    beautified[start..end].to_string(),
+                    start,
+                    end,
+                    total_len,
+                    Some(v),
+                );
+            }
         }
-    } else {
-        window.to_string()
-    };
-    (text, start, end)
+    }
+    let total_len = body.len();
+    let (start, end) = json_paint_range(body, offset);
+    (body[start..end].to_string(), start, end, total_len, None)
 }
 
-fn paint_controls(len: usize, start: usize, end: usize, mut paint_off: Signal<(usize, usize)>) -> Element {
+fn paint_controls(
+    paint_key: usize,
+    len: usize,
+    start: usize,
+    end: usize,
+    mut paint_off: Signal<(usize, usize)>,
+) -> Element {
     if start == 0 && end == len {
         return rsx! {};
     }
@@ -829,13 +859,13 @@ fn paint_controls(len: usize, start: usize, end: usize, mut paint_off: Signal<(u
         div { class: "json-large-warning",
             button {
                 disabled: start == 0,
-                onclick: move |_| paint_off.set((len, earlier)),
+                onclick: move |_| paint_off.set((paint_key, earlier)),
                 "Earlier"
             }
             " bytes {start}–{end} of {len}. Stored body is complete. "
             button {
                 disabled: end == len,
-                onclick: move |_| paint_off.set((len, later)),
+                onclick: move |_| paint_off.set((paint_key, later)),
                 "Later"
             }
         }
@@ -903,5 +933,29 @@ mod tests {
         let out = highlight_search_matches(text, "api");
         assert!(out.contains("<mark class=\"search-match\">API</mark>"));
         assert_eq!(count_matches(text, "api"), 1);
+    }
+
+    #[test]
+    fn pretty_body_beautifies_bom_and_large_minified_json() {
+        let bom_json = "\u{feff}{\"user\":{\"name\":\"ada\",\"roles\":[\"admin\"]}}";
+        let (pretty, start, end, total, parsed) = pretty_body(bom_json, 0);
+        assert!(parsed.is_some());
+        assert_eq!(start, 0);
+        assert_eq!(end, total);
+        assert!(pretty.contains('\n'));
+        assert!(pretty.contains("  \"user\": {"));
+
+        // Large minified JSON > JSON_PAINT_CAP still beautifies first before paging
+        let mut items = Vec::new();
+        for i in 0..12_000 {
+            items.push(format!("{{\"id\":{i},\"name\":\"user_{i}\"}}"));
+        }
+        let huge = format!("[{}]", items.join(","));
+        assert!(huge.len() > JSON_PAINT_CAP);
+        let (pretty_huge, s2, e2, total2, parsed2) = pretty_body(&huge, 0);
+        assert!(parsed2.is_some());
+        assert_eq!(s2, 0);
+        assert!(e2 < total2);
+        assert!(pretty_huge.contains("{\n    \"id\": 0"));
     }
 }

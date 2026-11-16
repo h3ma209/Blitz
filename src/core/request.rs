@@ -3,6 +3,9 @@ use uuid::Uuid;
 
 use super::settings::RequestSettings;
 
+/// Default User-Agent header sent by Blitz HTTP/gRPC requests.
+pub const BLITZ_USER_AGENT: &str = concat!("Blitz/", env!("CARGO_PKG_VERSION"));
+
 /// Workbench request protocol (local clients — not Postman Cloud).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "snake_case")]
@@ -87,7 +90,7 @@ impl RequestProtocol {
             Self::Grpc => &[
                 ("Content-Type", "application/grpc"),
                 ("TE", "trailers"),
-                ("User-Agent", "PostmanRuntime/7.43.0"),
+                ("User-Agent", BLITZ_USER_AGENT),
             ],
             Self::Sse => &[
                 ("Accept", "text/event-stream"),
@@ -108,7 +111,7 @@ impl RequestProtocol {
             ],
             Self::Mqtt | Self::Mcp => &[],
             Self::Http => &[
-                ("User-Agent", "PostmanRuntime/7.43.0"),
+                ("User-Agent", BLITZ_USER_AGENT),
                 ("Accept", "*/*"),
                 ("Accept-Encoding", "gzip, deflate, br"),
                 ("Connection", "keep-alive"),
@@ -509,7 +512,7 @@ impl Default for RequestDraft {
             params: vec![KeyValue::new("", "")],
             path_params: Vec::new(),
             headers: vec![
-                KeyValue::new("User-Agent", "PostmanRuntime/7.43.0"),
+                KeyValue::new("User-Agent", BLITZ_USER_AGENT),
                 KeyValue::new("Accept", "*/*"),
                 KeyValue::new("Accept-Encoding", "gzip, deflate, br"),
                 KeyValue::new("Connection", "keep-alive"),
@@ -568,7 +571,7 @@ impl RequestDraft {
                 let k = h.key.trim();
                 let v = h.value.trim();
                 !(
-                    (k.eq_ignore_ascii_case("User-Agent") && v == "PostmanRuntime/7.43.0")
+                    (k.eq_ignore_ascii_case("User-Agent") && (v == BLITZ_USER_AGENT || v == "PostmanRuntime/7.43.0"))
                     || (k.eq_ignore_ascii_case("Accept-Encoding") && v == "gzip, deflate, br")
                     || (k.eq_ignore_ascii_case("Connection") && v == "keep-alive")
                     || (k.eq_ignore_ascii_case("Cache-Control") && v == "no-cache")

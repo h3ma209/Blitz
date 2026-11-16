@@ -49,7 +49,19 @@ pub fn CollectionEditor(
             // Header Bar
             div { class: "col-editor-header",
                 div { class: "col-editor-title-wrap",
-                    span { class: "tree-icon tree-icon-collection", aria_hidden: "true" }
+                    super::icons::CollectionIconPicker {
+                        icon: collection.icon.clone(),
+                        color: collection.color.clone(),
+                        on_select: {
+                            let collection = collection.clone();
+                            move |(new_icon, new_color): (Option<String>, Option<String>)| {
+                                let mut c = collection.clone();
+                                c.icon = new_icon;
+                                c.color = new_color;
+                                on_change.call(c);
+                            }
+                        },
+                    }
                     input {
                         class: "col-editor-name-input",
                         value: "{col_name}",

@@ -7,7 +7,7 @@ use crate::core::{
 };
 use super::var_hover::{VarEditEvent, VarHoverInput};
 use super::code_editor::{EditorSyntax, MultilineCodeField};
-use super::{CommentableTextarea, ScriptCodeEditor};
+use super::{CommentableTextarea, DismissBackdrop, ScriptCodeEditor};
 
 pub use super::var_hover::VarEditEvent as RequestVarEditEvent;
 
@@ -50,25 +50,8 @@ pub fn RequestBuilder(
     };
     let mut tab = use_signal(move || default_tab);
     let mut copied_curl = use_signal(|| false);
-
-    let set_method = {
-        let draft = draft.clone();
-        move |evt: Event<FormData>| {
-            let mut d = draft.clone();
-            d.method = parse_method(&evt.value());
-            on_change.call(d);
-        }
-    };
-
-    let set_protocol = {
-        let draft = draft.clone();
-        move |evt: Event<FormData>| {
-            let mut d = draft.clone();
-            let new_proto = parse_protocol(&evt.value());
-            d.apply_protocol_defaults(new_proto);
-            on_change.call(d);
-        }
-    };
+    let mut proto_menu_open = use_signal(|| false);
+    let mut method_menu_open = use_signal(|| false);
 
     let proto_class = protocol_class(draft.protocol);
     let method_class = method_class_name(draft.method);
@@ -156,23 +139,108 @@ pub fn RequestBuilder(
 
     rsx! {
         div { class: "request-row",
-            select {
-                class: "method-select protocol-select protocol-{proto_class}",
-                value: "{draft.protocol}",
-                title: "Protocol",
-                onchange: set_protocol,
-                for p in RequestProtocol::all() {
-                    option { value: "{p}", selected: *p == draft.protocol, "{p}" }
+            if proto_menu_open() || method_menu_open() {
+                DismissBackdrop {
+                    z_index: 900,
+                    on_dismiss: move |_| {
+                        proto_menu_open.set(false);
+                        method_menu_open.set(false);
+                    },
+                }
+            }
+            div { class: "picker-wrap",
+                button {
+                    r#type: "button",
+                    class: "picker-pill protocol-pill protocol-pill-{proto_class}",
+                    title: "Select protocol",
+                    onclick: move |_| {
+                        method_menu_open.set(false);
+                        proto_menu_open.set(!proto_menu_open());
+                    },
+                    span { class: "picker-dot" }
+                    span { class: "picker-pill-text", "{draft.protocol}" }
+                    span { class: "picker-caret", "▾" }
+                }
+                if proto_menu_open() {
+                    div { class: "picker-menu protocol-menu",
+                        div { class: "picker-menu-head", "Request Protocol" }
+                        for p in RequestProtocol::all() {
+                            {
+                                let p_val = *p;
+                                let p_cls = protocol_class(p_val);
+                                let (badge, desc) = protocol_meta(p_val);
+                                let is_sel = p_val == draft.protocol;
+                                let d_base = draft.clone();
+                                rsx! {
+                                    button {
+                                        key: "{p_val}",
+                                        r#type: "button",
+                                        class: if is_sel { "picker-row active" } else { "picker-row" },
+                                        onclick: move |_| {
+                                            proto_menu_open.set(false);
+                                            let mut d = d_base.clone();
+                                            d.apply_protocol_defaults(p_val);
+                                            on_change.call(d);
+                                        },
+                                        span { class: "picker-badge protocol-pill-{p_cls}", "{badge}" }
+                                        div { class: "picker-row-info",
+                                            span { class: "picker-row-title", "{p_val}" }
+                                            span { class: "picker-row-sub", "{desc}" }
+                                        }
+                                        if is_sel {
+                                            span { class: "picker-check", "✓" }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
             }
             if draft.protocol == RequestProtocol::Http || draft.protocol == RequestProtocol::Sse {
-                select {
-                    class: "method-select method-{method_class}",
-                    value: "{draft.method}",
-                    title: "HTTP method",
-                    onchange: set_method,
-                    for m in HttpMethod::all() {
-                        option { key: "{m}", value: "{m}", selected: *m == draft.method, "{m}" }
+                div { class: "picker-wrap",
+                    button {
+                        r#type: "button",
+                        class: "picker-pill method-pill method-pill-{method_class}",
+                        title: "Select HTTP method",
+                        onclick: move |_| {
+                            proto_menu_open.set(false);
+                            method_menu_open.set(!method_menu_open());
+                        },
+                        span { class: "picker-pill-text", "{draft.method}" }
+                        span { class: "picker-caret", "▾" }
+                    }
+                    if method_menu_open() {
+                        div { class: "picker-menu method-menu",
+                            div { class: "picker-menu-head", "HTTP Method" }
+                            for m in HttpMethod::all() {
+                                {
+                                    let m_val = *m;
+                                    let m_cls = method_class_name(m_val);
+                                    let hint = method_hint(m_val);
+                                    let is_sel = m_val == draft.method;
+                                    let d_base = draft.clone();
+                                    rsx! {
+                                        button {
+                                            key: "{m_val}",
+                                            r#type: "button",
+                                            class: if is_sel { "picker-row active" } else { "picker-row" },
+                                            onclick: move |_| {
+                                                method_menu_open.set(false);
+                                                let mut d = d_base.clone();
+                                                d.method = m_val;
+                                                on_change.call(d);
+                                            },
+                                            span { class: "picker-badge method-pill-{m_cls}", "{m_val}" }
+                                            span { class: "picker-row-sub", "{hint}" }
+                                            if is_sel {
+                                                span { class: "picker-check", "✓" }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -268,10 +336,10 @@ pub fn RequestBuilder(
                         }
                     },
                     if copied_curl() {
-                        span { class: "action-icon action-icon-check", aria_hidden: "true", style: "width: 12px; height: 12px;" }
+                        super::icons::ActionIcon { name: "check", size: 15 }
                         span { "Copied" }
                     } else {
-                        span { class: "action-icon action-icon-copy", aria_hidden: "true", style: "width: 12px; height: 12px;" }
+                        super::icons::ActionIcon { name: "copy", size: 15 }
                         span { "cURL" }
                     }
                 }
@@ -296,7 +364,7 @@ pub fn RequestBuilder(
                     } else if draft.protocol == RequestProtocol::Grpc {
                         "Invoke"
                     } else {
-                        span { class: "action-icon action-icon-bolt", style: "width: 12px; height: 12px; margin-right: 4px;", aria_hidden: "true" }
+                        super::icons::ActionIcon { name: "bolt", size: 15, style: "margin-right: 4px;".to_string() }
                         span { "Send" }
                     }
                 }
@@ -316,7 +384,7 @@ pub fn RequestBuilder(
                         span { class: "loading-spinner-cancel" }
                         span { "Disconnect" }
                     } else {
-                        span { class: "action-icon action-icon-bolt", style: "width: 12px; height: 12px; margin-right: 4px;", aria_hidden: "true" }
+                        super::icons::ActionIcon { name: "bolt", size: 15, style: "margin-right: 4px;".to_string() }
                         span { "Stream" }
                     }
                 }
@@ -565,42 +633,28 @@ pub fn RequestBuilder(
     }
 }
 
-fn parse_method(s: &str) -> HttpMethod {
-    match s {
-        "POST" => HttpMethod::Post,
-        "PUT" => HttpMethod::Put,
-        "PATCH" => HttpMethod::Patch,
-        "DELETE" => HttpMethod::Delete,
-        "HEAD" => HttpMethod::Head,
-        "OPTIONS" => HttpMethod::Options,
-        _ => HttpMethod::Get,
+fn protocol_meta(p: RequestProtocol) -> (&'static str, &'static str) {
+    match p {
+        RequestProtocol::Http => ("HTTP", "REST & GraphQL"),
+        RequestProtocol::WebSocket => ("WS", "Bi-directional stream"),
+        RequestProtocol::Grpc => ("gRPC", "Protobuf RPC"),
+        RequestProtocol::Sse => ("SSE", "Server-Sent Events"),
+        RequestProtocol::GraphqlWs => ("GQL", "GraphQL subscriptions"),
+        RequestProtocol::Mqtt => ("MQTT", "Pub/Sub broker"),
+        RequestProtocol::SocketIo => ("SIO", "Event rooms"),
+        RequestProtocol::Mcp => ("MCP", "Model Context tools"),
     }
 }
 
-fn parse_protocol(s: &str) -> RequestProtocol {
-    let trimmed = s.trim();
-    if trimmed.eq_ignore_ascii_case("websocket") || trimmed.eq_ignore_ascii_case("ws") {
-        RequestProtocol::WebSocket
-    } else if trimmed.eq_ignore_ascii_case("grpc") {
-        RequestProtocol::Grpc
-    } else if trimmed.eq_ignore_ascii_case("mqtt") {
-        RequestProtocol::Mqtt
-    } else if trimmed.eq_ignore_ascii_case("mcp") {
-        RequestProtocol::Mcp
-    } else if trimmed.eq_ignore_ascii_case("socket.io")
-        || trimmed.eq_ignore_ascii_case("socketio")
-        || trimmed.eq_ignore_ascii_case("sio")
-    {
-        RequestProtocol::SocketIo
-    } else if trimmed.eq_ignore_ascii_case("sse") {
-        RequestProtocol::Sse
-    } else if trimmed.eq_ignore_ascii_case("graphql-ws")
-        || trimmed.eq_ignore_ascii_case("graphqlws")
-        || trimmed.eq_ignore_ascii_case("gql")
-    {
-        RequestProtocol::GraphqlWs
-    } else {
-        RequestProtocol::Http
+fn method_hint(m: HttpMethod) -> &'static str {
+    match m {
+        HttpMethod::Get => "Fetch resource",
+        HttpMethod::Post => "Create / submit",
+        HttpMethod::Put => "Replace resource",
+        HttpMethod::Patch => "Partial update",
+        HttpMethod::Delete => "Remove resource",
+        HttpMethod::Head => "Headers only",
+        HttpMethod::Options => "CORS / capabilities",
     }
 }
 
@@ -734,7 +788,7 @@ fn ProtocolFields(
                                                 }
                                             }
                                         },
-                                        span { class: "action-icon action-icon-format", aria_hidden: "true" }
+                                        super::icons::ActionIcon { name: "format", size: 15 }
                                         span { "Beautify JSON" }
                                     }
                                 }
@@ -1134,7 +1188,7 @@ fn ProtocolFields(
                                                                 }
                                                             }
                                                         },
-                                                        span { class: "action-icon action-icon-format", aria_hidden: "true" }
+                                                        super::icons::ActionIcon { name: "format", size: 15 }
                                                         span { "Beautify JSON" }
                                                     }
                                                     div { class: "ws-height-presets",
@@ -1288,7 +1342,7 @@ fn ProtocolFields(
                                         }
                                     }
                                 },
-                                span { class: "action-icon action-icon-format", aria_hidden: "true" }
+                                super::icons::ActionIcon { name: "format", size: 15 }
                                 span { "Beautify JSON" }
                             }
                         }
@@ -1443,7 +1497,7 @@ fn ProtocolFields(
                                         }
                                     }
                                 },
-                                span { class: "action-icon action-icon-format", aria_hidden: "true" }
+                                super::icons::ActionIcon { name: "format", size: 15 }
                                 span { "Beautify JSON" }
                             }
                         }
@@ -1525,7 +1579,7 @@ fn ProtocolFields(
                                         }
                                     }
                                 },
-                                span { class: "action-icon action-icon-format", aria_hidden: "true" }
+                                super::icons::ActionIcon { name: "format", size: 15 }
                                 span { "Beautify JSON" }
                             }
                         }
@@ -1614,7 +1668,7 @@ fn ProtocolFields(
                                         }
                                     }
                                 },
-                                span { class: "action-icon action-icon-format", aria_hidden: "true" }
+                                super::icons::ActionIcon { name: "format", size: 15 }
                                 span { "Beautify JSON" }
                             }
                         }
@@ -2261,7 +2315,7 @@ fn header_value_suggestions(key: &str, query: &str) -> Vec<&'static str> {
         "accept-encoding" => &["identity", "gzip, deflate, br", "gzip"],
         "cache-control" => &["no-cache", "no-store", "max-age=0"],
         "connection" => &["keep-alive", "Upgrade", "close"],
-        "user-agent" => &["Blitz/0.2.6", "PostmanRuntime/7.43.0", "curl/8.6.0"],
+        "user-agent" => &[crate::core::BLITZ_USER_AGENT, "curl/8.6.0", "Mozilla/5.0"],
         "anthropic-version" => &["2023-06-01", "2023-01-01"],
         "openai-beta" => &["assistants=v2", "realtime=v1"],
         "x-api-key" => &["{{api_key}}", "{{token}}"],
@@ -2838,7 +2892,7 @@ fn BodyEditor(
                                 }
                             }
                         },
-                        span { class: "action-icon action-icon-format", aria_hidden: "true" }
+                        super::icons::ActionIcon { name: "format", size: 15 }
                         span { "Beautify JSON" }
                     }
                 }

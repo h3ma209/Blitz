@@ -27,11 +27,11 @@ pub enum SettingsTab {
 pub fn SettingsPanel(
     settings: ReadSignal<AppSettings>,
     data_root: ReadSignal<String>,
+    mut active_tab: Signal<SettingsTab>,
     on_event: EventHandler<SettingsEvent>,
 ) -> Element {
     let s_now = settings();
     let data_root_show = data_root();
-    let mut active_tab = use_signal(|| SettingsTab::Appearance);
     let mut last_prop = use_signal(|| s_now.clone());
 
     let mut proxy_mode = use_signal(|| s_now.proxy.mode);
@@ -201,33 +201,36 @@ pub fn SettingsPanel(
                     span { class: "settings-data-path", title: "{data_root_show}", "Data: {data_root_show}" }
                 }
                 button {
-                    class: "modal-close",
+                    class: "btn btn-ghost vars-close-btn",
                     r#type: "button",
                     title: "Back to workbench",
                     aria_label: "Close settings",
                     onclick: move |_| on_event.call(SettingsEvent::Close),
-                    "✕"
+                    "✕ Close"
                 }
             }
 
             div { class: "settings-layout",
-                // Left Navigation Sidebar
+                // Left Navigation Sidebar (categorized)
                 aside { class: "settings-nav",
+                    div { class: "settings-nav-section", "Interface" }
                     button {
                         r#type: "button",
                         class: if active_tab() == SettingsTab::Appearance { "settings-nav-item active" } else { "settings-nav-item" },
                         onclick: move |_| active_tab.set(SettingsTab::Appearance),
-                        span { class: "settings-nav-icon", "🎨" }
+                        span { class: "settings-nav-icon", super::icons::ActionIcon { name: "theme", size: 18 } }
                         div { class: "settings-nav-text",
                             span { class: "settings-nav-title", "Appearance" }
                             span { class: "settings-nav-desc", "Theme, fonts & layout" }
                         }
                     }
+
+                    div { class: "settings-nav-section", "Connectivity" }
                     button {
                         r#type: "button",
                         class: if active_tab() == SettingsTab::Network { "settings-nav-item active" } else { "settings-nav-item" },
                         onclick: move |_| active_tab.set(SettingsTab::Network),
-                        span { class: "settings-nav-icon", "🌐" }
+                        span { class: "settings-nav-icon", super::icons::ActionIcon { name: "globe", size: 18 } }
                         div { class: "settings-nav-text",
                             span { class: "settings-nav-title", "Network & Proxy" }
                             span { class: "settings-nav-desc", "HTTP proxy settings" }
@@ -237,17 +240,19 @@ pub fn SettingsPanel(
                         r#type: "button",
                         class: if active_tab() == SettingsTab::Certificates { "settings-nav-item active" } else { "settings-nav-item" },
                         onclick: move |_| active_tab.set(SettingsTab::Certificates),
-                        span { class: "settings-nav-icon", "🔒" }
+                        span { class: "settings-nav-icon", super::icons::ActionIcon { name: "lock", size: 18 } }
                         div { class: "settings-nav-text",
                             span { class: "settings-nav-title", "Certificates" }
                             span { class: "settings-nav-desc", "Client PEM identities" }
                         }
                     }
+
+                    div { class: "settings-nav-section", "Storage & Sync" }
                     button {
                         r#type: "button",
                         class: if active_tab() == SettingsTab::Workspace { "settings-nav-item active" } else { "settings-nav-item" },
                         onclick: move |_| active_tab.set(SettingsTab::Workspace),
-                        span { class: "settings-nav-icon", "📁" }
+                        span { class: "settings-nav-icon", super::icons::ActionIcon { name: "folder", size: 18 } }
                         div { class: "settings-nav-text",
                             span { class: "settings-nav-title", "Workspace" }
                             span { class: "settings-nav-desc", "Data directory" }
@@ -257,10 +262,14 @@ pub fn SettingsPanel(
                         r#type: "button",
                         class: if active_tab() == SettingsTab::CloudSync { "settings-nav-item active" } else { "settings-nav-item" },
                         onclick: move |_| active_tab.set(SettingsTab::CloudSync),
-                        span { class: "settings-nav-icon", "☁️" }
+                        span { class: "settings-nav-icon", super::icons::ActionIcon { name: "cloud", size: 18 } }
                         div { class: "settings-nav-text",
                             span { class: "settings-nav-title", "Git Cloud Sync" }
                             span { class: "settings-nav-desc", "Team sync & remote" }
+                        }
+                        span {
+                            class: if cloud_enabled() { "settings-nav-badge on" } else { "settings-nav-badge" },
+                            if cloud_enabled() { "ON" } else { "OFF" }
                         }
                     }
                 }
@@ -685,7 +694,7 @@ pub fn SettingsPanel(
                                     }
                                 }
                                 div { class: "settings-callout",
-                                    span { class: "callout-icon", "💡" }
+                                    span { class: "callout-icon", super::icons::ActionIcon { name: "lightbulb", size: 16 } }
                                     p { class: "hint",
                                         "PEM cert + key bundled in a single file is automatically wired when enabled. For encrypted secrets and tokens, use the local Vault ({data_root_show}/vault.json) via {{{{vault:key}}}}."
                                     }
@@ -785,56 +794,162 @@ pub fn SettingsPanel(
                         },
 
                         SettingsTab::CloudSync => rsx! {
-                            div { class: "settings-card",
-                                div { class: "settings-card-head",
-                                    h4 { "Git Cloud Sync" }
-                                    p { class: "hint", "Sync collections and environment definitions with your team via a remote Git repository." }
+                            div { class: "cloud-sync-hero",
+                                div { class: "cloud-sync-hero-main",
+                                    div { class: "cloud-sync-hero-icon",
+                                        super::icons::ActionIcon { name: "cloud", size: 22 }
+                                    }
+                                    div { class: "cloud-sync-hero-copy",
+                                        div { class: "cloud-sync-hero-title-row",
+                                            h4 { "Git Cloud Sync" }
+                                            span {
+                                                class: if cloud_enabled() { "cloud-status-pill on" } else { "cloud-status-pill" },
+                                                if cloud_enabled() { "Sync Enabled" } else { "Paused" }
+                                            }
+                                            if !cloud_last_branch.is_empty() {
+                                                span { class: "cloud-branch-chip",
+                                                    super::icons::ActionIcon { name: "branch", size: 13 }
+                                                    span { "{cloud_last_branch}" }
+                                                }
+                                            }
+                                        }
+                                        p { class: "hint",
+                                            if !cloud_last_status.is_empty() {
+                                                "Last status: {cloud_last_status}"
+                                            } else {
+                                                "Share collections and environment schemas with your team via Git."
+                                            }
+                                        }
+                                    }
                                 }
-                                label { class: "settings-toggle-row",
+                                label { class: "cloud-switch",
                                     input {
                                         r#type: "checkbox",
                                         checked: cloud_enabled(),
                                         onchange: move |evt| cloud_enabled.set(evt.checked()),
                                     }
-                                    div { class: "toggle-meta",
-                                        span { class: "toggle-label", "Enable Git Cloud Synchronization" }
-                                        span { class: "toggle-desc", "Saving commits changes locally; Sync button in top bar pulls and pushes to team branch" }
+                                    span { class: "cloud-switch-label",
+                                        if cloud_enabled() { "Enabled" } else { "Enable" }
                                     }
+                                }
+                            }
+
+                            div { class: "settings-card",
+                                div { class: "settings-card-head",
+                                    h4 { "Repository & Local Clone" }
+                                    p { class: "hint", "Point Blitz to your team Git repository and local working folder." }
                                 }
                                 div { class: "settings-field",
                                     label { "Remote Git Repository URL" }
-                                    input {
-                                        r#type: "text",
-                                        placeholder: "{DEFAULT_CLOUD_REMOTE}",
-                                        value: "{cloud_remote}",
-                                        oninput: move |evt| cloud_remote.set(evt.value()),
+                                    div { class: "settings-inline-row",
+                                        input {
+                                            r#type: "text",
+                                            placeholder: "{DEFAULT_CLOUD_REMOTE}",
+                                            value: "{cloud_remote}",
+                                            oninput: move |evt| cloud_remote.set(evt.value()),
+                                        }
+                                        button {
+                                            r#type: "button",
+                                            class: "btn btn-secondary btn-sm",
+                                            title: "Fill default team repository URL",
+                                            onclick: move |_| cloud_remote.set(DEFAULT_CLOUD_REMOTE.to_string()),
+                                            "Default"
+                                        }
                                     }
-                                    p { class: "hint", "Default repository or your team's Git/GitHub workspace repository." }
+                                    p { class: "hint", "HTTPS or SSH Git URL for your shared Blitz workspace." }
                                 }
                                 div { class: "settings-field",
-                                    label { "Local Clone Directory Path" }
-                                    input {
-                                        r#type: "text",
-                                        placeholder: "{default_clone_hint}",
-                                        value: "{cloud_clone}",
-                                        oninput: move |evt| cloud_clone.set(evt.value()),
+                                    label { "Local Clone Directory" }
+                                    div { class: "settings-inline-row",
+                                        input {
+                                            r#type: "text",
+                                            placeholder: "{default_clone_hint}",
+                                            value: "{cloud_clone}",
+                                            oninput: move |evt| cloud_clone.set(evt.value()),
+                                        }
+                                        button {
+                                            r#type: "button",
+                                            class: "btn btn-secondary btn-sm",
+                                            title: "Pick folder",
+                                            onclick: move |_| {
+                                                if let Some(dir) = rfd::FileDialog::new()
+                                                    .set_title("Choose Git Cloud Sync clone directory")
+                                                    .pick_folder()
+                                                {
+                                                    cloud_clone.set(dir.display().to_string());
+                                                }
+                                            },
+                                            "Browse…"
+                                        }
+                                        if !cloud_clone().trim().is_empty() {
+                                            button {
+                                                r#type: "button",
+                                                class: "btn btn-ghost btn-sm",
+                                                title: "Reset to default app directory",
+                                                onclick: move |_| cloud_clone.set(String::new()),
+                                                "Reset"
+                                            }
+                                        }
                                     }
-                                    p { class: "hint", "Leave blank to use default application cloud directory." }
+                                    p { class: "hint", "Leave blank to use default directory ({default_clone_hint})." }
+                                }
+                            }
+
+                            div { class: "settings-card",
+                                div { class: "settings-card-head",
+                                    h4 { "Commit & Workflow" }
+                                    p { class: "hint", "Customize commit messages or use smart automatic summaries." }
                                 }
                                 div { class: "settings-field",
                                     label { "Commit Message Override" }
                                     input {
                                         r#type: "text",
-                                        placeholder: "e.g. sync: update auth collection (leave empty for auto)",
+                                        placeholder: "Auto-generated from changed files (recommended)",
                                         value: "{cloud_commit_msg}",
                                         oninput: move |evt| cloud_commit_msg.set(evt.value()),
                                     }
+                                    div { class: "cloud-preset-row",
+                                        span { class: "cloud-preset-label", "Quick presets:" }
+                                        button {
+                                            r#type: "button",
+                                            class: if cloud_commit_msg().trim().is_empty() { "cloud-preset-chip active" } else { "cloud-preset-chip" },
+                                            onclick: move |_| cloud_commit_msg.set(String::new()),
+                                            "Auto"
+                                        }
+                                        button {
+                                            r#type: "button",
+                                            class: if cloud_commit_msg().trim() == "sync: update collections" { "cloud-preset-chip active" } else { "cloud-preset-chip" },
+                                            onclick: move |_| cloud_commit_msg.set("sync: update collections".to_string()),
+                                            "sync: update collections"
+                                        }
+                                        button {
+                                            r#type: "button",
+                                            class: if cloud_commit_msg().trim() == "chore: update environments" { "cloud-preset-chip active" } else { "cloud-preset-chip" },
+                                            onclick: move |_| cloud_commit_msg.set("chore: update environments".to_string()),
+                                            "chore: update environments"
+                                        }
+                                    }
                                 }
-                                if !cloud_last_branch.is_empty() || !cloud_last_status.is_empty() {
-                                    div { class: "settings-callout",
-                                        span { class: "action-icon action-icon-branch", style: "margin-right: 6px;", aria_hidden: "true" }
-                                        p { class: "hint",
-                                            "Current sync branch: {cloud_last_branch} · Status: {cloud_last_status}"
+                                div { class: "cloud-steps-grid",
+                                    div { class: "cloud-step-item",
+                                        span { class: "cloud-step-num", "1" }
+                                        div {
+                                            div { class: "cloud-step-title", "Save Commits" }
+                                            div { class: "cloud-step-desc", "Saving requests or envs snapshots clean JSON locally." }
+                                        }
+                                    }
+                                    div { class: "cloud-step-item",
+                                        span { class: "cloud-step-num", "2" }
+                                        div {
+                                            div { class: "cloud-step-title", "Cloud Sync" }
+                                            div { class: "cloud-step-desc", "Pulls team changes, rebases, and pushes to branch." }
+                                        }
+                                    }
+                                    div { class: "cloud-step-item",
+                                        span { class: "cloud-step-num", "3" }
+                                        div {
+                                            div { class: "cloud-step-title", "Secrets Stay Local" }
+                                            div { class: "cloud-step-desc", "Vault keys and secret env values are never pushed." }
                                         }
                                     }
                                 }
@@ -845,13 +960,15 @@ pub fn SettingsPanel(
             }
 
             div { class: "settings-page-actions",
-                button {
-                    r#type: "button",
-                    class: "btn btn-ghost",
-                    onclick: move |_| on_event.call(SettingsEvent::Close),
-                    "Cancel"
-                }
-                button {
+                span { class: "settings-actions-hint", "Changes take effect when you click Save Changes." }
+                div { class: "settings-actions-btns",
+                    button {
+                        r#type: "button",
+                        class: "btn btn-ghost",
+                        onclick: move |_| on_event.call(SettingsEvent::Close),
+                        "Cancel"
+                    }
+                    button {
                     r#type: "button",
                     class: "btn btn-send",
                     onclick: move |_| {
@@ -912,6 +1029,7 @@ pub fn SettingsPanel(
                         }));
                     },
                     "Save Changes"
+                }
                 }
             }
         }

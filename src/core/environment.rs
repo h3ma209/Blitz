@@ -44,6 +44,8 @@ impl EnvVar {
 pub struct Environment {
     pub id: Uuid,
     pub name: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub icon: Option<String>,
     #[serde(default)]
     pub values: Vec<EnvVar>,
 }
@@ -53,6 +55,7 @@ impl Environment {
         Self {
             id: Uuid::new_v4(),
             name: name.into(),
+            icon: None,
             values: vec![],
         }
     }
@@ -413,5 +416,20 @@ mod tests {
             list[0].values.iter().find(|v| v.key == "token").unwrap().current_value,
             "local"
         );
+    }
+
+    #[test]
+    fn environment_icon_serde_roundtrip() {
+        let mut env = Environment::new("Production");
+        let json_none = serde_json::to_string(&env).unwrap();
+        assert!(!json_none.contains("\"icon\""));
+        let decoded_none: Environment = serde_json::from_str(&json_none).unwrap();
+        assert_eq!(decoded_none.icon, None);
+
+        env.icon = Some("rocket".to_string());
+        let json_some = serde_json::to_string(&env).unwrap();
+        assert!(json_some.contains("\"icon\":\"rocket\""));
+        let decoded_some: Environment = serde_json::from_str(&json_some).unwrap();
+        assert_eq!(decoded_some.icon.as_deref(), Some("rocket"));
     }
 }

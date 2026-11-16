@@ -108,7 +108,7 @@ pub use request::{
     substitute_path_params, sync_path_params, AuthConfig, AuthExtra, AuthType, BodyMode,
     FormDataField, HttpMethod, KeyValue, OAuth2Config, OAuth2Grant, RequestDraft, RequestProtocol,
     compact_response_for_disk, ResponseView, SavedExample, TestResult, TimingBreakdown,
-    WsPreset,
+    WsPreset, BLITZ_USER_AGENT,
 };
 pub use response_diff::{diff_bodies, normalize_body_for_diff, DiffLine, DiffStats};
 pub use sandbox::{

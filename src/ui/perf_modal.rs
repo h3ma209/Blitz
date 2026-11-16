@@ -3,7 +3,7 @@ use uuid::Uuid;
 
 use crate::core::{Collection, PerfReport};
 use crate::runtime::ordered_requests;
-use crate::ui::{loading::Spinner, ModalShell};
+use crate::ui::{icons::ActionIcon, loading::Spinner, ModalShell};
 
 #[component]
 pub fn PerformanceModal(
@@ -268,10 +268,10 @@ pub fn PerformanceModal(
                                         copied_json.set(true);
                                     },
                                     if copied_json() {
-                                        span { class: "action-icon action-icon-check", aria_hidden: "true", style: "width: 12px; height: 12px; margin-right: 4px;" }
+                                        ActionIcon { name: "check", size: 14, style: "margin-right: 4px;".to_string() }
                                         span { "Copied!" }
                                     } else {
-                                        span { class: "action-icon action-icon-copy", aria_hidden: "true", style: "width: 12px; height: 12px; margin-right: 4px;" }
+                                        ActionIcon { name: "copy", size: 14, style: "margin-right: 4px;".to_string() }
                                         span { "Copy JSON" }
                                     }
                                 }

@@ -2,6 +2,7 @@ use dioxus::prelude::*;
 use uuid::Uuid;
 
 use crate::core::Environment;
+use super::icons::{ActionIcon, EnvIcon};
 use super::DismissBackdrop;
 
 fn env_tier(name: &str) -> &'static str {
@@ -34,6 +35,7 @@ pub fn EnvSelector(
     let active_name = active_env
         .map(|e| e.name.clone())
         .unwrap_or_else(|| "No Environment".into());
+    let active_icon = active_env.and_then(|e| e.icon.clone());
     let active_tier = if active_id.is_none() { "local" } else { env_tier(&active_name) };
 
     let query_lower = filter_query().trim().to_lowercase();
@@ -59,7 +61,7 @@ pub fn EnvSelector(
                     quick_look_open.set(false);
                     menu_open.set(!menu_open());
                 },
-                span { class: "env-indicator env-indicator-{active_tier}", aria_hidden: "true" }
+                EnvIcon { icon: active_icon.clone(), tier: active_tier, size: 15 }
                 span { class: "env-select-label", "{active_name}" }
                 span { class: "env-select-caret", "▾" }
             }
@@ -89,7 +91,8 @@ pub fn EnvSelector(
                     menu_open.set(false);
                     quick_look_open.set(!quick_look_open());
                 },
-                span { class: "action-icon action-icon-eye", aria_hidden: "true" }
+                ActionIcon { name: "eye", size: 16 }
+                span { "Inspect" }
             }
             button {
                 class: "btn-icon",
@@ -100,14 +103,15 @@ pub fn EnvSelector(
                     quick_look_open.set(false);
                     on_manage.call(());
                 },
-                span { class: "action-icon action-icon-edit", aria_hidden: "true" }
+                ActionIcon { name: "edit", size: 16 }
+                span { "Manage" }
             }
 
             if quick_look_open() {
                 div { class: "env-quicklook-popover",
                     div { class: "env-quicklook-header",
                         span { class: "env-quicklook-title",
-                            span { class: "action-icon action-icon-eye", aria_hidden: "true", style: "width: 12px; height: 12px;" }
+                            ActionIcon { name: "eye", size: 14 }
                             span { "Quick Look" }
                         }
                         span { class: "env-quicklook-badge env-quicklook-badge-{active_tier}", "{active_name}" }
@@ -286,6 +290,7 @@ pub fn EnvSelector(
                             {
                                 let id = env.id;
                                 let name = env.name.clone();
+                                let icon = env.icon.clone();
                                 let tier = env_tier(&name);
                                 let var_count = env.values.len();
                                 let active = active_id == Some(id);
@@ -303,7 +308,7 @@ pub fn EnvSelector(
                                             menu_open.set(false);
                                             on_change.call(Some(id));
                                         },
-                                        span { class: "env-indicator env-indicator-{tier}", aria_hidden: "true" }
+                                        EnvIcon { icon, tier, size: 15 }
                                         div { class: "env-menu-info",
                                             span { class: "env-menu-name", "{name}" }
                                             span { class: "env-menu-sub", "{var_count} var(s) · {tier}" }
@@ -324,7 +329,7 @@ pub fn EnvSelector(
                             menu_open.set(false);
                             on_compare.call(());
                         },
-                        span { class: "action-icon action-icon-branch", aria_hidden: "true" }
+                        ActionIcon { name: "branch", size: 15 }
                         span { class: "env-menu-action-label", "Compare Environments (Diff & Drift)…" }
                     }
                     button {
@@ -333,7 +338,7 @@ pub fn EnvSelector(
                             menu_open.set(false);
                             on_manage.call(());
                         },
-                        span { class: "action-icon action-icon-edit", aria_hidden: "true" }
+                        ActionIcon { name: "edit", size: 15 }
                         span { class: "env-menu-action-label", "Manage Environments…" }
                     }
                 }

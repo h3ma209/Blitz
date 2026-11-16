@@ -108,6 +108,12 @@ pub struct Collection {
     /// Mtime (seconds) when spec last matched collection via reconcile.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub openapi_synced_mtime: Option<u64>,
+    /// Optional Lucide icon key for sidebar display.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub icon: Option<String>,
+    /// Optional hex color for the collection icon.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub color: Option<String>,
 }
 
 impl CollectionEnvOverrides {
@@ -137,6 +143,8 @@ impl Default for Collection {
             pinned_environment_id: None,
             openapi_spec_path: String::new(),
             openapi_synced_mtime: None,
+            icon: None,
+            color: None,
         }
     }
 }
@@ -160,6 +168,8 @@ impl Collection {
             pinned_environment_id: None,
             openapi_spec_path: String::new(),
             openapi_synced_mtime: None,
+            icon: None,
+            color: None,
         }
     }
 
@@ -310,6 +320,10 @@ pub struct TreeRow {
     pub depth: u8,
     /// Collection favorite flag (false for folders/requests).
     pub favorite: bool,
+    /// Optional custom icon key (collections only).
+    pub icon: Option<String>,
+    /// Optional custom icon hex color (collections only).
+    pub icon_color: Option<String>,
     /// Lower-cased blob of every searchable string on this row (name + URL +
     /// method + params + headers + body + scripts + …). Populated at flatten
     /// time so the sidebar search box can match request *content*, not just
@@ -670,6 +684,8 @@ fn flatten_collections_internal(
             name: col.name.clone(),
             depth: 0,
             favorite: col.favorite,
+            icon: col.icon.clone(),
+            icon_color: col.color.clone(),
             search_text: if populate_search { col.name.to_ascii_lowercase() } else { String::new() },
         });
         if !collapsed.contains(&col.id) {
@@ -1111,6 +1127,8 @@ fn flatten_items(
                     name: folder.name.clone(),
                     depth,
                     favorite: false,
+                    icon: None,
+                    icon_color: None,
                     search_text: if populate_search { folder.name.to_ascii_lowercase() } else { String::new() },
                 });
                 if !collapsed.contains(&folder.id) {
@@ -1137,6 +1155,8 @@ fn flatten_items(
                     name: req.name.clone(),
                     depth,
                     favorite: false,
+                    icon: None,
+                    icon_color: None,
                     search_text: if populate_search { req.search_text() } else { String::new() },
                 });
             }
@@ -2189,5 +2209,20 @@ mod tests {
             }
             _ => panic!("expected TreeRowKind::Request"),
         }
+    }
+
+    #[test]
+    fn collection_icon_and_color_serde_roundtrip() {
+        let mut col = Collection::new("Payments");
+        let raw_none = serde_json::to_string(&col).unwrap();
+        assert!(!raw_none.contains("\"icon\""));
+        assert!(!raw_none.contains("\"color\""));
+
+        col.icon = Some("rocket".to_string());
+        col.color = Some("#f59e0b".to_string());
+        let raw_some = serde_json::to_string(&col).unwrap();
+        let decoded: Collection = serde_json::from_str(&raw_some).unwrap();
+        assert_eq!(decoded.icon.as_deref(), Some("rocket"));
+        assert_eq!(decoded.color.as_deref(), Some("#f59e0b"));
     }
 }

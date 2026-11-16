@@ -44,7 +44,16 @@ pub fn VarsPage(st: WorkbenchState) -> Element {
     }
 
     rsx! {
-        div { class: "vars-page",
+        div {
+            class: "vars-page",
+            tabindex: "-1",
+            onkeydown: move |evt: KeyboardEvent| {
+                if evt.key() == Key::Escape {
+                    let mut st = st;
+                    show_vars.set(false);
+                    st.persist();
+                }
+            },
             div { class: "vars-page-head",
                 div { class: "vars-page-title-wrap",
                     h2 { "Environments & Variables" }
@@ -67,13 +76,14 @@ pub fn VarsPage(st: WorkbenchState) -> Element {
                     }
                 }
                 button {
-                    class: "btn btn-ghost",
+                    class: "btn btn-ghost vars-close-btn",
+                    title: "Close (Esc)",
                     onclick: move |_| {
                         let mut st = st;
                         show_vars.set(false);
                         st.persist();
                     },
-                    "Done"
+                    "✕ Close (Esc)"
                 }
             }
             if vars_active_tab() == 0 {
@@ -100,7 +110,7 @@ pub fn VarsPage(st: WorkbenchState) -> Element {
                                     active_env_id.set(Some(id));
                                     editing_env_id.set(Some(id));
                                 },
-                                span { class: "action-icon action-icon-add", aria_hidden: "true" }
+                                crate::ui::icons::ActionIcon { name: "add", size: 16 }
                             }
                         }
                         div { class: "env-sidebar-list",
@@ -108,6 +118,8 @@ pub fn VarsPage(st: WorkbenchState) -> Element {
                                 {
                                     let id = env.id;
                                     let name = env.name.clone();
+                                    let icon = env.icon.clone();
+                                    let tier = crate::ui::icons::env_tier(&name);
                                     let is_editing = editing_env_id() == Some(id);
                                     let is_active = active_env_id() == Some(id);
                                     rsx! {
@@ -117,6 +129,7 @@ pub fn VarsPage(st: WorkbenchState) -> Element {
                                             onclick: move |_| {
                                                 editing_env_id.set(Some(id));
                                             },
+                                            crate::ui::icons::EnvIcon { icon, tier, size: 15 }
                                             span { class: "env-name-text", "{name}" }
                                             if is_active {
                                                 span { class: "env-active-indicator", "Active" }
@@ -138,20 +151,37 @@ pub fn VarsPage(st: WorkbenchState) -> Element {
                                 Some(env) => {
                                     let env_id = env.id;
                                     let env_name = env.name.clone();
+                                    let env_icon = env.icon.clone();
+                                    let env_tier = crate::ui::icons::env_tier(&env_name);
                                     let is_active = active_env_id() == Some(env_id);
                                     let values_len = env.values.len();
                                     rsx! {
                                         div { class: "env-editor-top",
-                                            input {
-                                                class: "env-editor-name",
-                                                value: "{env_name}",
-                                                title: "Click to rename environment",
-                                                oninput: move |evt: Event<FormData>| {
-                                                    let mut envs = environments();
-                                                    if let Some(e) = envs.iter_mut().find(|e| e.id == env_id) {
-                                                        e.name = evt.value();
+                                            div { class: "env-editor-identity",
+                                                crate::ui::icons::EnvIconPicker {
+                                                    icon: env_icon,
+                                                    tier: env_tier,
+                                                    on_select: move |new_icon: Option<String>| {
+                                                        let mut envs = environments();
+                                                        if let Some(e) = envs.iter_mut().find(|e| e.id == env_id) {
+                                                            e.icon = new_icon;
+                                                        }
+                                                        environments.set(envs);
+                                                        let mut st = st;
+                                                        st.persist();
+                                                    },
+                                                }
+                                                input {
+                                                    class: "env-editor-name",
+                                                    value: "{env_name}",
+                                                    title: "Click to rename environment",
+                                                    oninput: move |evt: Event<FormData>| {
+                                                        let mut envs = environments();
+                                                        if let Some(e) = envs.iter_mut().find(|e| e.id == env_id) {
+                                                            e.name = evt.value();
+                                                        }
+                                                        environments.set(envs);
                                                     }
-                                                    environments.set(envs);
                                                 }
                                             }
                                             div { style: "display: flex; gap: 8px; align-items: center;",
@@ -346,7 +376,7 @@ pub fn VarsPage(st: WorkbenchState) -> Element {
                 div { class: "vars-page-inner",
                     div { class: "vars-scope-banner",
                         div { class: "vars-scope-banner-title",
-                            span { class: "action-icon action-icon-bolt", style: "margin-right: 6px;", aria_hidden: "true" }
+                            crate::ui::icons::ActionIcon { name: "bolt", size: 16, style: "margin-right: 6px;".to_string() }
                             span { "Variable System & Scopes" }
                         }
                         p { class: "vars-scope-banner-text",
@@ -566,7 +596,7 @@ pub fn VarsPage(st: WorkbenchState) -> Element {
                                 show_vars.set(false);
                                 st.persist();
                             },
-                            "Done"
+                            "✕ Close"
                         }
                     }
                 }
@@ -1368,7 +1398,7 @@ pub fn WorkbenchModals(
                                 show_cookies.set(false);
                                 st.persist();
                             },
-                            "Done"
+                            "✕ Close"
                         }
                     }
                 }
@@ -1618,7 +1648,7 @@ pub fn WorkbenchModals(
                                 show_col_vars.set(false);
                                 st.persist();
                             },
-                            "Done"
+                            "✕ Close"
                         }
                     }
                 }

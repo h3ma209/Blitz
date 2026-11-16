@@ -225,7 +225,7 @@ pub fn TopBar(st: WorkbenchState) -> Element {
                                 },
                                 "Load bundled sample exports"
                             }
-                            div { class: "menu-category-header", "Export" }
+                            div { class: "menu-category-header", "Export & Docs" }
                             button {
                                 class: "menu-item",
                                 onclick: move |_| {
@@ -247,7 +247,7 @@ pub fn TopBar(st: WorkbenchState) -> Element {
                                         None => status_msg.set("no collection to export".into()),
                                     }
                                 },
-                                "Export active collection…"
+                                "Export Active Collection (JSON)…"
                             }
                             button {
                                 class: "menu-item",
@@ -473,7 +473,7 @@ pub fn TopBar(st: WorkbenchState) -> Element {
                     if tools_menu_open() {
                         div { class: "menu-dropdown menu-dropdown-wide",
                             onmousedown: move |evt| evt.stop_propagation(),
-                            div { class: "menu-category-header", "Testing & Simulation" }
+                            div { class: "menu-category-header", "Run & Quality" }
                             button {
                                 class: "menu-item",
                                 onclick: move |_| {
@@ -498,6 +498,7 @@ pub fn TopBar(st: WorkbenchState) -> Element {
                                 },
                                 "Performance…"
                             }
+                            div { class: "menu-category-header", "Local Servers" }
                             button {
                                 class: "menu-item",
                                 title: if let Some(p) = mock_port() {
@@ -622,7 +623,7 @@ pub fn TopBar(st: WorkbenchState) -> Element {
                                 },
                                 "Trash…"
                             }
-                            div { class: "menu-category-header", "View & Diagnostics" }
+                            div { class: "menu-category-header", "View & App" }
                             button {
                                 class: "menu-item",
                                 onclick: move |_| {
@@ -727,7 +728,7 @@ pub fn TopBar(st: WorkbenchState) -> Element {
                     if cloud_menu_open() {
                         div { class: "menu-dropdown menu-dropdown-wide",
                             onmousedown: move |evt| evt.stop_propagation(),
-                            div { class: "menu-category-header", "Repository Setup" }
+                            div { class: "menu-category-header", "Git Repository" }
                             button {
                                 class: "menu-item",
                                 disabled: cloud_busy(),
@@ -735,7 +736,7 @@ pub fn TopBar(st: WorkbenchState) -> Element {
                                     cloud_menu_open.set(false);
                                     cloud_clone_or_link(st);
                                 },
-                                "Clone / link remote…"
+                                "Clone / Link Remote…"
                             }
                             button {
                                 class: "menu-item",
@@ -744,9 +745,17 @@ pub fn TopBar(st: WorkbenchState) -> Element {
                                     cloud_menu_open.set(false);
                                     cloud_link_folder(st);
                                 },
-                                "Link folder…"
+                                "Link Local Folder…"
                             }
-                            div { class: "menu-category-header", "Synchronization" }
+                            button {
+                                class: "menu-item",
+                                onclick: move |_| {
+                                    cloud_menu_open.set(false);
+                                    cloud_open_folder(st);
+                                },
+                                "Open Cloud Folder"
+                            }
+                            div { class: "menu-category-header", "Sync & Changes" }
                             button {
                                 class: "menu-item",
                                 disabled: cloud_busy(),
@@ -754,7 +763,7 @@ pub fn TopBar(st: WorkbenchState) -> Element {
                                     cloud_menu_open.set(false);
                                     cloud_sync_status(st);
                                 },
-                                "Sync status"
+                                "Sync Status"
                             }
                             button {
                                 class: "menu-item",
@@ -763,7 +772,7 @@ pub fn TopBar(st: WorkbenchState) -> Element {
                                     cloud_menu_open.set(false);
                                     cloud_pull(st);
                                 },
-                                "Pull"
+                                "Pull from Remote"
                             }
                             button {
                                 class: "menu-item",
@@ -772,16 +781,9 @@ pub fn TopBar(st: WorkbenchState) -> Element {
                                     cloud_menu_open.set(false);
                                     cloud_push(st);
                                 },
-                                "Push"
+                                "Push to Remote"
                             }
-                            button {
-                                class: "menu-item",
-                                onclick: move |_| {
-                                    cloud_menu_open.set(false);
-                                    cloud_open_folder(st);
-                                },
-                                "Open folder"
-                            }
+                            div { class: "menu-category-header", "Team & Configuration" }
                             button {
                                 class: "menu-item",
                                 disabled: cloud_busy(),
@@ -789,17 +791,19 @@ pub fn TopBar(st: WorkbenchState) -> Element {
                                     cloud_menu_open.set(false);
                                     open_team_activity(st, false);
                                 },
-                                "Team activity…"
+                                "Team Activity…"
                             }
                             button {
                                 class: "menu-item",
                                 onclick: move |_| {
                                     cloud_menu_open.set(false);
                                     show_env_manager.set(false);
+                                    let mut settings_tab = st.settings_tab;
+                                    settings_tab.set(crate::ui::settings_panel::SettingsTab::CloudSync);
                                     st.settings_tab_open.set(true);
                                     show_settings.set(true);
                                 },
-                                "Cloud settings…"
+                                "Cloud Settings…"
                             }
                         }
                     }
@@ -862,63 +866,72 @@ pub fn TopBar(st: WorkbenchState) -> Element {
                             active_request_id.set(None);
                             editing_collection_id.set(None);
                         },
-                        span { class: "action-icon action-icon-git-merge", style: "margin-right: 4px;", aria_hidden: "true" }
+                        crate::ui::icons::ActionIcon { name: "git-merge", size: 15, style: "margin-right: 4px;".to_string() }
                         "{conf.files.len()} Conflicts"
                     }
                 }
-                button {
-                    class: if show_team() { "top-icon top-icon-on" } else { "top-icon" },
-                    title: "Team collaboration · Members, recent git commits & edited files",
-                    disabled: cloud_busy(),
-                    onclick: move |_| {
-                        open_team_activity(st, true);
-                    },
-                    "Team"
+                div { class: "top-nav-cluster",
+                    button {
+                        class: if show_team() { "top-icon top-icon-on" } else { "top-icon" },
+                        title: "Team collaboration · Members, recent git commits & edited files",
+                        disabled: cloud_busy(),
+                        onclick: move |_| {
+                            open_team_activity(st, true);
+                        },
+                        crate::ui::icons::ActionIcon { name: "users", size: 17 }
+                        span { "Team" }
+                    }
+                    button {
+                        class: if show_vars() { "top-icon top-icon-on" } else { "top-icon" },
+                        title: "Variables (environment, collection, global, vault; local stays on this machine)",
+                        onclick: move |_| {
+                            if show_vars() && vars_active_tab() == 1 {
+                                show_vars.set(false);
+                            } else {
+                                vars_active_tab.set(1);
+                                show_vars.set(true);
+                            }
+                        },
+                        crate::ui::icons::ActionIcon { name: "braces", size: 17 }
+                        span { "Vars" }
+                    }
                 }
-                button {
-                    class: if show_vars() { "top-icon top-icon-on" } else { "top-icon" },
-                    title: "Variables (environment, collection, global, vault; local stays on this machine)",
-                    onclick: move |_| {
-                        if show_vars() && vars_active_tab() == 1 {
-                            show_vars.set(false);
-                        } else {
-                            vars_active_tab.set(1);
+                span { class: "top-nav-divider", aria_hidden: "true" }
+                div { class: "top-nav-cluster",
+                    EnvSelector {
+                        environments: environments(),
+                        active_id: active_env_id(),
+                        vars: Some((st.vars)()),
+                        on_change: move |id| {
+                            switch_to_env(st, id);
+                        },
+                        on_sync: move |id| {
+                            sync_selected_env(st, id);
+                        },
+                        on_manage: move |_| {
+                            vars_active_tab.set(0);
+                            editing_env_id.set(active_env_id());
                             show_vars.set(true);
-                        }
-                    },
-                    "Vars"
+                        },
+                        on_compare: move |_| {
+                            vars_active_tab.set(2);
+                            show_vars.set(true);
+                        },
+                    }
                 }
-                EnvSelector {
-                    environments: environments(),
-                    active_id: active_env_id(),
-                    vars: Some((st.vars)()),
-                    on_change: move |id| {
-                        switch_to_env(st, id);
-                    },
-                    on_sync: move |id| {
-                        sync_selected_env(st, id);
-                    },
-                    on_manage: move |_| {
-                        vars_active_tab.set(0);
-                        editing_env_id.set(active_env_id());
-                        show_vars.set(true);
-                    },
-                    on_compare: move |_| {
-                        vars_active_tab.set(2);
-                        show_vars.set(true);
-                    },
-                }
-                ThemeSelector {
-                    theme: app_settings().ui.theme,
-                    on_change: move |t: UiTheme| {
-                        let mut st = st;
-                        let mut s = app_settings();
-                        s.ui.theme = t;
-                        s.ui = s.ui.clamped();
-                        app_settings.set(s);
-                        st.persist();
-                    },
-                }
+                span { class: "top-nav-divider", aria_hidden: "true" }
+                div { class: "top-nav-cluster",
+                    ThemeSelector {
+                        theme: app_settings().ui.theme,
+                        on_change: move |t: UiTheme| {
+                            let mut st = st;
+                            let mut s = app_settings();
+                            s.ui.theme = t;
+                            s.ui = s.ui.clamped();
+                            app_settings.set(s);
+                            st.persist();
+                        },
+                    }
                 if let Some(upd) = available_update() {
                     div { class: "update-pill-group",
                         button {
@@ -1001,12 +1014,18 @@ pub fn TopBar(st: WorkbenchState) -> Element {
                         app_settings.set(s);
                         st.persist();
                     },
-                    span {
-                        class: match app_settings().ui.layout {
-                            WorkbenchLayout::Column => "action-icon action-icon-split-row",
-                            WorkbenchLayout::Row => "action-icon action-icon-split-col",
+                    crate::ui::icons::ActionIcon {
+                        name: match app_settings().ui.layout {
+                            WorkbenchLayout::Column => "split-row",
+                            WorkbenchLayout::Row => "split-col",
                         },
-                        aria_hidden: "true",
+                        size: 17,
+                    }
+                    span {
+                        {match app_settings().ui.layout {
+                            WorkbenchLayout::Column => "Split",
+                            WorkbenchLayout::Row => "Stack",
+                        }}
                     }
                 }
                 button {
@@ -1026,7 +1045,9 @@ pub fn TopBar(st: WorkbenchState) -> Element {
                             show_settings.set(true);
                         }
                     },
-                    span { class: "action-icon action-icon-sliders", aria_hidden: "true" }
+                    crate::ui::icons::ActionIcon { name: "sliders", size: 17 }
+                    span { "Settings" }
+                }
                 }
             }
         }

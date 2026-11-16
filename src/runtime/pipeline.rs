@@ -708,8 +708,8 @@ fn build_client(
     app: Option<&AppSettings>,
     log: &mut Vec<String>,
 ) -> Result<Client, SendError> {
-    // UA also injected as a header (PostmanRuntime); keep client default aligned.
-    let mut builder = Client::builder().user_agent("PostmanRuntime/7.43.0");
+    // UA also injected as a header (Blitz/<version>); keep client default aligned.
+    let mut builder = Client::builder().user_agent(crate::core::BLITZ_USER_AGENT);
 
     if settings.timeout_ms == 0 {
         builder = builder.pool_idle_timeout(None);
