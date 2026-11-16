@@ -23,7 +23,8 @@ pub use git::{
     ensure_clone, get_conflict_file_versions, get_team_activity, is_noreply_user,
     mask_remote_url, open_in_file_manager, pull_rebase, push_commit, push_only, resolve_commit_message,
     resolve_git_conflicts, status_detail, status_summary, sync_pull_push, ChangedFile,
-    CloudGitError, GitStatus, SyncResult, TeamActivity, TeamCommit, TeamMember,
+    CloudGitError, CommitDiffLine, CommitDiffLineKind, CommitFileDiff, GitStatus, SyncResult,
+    TeamActivity, TeamCommit, TeamMember,
 };
 pub use tree::{
     branch_name_for_env, export_workspace_tree, import_workspace_tree, merge_secret_values,
@@ -40,9 +41,18 @@ fn is_no_environment(name: &str) -> bool {
     t.is_empty() || t.eq_ignore_ascii_case("No Environment")
 }
 
-/// Local is machine-only (like No Environment) — not a team/git Sync target.
+/// Local is machine-only — commits and changes live on the local-only `local` git branch
+/// and are never pushed to remote.
 fn is_local_environment(name: &str) -> bool {
     name.trim().eq_ignore_ascii_case("Local")
+}
+
+fn branch_for_env(name: &str) -> &'static str {
+    if is_local_environment(name) {
+        "local"
+    } else {
+        "main"
+    }
 }
 
 fn export_to_clone(
@@ -97,14 +107,6 @@ pub fn sync_on_save(
             branch: String::new(),
         };
     }
-    if is_local_environment(active_env_name) {
-        return SyncResult {
-            ok: true,
-            skipped: true,
-            message: "Local environment — local save only (not synced)".into(),
-            branch: String::new(),
-        };
-    }
 
     let clone = settings.cloud_sync.resolved_clone_path(data_root);
     if !clone.join(".git").is_dir() {
@@ -117,7 +119,8 @@ pub fn sync_on_save(
     }
 
     let remote = settings.cloud_sync.remote_url.trim();
-    if remote.is_empty() {
+    let branch = branch_for_env(active_env_name).to_string();
+    if remote.is_empty() && branch != "local" {
         let msg = "cloud sync: remote URL empty".to_string();
         settings.cloud_sync.last_status = msg.clone();
         return SyncResult {
@@ -128,7 +131,6 @@ pub fn sync_on_save(
         };
     }
 
-    let branch = "main".to_string();
     if let Err(e) = checkout_env_branch(&clone, &branch) {
         let msg = format!("cloud sync checkout: {e}");
         settings.cloud_sync.last_status = msg.clone();
@@ -211,7 +213,7 @@ pub fn sync_environment(
         return Err("pick an environment before Sync".into());
     }
     if is_local_environment(env_name) {
-        return Err("Local environment is not synced — pick Development/Production (or another team env)".into());
+        return Err("Local branch ('local') is local-only — commits stay local and are never pushed to remote".into());
     }
     if !settings.cloud_sync.enabled {
         return Err("cloud sync disabled — enable in Settings or Cloud menu".into());
@@ -324,26 +326,28 @@ pub fn switch_env_branch(
         return Ok((collections.to_vec(), environments.to_vec()));
     }
 
-    // Save current state to main branch (commit only — Sync pushes).
-    let main_branch = "main";
-    let _ = checkout_env_branch(&clone, main_branch);
-    export_to_clone(
-        &clone,
-        remote,
-        from_env_name,
-        collections,
-        environments,
-        variables,
-    )?;
-    let _ = commit_local_changes(&clone, None);
+    // Save current state to its branch (commit only — Sync pushes team branches).
+    if !is_no_environment(from_env_name) {
+        let from_branch = branch_for_env(from_env_name);
+        let _ = checkout_env_branch(&clone, from_branch);
+        export_to_clone(
+            &clone,
+            remote,
+            from_env_name,
+            collections,
+            environments,
+            variables,
+        )?;
+        let _ = commit_local_changes(&clone, None);
+    }
 
     if is_no_environment(to_env_name) {
         settings.cloud_sync.last_status = "local (no environment)".into();
         return Ok((collections.to_vec(), environments.to_vec()));
     }
 
-    // Checkout main branch (contains all collections with environment overrides)
-    checkout_env_branch(&clone, main_branch).map_err(|e| e.to_string())?;
+    let to_branch = branch_for_env(to_env_name);
+    checkout_env_branch(&clone, to_branch).map_err(|e| e.to_string())?;
 
     let (mut cols, mut envs) = import_workspace_tree(&clone).map_err(|e| e.to_string())?;
     // Prefer local secret values over redacted git placeholders.
@@ -355,7 +359,7 @@ pub fn switch_env_branch(
         envs = environments.to_vec();
     }
 
-    settings.cloud_sync.last_branch = main_branch.into();
+    settings.cloud_sync.last_branch = to_branch.into();
     if let Ok(s) = status_summary(&clone) {
         settings.cloud_sync.last_status = s;
     } else {

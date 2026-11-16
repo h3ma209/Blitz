@@ -120,8 +120,9 @@ pub use cloud_sync::{
     branch_name_for_env, clone_or_ensure, detect_git_conflicts,
     get_conflict_file_versions, get_team_activity, is_noreply_user, link_folder,
     open_in_file_manager, pull_workspace, push_workspace, refresh_status, resolve_git_conflicts,
-    status_summary, switch_env_branch, sync_environment, sync_on_save, ChangedFile, SyncResult,
-    TeamActivity, TeamCommit, TeamMember,
+    status_summary, switch_env_branch, sync_environment, sync_on_save, ChangedFile,
+    CommitDiffLine, CommitDiffLineKind, CommitFileDiff, SyncResult, TeamActivity, TeamCommit,
+    TeamMember,
 };
 pub use settings::{
     default_zoom_percent, AccentIntensity, AppSettings, ClientCertSettings, CloudSyncSettings,

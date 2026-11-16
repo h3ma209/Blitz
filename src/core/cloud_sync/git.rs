@@ -493,41 +493,83 @@ pub fn build_commit_message(name_status: &str, timestamp: &str) -> String {
         return "sync(workspace): update workspace".to_string();
     }
 
-    let first_kind = entries[0].kind;
-    let single_kind = entries.iter().all(|e| e.kind == first_kind);
-    let scope_tag = if single_kind {
-        first_kind.scope_name()
-    } else {
-        "workspace"
+    // Fold auto-updated `collection.json` manifest entries out of the subject when
+    // sibling entries in that same collection are present (avoids noisy
+    // `update 'drift' collection, rename 'x' -> 'y' request` subjects).
+    let subject_entries: Vec<&ParsedEntry> = {
+        let filtered: Vec<&ParsedEntry> = entries
+            .iter()
+            .filter(|e| {
+                !(e.kind == ScopeKind::Collections
+                    && e.action == Action::Update
+                    && e.collection.as_deref().is_some_and(|col| {
+                        entries
+                            .iter()
+                            .any(|other| other.kind != ScopeKind::Collections && other.collection.as_deref() == Some(col))
+                    }))
+            })
+            .collect();
+        if filtered.is_empty() {
+            entries.iter().collect()
+        } else {
+            filtered
+        }
     };
 
-    // Detect single shared collection for concise subject context.
-    let shared_collection: Option<&str> = entries
+    let first_kind = subject_entries[0].kind;
+    let single_kind = subject_entries.iter().all(|e| e.kind == first_kind);
+
+    // Detect single shared collection for crisp collection-scoped subjects (e.g. `feat(drift): ...`).
+    let shared_collection: Option<&str> = subject_entries
         .first()
         .and_then(|e| e.collection.as_deref())
-        .filter(|col| entries.iter().all(|e| e.collection.as_deref() == Some(*col)));
+        .filter(|col| {
+            subject_entries
+                .iter()
+                .all(|e| e.collection.as_deref() == Some(*col))
+        });
 
-    let subject_core = if entries.len() <= 3 {
+    let scope_tag = match shared_collection {
+        Some(col) if first_kind != ScopeKind::Collections => col,
+        _ if single_kind => first_kind.scope_name(),
+        _ => "workspace",
+    };
+
+    let commit_type = if single_kind && first_kind == ScopeKind::Docs {
+        "docs"
+    } else if single_kind && matches!(first_kind, ScopeKind::Config | ScopeKind::Variables) {
+        "chore"
+    } else if subject_entries.iter().all(|e| e.action == Action::Add) {
+        "feat"
+    } else if subject_entries.iter().all(|e| e.action == Action::Rename) {
+        "refactor"
+    } else if subject_entries.iter().all(|e| e.action == Action::Delete) {
+        "chore"
+    } else {
+        "sync"
+    };
+
+    let subject_core = if subject_entries.len() <= 3 {
         if single_kind {
-            let first_action = entries[0].action;
-            let same_action = entries.iter().all(|e| e.action == first_action);
+            let first_action = subject_entries[0].action;
+            let same_action = subject_entries.iter().all(|e| e.action == first_action);
             if same_action {
                 let verb = first_action.verb();
-                let names: Vec<String> = entries.iter().map(format_entry_name).collect();
+                let names: Vec<String> = subject_entries.iter().map(|e| format_entry_name(e)).collect();
                 match names.len() {
                     1 => format!("{verb} {}", names[0]),
                     2 => format!("{verb} {} and {}", names[0], names[1]),
                     _ => format!("{verb} {}, {} and {}", names[0], names[1], names[2]),
                 }
             } else {
-                entries
+                subject_entries
                     .iter()
                     .map(|e| format!("{} {}", e.action.verb(), format_entry_name(e)))
                     .collect::<Vec<_>>()
                     .join(", ")
             }
         } else {
-            entries
+            subject_entries
                 .iter()
                 .map(|e| {
                     let name = format_entry_name(e);
@@ -541,10 +583,10 @@ pub fn build_commit_message(name_status: &str, timestamp: &str) -> String {
                 .join(", ")
         }
     } else if single_kind {
-        let adds = entries.iter().filter(|e| e.action == Action::Add).count();
-        let updates = entries.iter().filter(|e| e.action == Action::Update).count();
-        let deletes = entries.iter().filter(|e| e.action == Action::Delete).count();
-        let renames = entries.iter().filter(|e| e.action == Action::Rename).count();
+        let adds = subject_entries.iter().filter(|e| e.action == Action::Add).count();
+        let updates = subject_entries.iter().filter(|e| e.action == Action::Update).count();
+        let deletes = subject_entries.iter().filter(|e| e.action == Action::Delete).count();
+        let renames = subject_entries.iter().filter(|e| e.action == Action::Rename).count();
 
         let mut action_parts = Vec::new();
         for (count, verb) in [
@@ -560,7 +602,7 @@ pub fn build_commit_message(name_status: &str, timestamp: &str) -> String {
         let noun = first_kind.plural_label();
         if action_parts.len() == 1 {
             let act = action_parts[0].split_whitespace().next().unwrap_or("update");
-            format!("{act} {} {noun}", entries.len())
+            format!("{act} {} {noun}", subject_entries.len())
         } else {
             format!("{} {noun}", action_parts.join(", "))
         }
@@ -571,24 +613,19 @@ pub fn build_commit_message(name_status: &str, timestamp: &str) -> String {
             (ScopeKind::Environments, "environments"),
             (ScopeKind::Collections, "collections"),
         ] {
-            let count = entries.iter().filter(|e| e.kind == kind).count();
+            let count = subject_entries.iter().filter(|e| e.kind == kind).count();
             if count > 0 {
                 breakdown.push(format!("{count} {label}"));
             }
         }
         if breakdown.is_empty() {
-            format!("update {} files", entries.len())
+            format!("update {} files", subject_entries.len())
         } else {
-            format!("{} changes ({})", entries.len(), breakdown.join(", "))
+            format!("{} changes ({})", subject_entries.len(), breakdown.join(", "))
         }
     };
 
-    let subject = match shared_collection {
-        Some(col) if first_kind != ScopeKind::Collections => {
-            format!("sync({scope_tag}): {subject_core} ({col})")
-        }
-        _ => format!("sync({scope_tag}): {subject_core}"),
-    };
+    let subject = format!("{commit_type}({scope_tag}): {subject_core}");
 
     // Build structured commit body grouped by ScopeKind.
     const MAX_BODY_LINES: usize = 15;
@@ -602,6 +639,7 @@ pub fn build_commit_message(name_status: &str, timestamp: &str) -> String {
         ScopeKind::Workspace,
     ];
 
+    let body_single_kind = entries.iter().all(|e| e.kind == entries[0].kind);
     let mut body_lines: Vec<String> = Vec::new();
     let mut emitted = 0usize;
     for kind in kind_order {
@@ -612,7 +650,7 @@ pub fn build_commit_message(name_status: &str, timestamp: &str) -> String {
         if emitted >= MAX_BODY_LINES {
             break;
         }
-        if !single_kind {
+        if !body_single_kind {
             body_lines.push(format!("{}:", kind.section_title()));
         }
         for e in group {
@@ -1008,6 +1046,33 @@ pub struct TeamMember {
     pub last_active: String,
 }
 
+/// Line kind inside a commit file diff preview.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+pub enum CommitDiffLineKind {
+    Context,
+    Add,
+    Remove,
+    Hunk,
+}
+
+/// Single line of a commit file diff preview.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct CommitDiffLine {
+    pub kind: CommitDiffLineKind,
+    pub text: String,
+}
+
+/// Parsed per-file diff inside a commit (clean from -> to view without git header noise).
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct CommitFileDiff {
+    pub path: String,
+    pub status: String,
+    pub additions: usize,
+    pub deletions: usize,
+    pub lines: Vec<CommitDiffLine>,
+    pub truncated: bool,
+}
+
 /// Commit entry for recent team activity.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct TeamCommit {
@@ -1016,7 +1081,13 @@ pub struct TeamCommit {
     pub author_email: String,
     pub date: String,
     pub message: String,
+    #[serde(default)]
+    pub body: String,
     pub files: Vec<String>,
+    #[serde(default)]
+    pub file_changes: Vec<ChangedFile>,
+    #[serde(default)]
+    pub file_diffs: Vec<CommitFileDiff>,
 }
 
 /// Uncommitted or modified file status in the workspace git repo.
@@ -1121,7 +1192,7 @@ pub fn get_team_activity(cwd: &Path, limit_commits: usize) -> Result<TeamActivit
         members.sort_by_key(|b| std::cmp::Reverse(b.commit_count));
     }
 
-    // 2. Recent commits via `git log -n {limit} --name-only --format=%H|%an|%ae|%cr|%s`
+    // 2. Recent commits via `git log -n {limit} --name-status --format=...`
     let mut recent_commits = Vec::new();
     let limit_str = limit_commits.max(5).to_string();
     if let Ok(log_out) = run_git(
@@ -1130,8 +1201,8 @@ pub fn get_team_activity(cwd: &Path, limit_commits: usize) -> Result<TeamActivit
             "log",
             "-n",
             &limit_str,
-            "--name-only",
-            "--format=COMMIT_DELIM%H|%an|%ae|%cr|%s",
+            "--name-status",
+            "--format=COMMIT_DELIM%H|%an|%ae|%cr|%s%nBODY_DELIM%n%b%nFILES_DELIM",
         ],
     ) {
         let commit_blocks = log_out.split("COMMIT_DELIM");
@@ -1140,30 +1211,192 @@ pub fn get_team_activity(cwd: &Path, limit_commits: usize) -> Result<TeamActivit
             if block.is_empty() {
                 continue;
             }
-            let mut lines = block.lines();
-            if let Some(header) = lines.next() {
-                let parts: Vec<&str> = header.splitn(5, '|').collect();
-                if parts.len() >= 5 {
-                    let hash = parts[0].chars().take(7).collect();
-                    let author_name = parts[1].to_string();
-                    let author_email = parts[2].to_string();
-                    let date = parts[3].to_string();
-                    let message = parts[4].to_string();
+            let (header_and_body, files_part) = block
+                .split_once("FILES_DELIM")
+                .unwrap_or((block, ""));
+            let (header_raw, body_raw) = header_and_body
+                .split_once("BODY_DELIM")
+                .unwrap_or((header_and_body, ""));
+            let header = header_raw.lines().next().unwrap_or("").trim();
+            let parts: Vec<&str> = header.splitn(5, '|').collect();
+            if parts.len() >= 5 {
+                let hash = parts[0].chars().take(7).collect();
+                let author_name = parts[1].to_string();
+                let author_email = parts[2].to_string();
+                let date = parts[3].to_string();
+                let message = parts[4].to_string();
+                let body = body_raw.trim().to_string();
 
-                    let files: Vec<String> = lines
-                        .map(|l| l.trim().to_string())
-                        .filter(|l| !l.is_empty())
-                        .collect();
-
-                    recent_commits.push(TeamCommit {
-                        hash,
-                        author_name,
-                        author_email,
-                        date,
-                        message,
-                        files,
-                    });
+                let mut files = Vec::new();
+                let mut file_changes = Vec::new();
+                for l in files_part.lines() {
+                    let l = l.trim();
+                    if l.is_empty() {
+                        continue;
+                    }
+                    if let Some((st, p)) = l.split_once('\t') {
+                        let status = st.trim().chars().next().unwrap_or('M').to_string();
+                        let path = if status == "R" {
+                            p.replace('\t', " -> ")
+                        } else {
+                            p.trim().to_string()
+                        };
+                        files.push(path.clone());
+                        file_changes.push(ChangedFile { path, status });
+                    } else {
+                        files.push(l.to_string());
+                        file_changes.push(ChangedFile {
+                            path: l.to_string(),
+                            status: "M".to_string(),
+                        });
+                    }
                 }
+
+                recent_commits.push(TeamCommit {
+                    hash,
+                    author_name,
+                    author_email,
+                    date,
+                    message,
+                    body,
+                    files,
+                    file_changes,
+                    file_diffs: Vec::new(),
+                });
+            }
+        }
+    }
+
+    // 2b. Parse clean per-file before -> after diffs for recent commits (capped for speed).
+    if !recent_commits.is_empty() {
+        let patch_limit = recent_commits.len().min(15).to_string();
+        if let Ok(patch_out) = run_git(
+            cwd,
+            &[
+                "log",
+                "-n",
+                &patch_limit,
+                "--patch",
+                "--unified=2",
+                "--no-color",
+                "--format=PATCH_COMMIT%H",
+            ],
+        ) {
+            for commit_patch in patch_out.split("PATCH_COMMIT") {
+                let commit_patch = commit_patch.trim();
+                if commit_patch.is_empty() {
+                    continue;
+                }
+                let mut p_lines = commit_patch.lines();
+                let Some(full_hash) = p_lines.next().map(str::trim) else {
+                    continue;
+                };
+                let short_hash: String = full_hash.chars().take(7).collect();
+                let Some(target) = recent_commits.iter_mut().find(|c| c.hash == short_hash) else {
+                    continue;
+                };
+
+                let mut parsed_diffs: Vec<CommitFileDiff> = Vec::new();
+                let mut current: Option<CommitFileDiff> = None;
+                const MAX_LINES_PER_FILE: usize = 80;
+
+                for line in p_lines {
+                    if let Some(rest) = line.strip_prefix("diff --git ") {
+                        if let Some(prev) = current.take() {
+                            parsed_diffs.push(prev);
+                        }
+                        let path = rest
+                            .split(" b/")
+                            .nth(1)
+                            .unwrap_or(rest)
+                            .trim()
+                            .to_string();
+                        let status = target
+                            .file_changes
+                            .iter()
+                            .find(|fc| fc.path == path || fc.path.ends_with(&path))
+                            .map(|fc| fc.status.clone())
+                            .unwrap_or_else(|| "M".to_string());
+                        current = Some(CommitFileDiff {
+                            path,
+                            status,
+                            additions: 0,
+                            deletions: 0,
+                            lines: Vec::new(),
+                            truncated: false,
+                        });
+                        continue;
+                    }
+
+                    let Some(ref mut cur) = current else {
+                        continue;
+                    };
+
+                    if line.starts_with("index ")
+                        || line.starts_with("--- ")
+                        || line.starts_with("+++ ")
+                        || line.starts_with("new file mode")
+                        || line.starts_with("deleted file mode")
+                        || line.starts_with("similarity index")
+                        || line.starts_with("rename from ")
+                        || line.starts_with("rename to ")
+                    {
+                        continue;
+                    }
+
+                    if line.starts_with("@@") {
+                        if cur.lines.len() < MAX_LINES_PER_FILE {
+                            // Keep only compact line-range summary, strip trailing context noise
+                            let hunk_header = line
+                                .split("@@")
+                                .nth(1)
+                                .map(|s| format!("@@ {} @@", s.trim()))
+                                .unwrap_or_else(|| line.to_string());
+                            cur.lines.push(CommitDiffLine {
+                                kind: CommitDiffLineKind::Hunk,
+                                text: hunk_header,
+                            });
+                        } else {
+                            cur.truncated = true;
+                        }
+                        continue;
+                    }
+
+                    if let Some(added) = line.strip_prefix('+') {
+                        cur.additions += 1;
+                        if cur.lines.len() < MAX_LINES_PER_FILE {
+                            cur.lines.push(CommitDiffLine {
+                                kind: CommitDiffLineKind::Add,
+                                text: added.to_string(),
+                            });
+                        } else {
+                            cur.truncated = true;
+                        }
+                    } else if let Some(removed) = line.strip_prefix('-') {
+                        cur.deletions += 1;
+                        if cur.lines.len() < MAX_LINES_PER_FILE {
+                            cur.lines.push(CommitDiffLine {
+                                kind: CommitDiffLineKind::Remove,
+                                text: removed.to_string(),
+                            });
+                        } else {
+                            cur.truncated = true;
+                        }
+                    } else if let Some(ctx) = line.strip_prefix(' ') {
+                        if cur.lines.len() < MAX_LINES_PER_FILE {
+                            cur.lines.push(CommitDiffLine {
+                                kind: CommitDiffLineKind::Context,
+                                text: ctx.to_string(),
+                            });
+                        } else {
+                            cur.truncated = true;
+                        }
+                    }
+                }
+                if let Some(prev) = current.take() {
+                    parsed_diffs.push(prev);
+                }
+                target.file_diffs = parsed_diffs;
             }
         }
     }
@@ -1241,10 +1474,7 @@ mod tests {
             "2026-10-17T16:03:00Z",
         );
         let subject = msg.lines().next().unwrap();
-        assert_eq!(
-            subject,
-            "sync(requests): add 'login', update 'health' (hakki)"
-        );
+        assert_eq!(subject, "sync(hakki): add 'login', update 'health'");
         assert!(msg.contains("- [add] 'login' (hakki / auth)"));
         assert!(msg.contains("- [upd] 'health' (hakki)"));
         assert!(msg.contains("Changes: +1 ~1 (2 total)"));
@@ -1277,12 +1507,31 @@ mod tests {
     }
 
     #[test]
+    fn build_commit_message_folds_collection_manifest_and_uses_semantic_types() {
+        let rename_with_manifest = "M\tcollections/drift/collection.json\nR100\tcollections/drift/requests/request-3.request.json\tcollections/drift/requests/test-file.request.json\n";
+        let rename_msg = build_commit_message(rename_with_manifest, "2026-10-17T16:03:00Z");
+        assert_eq!(
+            rename_msg.lines().next().unwrap(),
+            "refactor(drift): rename 'request-3' -> 'test-file'"
+        );
+        assert!(rename_msg.contains("Collections:\n- [upd] 'drift'"));
+        assert!(rename_msg.contains("Requests:\n- [ren] 'request-3' -> 'test-file' (drift)"));
+
+        let add_with_manifest = "M\tcollections/drift/collection.json\nA\tcollections/drift/requests/request-3.request.json\n";
+        let add_msg = build_commit_message(add_with_manifest, "2026-10-17T16:03:00Z");
+        assert_eq!(add_msg.lines().next().unwrap(), "feat(drift): add 'request-3'");
+
+        let cfg_msg = build_commit_message("M\tproject.json\n", "2026-10-17T16:03:00Z");
+        assert_eq!(cfg_msg.lines().next().unwrap(), "chore(config): update project settings");
+    }
+
+    #[test]
     fn build_commit_message_handles_renames_and_truncates_large_body() {
         let mut status = String::from("R100\tcollections/api/requests/old_ep.request.json\tcollections/api/requests/new_ep.request.json\n");
         let rename_msg = build_commit_message(&status, "2026-10-17T16:03:00Z");
         assert_eq!(
             rename_msg.lines().next().unwrap(),
-            "sync(requests): rename 'old_ep' -> 'new_ep' (api)"
+            "refactor(api): rename 'old_ep' -> 'new_ep'"
         );
         assert!(rename_msg.contains("- [ren] 'old_ep' -> 'new_ep' (api)"));
 
@@ -1292,7 +1541,7 @@ mod tests {
         let bulk_msg = build_commit_message(&status, "2026-10-17T16:03:00Z");
         assert_eq!(
             bulk_msg.lines().next().unwrap(),
-            "sync(requests): add 18, rename 1 requests (api)"
+            "sync(api): add 18, rename 1 requests"
         );
         assert!(bulk_msg.contains("- ... and 4 more"));
         assert!(bulk_msg.contains("Changes: +18 >1 (19 total)"));
@@ -1317,7 +1566,7 @@ mod tests {
             "custom msg"
         );
         let auto = resolve_commit_message(None, "D\told.request.json\n");
-        assert_eq!(auto.lines().next().unwrap(), "sync(requests): delete 'old'");
+        assert_eq!(auto.lines().next().unwrap(), "chore(requests): delete 'old'");
         assert!(auto.contains("- [del] 'old'"));
     }
 

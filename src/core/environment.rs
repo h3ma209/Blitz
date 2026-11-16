@@ -46,6 +46,8 @@ pub struct Environment {
     pub name: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub icon: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub color: Option<String>,
     #[serde(default)]
     pub values: Vec<EnvVar>,
 }
@@ -56,6 +58,7 @@ impl Environment {
             id: Uuid::new_v4(),
             name: name.into(),
             icon: None,
+            color: None,
             values: vec![],
         }
     }
@@ -221,6 +224,20 @@ pub fn import_environment_json(text: &str) -> Result<Environment, String> {
         .unwrap_or("Imported Environment")
         .to_string();
     let mut env = Environment::new(name);
+    env.icon = root
+        .get("_blitz_icon")
+        .or_else(|| root.get("icon"))
+        .and_then(|v| v.as_str())
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(str::to_string);
+    env.color = root
+        .get("_blitz_color")
+        .or_else(|| root.get("color"))
+        .and_then(|v| v.as_str())
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(str::to_string);
     if let Some(id) = root.get("id").and_then(|v| v.as_str()) {
         if let Ok(u) = uuid::Uuid::parse_str(id) {
             env.id = u;
@@ -295,12 +312,22 @@ pub fn export_environment_json(env: &Environment) -> Result<String, String> {
             })
         })
         .collect();
-    let doc = serde_json::json!({
+    let mut doc = serde_json::json!({
         "id": env.id.to_string(),
         "name": env.name,
         "values": values,
         "_postman_variable_scope": "environment",
     });
+    if let Some(icon) = env.icon.as_deref().filter(|s| !s.trim().is_empty()) {
+        if let Some(obj) = doc.as_object_mut() {
+            obj.insert("_blitz_icon".into(), serde_json::json!(icon));
+        }
+    }
+    if let Some(color) = env.color.as_deref().filter(|s| !s.trim().is_empty()) {
+        if let Some(obj) = doc.as_object_mut() {
+            obj.insert("_blitz_color".into(), serde_json::json!(color));
+        }
+    }
     serde_json::to_string_pretty(&doc).map_err(|e| e.to_string())
 }
 

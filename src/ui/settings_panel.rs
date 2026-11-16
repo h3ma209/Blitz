@@ -395,7 +395,14 @@ pub fn SettingsPanel(
                                     div { class: "settings-slider-row",
                                         div { class: "slider-label-wrap",
                                             span { class: "slider-name", "Request Pane Height" }
-                                            span { class: "slider-badge", "{request_h()} px" }
+                                            span {
+                                                class: "slider-badge",
+                                                if request_h() == 0 {
+                                                    "Auto (60%)"
+                                                } else {
+                                                    "{request_h()} px"
+                                                }
+                                            }
                                         }
                                         input {
                                             r#type: "range",

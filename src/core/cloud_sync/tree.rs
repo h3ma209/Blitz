@@ -197,14 +197,19 @@ fn export_env_redacted_json(env: &Environment) -> Result<String, CloudTreeError>
             })
         })
         .collect();
-    let doc = json!({
-        "id": redacted.id.to_string(),
-        "name": redacted.name,
-        "values": values,
-        "_postman_variable_scope": "environment",
-        "_blitz_redacted": true,
-    });
-    Ok(serde_json::to_string_pretty(&doc)?)
+    let mut doc = serde_json::Map::new();
+    doc.insert("id".into(), json!(redacted.id.to_string()));
+    doc.insert("name".into(), json!(redacted.name));
+    doc.insert("values".into(), json!(values));
+    doc.insert("_postman_variable_scope".into(), json!("environment"));
+    doc.insert("_blitz_redacted".into(), json!(true));
+    if let Some(icon) = redacted.icon.as_deref().filter(|s| !s.trim().is_empty()) {
+        doc.insert("_blitz_icon".into(), json!(icon));
+    }
+    if let Some(color) = redacted.color.as_deref().filter(|s| !s.trim().is_empty()) {
+        doc.insert("_blitz_color".into(), json!(color));
+    }
+    Ok(serde_json::to_string_pretty(&Value::Object(doc))?)
 }
 
 /// Write full workspace tree under `root` (git working tree).
@@ -329,6 +334,17 @@ fn write_collection_split(dir: &Path, col: &Collection) -> Result<(), CloudTreeE
     let auth = export_auth_json(&col.auth);
     let env_overrides = &col.environment_overrides;
     let has_env_overrides = !env_overrides.is_empty();
+    let mut blitz_meta = serde_json::Map::new();
+    blitz_meta.insert("favorite".into(), json!(col.favorite));
+    blitz_meta.insert("preRequestScript".into(), json!(col.pre_request_script));
+    blitz_meta.insert("testScript".into(), json!(col.test_script));
+    blitz_meta.insert("split".into(), json!(true));
+    if let Some(icon) = col.icon.as_deref().filter(|s| !s.trim().is_empty()) {
+        blitz_meta.insert("icon".into(), json!(icon));
+    }
+    if let Some(color) = col.color.as_deref().filter(|s| !s.trim().is_empty()) {
+        blitz_meta.insert("color".into(), json!(color));
+    }
     let mut doc = json!({
         "info": {
             "name": col.name,
@@ -339,12 +355,7 @@ fn write_collection_split(dir: &Path, col: &Collection) -> Result<(), CloudTreeE
         "auth": auth,
         "variable": variables,
         "item": order,
-        "_blitz": {
-            "favorite": col.favorite,
-            "preRequestScript": col.pre_request_script,
-            "testScript": col.test_script,
-            "split": true,
-        }
+        "_blitz": Value::Object(blitz_meta),
     });
     if has_env_overrides {
         if let Some(obj) = doc.as_object_mut() {
@@ -660,6 +671,18 @@ fn read_collection_split(dir: &Path) -> Result<Collection, CloudTreeError> {
             .and_then(|v| v.as_str())
             .unwrap_or("")
             .to_string();
+        col.icon = root
+            .pointer("/_blitz/icon")
+            .and_then(|v| v.as_str())
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .map(str::to_string);
+        col.color = root
+            .pointer("/_blitz/color")
+            .and_then(|v| v.as_str())
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .map(str::to_string);
         if let Some(vars) = root.get("variable").and_then(|v| v.as_array()) {
             col.variables = vars
                 .iter()
@@ -827,6 +850,8 @@ mod tests {
         let root = temp_dir();
         fs::create_dir_all(&root).unwrap();
         let mut col = Collection::new("Demo");
+        col.icon = Some("rocket".into());
+        col.color = Some("#3b82f6".into());
         let req = RequestDraft {
             name: "Health".into(),
             url: "https://example.com/health".into(),
@@ -845,6 +870,8 @@ mod tests {
         col.add_folder(folder);
 
         let mut env = Environment::new("Development");
+        env.icon = Some("server".into());
+        env.color = Some("#f59e0b".into());
         env.values.push(EnvVar::new("baseUrl", "https://httpbin.org"));
         env.values.push(EnvVar::new("access_token", "do-not-leak"));
 
@@ -869,9 +896,13 @@ mod tests {
 
         let (cols, envs) = import_workspace_tree(&root).unwrap();
         assert_eq!(cols.len(), 1);
+        assert_eq!(cols[0].icon.as_deref(), Some("rocket"));
+        assert_eq!(cols[0].color.as_deref(), Some("#3b82f6"));
         assert!(cols[0].find_request(req_id).is_some());
         assert!(cols[0].find_request(login_id).is_some());
         assert_eq!(envs.len(), 1);
+        assert_eq!(envs[0].icon.as_deref(), Some("server"));
+        assert_eq!(envs[0].color.as_deref(), Some("#f59e0b"));
 
         let mut imported = envs;
         merge_secret_values(&mut imported, &[env]);
@@ -920,8 +951,12 @@ mod tests {
         .unwrap();
 
         let mut col = Collection::new("Demo");
+        col.icon = Some("rocket".into());
+        col.color = Some("#3b82f6".into());
         col.variables.push(KeyValue::new("colKey", "colVal"));
         let mut env = Environment::new("Development");
+        env.icon = Some("server".into());
+        env.color = Some("#f59e0b".into());
         env.values.push(EnvVar::new("baseUrl", "https://httpbin.org"));
 
         let mut vars = VariableContext::default();

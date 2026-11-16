@@ -126,10 +126,10 @@ pub fn sync_selected_env(mut st: WorkbenchState, id: Uuid) {
     let env_name = env.name.clone();
     if env_name.trim().eq_ignore_ascii_case("Local") {
         st.status_msg.set(
-            "Local environment is not synced — pick Development/Production (or another team env)"
+            "Local branch ('local') is local-only — commits stay local and are not pushed to remote"
                 .into(),
         );
-        st.log_warn("☁ [Cloud] Local env is local-only; skipping sync");
+        st.log_warn("☁ [Cloud] Local branch ('local') is local-only; skipping remote sync");
         return;
     }
     // Activate this env first (UI + var map).
@@ -193,7 +193,11 @@ pub fn sync_selected_env(mut st: WorkbenchState, id: Uuid) {
                     st.environments.set(loaded_envs);
                 }
                 st.status_msg.set(result.message.clone());
-                st.log_cloud(format!("☁ [Cloud] Sync complete: {}", result.message));
+                if result.ok {
+                    st.log_cloud(format!("☁ [Cloud] Sync complete: {}", result.message));
+                } else {
+                    st.log_error(format!("☁ [Cloud] Sync failed: {}", result.message));
+                }
                 st.persist_local();
             }
             Ok((Err(e), updated_settings)) => {

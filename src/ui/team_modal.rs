@@ -2,7 +2,7 @@
 //! Displays team members (contributors), recent git commits/changes, and local edited files.
 
 use dioxus::prelude::*;
-use crate::core::TeamActivity;
+use crate::core::{CommitDiffLineKind, TeamActivity};
 use crate::ui::loading::{SkeletonBars, Spinner};
 use super::ModalShell;
 
@@ -129,18 +129,41 @@ pub fn TeamModal(
                                 div { class: "team-commits-split",
                                     div { class: "team-commits-list",
                                         for (idx, commit) in activity.recent_commits.iter().enumerate() {
-                                            div {
-                                                key: "{commit.hash}-{idx}",
-                                                class: if selected_commit_idx() == Some(idx) { "commit-row selected" } else { "commit-row" },
-                                                onclick: move |_| selected_commit_idx.set(Some(idx)),
-                                                div { class: "commit-header",
-                                                    span { class: "commit-hash", "{commit.hash}" }
-                                                    span { class: "commit-author", "{commit.author_name}" }
-                                                    span { class: "commit-date", "{commit.date}" }
-                                                }
-                                                div { class: "commit-msg", "{commit.message}" }
-                                                if !commit.files.is_empty() {
-                                                    div { class: "commit-files-count", "{commit.files.len()} file(s) changed" }
+                                            {
+                                                let active_idx = selected_commit_idx().unwrap_or(0);
+                                                let adds = commit.file_changes.iter().filter(|f| f.status == "A").count();
+                                                let mods = commit.file_changes.iter().filter(|f| f.status == "M" || f.status == "R").count();
+                                                let dels = commit.file_changes.iter().filter(|f| f.status == "D").count();
+                                                rsx! {
+                                                    div {
+                                                        key: "{commit.hash}-{idx}",
+                                                        class: if active_idx == idx { "commit-row selected" } else { "commit-row" },
+                                                        onclick: move |_| selected_commit_idx.set(Some(idx)),
+                                                        div { class: "commit-header",
+                                                            span { class: "commit-hash", "{commit.hash}" }
+                                                            span { class: "commit-author", "{commit.author_name}" }
+                                                            span { class: "commit-date", "{commit.date}" }
+                                                        }
+                                                        div { class: "commit-msg", "{commit.message}" }
+                                                        if !commit.files.is_empty() {
+                                                            div { class: "commit-files-count",
+                                                                span { "{commit.files.len()} file(s) changed" }
+                                                                if !commit.file_changes.is_empty() {
+                                                                    span { class: "commit-stat-pills",
+                                                                        if adds > 0 {
+                                                                            span { class: "commit-stat-add", "+{adds}" }
+                                                                        }
+                                                                        if mods > 0 {
+                                                                            span { class: "commit-stat-mod", "~{mods}" }
+                                                                        }
+                                                                        if dels > 0 {
+                                                                            span { class: "commit-stat-del", "-{dels}" }
+                                                                        }
+                                                                    }
+                                                                }
+                                                            }
+                                                        }
+                                                    }
                                                 }
                                             }
                                         }
@@ -148,30 +171,103 @@ pub fn TeamModal(
 
                                     // Detail Pane for Selected Commit
                                     div { class: "team-commit-detail",
-                                        if let Some(idx) = selected_commit_idx() {
-                                            if let Some(commit) = activity.recent_commits.get(idx) {
-                                                {
-                                                    let author_line = format!("👤 {} <{}>", commit.author_name, commit.author_email);
-                                                    let files_len = commit.files.len();
-                                                    rsx! {
-                                                        div { class: "detail-header",
-                                                            div { class: "detail-title", "{commit.message}" }
-                                                            div { class: "detail-meta",
-                                                                span { class: "author-badge", "{author_line}" }
-                                                                span { " · " }
-                                                                span { "{commit.date}" }
-                                                                span { " · " }
-                                                                code { "{commit.hash}" }
+                                        if let Some(commit) = activity.recent_commits.get(selected_commit_idx().unwrap_or(0)) {
+                                            {
+                                                let author_line = format!("👤 {} <{}>", commit.author_name, commit.author_email);
+                                                let files_len = commit.files.len();
+                                                rsx! {
+                                                    div { class: "detail-header",
+                                                        div { class: "detail-title", "{commit.message}" }
+                                                        div { class: "detail-meta",
+                                                            span { class: "author-badge", "{author_line}" }
+                                                            span { " · " }
+                                                            span { "{commit.date}" }
+                                                            span { " · " }
+                                                            code { "{commit.hash}" }
+                                                        }
+                                                    }
+                                                    if !commit.body.is_empty() {
+                                                        pre { class: "detail-commit-body", "{commit.body}" }
+                                                    }
+                                                    div { class: "detail-files-title",
+                                                        "Changes ({files_len} file(s))"
+                                                    }
+                                                    if !commit.file_diffs.is_empty() {
+                                                        div { class: "team-diff-cards",
+                                                            for (fi, fdiff) in commit.file_diffs.iter().enumerate() {
+                                                                details {
+                                                                    key: "{commit.hash}-{fdiff.path}-{fi}",
+                                                                    class: "team-diff-card",
+                                                                    open: fi < 4,
+                                                                    summary { class: "team-diff-summary",
+                                                                        span {
+                                                                            class: match fdiff.status.as_str() {
+                                                                                "A" | "?" => "status-badge status-a",
+                                                                                "D" => "status-badge status-d",
+                                                                                _ => "status-badge status-m",
+                                                                            },
+                                                                            "{fdiff.status}"
+                                                                        }
+                                                                        span { class: "team-diff-path", "{fdiff.path}" }
+                                                                        span { class: "commit-stat-pills team-diff-counts",
+                                                                            if fdiff.additions > 0 {
+                                                                                span { class: "commit-stat-add", "+{fdiff.additions}" }
+                                                                            }
+                                                                            if fdiff.deletions > 0 {
+                                                                                span { class: "commit-stat-del", "-{fdiff.deletions}" }
+                                                                            }
+                                                                        }
+                                                                    }
+                                                                    if fdiff.lines.is_empty() {
+                                                                        div { class: "team-diff-empty", "No line-level text changes (binary or rename only)." }
+                                                                    } else {
+                                                                        div { class: "team-diff-body",
+                                                                            for (li, dline) in fdiff.lines.iter().enumerate() {
+                                                                                {
+                                                                                    let (row_cls, gutter) = match dline.kind {
+                                                                                        CommitDiffLineKind::Add => ("diff-line diff-line-add", "+"),
+                                                                                        CommitDiffLineKind::Remove => ("diff-line diff-line-del", "−"),
+                                                                                        CommitDiffLineKind::Hunk => ("diff-line diff-line-hunk", "⋯"),
+                                                                                        CommitDiffLineKind::Context => ("diff-line diff-line-ctx", " "),
+                                                                                    };
+                                                                                    rsx! {
+                                                                                        div { key: "{li}", class: "{row_cls}",
+                                                                                            span { class: "diff-gutter", "{gutter}" }
+                                                                                            span { class: "diff-text", "{dline.text}" }
+                                                                                        }
+                                                                                    }
+                                                                                }
+                                                                            }
+                                                                            if fdiff.truncated {
+                                                                                div { class: "team-diff-truncated", "… diff truncated for readability" }
+                                                                            }
+                                                                        }
+                                                                    }
+                                                                }
                                                             }
                                                         }
-                                                        div { class: "detail-files-title",
-                                                            "Touched Files ({files_len})"
-                                                        }
+                                                    } else {
                                                         ul { class: "detail-files-list",
-                                                            for (fi, file) in commit.files.iter().enumerate() {
-                                                                li { key: "{file}-{fi}",
-                                                                    span { class: "file-icon", super::icons::ActionIcon { name: "file", size: 14 } }
-                                                                    span { class: "file-path", "{file}" }
+                                                            if !commit.file_changes.is_empty() {
+                                                                for (fi, fc) in commit.file_changes.iter().enumerate() {
+                                                                    li { key: "{fc.path}-{fi}", class: "detail-file-row",
+                                                                        span {
+                                                                            class: match fc.status.as_str() {
+                                                                                "A" | "?" => "status-badge status-a",
+                                                                                "D" => "status-badge status-d",
+                                                                                _ => "status-badge status-m",
+                                                                            },
+                                                                            "{fc.status}"
+                                                                        }
+                                                                        span { class: "file-path", "{fc.path}" }
+                                                                    }
+                                                                }
+                                                            } else {
+                                                                for (fi, file) in commit.files.iter().enumerate() {
+                                                                    li { key: "{file}-{fi}", class: "detail-file-row",
+                                                                        span { class: "file-icon", super::icons::ActionIcon { name: "file", size: 14 } }
+                                                                        span { class: "file-path", "{file}" }
+                                                                    }
                                                                 }
                                                             }
                                                         }

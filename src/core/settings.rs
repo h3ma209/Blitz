@@ -66,7 +66,8 @@ fn default_sidebar_width_px() -> u32 {
 }
 
 fn default_request_pane_height_px() -> u32 {
-    220
+    // 0 = auto 60% request / 40% response default split
+    0
 }
 
 fn default_console_height_px() -> u32 {
@@ -486,7 +487,10 @@ impl UiSettings {
         self.ui_font_size_px = Self::clamp_font_size(self.ui_font_size_px);
         self.editor_font_size_px = Self::clamp_font_size(self.editor_font_size_px);
         self.sidebar_width_px = Self::clamp_sidebar_width(self.sidebar_width_px);
-        self.request_pane_height_px = Self::clamp_request_pane_height(self.request_pane_height_px);
+        if self.request_pane_height_px > 0 {
+            self.request_pane_height_px =
+                Self::clamp_request_pane_height(self.request_pane_height_px);
+        }
         self.console_height_px = Self::clamp_console_height(self.console_height_px);
         self.tab_size = Self::clamp_tab_size(self.tab_size);
         self.splash_min_ms = Self::clamp_splash_min_ms(self.splash_min_ms);
@@ -627,7 +631,7 @@ mod tests {
         assert_eq!(ui.editor_font_size_px, 16);
         assert_eq!(ui.theme, UiTheme::Spotify);
         assert_eq!(ui.sidebar_width_px, 268);
-        assert_eq!(ui.request_pane_height_px, 220);
+        assert_eq!(ui.request_pane_height_px, 0);
         assert_eq!(ui.console_height_px, 148);
         assert_eq!(ui.density, UiDensity::Comfortable);
         assert!(ui.wrap_editor_text);

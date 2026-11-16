@@ -1723,9 +1723,14 @@ pub fn Workbench() -> Element {
     );
     let live_request_h = pane_h();
     let live_console_h = console_h();
+    let request_h_css = if live_request_h > 0.0 {
+        format!("{live_request_h}px")
+    } else {
+        "60%".to_string()
+    };
     let workbench_style = format!(
-        "--request-h: {}px; --console-h: {}px;",
-        live_request_h, live_console_h
+        "--request-h: {request_h_css}; --console-h: {}px;",
+        live_console_h
     );
     let appearance_tokens = ui.shell_class_tokens();
     let is_resizing_sidebar = sidebar_drag().is_some();
@@ -3218,7 +3223,11 @@ pub fn Workbench() -> Element {
                                             evt.stop_propagation();
                                             pane_drag.set(Some(PaneDrag::Request {
                                                 start_y: evt.client_coordinates().y,
-                                                start_h: pane_h() as u32,
+                                                start_h: if pane_h() > 0.0 {
+                                                    pane_h() as u32
+                                                } else {
+                                                    420
+                                                },
                                             }));
                                         },
                                     }

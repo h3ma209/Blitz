@@ -36,6 +36,7 @@ pub fn EnvSelector(
         .map(|e| e.name.clone())
         .unwrap_or_else(|| "No Environment".into());
     let active_icon = active_env.and_then(|e| e.icon.clone());
+    let active_color = active_env.and_then(|e| e.color.clone());
     let active_tier = if active_id.is_none() { "local" } else { env_tier(&active_name) };
 
     let query_lower = filter_query().trim().to_lowercase();
@@ -56,12 +57,17 @@ pub fn EnvSelector(
             }
             button {
                 class: "env-select-trigger",
+                style: if let Some(c) = active_color.as_deref().filter(|s| !s.trim().is_empty()) {
+                    format!("background: {c}38; border-color: {c}99;")
+                } else {
+                    String::new()
+                },
                 title: "Select environment ({active_tier})",
                 onclick: move |_| {
                     quick_look_open.set(false);
                     menu_open.set(!menu_open());
                 },
-                EnvIcon { icon: active_icon.clone(), tier: active_tier, size: 15 }
+                EnvIcon { icon: active_icon.clone(), color: active_color.clone(), tier: active_tier, size: 15 }
                 span { class: "env-select-label", "{active_name}" }
                 span { class: "env-select-caret", "▾" }
             }
@@ -291,6 +297,7 @@ pub fn EnvSelector(
                                 let id = env.id;
                                 let name = env.name.clone();
                                 let icon = env.icon.clone();
+                                let color = env.color.clone();
                                 let tier = env_tier(&name);
                                 let var_count = env.values.len();
                                 let active = active_id == Some(id);
@@ -303,12 +310,17 @@ pub fn EnvSelector(
                                     button {
                                         key: "{e_idx}-{id}",
                                         class: "{row_class}",
+                                        style: if let Some(c) = color.as_deref().filter(|s| !s.trim().is_empty()) {
+                                            format!("background: {c}2e; border-left: 3px solid {c};")
+                                        } else {
+                                            String::new()
+                                        },
                                         title: "Select {name} ({tier})",
                                         onclick: move |_| {
                                             menu_open.set(false);
                                             on_change.call(Some(id));
                                         },
-                                        EnvIcon { icon, tier, size: 15 }
+                                        EnvIcon { icon, color: color.clone(), tier, size: 15 }
                                         div { class: "env-menu-info",
                                             span { class: "env-menu-name", "{name}" }
                                             span { class: "env-menu-sub", "{var_count} var(s) · {tier}" }

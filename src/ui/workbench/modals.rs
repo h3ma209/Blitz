@@ -119,6 +119,7 @@ pub fn VarsPage(st: WorkbenchState) -> Element {
                                     let id = env.id;
                                     let name = env.name.clone();
                                     let icon = env.icon.clone();
+                                    let color = env.color.clone();
                                     let tier = crate::ui::icons::env_tier(&name);
                                     let is_editing = editing_env_id() == Some(id);
                                     let is_active = active_env_id() == Some(id);
@@ -126,10 +127,15 @@ pub fn VarsPage(st: WorkbenchState) -> Element {
                                         div {
                                             key: "{e_idx}-{id}",
                                             class: if is_editing { "env-sidebar-item active" } else { "env-sidebar-item" },
+                                            style: if let Some(c) = color.as_deref().filter(|s| !s.trim().is_empty()) {
+                                                format!("background: {c}33; border-left: 3px solid {c};")
+                                            } else {
+                                                String::new()
+                                            },
                                             onclick: move |_| {
                                                 editing_env_id.set(Some(id));
                                             },
-                                            crate::ui::icons::EnvIcon { icon, tier, size: 15 }
+                                            crate::ui::icons::EnvIcon { icon, color: color.clone(), tier, size: 15 }
                                             span { class: "env-name-text", "{name}" }
                                             if is_active {
                                                 span { class: "env-active-indicator", "Active" }
@@ -152,19 +158,28 @@ pub fn VarsPage(st: WorkbenchState) -> Element {
                                     let env_id = env.id;
                                     let env_name = env.name.clone();
                                     let env_icon = env.icon.clone();
+                                    let env_color = env.color.clone();
                                     let env_tier = crate::ui::icons::env_tier(&env_name);
                                     let is_active = active_env_id() == Some(env_id);
                                     let values_len = env.values.len();
                                     rsx! {
-                                        div { class: "env-editor-top",
+                                        div {
+                                            class: "env-editor-top",
+                                            style: if let Some(c) = env_color.as_deref().filter(|s| !s.trim().is_empty()) {
+                                                format!("background: {c}2e; border-color: {c}77; border-radius: 8px; padding: 8px 10px;")
+                                            } else {
+                                                String::new()
+                                            },
                                             div { class: "env-editor-identity",
                                                 crate::ui::icons::EnvIconPicker {
                                                     icon: env_icon,
+                                                    color: env_color.clone(),
                                                     tier: env_tier,
-                                                    on_select: move |new_icon: Option<String>| {
+                                                    on_select: move |(new_icon, new_color): (Option<String>, Option<String>)| {
                                                         let mut envs = environments();
                                                         if let Some(e) = envs.iter_mut().find(|e| e.id == env_id) {
                                                             e.icon = new_icon;
+                                                            e.color = new_color;
                                                         }
                                                         environments.set(envs);
                                                         let mut st = st;
