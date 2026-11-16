@@ -98,9 +98,10 @@ pub use protocols::{
     graphql_ws_subscribe, graphql_ws_subscribe_with_headers, grpc_reflection_list,
     grpc_server_stream_stub, grpc_unary, grpc_unary_with_headers, mcp_call_tool, mcp_list_tools,
     mqtt_publish, mqtt_subscribe_once, socketio_session, split_mcp_args, sse_listen,
-    sse_stream_with_options, ws_connect_session, ws_connect_session_with_headers, GrpcUnaryResult,
-    McpToolInfo, MqttActionResult, SseEvent, SseStreamEvent, SseStreamResult, WsDirection,
-    WsFrameItem, WsSession, WsSessionEvent,
+    sse_stream_with_options, sse_stream_with_progress, ws_connect_session,
+    ws_connect_session_with_headers, GrpcUnaryResult, McpToolInfo, MqttActionResult, SseEvent,
+    SseStreamEvent, SseStreamProgress, SseStreamResult, WsDirection, WsFrameItem, WsSession,
+    WsSessionEvent,
 };
 pub use request::{
     build_url_with_params, extract_path_param_keys, extract_url_path, extract_url_query_params,

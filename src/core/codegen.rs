@@ -1,7 +1,7 @@
 //! Client code snippets (cURL / fetch / Python requests).
 //! Languages inspired by `postman-code-generators.js` (reports/11).
 
-use super::request::{AuthType, BodyMode, RequestDraft};
+use super::request::{AuthType, BodyMode, HttpMethod, RequestDraft, RequestProtocol};
 
 pub fn snippet_languages() -> &'static [&'static str] {
     &[
@@ -50,16 +50,78 @@ fn resolve_draft_variables(
     ctx: &super::variables::VariableContext,
 ) -> RequestDraft {
     let mut d = draft.clone();
-    d.url = ctx.resolve_string(&d.url);
-    d.body = ctx.resolve_string(&d.body);
+    for p in &mut d.path_params {
+        p.key = ctx.resolve_string_non_vault(&p.key);
+        p.value = ctx.resolve_string_non_vault(&p.value);
+        if p.value.trim().is_empty() {
+            if let Some(val) = ctx.path.get(p.key.trim()) {
+                if !val.trim().is_empty() {
+                    p.value = ctx.resolve_string_non_vault(val);
+                }
+            }
+        }
+    }
+    d.url = ctx.resolve_string_non_vault(&d.url);
+    d.url = crate::core::substitute_path_params(&d.url, &d.path_params);
+    d.url = ctx.resolve_string_non_vault(&d.url);
+
+    d.body = ctx.resolve_string_non_vault(&d.body);
+    d.binary_path = ctx.resolve_string_non_vault(&d.binary_path);
+    d.graphql_query = ctx.resolve_string_non_vault(&d.graphql_query);
+    d.graphql_variables = ctx.resolve_string_non_vault(&d.graphql_variables);
+
     for h in &mut d.headers {
-        h.key = ctx.resolve_string(&h.key);
-        h.value = ctx.resolve_string(&h.value);
+        h.key = ctx.resolve_string_non_vault(&h.key);
+        h.value = ctx.resolve_string_non_vault(&h.value);
     }
     for p in &mut d.params {
-        p.key = ctx.resolve_string(&p.key);
-        p.value = ctx.resolve_string(&p.value);
+        p.key = ctx.resolve_string_non_vault(&p.key);
+        p.value = ctx.resolve_string_non_vault(&p.value);
     }
+    for u in &mut d.body_urlencoded {
+        u.key = ctx.resolve_string_non_vault(&u.key);
+        u.value = ctx.resolve_string_non_vault(&u.value);
+    }
+    for f in &mut d.body_formdata {
+        f.key = ctx.resolve_string_non_vault(&f.key);
+        f.value = ctx.resolve_string_non_vault(&f.value);
+    }
+
+    d.auth.token = ctx.resolve_string_non_vault(&d.auth.token);
+    d.auth.username = ctx.resolve_string_non_vault(&d.auth.username);
+    d.auth.password = ctx.resolve_string_non_vault(&d.auth.password);
+    d.auth.api_key_header = ctx.resolve_string_non_vault(&d.auth.api_key_header);
+
+    d.auth.oauth2.auth_url = ctx.resolve_string_non_vault(&d.auth.oauth2.auth_url);
+    d.auth.oauth2.token_url = ctx.resolve_string_non_vault(&d.auth.oauth2.token_url);
+    d.auth.oauth2.client_id = ctx.resolve_string_non_vault(&d.auth.oauth2.client_id);
+    d.auth.oauth2.client_secret = ctx.resolve_string_non_vault(&d.auth.oauth2.client_secret);
+    d.auth.oauth2.scope = ctx.resolve_string_non_vault(&d.auth.oauth2.scope);
+    d.auth.oauth2.redirect_uri = ctx.resolve_string_non_vault(&d.auth.oauth2.redirect_uri);
+    d.auth.oauth2.access_token = ctx.resolve_string_non_vault(&d.auth.oauth2.access_token);
+    d.auth.oauth2.refresh_token = ctx.resolve_string_non_vault(&d.auth.oauth2.refresh_token);
+
+    d.auth.extra.key = ctx.resolve_string_non_vault(&d.auth.extra.key);
+    d.auth.extra.secret = ctx.resolve_string_non_vault(&d.auth.extra.secret);
+    d.auth.extra.token = ctx.resolve_string_non_vault(&d.auth.extra.token);
+    d.auth.extra.token_secret = ctx.resolve_string_non_vault(&d.auth.extra.token_secret);
+    d.auth.extra.signature_method = ctx.resolve_string_non_vault(&d.auth.extra.signature_method);
+    d.auth.extra.region = ctx.resolve_string_non_vault(&d.auth.extra.region);
+    d.auth.extra.service = ctx.resolve_string_non_vault(&d.auth.extra.service);
+    d.auth.extra.algorithm = ctx.resolve_string_non_vault(&d.auth.extra.algorithm);
+    d.auth.extra.ext = ctx.resolve_string_non_vault(&d.auth.extra.ext);
+
+    d.ws_message = ctx.resolve_string_non_vault(&d.ws_message);
+    d.grpc_method = ctx.resolve_string_non_vault(&d.grpc_method);
+    d.mqtt_topic = ctx.resolve_string_non_vault(&d.mqtt_topic);
+    d.mqtt_client_id = ctx.resolve_string_non_vault(&d.mqtt_client_id);
+    d.mcp_command = ctx.resolve_string_non_vault(&d.mcp_command);
+    d.mcp_args = ctx.resolve_string_non_vault(&d.mcp_args);
+    d.mcp_tool_name = ctx.resolve_string_non_vault(&d.mcp_tool_name);
+    d.mcp_tool_args_json = ctx.resolve_string_non_vault(&d.mcp_tool_args_json);
+    d.socketio_event = ctx.resolve_string_non_vault(&d.socketio_event);
+    d.graphql_ws_query = ctx.resolve_string_non_vault(&d.graphql_ws_query);
+
     d
 }
 
@@ -67,22 +129,63 @@ fn enabled_headers(draft: &RequestDraft) -> Vec<(&str, &str)> {
     draft
         .headers
         .iter()
-        .filter(|h| h.enabled && !h.key.is_empty())
+        .filter(|h| {
+            h.enabled
+                && !h.key.trim().is_empty()
+                && !h.value.trim().eq_ignore_ascii_case("<calculated at runtime>")
+        })
         .map(|h| (h.key.as_str(), h.value.as_str()))
         .collect()
 }
 
 fn url_with_params(draft: &RequestDraft) -> String {
     let mut url = crate::core::substitute_path_params(&draft.url, &draft.path_params);
-    let qs: Vec<_> = draft
+    let enabled_params: Vec<_> = draft
         .params
         .iter()
         .filter(|p| p.enabled && !p.key.is_empty())
+        .collect();
+    if enabled_params.is_empty() {
+        return url;
+    }
+
+    if let Some((base, existing_qs)) = url.split_once('?') {
+        let existing_keys: Vec<&str> = existing_qs
+            .split('&')
+            .filter(|s| !s.is_empty())
+            .map(|part| part.split_once('=').map(|(k, _)| k).unwrap_or(part))
+            .collect();
+        let all_in_draft = !existing_keys.is_empty()
+            && existing_keys
+                .iter()
+                .all(|ek| draft.params.iter().any(|p| p.key == *ek));
+        if all_in_draft {
+            url = base.to_string();
+        } else {
+            let missing_qs: Vec<_> = enabled_params
+                .into_iter()
+                .filter(|p| !existing_keys.iter().any(|ek| *ek == p.key))
+                .map(|p| format!("{}={}", enc(&p.key), enc(&p.value)))
+                .collect();
+            if !missing_qs.is_empty() {
+                if !url.ends_with('?') && !url.ends_with('&') {
+                    url.push('&');
+                }
+                url.push_str(&missing_qs.join("&"));
+            }
+            return url;
+        }
+    }
+
+    let qs: Vec<_> = enabled_params
+        .into_iter()
         .map(|p| format!("{}={}", enc(&p.key), enc(&p.value)))
         .collect();
     if !qs.is_empty() {
         if url.contains('?') {
-            url.push('&');
+            if !url.ends_with('?') && !url.ends_with('&') {
+                url.push('&');
+            }
         } else {
             url.push('?');
         }
@@ -93,18 +196,42 @@ fn url_with_params(draft: &RequestDraft) -> String {
 
 fn enc(s: &str) -> String {
     let mut out = String::new();
-    for b in s.bytes() {
+    let bytes = s.as_bytes();
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i..].starts_with(b"{{") {
+            if let Some(rel_end) = s[i + 2..].find("}}") {
+                let end = i + 2 + rel_end + 2;
+                out.push_str(&s[i..end]);
+                i = end;
+                continue;
+            }
+        }
+        let b = bytes[i];
         match b {
-            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => out.push(b as char),
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
+                out.push(b as char)
+            }
             _ => out.push_str(&format!("%{b:02X}")),
         }
+        i += 1;
     }
     out
 }
 
 fn body_payload(draft: &RequestDraft) -> Option<String> {
     match draft.body_mode {
-        BodyMode::None => None,
+        BodyMode::None => {
+            if draft.protocol == RequestProtocol::Sse
+                && draft.method != HttpMethod::Get
+                && draft.method != HttpMethod::Head
+                && !draft.body.trim().is_empty()
+            {
+                Some(draft.body.clone())
+            } else {
+                None
+            }
+        }
         BodyMode::Raw => Some(draft.body.clone()),
         BodyMode::Graphql => {
             let vars = if draft.graphql_variables.trim().is_empty() {
@@ -134,7 +261,9 @@ fn body_payload(draft: &RequestDraft) -> Option<String> {
 }
 
 fn auth_header(draft: &RequestDraft) -> Option<(String, String)> {
-    match draft.auth.auth_type {
+    use base64::Engine as _;
+
+    let candidate: (String, String) = match draft.auth.auth_type {
         AuthType::Bearer => {
             if draft.auth.token.is_empty() {
                 None
@@ -143,38 +272,100 @@ fn auth_header(draft: &RequestDraft) -> Option<(String, String)> {
             }
         }
         AuthType::Oauth2 => {
-            if draft.auth.oauth2.access_token.is_empty() {
+            let tok = if !draft.auth.oauth2.access_token.is_empty() {
+                &draft.auth.oauth2.access_token
+            } else {
+                &draft.auth.token
+            };
+            if tok.is_empty() {
                 None
             } else {
-                Some((
-                    "Authorization".into(),
-                    format!("Bearer {}", draft.auth.oauth2.access_token),
-                ))
+                Some(("Authorization".into(), format!("Bearer {tok}")))
             }
         }
         AuthType::ApiKey => {
-            let h = if draft.auth.api_key_header.is_empty() {
-                "X-Api-Key"
+            if draft.auth.token.is_empty() {
+                None
             } else {
-                draft.auth.api_key_header.as_str()
-            };
-            Some((h.into(), draft.auth.token.clone()))
+                let h = if draft.auth.api_key_header.is_empty() {
+                    "X-Api-Key"
+                } else {
+                    draft.auth.api_key_header.as_str()
+                };
+                Some((h.into(), draft.auth.token.clone()))
+            }
+        }
+        AuthType::Basic => {
+            let u = &draft.auth.username;
+            let p = &draft.auth.password;
+            if (u.is_empty() && p.is_empty()) || u.contains("{{") || p.contains("{{") {
+                None
+            } else {
+                let encoded = base64::engine::general_purpose::STANDARD
+                    .encode(format!("{u}:{p}").as_bytes());
+                Some(("Authorization".into(), format!("Basic {encoded}")))
+            }
         }
         _ => None,
+    }?;
+
+    let already_present = enabled_headers(draft)
+        .iter()
+        .any(|(hk, _)| hk.eq_ignore_ascii_case(&candidate.0));
+    if already_present {
+        None
+    } else {
+        Some(candidate)
     }
+}
+
+fn sh_escape(s: &str) -> String {
+    s.replace('\'', "'\\''")
 }
 
 pub fn curl(draft: &RequestDraft) -> String {
     let mut parts = vec![format!("curl --request {} \\", draft.method.as_str())];
-    parts.push(format!("  --url '{}' \\", url_with_params(draft)));
-    for (k, v) in enabled_headers(draft) {
-        parts.push(format!("  --header '{k}: {v}' \\"));
+    parts.push(format!("  --url '{}' \\", sh_escape(&url_with_params(draft))));
+    let hdrs = enabled_headers(draft);
+    for (k, v) in &hdrs {
+        parts.push(format!("  --header '{}: {}' \\", sh_escape(k), sh_escape(v)));
     }
     if let Some((k, v)) = auth_header(draft) {
-        parts.push(format!("  --header '{k}: {v}' \\"));
+        parts.push(format!("  --header '{}: {}' \\", sh_escape(&k), sh_escape(&v)));
+    } else if draft.auth.auth_type == AuthType::Basic
+        && (!draft.auth.username.is_empty() || !draft.auth.password.is_empty())
+        && !hdrs
+            .iter()
+            .any(|(hk, _)| hk.eq_ignore_ascii_case("authorization"))
+    {
+        parts.push(format!(
+            "  --user '{}:{}' \\",
+            sh_escape(&draft.auth.username),
+            sh_escape(&draft.auth.password)
+        ));
     }
-    if let Some(body) = body_payload(draft) {
-        let escaped = body.replace('\'', "'\\''");
+
+    if draft.body_mode == BodyMode::FormData {
+        for f in draft
+            .body_formdata
+            .iter()
+            .filter(|f| f.enabled && !f.key.trim().is_empty())
+        {
+            let prefix = if f.is_file { "@" } else { "" };
+            parts.push(format!(
+                "  --form '{}={}{}' \\",
+                sh_escape(&f.key),
+                prefix,
+                sh_escape(&f.value)
+            ));
+        }
+        if let Some(last) = parts.last_mut() {
+            if last.ends_with(" \\") {
+                *last = last.trim_end_matches(" \\").to_string();
+            }
+        }
+    } else if let Some(body) = body_payload(draft) {
+        let escaped = sh_escape(&body);
         parts.push(format!("  --data '{escaped}'"));
     } else if let Some(last) = parts.last_mut() {
         if last.ends_with(" \\") {
@@ -479,5 +670,81 @@ mod tests {
 
         let py_code = generate_snippet_resolved("Python (httpx)", &d, Some(&vars));
         assert!(py_code.contains("httpx.AsyncClient"));
+    }
+
+    #[test]
+    fn curl_resolves_all_fields_except_vault() {
+        let mut vars = crate::core::variables::VariableContext::default();
+        vars.environment
+            .insert("base".into(), "https://svc.test".into());
+        vars.environment.insert("item_id".into(), "99".into());
+        vars.environment.insert("q_val".into(), "hello".into());
+        vars.environment.insert("hdr_val".into(), "abc-123".into());
+        vars.environment.insert("tok".into(), "bearer-live-tok".into());
+        vars.environment.insert("body_val".into(), "42".into());
+        vars.vault.set("secret_api", "DO_NOT_COPY_SECRET");
+        vars.vault.set("vault_tok", "DO_NOT_COPY_TOKEN");
+
+        let mut d = RequestDraft {
+            method: crate::core::request::HttpMethod::Post,
+            url: "{{base}}/items/:id?q={{q_val}}&sec={{vault:secret_api}}".into(),
+            path_params: vec![crate::core::request::KeyValue::new("id", "{{item_id}}")],
+            params: vec![
+                crate::core::request::KeyValue::new("q", "{{q_val}}"),
+                crate::core::request::KeyValue::new("sec", "{{vault:secret_api}}"),
+            ],
+            headers: vec![
+                crate::core::request::KeyValue::new("X-Env", "{{hdr_val}}"),
+                crate::core::request::KeyValue::new("X-Vault", "{{vault:secret_api}}"),
+            ],
+            body_mode: BodyMode::Raw,
+            body: r#"{"num": "{{body_val}}", "v": "{{vault:secret_api}}"}"#.into(),
+            ..Default::default()
+        };
+        d.auth.auth_type = AuthType::Bearer;
+        d.auth.token = "{{tok}}".into();
+
+        let out = generate_snippet_resolved("cURL", &d, Some(&vars));
+        assert!(
+            out.contains("--url 'https://svc.test/items/99?q=hello&sec={{vault:secret_api}}'"),
+            "unexpected curl url:\n{out}"
+        );
+        // Should not duplicate query params
+        assert_eq!(out.matches("q=hello").count(), 1, "query param duplicated:\n{out}");
+        assert!(out.contains("--header 'X-Env: abc-123'"));
+        assert!(out.contains("--header 'X-Vault: {{vault:secret_api}}'"));
+        assert!(out.contains("--header 'Authorization: Bearer bearer-live-tok'"));
+        assert!(out.contains(r#"{"num": "42", "v": "{{vault:secret_api}}"}"#));
+        assert!(!out.contains("DO_NOT_COPY_SECRET"));
+
+        // Auth token using vault must NOT expand
+        d.auth.token = "{{vault:vault_tok}}".into();
+        let out_vault_auth = generate_snippet_resolved("cURL", &d, Some(&vars));
+        assert!(out_vault_auth.contains("--header 'Authorization: Bearer {{vault:vault_tok}}'"));
+        assert!(!out_vault_auth.contains("DO_NOT_COPY_TOKEN"));
+
+        // Basic auth resolution vs Basic auth with vault password
+        d.auth.auth_type = AuthType::Basic;
+        d.auth.username = "{{hdr_val}}".into();
+        d.auth.password = "pw123".into();
+        let out_basic = generate_snippet_resolved("cURL", &d, Some(&vars));
+        assert!(out_basic.contains("Authorization: Basic "));
+
+        d.auth.password = "{{vault:secret_api}}".into();
+        let out_basic_vault = generate_snippet_resolved("cURL", &d, Some(&vars));
+        assert!(out_basic_vault.contains("--user 'abc-123:{{vault:secret_api}}'"));
+        assert!(!out_basic_vault.contains("DO_NOT_COPY_SECRET"));
+
+        // SSE POST with BodyMode::None still includes raw JSON body
+        let sse_req = RequestDraft {
+            protocol: RequestProtocol::Sse,
+            method: HttpMethod::Post,
+            url: "{{base}}/chat".into(),
+            body_mode: BodyMode::None,
+            body: r#"{"prompt":"{{q_val}}"}"#.into(),
+            ..Default::default()
+        };
+        let out_sse = generate_snippet_resolved("cURL", &sse_req, Some(&vars));
+        assert!(out_sse.contains(r#"--data '{"prompt":"hello"}'"#));
     }
 }

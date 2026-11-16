@@ -2,6 +2,8 @@
 
 use std::error::Error as _;
 use std::io::{BufRead, BufReader, Read};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use reqwest::blocking::Client;
@@ -25,10 +27,22 @@ pub struct SseStreamEvent {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SseStreamProgress {
+    Connected {
+        status: u16,
+        status_text: String,
+        response_headers: Vec<(String, String)>,
+        connect_ms: u128,
+    },
+    Event(SseStreamEvent),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SseStreamResult {
     pub status: u16,
     pub status_text: String,
     pub response_headers: Vec<(String, String)>,
+    pub connect_ms: u128,
     pub elapsed_ms: u128,
     pub ttfb_ms: Option<u128>,
     pub events: Vec<SseStreamEvent>,
@@ -69,11 +83,46 @@ pub fn sse_stream_with_options(
     max_events: usize,
     timeout_ms: u64,
 ) -> Result<SseStreamResult, String> {
+    sse_stream_with_progress(
+        method,
+        url,
+        headers,
+        body,
+        max_events,
+        timeout_ms,
+        None,
+        |_| {},
+    )
+}
+
+/// Connect to an HTTP SSE endpoint (GET/POST/etc., optional body), reporting connection
+/// handshake and each parsed event via `on_progress` in real time.
+#[allow(clippy::too_many_arguments)]
+pub fn sse_stream_with_progress<F>(
+    method: &str,
+    url: &str,
+    headers: &[(String, String)],
+    body: Option<&str>,
+    max_events: usize,
+    timeout_ms: u64,
+    cancel: Option<Arc<AtomicBool>>,
+    mut on_progress: F,
+) -> Result<SseStreamResult, String>
+where
+    F: FnMut(SseStreamProgress),
+{
     let started = Instant::now();
     let max_events = max_events.max(1);
     let timeout = Duration::from_millis(timeout_ms.max(1_000));
+    let connect_timeout = timeout.min(Duration::from_secs(10));
+
+    let is_cancelled = || cancel.as_ref().is_some_and(|c| c.load(Ordering::SeqCst));
+    if is_cancelled() {
+        return Err("SSE stream cancelled before connecting".into());
+    }
 
     let client = Client::builder()
+        .connect_timeout(connect_timeout)
         .timeout(timeout)
         .no_gzip()
         .no_deflate()
@@ -127,6 +176,7 @@ pub fn sse_stream_with_options(
     }
 
     let resp = builder.send().map_err(|e| describe_reqwest_error("connect", &e))?;
+    let connect_ms = started.elapsed().as_millis();
     let status = resp.status();
     let status_text = status.canonical_reason().unwrap_or("").to_string();
     let response_headers: Vec<(String, String)> = resp
@@ -151,9 +201,16 @@ pub fn sse_stream_with_options(
         }
     }
 
+    on_progress(SseStreamProgress::Connected {
+        status: status.as_u16(),
+        status_text: status_text.clone(),
+        response_headers: response_headers.clone(),
+        connect_ms,
+    });
+
     let mut reader = BufReader::new(resp);
     let mut log = vec![format!(
-        "sse: connected {} {} -> HTTP {} {}",
+        "sse: connected {} {} -> HTTP {} {} ({connect_ms}ms)",
         req_method,
         url,
         status.as_u16(),
@@ -169,11 +226,28 @@ pub fn sse_stream_with_options(
     let mut line_buf = Vec::with_capacity(1024);
 
     loop {
+        if is_cancelled() {
+            if let Some(ev) = flush_sse_event(
+                &mut events,
+                &mut log,
+                &mut ttfb_ms,
+                started,
+                &mut cur_event,
+                &mut cur_data,
+                &mut cur_id,
+            ) {
+                on_progress(SseStreamProgress::Event(ev));
+            }
+            let warn = "Stream disconnected by user".to_string();
+            log.push(format!("sse: {warn}"));
+            warning = Some(warn);
+            break;
+        }
         line_buf.clear();
         match reader.read_until(b'\n', &mut line_buf) {
             Ok(0) => {
                 // EOF: flush any trailing event even if server omitted final blank line.
-                flush_sse_event(
+                if let Some(ev) = flush_sse_event(
                     &mut events,
                     &mut log,
                     &mut ttfb_ms,
@@ -181,7 +255,9 @@ pub fn sse_stream_with_options(
                     &mut cur_event,
                     &mut cur_data,
                     &mut cur_id,
-                );
+                ) {
+                    on_progress(SseStreamProgress::Event(ev));
+                }
                 break;
             }
             Ok(_) => {
@@ -195,7 +271,7 @@ pub fn sse_stream_with_options(
                 let line = raw_line.trim_end_matches(['\r', '\n']);
 
                 if line.is_empty() {
-                    let flushed = flush_sse_event(
+                    if let Some(ev) = flush_sse_event(
                         &mut events,
                         &mut log,
                         &mut ttfb_ms,
@@ -203,10 +279,12 @@ pub fn sse_stream_with_options(
                         &mut cur_event,
                         &mut cur_data,
                         &mut cur_id,
-                    );
-                    if flushed && events.len() >= max_events {
-                        log.push(format!("sse: reached max_events limit ({max_events})"));
-                        break;
+                    ) {
+                        on_progress(SseStreamProgress::Event(ev));
+                        if events.len() >= max_events {
+                            log.push(format!("sse: reached max_events limit ({max_events})"));
+                            break;
+                        }
                     }
                     continue;
                 }
@@ -232,7 +310,7 @@ pub fn sse_stream_with_options(
                 }
             }
             Err(e) => {
-                flush_sse_event(
+                if let Some(ev) = flush_sse_event(
                     &mut events,
                     &mut log,
                     &mut ttfb_ms,
@@ -240,29 +318,50 @@ pub fn sse_stream_with_options(
                     &mut cur_event,
                     &mut cur_data,
                     &mut cur_id,
-                );
+                ) {
+                    on_progress(SseStreamProgress::Event(ev));
+                }
+                if is_cancelled() {
+                    let warn = "Stream disconnected by user".to_string();
+                    log.push(format!("sse: {warn}"));
+                    warning = Some(warn);
+                    break;
+                }
                 let msg = describe_io_decode_error(&e);
-                let is_benign_close = e.kind() == std::io::ErrorKind::TimedOut
+                let lower_msg = msg.to_ascii_lowercase();
+                let is_timeout_err = e.kind() == std::io::ErrorKind::TimedOut
                     || e.kind() == std::io::ErrorKind::WouldBlock
+                    || lower_msg.contains("timed out")
+                    || lower_msg.contains("timeout");
+                let is_benign_close = is_timeout_err
                     || (!events.is_empty()
                         && (e.kind() == std::io::ErrorKind::UnexpectedEof
                             || msg.contains("decoding response body")
                             || msg.contains("unexpected EOF")));
 
-                if is_benign_close && !events.is_empty() {
-                    let warn = if e.kind() == std::io::ErrorKind::TimedOut {
-                        format!("Stream paused after {} events (timeout reached)", events.len())
+                if is_timeout_err {
+                    let warn = if events.is_empty() {
+                        format!(
+                            "Connected (HTTP {} {}), no events emitted within {}s window",
+                            status.as_u16(),
+                            status_text,
+                            timeout.as_secs()
+                        )
                     } else {
-                        format!("Stream ended early ({msg}); {} events preserved", events.len())
+                        format!(
+                            "Stream paused after {} events ({}s window reached)",
+                            events.len(),
+                            timeout.as_secs()
+                        )
                     };
                     log.push(format!("sse: {warn}"));
                     warning = Some(warn);
                     break;
-                } else if e.kind() == std::io::ErrorKind::TimedOut {
-                    return Err(format!(
-                        "SSE stream timed out after {} ms without receiving any events",
-                        timeout.as_millis()
-                    ));
+                } else if is_benign_close && !events.is_empty() {
+                    let warn = format!("Stream ended early ({msg}); {} events preserved", events.len());
+                    log.push(format!("sse: {warn}"));
+                    warning = Some(warn);
+                    break;
                 } else {
                     return Err(msg);
                 }
@@ -280,6 +379,7 @@ pub fn sse_stream_with_options(
         status: status.as_u16(),
         status_text,
         response_headers,
+        connect_ms,
         elapsed_ms: started.elapsed().as_millis(),
         ttfb_ms,
         events,
@@ -296,9 +396,9 @@ fn flush_sse_event(
     cur_event: &mut String,
     cur_data: &mut String,
     cur_id: &mut String,
-) -> bool {
+) -> Option<SseStreamEvent> {
     if cur_data.is_empty() && cur_event.is_empty() {
-        return false;
+        return None;
     }
     let elapsed_ms = started.elapsed().as_millis();
     if ttfb_ms.is_none() {
@@ -323,11 +423,11 @@ fn flush_sse_event(
         ev.event,
         truncate(&ev.data, 200)
     ));
-    events.push(ev);
+    events.push(ev.clone());
     cur_event.clear();
     cur_data.clear();
     cur_id.clear();
-    true
+    Some(ev)
 }
 
 fn describe_reqwest_error(stage: &str, err: &reqwest::Error) -> String {
@@ -466,5 +566,160 @@ mod tests {
         assert_eq!(res.events[0].event, "token");
         assert_eq!(res.events[0].data, "hi");
         handle.join().unwrap();
+    }
+
+    #[test]
+    fn sse_test_server_full_suite() {
+        use std::io::BufRead as _;
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = listener.local_addr().unwrap();
+
+        // Spawn a multi-endpoint test SSE server handling 4 sequential connections:
+        // 1) GET /live-stream -> immediate 200 OK headers, brief pause, 2 SSE events
+        // 2) GET /quiet-subscribe -> 200 OK headers, keepalive comment only, stays open (hits timeout)
+        // 3) GET /cancel-stream -> 200 OK headers, emits 1 event then periodic comments so cancel triggers cleanly
+        // 4) GET /unauthorized -> 401 Unauthorized JSON error
+        let server = std::thread::spawn(move || {
+            for _ in 0..4 {
+                let (mut stream, _) = listener.accept().unwrap();
+                std::thread::spawn(move || {
+                    let mut reader = std::io::BufReader::new(stream.try_clone().unwrap());
+                    let mut req_line = String::new();
+                    let _ = reader.read_line(&mut req_line);
+                    loop {
+                        let mut line = String::new();
+                        if reader.read_line(&mut line).unwrap_or(0) == 0 || line == "\r\n" || line == "\n" {
+                            break;
+                        }
+                    }
+
+                    if req_line.contains("GET /live-stream") {
+                        let headers = "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nTransfer-Encoding: chunked\r\n\r\n";
+                        let _ = stream.write_all(headers.as_bytes());
+                        let _ = stream.flush();
+                        std::thread::sleep(Duration::from_millis(60));
+                        for chunk_body in [
+                            "id: ev-1\nevent: connected\ndata: {\"ok\":true}\n\n",
+                            "id: ev-2\nevent: feedback\ndata: {\"msg\":\"hello\"}\n\n",
+                        ] {
+                            let c = format!("{:x}\r\n{}\r\n", chunk_body.len(), chunk_body);
+                            let _ = stream.write_all(c.as_bytes());
+                            let _ = stream.flush();
+                            std::thread::sleep(Duration::from_millis(25));
+                        }
+                        let _ = stream.write_all(b"0\r\n\r\n");
+                    } else if req_line.contains("GET /quiet-subscribe") {
+                        let headers = "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nTransfer-Encoding: chunked\r\n\r\n";
+                        let _ = stream.write_all(headers.as_bytes());
+                        let keepalive = ": keepalive\n\n";
+                        let c = format!("{:x}\r\n{}\r\n", keepalive.len(), keepalive);
+                        let _ = stream.write_all(c.as_bytes());
+                        let _ = stream.flush();
+                        // Hold open longer than client's 1000ms listen timeout
+                        std::thread::sleep(Duration::from_millis(1800));
+                    } else if req_line.contains("GET /cancel-stream") {
+                        let headers = "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nTransfer-Encoding: chunked\r\n\r\n";
+                        let _ = stream.write_all(headers.as_bytes());
+                        let ev1 = "event: tick\ndata: first\n\n";
+                        let c1 = format!("{:x}\r\n{}\r\n", ev1.len(), ev1);
+                        let _ = stream.write_all(c1.as_bytes());
+                        let _ = stream.flush();
+                        for _ in 0..20 {
+                            std::thread::sleep(Duration::from_millis(40));
+                            let ping = ": ping\n\n";
+                            let cp = format!("{:x}\r\n{}\r\n", ping.len(), ping);
+                            if stream.write_all(cp.as_bytes()).is_err() {
+                                break;
+                            }
+                            let _ = stream.flush();
+                        }
+                    } else {
+                        let body = r#"{"error":"unauthorized"}"#;
+                        let resp = format!(
+                            "HTTP/1.1 401 Unauthorized\r\nContent-Type: application/json\r\nConnection: close\r\nContent-Length: {}\r\n\r\n{}",
+                            body.len(),
+                            body
+                        );
+                        let _ = stream.write_all(resp.as_bytes());
+                    }
+                });
+            }
+        });
+
+        // 1. Live stream reports Connected BEFORE events arrive and streams events via callback
+        let mut progress_log = Vec::new();
+        let res_live = sse_stream_with_progress(
+            "GET",
+            &format!("http://{addr}/live-stream"),
+            &[],
+            None,
+            20,
+            5_000,
+            None,
+            |p| progress_log.push(p),
+        )
+        .unwrap();
+        assert_eq!(res_live.status, 200);
+        assert_eq!(res_live.events.len(), 2);
+        assert!(matches!(progress_log.first(), Some(SseStreamProgress::Connected { status: 200, .. })));
+        assert_eq!(progress_log.len(), 3);
+
+        // 2. Quiet subscription endpoint (200 OK + 0 events) succeeds with Connected status & warning
+        let mut quiet_connected = false;
+        let res_quiet = sse_stream_with_progress(
+            "GET",
+            &format!("http://{addr}/quiet-subscribe"),
+            &[],
+            None,
+            20,
+            1_000,
+            None,
+            |p| {
+                if matches!(p, SseStreamProgress::Connected { status: 200, .. }) {
+                    quiet_connected = true;
+                }
+            },
+        )
+        .unwrap();
+        assert!(quiet_connected, "expected immediate Connected callback on quiet stream");
+        assert_eq!(res_quiet.status, 200);
+        assert!(res_quiet.events.is_empty());
+        assert!(res_quiet.warning.as_deref().unwrap_or("").contains("Connected (HTTP 200"));
+
+        // 3. Cancel mid-stream cleanly stops & preserves received event
+        let cancel_flag = Arc::new(AtomicBool::new(false));
+        let cancel_trigger = cancel_flag.clone();
+        let res_cancel = sse_stream_with_progress(
+            "GET",
+            &format!("http://{addr}/cancel-stream"),
+            &[],
+            None,
+            20,
+            5_000,
+            Some(cancel_flag),
+            |p| {
+                if matches!(p, SseStreamProgress::Event(_)) {
+                    cancel_trigger.store(true, Ordering::SeqCst);
+                }
+            },
+        )
+        .unwrap();
+        assert_eq!(res_cancel.status, 200);
+        assert_eq!(res_cancel.events.len(), 1);
+        assert_eq!(res_cancel.warning.as_deref(), Some("Stream disconnected by user"));
+
+        // 4. Unauthorized HTTP 401 returns explicit error
+        let err = sse_stream_with_options(
+            "GET",
+            &format!("http://{addr}/unauthorized"),
+            &[],
+            None,
+            20,
+            3_000,
+        )
+        .unwrap_err();
+        assert!(err.contains("401"), "expected 401 in error: {err}");
+
+        server.join().unwrap();
     }
 }

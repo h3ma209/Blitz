@@ -189,6 +189,9 @@ fn current_time_ms() -> u64 {
         .unwrap_or(0)
 }
 
+const MAX_HISTORY_STEPS: usize = 32;
+const MAX_HISTORY_BYTES: usize = 1024 * 1024;
+
 /// Single snapshot in editor undo/redo history.
 #[derive(Clone, Debug, PartialEq)]
 pub struct TextSnapshot {
@@ -213,6 +216,32 @@ impl TextHistory {
         }
     }
 
+    pub fn total_bytes(&self) -> usize {
+        self.past
+            .iter()
+            .chain(self.future.iter())
+            .map(|s| s.text.len())
+            .sum()
+    }
+
+    fn trim_caps(&mut self) {
+        while self.past.len() > MAX_HISTORY_STEPS {
+            self.past.remove(0);
+        }
+        while self.future.len() > MAX_HISTORY_STEPS {
+            self.future.remove(0);
+        }
+        while self.total_bytes() > MAX_HISTORY_BYTES {
+            if !self.future.is_empty() {
+                self.future.remove(0);
+            } else if !self.past.is_empty() {
+                self.past.remove(0);
+            } else {
+                break;
+            }
+        }
+    }
+
     /// Record a keystroke edit, grouping rapid single-character typing.
     pub fn record(&mut self, prev_text: &str, prev_caret: usize, new_text: &str, now_ms: u64) {
         if prev_text == new_text {
@@ -227,14 +256,12 @@ impl TextHistory {
             || (new_text.len() as isize - prev_text.len() as isize).abs() > 1;
 
         if !is_rapid || is_boundary || self.past.is_empty() {
-            if self.past.len() >= 150 {
-                self.past.remove(0);
-            }
             self.past.push(TextSnapshot {
                 text: prev_text.to_string(),
                 caret: prev_caret,
             });
             self.last_checkpoint_ms = now_ms;
+            self.trim_caps();
         }
     }
 
@@ -244,14 +271,12 @@ impl TextHistory {
             return;
         }
         self.future.clear();
-        if self.past.len() >= 150 {
-            self.past.remove(0);
-        }
         self.past.push(TextSnapshot {
             text: text.to_string(),
             caret,
         });
         self.last_checkpoint_ms = current_time_ms();
+        self.trim_caps();
     }
 
     pub fn can_undo(&self) -> bool {
@@ -264,25 +289,21 @@ impl TextHistory {
 
     pub fn undo(&mut self, current_text: &str, current_caret: usize) -> Option<TextSnapshot> {
         let prev = self.past.pop()?;
-        if self.future.len() >= 150 {
-            self.future.remove(0);
-        }
         self.future.push(TextSnapshot {
             text: current_text.to_string(),
             caret: current_caret,
         });
+        self.trim_caps();
         Some(prev)
     }
 
     pub fn redo(&mut self, current_text: &str, current_caret: usize) -> Option<TextSnapshot> {
         let next = self.future.pop()?;
-        if self.past.len() >= 150 {
-            self.past.remove(0);
-        }
         self.past.push(TextSnapshot {
             text: current_text.to_string(),
             caret: current_caret,
         });
+        self.trim_caps();
         Some(next)
     }
 }

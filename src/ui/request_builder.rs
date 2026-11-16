@@ -27,6 +27,7 @@ pub enum BuilderTab {
 #[component]
 pub fn RequestBuilder(
     draft: RequestDraft,
+    #[props(default)] codegen_draft: Option<RequestDraft>,
     #[props(default)] ancestor_origin: Option<crate::core::AncestorAuthOrigin>,
     #[props(default)] on_edit_parent_auth: EventHandler<uuid::Uuid>,
     on_change: EventHandler<RequestDraft>,
@@ -244,10 +245,16 @@ pub fn RequestBuilder(
                     style: "font-family: var(--mono); font-size: 11px; font-weight: 600; padding: 0 9px; display: inline-flex; align-items: center; gap: 4px;",
                     title: "Copy resolved request as cURL command to clipboard",
                     onclick: {
-                        let draft = draft.clone();
+                        let draft_fallback = draft.clone();
+                        let codegen_draft = codegen_draft.clone();
                         let vars = vars.clone();
                         move |_| {
-                            let curl_cmd = crate::core::generate_snippet_resolved("cURL", &draft, Some(&vars));
+                            let target_draft = codegen_draft.as_ref().unwrap_or(&draft_fallback);
+                            let curl_cmd = crate::core::generate_snippet_resolved(
+                                "cURL",
+                                target_draft,
+                                Some(&vars),
+                            );
                             let script = format!(
                                 "navigator.clipboard.writeText({});",
                                 serde_json::to_string(&curl_cmd).unwrap_or_else(|_| "\"\"".into())
@@ -297,12 +304,17 @@ pub fn RequestBuilder(
                 button {
                     class: if sending { "btn btn-ghost btn-cancel" } else { "btn btn-send" },
                     r#type: "button",
-                    disabled: sending,
-                    title: "Connect & stream SSE events",
-                    onclick: move |_| on_protocol_action.call("sse_listen".into()),
+                    title: if sending { "Disconnect SSE stream" } else { "Connect & stream SSE events" },
+                    onclick: move |_| {
+                        if sending {
+                            on_protocol_action.call("sse_stop".into());
+                        } else {
+                            on_protocol_action.call("sse_listen".into());
+                        }
+                    },
                     if sending {
                         span { class: "loading-spinner-cancel" }
-                        span { "Streaming…" }
+                        span { "Disconnect" }
                     } else {
                         span { class: "action-icon action-icon-bolt", style: "width: 12px; height: 12px; margin-right: 4px;", aria_hidden: "true" }
                         span { "Stream" }
@@ -440,6 +452,7 @@ pub fn RequestBuilder(
                 },
                 BuilderTab::Body => rsx! {
                     BodyEditor {
+                        key: "body-{draft.id}",
                         mode: draft.body_mode,
                         body: draft.body.clone(),
                         binary_path: draft.binary_path.clone(),
@@ -498,6 +511,7 @@ pub fn RequestBuilder(
                 },
                 BuilderTab::Scripts => rsx! {
                     ScriptsEditor {
+                        key: "scripts-{draft.id}",
                         pre: draft.pre_request_script.clone(),
                         test: draft.test_script.clone(),
                         vars: vars.clone(),
@@ -513,18 +527,22 @@ pub fn RequestBuilder(
                     }
                 },
                 BuilderTab::Docs => rsx! {
-                    label { class: "hint", "Request description / docs" }
-                    CommentableTextarea {
-                        class: "body-editor".to_string(),
-                        value: draft.description.clone(),
-                        rows: Some("10"),
-                        placeholder: "Markdown or plain text — shown for teammates / import".to_string(),
-                        on_change: {
-                            let draft = draft.clone();
-                            move |text: String| {
-                                let mut d = draft.clone();
-                                d.description = text;
-                                on_change.call(d);
+                    div {
+                        key: "docs-{draft.id}",
+                        style: "display: contents;",
+                        label { class: "hint", "Request description / docs" }
+                        CommentableTextarea {
+                            class: "body-editor".to_string(),
+                            value: draft.description.clone(),
+                            rows: Some("10"),
+                            placeholder: "Markdown or plain text — shown for teammates / import".to_string(),
+                            on_change: {
+                                let draft = draft.clone();
+                                move |text: String| {
+                                    let mut d = draft.clone();
+                                    d.description = text;
+                                    on_change.call(d);
+                                }
                             }
                         }
                     }
@@ -1660,8 +1678,10 @@ fn ProtocolFields(
 
 #[derive(Clone, Debug, PartialEq)]
 struct SseParsedMeta {
+    state: String,
     status: u16,
     status_text: String,
+    connect_ms: Option<u64>,
     elapsed_ms: u64,
     ttfb_ms: Option<u64>,
     count: usize,
@@ -1687,9 +1707,17 @@ fn parse_sse_log(protocol_log: &[String]) -> (Option<SseParsedMeta>, Vec<SsePars
     for line in protocol_log {
         if let Some(raw) = line.strip_prefix("SSE_META:") {
             if let Ok(v) = serde_json::from_str::<serde_json::Value>(raw) {
+                let status = v.get("status").and_then(|x| x.as_u64()).unwrap_or(200) as u16;
+                let default_state = if status == 0 { "connecting" } else { "completed" };
                 meta = Some(SseParsedMeta {
-                    status: v.get("status").and_then(|x| x.as_u64()).unwrap_or(200) as u16,
+                    state: v
+                        .get("state")
+                        .and_then(|x| x.as_str())
+                        .unwrap_or(default_state)
+                        .to_string(),
+                    status,
                     status_text: v.get("status_text").and_then(|x| x.as_str()).unwrap_or("").to_string(),
+                    connect_ms: v.get("connect_ms").and_then(|x| x.as_u64()),
                     elapsed_ms: v.get("elapsed_ms").and_then(|x| x.as_u64()).unwrap_or(0),
                     ttfb_ms: v.get("ttfb_ms").and_then(|x| x.as_u64()),
                     count: v.get("count").and_then(|x| x.as_u64()).unwrap_or(0) as usize,
@@ -1843,17 +1871,20 @@ fn SseWorkbench(
                         }
                     }
                     button {
-                        class: "btn btn-send sse-stream-btn",
+                        class: if sending { "btn btn-ghost btn-cancel sse-stream-btn" } else { "btn btn-send sse-stream-btn" },
                         r#type: "button",
-                        disabled: sending,
                         onclick: move |_| {
-                            on_protocol_action.call(format!(
-                                "sse_listen:{}:{}",
-                                max_events(),
-                                timeout_secs() * 1000
-                            ));
+                            if sending {
+                                on_protocol_action.call("sse_stop".into());
+                            } else {
+                                on_protocol_action.call(format!(
+                                    "sse_listen:{}:{}",
+                                    max_events(),
+                                    timeout_secs() * 1000
+                                ));
+                            }
                         },
-                        if sending { "Streaming…" } else { "Connect & Stream" }
+                        if sending { "Disconnect" } else { "Connect & Stream" }
                     }
                 }
             }
@@ -1913,6 +1944,7 @@ fn SseWorkbench(
                         }
                     }
                     MultilineCodeField {
+                        key: "sse-body-{draft.id}",
                         class: "body-editor sse-body-editor".to_string(),
                         value: draft.body.clone(),
                         placeholder: "{\"stream\": true, \"messages\": [...]}".to_string(),
@@ -1944,17 +1976,64 @@ fn SseWorkbench(
 
             if let Some(ref meta) = meta_opt {
                 div { class: "sse-telemetry-strip",
-                    span { class: "sse-chip sse-chip-ok", "HTTP {meta.status} {meta.status_text}" }
-                    span { class: "sse-chip", "{meta.count} events" }
-                    if let Some(ttfb) = meta.ttfb_ms {
-                        span { class: "sse-chip", "TTFE {ttfb} ms" }
+                    if meta.state == "connecting" || meta.status == 0 {
+                        span { class: "sse-chip", "◌ Connecting…" }
+                        if !meta.url.is_empty() {
+                            span { class: "sse-chip", "{meta.method} {meta.url}" }
+                        }
+                    } else {
+                        span { class: "sse-chip sse-chip-ok",
+                            if sending {
+                                "● Connected · HTTP {meta.status} {meta.status_text}"
+                            } else {
+                                "✓ Connected · HTTP {meta.status} {meta.status_text}"
+                            }
+                        }
+                        if let Some(cms) = meta.connect_ms {
+                            span { class: "sse-chip", "Handshake {cms} ms" }
+                        }
+                        span { class: "sse-chip", "{meta.count} events" }
+                        if let Some(ttfb) = meta.ttfb_ms {
+                            span { class: "sse-chip", "First event {ttfb} ms" }
+                        }
+                        if !sending {
+                            span { class: "sse-chip", "Total {meta.elapsed_ms} ms" }
+                        }
+                        if has_done {
+                            span { class: "sse-chip sse-chip-done", "✓ [DONE]" }
+                        }
+                        if let Some(ref w) = meta.warning {
+                            span { class: "sse-chip sse-chip-warn", "⚠ {w}" }
+                        }
                     }
-                    span { class: "sse-chip", "Total {meta.elapsed_ms} ms" }
-                    if has_done {
-                        span { class: "sse-chip sse-chip-done", "✓ [DONE]" }
-                    }
-                    if let Some(ref w) = meta.warning {
-                        span { class: "sse-chip sse-chip-warn", "⚠ {w}" }
+                }
+                if err_opt.is_none() && events.is_empty() {
+                    if meta.state == "connecting" || meta.status == 0 {
+                        div { class: "sse-connected-card connecting",
+                            div { class: "sse-connected-head", "◌ Connecting to SSE Endpoint…" }
+                            p { class: "sse-connected-sub",
+                                "Waiting for HTTP response headers from {meta.url}…"
+                            }
+                        }
+                    } else {
+                        div { class: "sse-connected-card",
+                            div { class: "sse-connected-head",
+                                if sending {
+                                    "✓ Connection Successful (HTTP {meta.status} {meta.status_text}) — Listening for Events…"
+                                } else {
+                                    "✓ Connection Successful (HTTP {meta.status} {meta.status_text})"
+                                }
+                            }
+                            p { class: "sse-connected-sub",
+                                if sending {
+                                    "Connected to {meta.url}. Stream is open and incoming Server-Sent Events will appear live below."
+                                } else if let Some(ref w) = meta.warning {
+                                    "{w}"
+                                } else {
+                                    "Connected to {meta.url}; stream closed cleanly with 0 events."
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -3956,5 +4035,45 @@ fn RequestSettingsEditor(
                 " SSL certificate verification"
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::parse_sse_log;
+
+    #[test]
+    fn parse_sse_log_handles_connecting_connected_streaming_and_stopped_states() {
+        let connecting = vec![
+            r#"SSE_META:{"state":"connecting","status":0,"status_text":"Connecting…","elapsed_ms":0,"count":0,"method":"GET","url":"http://127.0.0.1:9999/sse"}"#.to_string(),
+        ];
+        let (m, evs, err) = parse_sse_log(&connecting);
+        let m = m.unwrap();
+        assert_eq!(m.state, "connecting");
+        assert_eq!(m.status, 0);
+        assert!(evs.is_empty());
+        assert!(err.is_none());
+
+        let connected = vec![
+            r#"SSE_META:{"state":"connected","status":200,"status_text":"OK","connect_ms":14,"elapsed_ms":14,"count":0,"method":"GET","url":"http://127.0.0.1:9999/sse"}"#.to_string(),
+        ];
+        let (m, evs, err) = parse_sse_log(&connected);
+        let m = m.unwrap();
+        assert_eq!(m.state, "connected");
+        assert_eq!(m.status, 200);
+        assert_eq!(m.connect_ms, Some(14));
+        assert!(evs.is_empty());
+        assert!(err.is_none());
+
+        let streaming = vec![
+            r#"SSE_META:{"state":"streaming","status":200,"status_text":"OK","connect_ms":14,"elapsed_ms":52,"ttfb_ms":52,"count":1,"method":"POST","url":"http://127.0.0.1:9999/chat"}"#.to_string(),
+            r#"SSE_EVENT:{"index":1,"event":"delta","id":"1","elapsed_ms":52,"data":"hello"}"#.to_string(),
+        ];
+        let (m, evs, _) = parse_sse_log(&streaming);
+        let m = m.unwrap();
+        assert_eq!(m.state, "streaming");
+        assert_eq!(m.ttfb_ms, Some(52));
+        assert_eq!(evs.len(), 1);
+        assert_eq!(evs[0].event, "delta");
     }
 }

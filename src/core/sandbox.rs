@@ -603,15 +603,20 @@ blitz.request.toString = pm.request.toString;
     );
 
     // IIFE keeps `var` / `function` off the reused realm. Newline before close so a trailing `//` comment cannot swallow it.
-    let full = format!("{prelude}\n(function(){{\n{sanitized_script}\n}})();\nJSON.stringify(__np);");
+    // Null out `__np` right after serializing so multi-MB response/request payloads are never pinned in JS_REALM.
+    let full = format!("{prelude}\n(function(){{\n{sanitized_script}\n}})();\nvar __np_out = JSON.stringify(__np);\n__np = null;\n__np_out;");
 
     let eval_result = JS_REALM.with(|ptr| {
         // Exclusive for this call: host callbacks do not re-enter the sandbox.
         let context = unsafe { &mut **ptr };
-        match context.eval(Source::from_bytes(full.as_bytes())) {
+        let res = match context.eval(Source::from_bytes(full.as_bytes())) {
             Ok(val) => Ok(js_to_string(context, &val)),
-            Err(e) => Err(format!("{phase}: JS error: {e}")),
-        }
+            Err(e) => {
+                let _ = context.eval(Source::from_bytes(b"__np = null;"));
+                Err(format!("{phase}: JS error: {e}"))
+            }
+        };
+        res
     });
     match eval_result {
         Ok(json_str) => apply_bridge(&json_str, ctx, &mut out, phase),

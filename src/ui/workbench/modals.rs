@@ -988,11 +988,13 @@ pub fn WorkbenchModals(
 
         if show_snippets() {
             {
+                let cur_d = draft();
+                let codegen_d = st.effective_draft_for_codegen(&cur_d);
                 let code_content = if snippet_resolve_vars() {
-                    let v = vars();
-                    generate_snippet_resolved(&snippet_lang(), &draft(), Some(&v))
+                    let v = st.effective_vars_for_request(&cur_d);
+                    generate_snippet_resolved(&snippet_lang(), &codegen_d, Some(&v))
                 } else {
-                    generate_snippet_resolved(&snippet_lang(), &draft(), None)
+                    generate_snippet_resolved(&snippet_lang(), &codegen_d, None)
                 };
                 let code_for_copy = code_content.clone();
 

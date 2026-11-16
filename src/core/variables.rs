@@ -383,29 +383,39 @@ impl VariableContext {
         ctx
     }
 
-    /// Resolve `{{name}}` with precedence: local > environment > collection > global.
+    /// Resolve `{{name}}` with precedence: path > local > environment > collection > global.
+    /// Prefers non-empty values so empty placeholder keys imported in an environment do not
+    /// shadow populated values in collection or global scopes.
     pub fn get(&self, name: &str) -> Option<&str> {
-        self.local
-            .get(name)
-            .or_else(|| self.environment.get(name))
-            .or_else(|| self.collection.get(name))
-            .or_else(|| self.global.get(name))
+        let scopes = [
+            &self.path,
+            &self.local,
+            &self.environment,
+            &self.collection,
+            &self.global,
+        ];
+        scopes
+            .iter()
+            .filter_map(|m| m.get(name))
+            .find(|v| !v.is_empty())
+            .or_else(|| scopes.iter().find_map(|m| m.get(name)))
             .map(|s| s.as_str())
     }
 
     /// Owning scope for a plain (non-vault) name, following resolve precedence.
+    /// Prefers non-empty values first so empty placeholder rows don't mask real values.
     pub fn scope_of(&self, name: &str) -> Option<VariableScope> {
-        if self.local.contains_key(name) {
-            Some(VariableScope::Local)
-        } else if self.environment.contains_key(name) {
-            Some(VariableScope::Environment)
-        } else if self.collection.contains_key(name) {
-            Some(VariableScope::Collection)
-        } else if self.global.contains_key(name) {
-            Some(VariableScope::Global)
-        } else {
-            None
-        }
+        let scopes = [
+            (VariableScope::Local, &self.local),
+            (VariableScope::Environment, &self.environment),
+            (VariableScope::Collection, &self.collection),
+            (VariableScope::Global, &self.global),
+        ];
+        scopes
+            .iter()
+            .find(|(_, m)| m.get(name).is_some_and(|v| !v.is_empty()))
+            .or_else(|| scopes.iter().find(|(_, m)| m.contains_key(name)))
+            .map(|(scope, _)| *scope)
     }
 
     /// Inspect `{{…}}` or `:param` inner raw for hover UI (value + owning scope).
@@ -553,6 +563,62 @@ impl VariableContext {
                     self.get(raw).unwrap_or("").to_string()
                 }
             }).into_owned();
+
+            if next == current || !replaced_any {
+                break;
+            }
+            current = next;
+        }
+
+        current
+    }
+
+    /// Returns `true` when `raw` inside `{{…}}` refers to a vault variable (`{{vault:key}}`,
+    /// `{{$vault:key}}`, or a key resolved exclusively from `self.vault`).
+    pub fn is_vault_var_token(&self, raw: &str) -> bool {
+        let trimmed = raw.trim();
+        let lower = trimmed.to_ascii_lowercase();
+        if lower.starts_with("vault:") || lower.starts_with("$vault:") {
+            return true;
+        }
+        let has_non_empty_regular = self.get(trimmed).is_some_and(|v| !v.is_empty());
+        !has_non_empty_regular && self.vault.get(trimmed).is_some()
+    }
+
+    /// Resolve all non-vault `{{…}}` variables recursively (path/local/env/collection/global
+    /// and dynamic `$` variables), leaving vault tokens (`{{vault:…}}`) unexpanded so secrets
+    /// are never copied into cURL or code snippets.
+    pub fn resolve_string_non_vault(&self, input: &str) -> String {
+        let re = var_token_re();
+        let mut current = input.to_string();
+
+        for _ in 0..Self::MAX_RESOLVE_DEPTH {
+            if !current.contains("{{") {
+                break;
+            }
+
+            let mut replaced_any = false;
+            let next = re
+                .replace_all(&current, |caps: &regex::Captures| {
+                    let full = &caps[0];
+                    let raw = caps[1].trim();
+                    if self.is_vault_var_token(raw) {
+                        return full.to_string();
+                    }
+                    if raw.starts_with('$') {
+                        if let Some(dyn_val) = resolve_dynamic_var(raw) {
+                            replaced_any = true;
+                            return dyn_val;
+                        }
+                    }
+                    if let Some(val) = self.get(raw) {
+                        replaced_any = true;
+                        val.to_string()
+                    } else {
+                        full.to_string()
+                    }
+                })
+                .into_owned();
 
             if next == current || !replaced_any {
                 break;
@@ -964,5 +1030,46 @@ mod tests {
         ctx.environment.insert("cycle_b".into(), "{{cycle_a}}".into());
         let out = ctx.resolve_string("ping {{cycle_a}}");
         assert!(out == "ping {{cycle_a}}" || out == "ping {{cycle_b}}");
+    }
+
+    #[test]
+    fn empty_env_var_falls_back_to_collection_and_global() {
+        let mut ctx = VariableContext::default();
+        ctx.environment.insert("share_basic_auth".into(), String::new());
+        ctx.environment.insert("only_empty".into(), String::new());
+        ctx.collection
+            .insert("share_basic_auth".into(), "col-secret".into());
+        ctx.global.insert("global_fallback".into(), "g-val".into());
+        ctx.environment
+            .insert("global_fallback".into(), String::new());
+
+        assert_eq!(ctx.get("share_basic_auth"), Some("col-secret"));
+        assert_eq!(ctx.scope_of("share_basic_auth"), Some(VariableScope::Collection));
+        assert_eq!(ctx.get("global_fallback"), Some("g-val"));
+        assert_eq!(ctx.scope_of("global_fallback"), Some(VariableScope::Global));
+        assert_eq!(ctx.get("only_empty"), Some(""));
+        assert_eq!(ctx.scope_of("only_empty"), Some(VariableScope::Environment));
+    }
+
+    #[test]
+    fn resolve_string_non_vault_resolves_everything_except_vault() {
+        let mut ctx = VariableContext::default();
+        ctx.environment.insert("host".into(), "api.test.local".into());
+        ctx.collection.insert("tenant".into(), "acme".into());
+        ctx.collection
+            .insert("nested_vault_ref".into(), "Bearer {{vault:jwt}}".into());
+        ctx.vault.set("jwt", "TOP_SECRET_JWT");
+        ctx.vault.set("plain_vault_only", "TOP_SECRET_PLAIN");
+
+        let input = "https://{{host}}/{{tenant}} auth={{nested_vault_ref}} direct={{vault:jwt}} bare={{plain_vault_only}} missing={{unset_var}}";
+        let resolved = ctx.resolve_string_non_vault(input);
+
+        assert!(resolved.contains("https://api.test.local/acme"));
+        assert!(resolved.contains("auth=Bearer {{vault:jwt}}"));
+        assert!(resolved.contains("direct={{vault:jwt}}"));
+        assert!(resolved.contains("bare={{plain_vault_only}}"));
+        assert!(resolved.contains("missing={{unset_var}}"));
+        assert!(!resolved.contains("TOP_SECRET_JWT"));
+        assert!(!resolved.contains("TOP_SECRET_PLAIN"));
     }
 }

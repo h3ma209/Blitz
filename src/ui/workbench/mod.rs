@@ -4,7 +4,7 @@ pub mod protocol_actions;
 pub mod state;
 pub mod top_bar;
 
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::time::Duration;
 use uuid::Uuid;
@@ -60,9 +60,6 @@ pub fn Workbench() -> Element {
     let mut response = st.response;
     let mut responses = st.responses;
     let mut prev_responses = st.prev_responses;
-    let mut sending = st.sending;
-    let mut send_gen = st.send_gen;
-    let mut send_cancel = st.send_cancel;
     let mut collections = st.collections;
     let mut environments = st.environments;
     let mut active_env_id = st.active_env_id;
@@ -92,7 +89,7 @@ pub fn Workbench() -> Element {
     let ws_connected = st.ws_connected;
     let ws_timeline = st.ws_timeline;
     let ws_auto_ping = st.ws_auto_ping;
-    let mut protocol_log = st.protocol_log;
+    let protocol_log = st.protocol_log;
     let mut file_menu_open = st.file_menu_open;
     let mut tools_menu_open = st.tools_menu_open;
     let mut cloud_menu_open = st.cloud_menu_open;
@@ -109,6 +106,9 @@ pub fn Workbench() -> Element {
     let mut pending_delete = st.pending_delete;
     let mut pending_batch_move = st.pending_batch_move;
     let mut pending_close_tab = st.pending_close_tab;
+
+    let active_draft_id = use_memo(move || draft().id);
+    let request_env_memo = use_memo(move || st.compute_request_env_cache(active_draft_id()));
     let mut tree_clipboard = st.tree_clipboard;
     let mut available_update = st.available_update;
     let mut show_runner = st.show_runner;
@@ -434,12 +434,8 @@ pub fn Workbench() -> Element {
             response.set(None);
             draft.set(RequestDraft::default());
             open_tabs.set(tabs.clone());
-            let mut resp_map = responses();
-            let mut prev_map = prev_responses();
-            state::prune_response_cache(&mut resp_map, &mut prev_map, &tabs, None);
-            responses.set(resp_map);
-            prev_responses.set(prev_map);
             let mut st = st;
+            st.cleanup_closed_tabs(&tabs, None);
             st.persist();
             status_msg.set("tab closed".into());
             return;
@@ -463,13 +459,9 @@ pub fn Workbench() -> Element {
                 response.set(None);
             }
         }
-        let mut resp_map = responses();
-        let mut prev_map = prev_responses();
-        state::prune_response_cache(&mut resp_map, &mut prev_map, &tabs, next_active);
-        responses.set(resp_map);
-        prev_responses.set(prev_map);
-        open_tabs.set(tabs);
+        open_tabs.set(tabs.clone());
         let mut st = st;
+        st.cleanup_closed_tabs(&tabs, next_active);
         st.persist();
         status_msg.set("tab closed".into());
     });
@@ -514,12 +506,16 @@ pub fn Workbench() -> Element {
                     vars.set(v);
                 }
             }
-            let resp_map = responses();
+            let mut resp_map = responses();
+            let mut prev_map = prev_responses();
+            state::prune_response_cache(&mut resp_map, &mut prev_map, &tabs, Some(tid));
             if let Some(cached) = resp_map.get(&tid).cloned() {
                 response.set(Some(cached));
             } else {
                 response.set(None);
             }
+            responses.set(resp_map);
+            prev_responses.set(prev_map);
         }
         open_tabs.set(tabs);
     });
@@ -549,8 +545,9 @@ pub fn Workbench() -> Element {
                 response.set(resp_map.get(&target.id).cloned());
             }
         }
-        open_tabs.set(tabs);
+        open_tabs.set(tabs.clone());
         let mut st = st;
+        st.cleanup_closed_tabs(&tabs, active_request_id());
         st.persist();
         status_msg.set("other tabs closed".into());
     });
@@ -571,13 +568,9 @@ pub fn Workbench() -> Element {
                     }
                 }
             }
-            let mut resp_map = responses();
-            let mut prev_map = prev_responses();
-            state::prune_response_cache(&mut resp_map, &mut prev_map, &tabs, active_request_id());
-            responses.set(resp_map);
-            prev_responses.set(prev_map);
-            open_tabs.set(tabs);
+            open_tabs.set(tabs.clone());
             let mut st = st;
+            st.cleanup_closed_tabs(&tabs, active_request_id());
             st.persist();
             status_msg.set("tabs to right closed".into());
         }
@@ -588,12 +581,8 @@ pub fn Workbench() -> Element {
         active_request_id.set(None);
         response.set(None);
         draft.set(RequestDraft::default());
-        let mut resp_map = responses();
-        let mut prev_map = prev_responses();
-        state::prune_response_cache(&mut resp_map, &mut prev_map, &[], None);
-        responses.set(resp_map);
-        prev_responses.set(prev_map);
         let mut st = st;
+        st.cleanup_closed_tabs(&[], None);
         st.persist();
         status_msg.set("all tabs closed".into());
     });
@@ -614,15 +603,17 @@ pub fn Workbench() -> Element {
     });
 
     let do_send = use_callback(move |_| {
-        if sending() {
-            if let Some(flag) = send_cancel() {
-                flag.store(true, Ordering::SeqCst);
-            }
-            send_gen.set(send_gen() + 1);
-            send_cancel.set(None);
-            sending.set(false);
+        let mut st = st;
+        let cur_draft = draft();
+        if cur_draft.protocol == RequestProtocol::Sse {
+            run_protocol_action(st, "sse_listen".into());
+            return;
+        }
+        let cur_id = cur_draft.id;
+        if st.is_request_sending(cur_id) {
+            st.cancel_request_send(cur_id);
             status_msg.set("cancelled".into());
-            response.set(Some(Arc::new(ResponseView {
+            let cancel_view = Arc::new(ResponseView {
                 status: 0,
                 status_text: "CANCELLED".into(),
                 headers: vec![],
@@ -637,17 +628,25 @@ pub fn Workbench() -> Element {
                 visualizer_html: String::new(),
                 sent_headers: vec![],
                 sent_body: None,
-            })));
+            });
+            let mut resp_map = responses();
+            resp_map.insert(cur_id, cancel_view.clone());
+            responses.set(resp_map);
+            response.set(Some(cancel_view));
             return;
         }
 
-        let mut req = draft();
+        let mut req = cur_draft;
 
-        let lint_errs = lint_error_count(&lint_collections(&collections(), &vars()));
-        if lint_errs > 0 {
-            status_msg.set(format!(
-                "lint: {lint_errs} error(s) — Tools → Collection lint"
-            ));
+        if let Some(col_id) = active_collection_id() {
+            if let Some(col) = collections().iter().find(|c| c.id == col_id) {
+                let lint_errs = lint_error_count(&lint_collections(std::slice::from_ref(col), &vars()));
+                if lint_errs > 0 {
+                    status_msg.set(format!(
+                        "lint: {lint_errs} error(s) — Tools → Collection lint"
+                    ));
+                }
+            }
         }
 
         // Snapshot previous response for diffing before sending new one
@@ -678,14 +677,8 @@ pub fn Workbench() -> Element {
         }
 
         if req.protocol == RequestProtocol::Grpc {
-            let my_gen = {
-                let g = send_gen() + 1;
-                send_gen.set(g);
-                g
-            };
-            let cancel_flag = Arc::new(AtomicBool::new(false));
-            send_cancel.set(Some(cancel_flag.clone()));
-            sending.set(true);
+            let grpc_req_id = req.id;
+            let cancel_flag = st.start_request_send(grpc_req_id);
             response.set(None);
             let vars_snapshot = vars.peek();
             let endpoint = vars_snapshot.resolve_string(&req.url);
@@ -717,6 +710,7 @@ pub fn Workbench() -> Element {
                 _ => {}
             }
             spawn(async move {
+                let mut st = st;
                 let ep = endpoint.clone();
                 let meth = method.clone();
                 let body_bg = body.clone();
@@ -727,7 +721,7 @@ pub fn Workbench() -> Element {
                     grpc_unary_with_headers(&ep, &meth, &body_bg, &headers_bg)
                 })
                 .await;
-                if send_gen() != my_gen || cancel_grpc.load(Ordering::SeqCst) {
+                if cancel_grpc.load(Ordering::SeqCst) {
                     return;
                 }
                 let view = match result {
@@ -763,7 +757,7 @@ pub fn Workbench() -> Element {
                     }
                     Err(e) => ResponseView::error(format!("join: {e}"), vec![]),
                 };
-                if send_gen() != my_gen {
+                if cancel_grpc.load(Ordering::SeqCst) {
                     return;
                 }
                 let mut lines = console_lines();
@@ -808,10 +802,15 @@ pub fn Workbench() -> Element {
                     }
                 }
                 console_lines.set(lines);
-                protocol_log.set(view.pipeline_log.clone());
-                response.set(Some(Arc::new(view)));
-                sending.set(false);
-                send_cancel.set(None);
+                st.set_request_protocol_log(grpc_req_id, view.pipeline_log.clone());
+                let shared = Arc::new(view);
+                let mut resp_map = responses();
+                resp_map.insert(grpc_req_id, shared.clone());
+                responses.set(resp_map);
+                if draft().id == grpc_req_id {
+                    response.set(Some(shared));
+                }
+                st.finish_request_send(grpc_req_id, &cancel_grpc);
             });
             return;
         }
@@ -821,14 +820,9 @@ pub fn Workbench() -> Element {
             return;
         }
 
-        let my_gen = {
-            let g = send_gen() + 1;
-            send_gen.set(g);
-            g
-        };
-        let cancel_flag = Arc::new(AtomicBool::new(false));
-        send_cancel.set(Some(cancel_flag.clone()));
-        sending.set(true);
+        let sent_req_id = req.id;
+        let cancel_flag = st.start_request_send(sent_req_id);
+        let cancel_check = cancel_flag.clone();
         response.set(None);
         status_msg.set(String::new());
 
@@ -881,7 +875,6 @@ pub fn Workbench() -> Element {
         let had_active_env = active_env_id().is_some();
         let active_col_id = active_collection_id();
         let data_root_clone = data_root();
-        let mut st = st;
         let req_method = req.method;
         let req_url = req.url.clone();
         let req_for_logging = req.clone();
@@ -919,7 +912,7 @@ pub fn Workbench() -> Element {
             })
             .await;
 
-            if send_gen() != my_gen {
+            if cancel_check.load(Ordering::SeqCst) {
                 return;
             }
 
@@ -960,7 +953,7 @@ pub fn Workbench() -> Element {
                 ),
             };
 
-            if send_gen() != my_gen {
+            if cancel_check.load(Ordering::SeqCst) {
                 return;
             }
 
@@ -968,9 +961,8 @@ pub fn Workbench() -> Element {
 
             if !cancelled {
                 let mut hist = history();
-                let draft_snap = draft();
                 let hist_url = if view.resolved_url.is_empty() {
-                    draft_snap.url.clone()
+                    req_for_logging.url.clone()
                 } else {
                     view.resolved_url.clone()
                 };
@@ -980,7 +972,7 @@ pub fn Workbench() -> Element {
                     None
                 };
                 let entry = HistoryEntry::from_send(
-                    &draft_snap,
+                    &req_for_logging,
                     &hist_url,
                     if view.error.is_some() {
                         None
@@ -1093,17 +1085,17 @@ pub fn Workbench() -> Element {
                 status_msg.set(format!("scripts updated {env_keys} env var(s)"));
             }
 
-            let draft_id = draft().id;
             let shared = Arc::new(view);
-            response.set(Some(shared.clone()));
+            if draft().id == sent_req_id {
+                response.set(Some(shared.clone()));
+            }
             let mut resp_map = responses();
             let mut prev_map = prev_responses();
-            resp_map.insert(draft_id, shared);
-            state::prune_response_cache(&mut resp_map, &mut prev_map, &open_tabs(), Some(draft_id));
+            resp_map.insert(sent_req_id, shared);
+            state::prune_response_cache(&mut resp_map, &mut prev_map, &open_tabs(), Some(sent_req_id));
             responses.set(resp_map);
             prev_responses.set(prev_map);
-            sending.set(false);
-            send_cancel.set(None);
+            st.finish_request_send(sent_req_id, &cancel_check);
             st.persist();
         });
     });
@@ -1114,9 +1106,10 @@ pub fn Workbench() -> Element {
         match evt.action {
             SidebarAction::SelectRequest => {
                 if let Some(id) = evt.id {
-                    if let Some((col_id, req)) = find_request_across(&collections(), id) {
+                    let cols_snap = collections();
+                    if let Some((col_id, req)) = find_request_across(&cols_snap, id) {
                         apply_collection_env_pin(
-                            &collections(),
+                            &cols_snap,
                             Some(col_id),
                             &environments(),
                             &mut active_env_id,
@@ -1124,27 +1117,48 @@ pub fn Workbench() -> Element {
                         );
                         let mut tabs = open_tabs();
                         let cur = draft();
-                        if tabs.iter().any(|t| t.id == cur.id) {
-                            if let Some(slot) = tabs.iter_mut().find(|t| t.id == cur.id) {
-                                *slot = cur;
-                            }
+                        let cur_id = cur.id;
+                        if let Some(slot) = tabs.iter_mut().find(|t| t.id == cur_id) {
+                            *slot = cur;
                         }
+                        let mut evicted_tab = false;
                         let target_draft = if let Some(existing) = tabs.iter().find(|t| t.id == req.id) {
                             existing.clone()
                         } else {
+                            const MAX_OPEN_TABS: usize = 36;
+                            if tabs.len() >= MAX_OPEN_TABS {
+                                if let Some(evict_idx) = tabs.iter().position(|t| {
+                                    t.id != cur_id
+                                        && t.id != req.id
+                                        && !st.is_request_sending(t.id)
+                                        && !is_draft_dirty(t, &cols_snap)
+                                }) {
+                                    tabs.remove(evict_idx);
+                                    evicted_tab = true;
+                                }
+                            }
                             tabs.push(req.clone());
                             req.clone()
                         };
-                        open_tabs.set(tabs);
+                        open_tabs.set(tabs.clone());
                         draft.set(target_draft);
                         active_request_id.set(Some(id));
                         active_collection_id.set(Some(col_id));
                         editing_collection_id.set(None);
                         show_settings.set(false);
-                        if let Some(col) = collections().iter().find(|c| c.id == col_id) {
+                        if let Some(col) = cols_snap.iter().find(|c| c.id == col_id) {
                             let mut v = vars();
                             v.collection = col.variables_map();
                             vars.set(v);
+                        }
+                        if evicted_tab {
+                            st.cleanup_closed_tabs(&tabs, Some(req.id));
+                        } else {
+                            let mut resp_map = responses();
+                            let mut prev_map = prev_responses();
+                            state::prune_response_cache(&mut resp_map, &mut prev_map, &tabs, Some(req.id));
+                            responses.set(resp_map);
+                            prev_responses.set(prev_map);
                         }
                         let resp_map = responses();
                         if let Some(cached) = resp_map.get(&req.id).cloned() {
@@ -2578,7 +2592,9 @@ pub fn Workbench() -> Element {
                         }
                     } else {
                         {
-                            let is_non_http = draft().protocol != RequestProtocol::Http;
+                            let cur_draft_top = draft();
+                            let is_non_http = cur_draft_top.protocol != RequestProtocol::Http;
+                            let cur_sending = st.is_request_sending(cur_draft_top.id);
                             let split_class = if is_non_http {
                                 format!("workbench-split protocol-full {}", app_settings().ui.layout.class_token())
                             } else {
@@ -2590,18 +2606,19 @@ pub fn Workbench() -> Element {
                                     div {
                                         class: "workbench-request-side",
                                 {
-                                    let cols_snap = collections();
-                                    let cur_draft = draft();
-                                    let ancestor_origin = resolve_ancestor_auth(&cols_snap, cur_draft.id).map(|(_, o)| o);
-                                    let mut effective_vars = vars();
-                                    for p in &cur_draft.path_params {
-                                        if p.enabled {
-                                            effective_vars.path.insert(p.key.clone(), p.value.clone());
-                                        }
-                                    }
+                                    let cur_draft = cur_draft_top.clone();
+                                    let cached_env = request_env_memo();
+                                    let ancestor_origin = cached_env.ancestor_origin.clone();
+                                    let (effective_vars, codegen_draft) = cached_env.apply(&cur_draft);
+                                    let cur_protocol_log = if cur_draft.protocol == RequestProtocol::WebSocket {
+                                        protocol_log()
+                                    } else {
+                                        st.get_request_protocol_log(cur_draft.id)
+                                    };
                                     rsx! {
                                         RequestBuilder {
                                             draft: cur_draft,
+                                            codegen_draft: Some(codegen_draft),
                                             vars: effective_vars,
                                             data_root: data_root(),
                                             ancestor_origin,
@@ -2711,11 +2728,11 @@ pub fn Workbench() -> Element {
                                             on_protocol_action: move |action: String| {
                                                 run_protocol_action(st, action);
                                             },
-                                            sending: sending(),
+                                            sending: cur_sending,
                                             ws_connected: ws_connected(),
                                             ws_timeline: ws_timeline(),
                                             ws_auto_ping: ws_auto_ping(),
-                                            protocol_log: protocol_log(),
+                                            protocol_log: cur_protocol_log,
                                         }
                                     }
                                 }
@@ -2744,7 +2761,7 @@ pub fn Workbench() -> Element {
                                             response: response(),
                                             prev_response: prev_responses().get(&draft().id).cloned(),
                                             examples: draft().examples,
-                                            sending: sending(),
+                                            sending: cur_sending,
                                             default_tab: app_settings().ui.default_response_tab,
                                             on_save_example: on_save_example,
                                             on_auto_assert: on_auto_assert,

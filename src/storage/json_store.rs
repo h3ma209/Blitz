@@ -350,6 +350,16 @@ fn restore_backups(backups: &[(PathBuf, PathBuf)]) {
         ])
     }
 
+    /// Persist view/tab/response state without re-serializing multi-MB `collections.json`.
+    pub fn save_view_state(&self, snapshot: &AppSnapshot) -> Result<(), StorageError> {
+        let text = serde_json::to_string_pretty(snapshot)?;
+        let responses = serde_json::to_string(&snapshot.responses)?;
+        Self::publish_files(&[
+            (self.snapshot_path(), text),
+            (self.responses_path(), responses),
+        ])
+    }
+
     pub fn default_snapshot() -> AppSnapshot {
         let collections = bundled_postman_collections();
         let environments = demo_environments();

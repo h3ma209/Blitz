@@ -11403,6 +11403,7 @@ kbd,
 
 .sse-body-card,
 .sse-ai-preview-card,
+.sse-connected-card,
 .sse-error-card,
 .sse-empty-state {
   border: 1px solid var(--border);
@@ -11569,6 +11570,32 @@ kbd,
   background: var(--bg-input);
   max-height: 360px;
   overflow: auto;
+}
+
+.sse-connected-card {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.sse-connected-card.connecting {
+  border-color: rgba(56, 189, 248, 0.45);
+  background: rgba(56, 189, 248, 0.08);
+}
+
+.sse-connected-head {
+  font-weight: 700;
+  color: var(--accent);
+  margin-bottom: 4px;
+}
+
+.sse-connected-card.connecting .sse-connected-head {
+  color: #38bdf8;
+}
+
+.sse-connected-sub {
+  margin: 0;
+  font-size: var(--fs-caption);
+  color: var(--text-muted);
 }
 
 .sse-error-card {

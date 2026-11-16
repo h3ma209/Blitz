@@ -1,16 +1,51 @@
-use std::sync::Arc;
+use std::sync::atomic::Ordering;
+use std::sync::{mpsc, Arc};
 use std::time::Duration;
 
+use base64::Engine as _;
 use dioxus::prelude::*;
 
 use crate::core::{
     build_url_with_params, graphql_ws_subscribe_with_headers, grpc_reflection_list,
     mcp_call_tool, mcp_list_tools, mqtt_publish, mqtt_subscribe_once, socketio_session,
-    split_mcp_args, sse_stream_with_options, substitute_path_params,
-    ws_connect_session_with_headers, BodyMode, HttpMethod, MqttActionResult, ResponseView,
-    TimingBreakdown,
+    split_mcp_args, sse_stream_with_progress, substitute_path_params,
+    ws_connect_session_with_headers, AuthType, BodyMode, HttpMethod, KeyValue, MqttActionResult,
+    ResponseView, SseStreamProgress, TimingBreakdown,
 };
 use crate::ui::workbench::state::{WorkbenchState, WS_SESSION};
+
+enum SseWorkerMsg {
+    Progress(SseStreamProgress),
+    Done(Result<crate::core::SseStreamResult, String>),
+}
+
+#[allow(clippy::too_many_arguments)]
+fn build_sse_meta_line(
+    state: &str,
+    status: u16,
+    status_text: &str,
+    connect_ms: Option<u128>,
+    elapsed_ms: u128,
+    ttfb_ms: Option<u128>,
+    count: usize,
+    warning: Option<&str>,
+    method: &str,
+    url: &str,
+) -> String {
+    let v = serde_json::json!({
+        "state": state,
+        "status": status,
+        "status_text": status_text,
+        "connect_ms": connect_ms,
+        "elapsed_ms": elapsed_ms,
+        "ttfb_ms": ttfb_ms,
+        "count": count,
+        "warning": warning,
+        "method": method,
+        "url": url,
+    });
+    format!("SSE_META:{v}")
+}
 
 fn parse_sse_action_params(action: &str) -> Option<(usize, u64)> {
     if action == "sse_listen" {
@@ -33,18 +68,62 @@ fn parse_sse_action_params(action: &str) -> Option<(usize, u64)> {
 
 pub fn run_protocol_action(mut st: WorkbenchState, action: String) {
     let req = (st.draft)();
+    let req_id = req.id;
+    if action == "sse_stop"
+        || (parse_sse_action_params(&action).is_some() && st.is_request_sending(req_id))
+    {
+        if st.cancel_request_send(req_id) {
+            st.log_network("🌊 [SSE] Disconnected by user");
+            st.status_msg.set("SSE stream disconnected".into());
+            let mut log = st.get_request_protocol_log(req_id);
+            if let Some(first) = log.first_mut() {
+                if let Some(raw) = first.strip_prefix("SSE_META:") {
+                    if let Ok(mut v) = serde_json::from_str::<serde_json::Value>(raw) {
+                        v["state"] = serde_json::json!("stopped");
+                        v["warning"] = serde_json::json!("Disconnected by user");
+                        *first = format!("SSE_META:{v}");
+                    }
+                }
+            }
+            st.set_request_protocol_log(req_id, log);
+        }
+        return;
+    }
+
     if let Some((max_events, timeout_ms)) = parse_sse_action_params(&action) {
-        st.sending.set(true);
-        let vars = st.vars.peek();
-        let resolved_url = vars.resolve_string(&req.url);
-        let resolved_url = substitute_path_params(&resolved_url, &req.path_params);
-        let url = build_url_with_params(&resolved_url, &req.params);
-        let method_str = req.method.as_str().to_string();
-        let body_opt = if req.method != HttpMethod::Get
-            && req.method != HttpMethod::Head
-            && req.body_mode == BodyMode::Raw
+        let cancel_flag = st.start_request_send(req_id);
+        let cancel_worker = cancel_flag.clone();
+        let cancel_ui = cancel_flag;
+
+        let vars = st.effective_vars_for_request(&req);
+        let effective_req = st.effective_draft_for_codegen(&req);
+        let resolved_url = vars.resolve_string(&effective_req.url);
+        let resolved_path_params: Vec<KeyValue> = effective_req
+            .path_params
+            .iter()
+            .map(|p| KeyValue {
+                key: vars.resolve_string(&p.key),
+                value: vars.resolve_string(&p.value),
+                enabled: p.enabled,
+            })
+            .collect();
+        let resolved_params: Vec<KeyValue> = effective_req
+            .params
+            .iter()
+            .map(|p| KeyValue {
+                key: vars.resolve_string(&p.key),
+                value: vars.resolve_string(&p.value),
+                enabled: p.enabled,
+            })
+            .collect();
+        let resolved_url = substitute_path_params(&resolved_url, &resolved_path_params);
+        let url = build_url_with_params(&resolved_url, &resolved_params);
+        let method_str = effective_req.method.as_str().to_string();
+        let body_opt = if effective_req.method != HttpMethod::Get
+            && effective_req.method != HttpMethod::Head
+            && matches!(effective_req.body_mode, BodyMode::Raw | BodyMode::None)
         {
-            let resolved_body = vars.resolve_string(&req.body);
+            let resolved_body = vars.resolve_string(&effective_req.body);
             if resolved_body.trim().is_empty() {
                 None
             } else {
@@ -57,7 +136,7 @@ pub fn run_protocol_action(mut st: WorkbenchState, action: String) {
             "🌊 [SSE] Connecting ({method_str}) to {url} (max {max_events} events, {}s timeout)",
             timeout_ms / 1_000
         ));
-        let mut headers: Vec<(String, String)> = req
+        let mut headers: Vec<(String, String)> = effective_req
             .headers
             .iter()
             .filter(|h| {
@@ -67,9 +146,9 @@ pub fn run_protocol_action(mut st: WorkbenchState, action: String) {
             })
             .map(|h| (vars.resolve_string(&h.key), vars.resolve_string(&h.value)))
             .collect();
-        match &req.auth.auth_type {
-            crate::core::AuthType::Bearer => {
-                let token = vars.resolve_string(&req.auth.token);
+        match &effective_req.auth.auth_type {
+            AuthType::Bearer => {
+                let token = vars.resolve_string(&effective_req.auth.token);
                 if !token.is_empty()
                     && !headers
                         .iter()
@@ -78,9 +157,36 @@ pub fn run_protocol_action(mut st: WorkbenchState, action: String) {
                     headers.push(("Authorization".into(), format!("Bearer {token}")));
                 }
             }
-            crate::core::AuthType::ApiKey => {
-                let key = vars.resolve_string(&req.auth.api_key_header);
-                let val = vars.resolve_string(&req.auth.token);
+            AuthType::Oauth2 => {
+                let tok = if !effective_req.auth.oauth2.access_token.is_empty() {
+                    vars.resolve_string(&effective_req.auth.oauth2.access_token)
+                } else {
+                    vars.resolve_string(&effective_req.auth.token)
+                };
+                if !tok.is_empty()
+                    && !headers
+                        .iter()
+                        .any(|(k, _)| k.eq_ignore_ascii_case("authorization"))
+                {
+                    headers.push(("Authorization".into(), format!("Bearer {tok}")));
+                }
+            }
+            AuthType::Basic => {
+                let u = vars.resolve_string(&effective_req.auth.username);
+                let p = vars.resolve_string(&effective_req.auth.password);
+                if (!u.is_empty() || !p.is_empty())
+                    && !headers
+                        .iter()
+                        .any(|(k, _)| k.eq_ignore_ascii_case("authorization"))
+                {
+                    let encoded = base64::engine::general_purpose::STANDARD
+                        .encode(format!("{u}:{p}").as_bytes());
+                    headers.push(("Authorization".into(), format!("Basic {encoded}")));
+                }
+            }
+            AuthType::ApiKey => {
+                let key = vars.resolve_string(&effective_req.auth.api_key_header);
+                let val = vars.resolve_string(&effective_req.auth.token);
                 let hdr_name = if key.trim().is_empty() {
                     "X-Api-Key".to_string()
                 } else {
@@ -96,133 +202,302 @@ pub fn run_protocol_action(mut st: WorkbenchState, action: String) {
             }
             _ => {}
         }
-        let req_id = req.id;
+
+        st.set_request_protocol_log(
+            req_id,
+            vec![build_sse_meta_line(
+                "connecting",
+                0,
+                "Connecting…",
+                None,
+                0,
+                None,
+                0,
+                None,
+                &method_str,
+                &url,
+            )],
+        );
+        st.status_msg.set(format!("SSE connecting to {url}…"));
+
         let url_bg = url.clone();
         let method_bg = method_str.clone();
         let body_bg = body_opt.clone();
         let headers_bg = headers.clone();
-        spawn(async move {
-            let result = tokio::task::spawn_blocking(move || {
-                sse_stream_with_options(
+        let (tx, rx) = mpsc::channel::<SseWorkerMsg>();
+        if let Err(e) = std::thread::Builder::new()
+            .name("blitz-sse".into())
+            .spawn(move || {
+                let res = sse_stream_with_progress(
                     &method_bg,
                     &url_bg,
                     &headers_bg,
                     body_bg.as_deref(),
                     max_events,
                     timeout_ms,
-                )
+                    Some(cancel_worker),
+                    |prog| {
+                        let _ = tx.send(SseWorkerMsg::Progress(prog));
+                    },
+                );
+                let _ = tx.send(SseWorkerMsg::Done(res));
             })
-            .await;
-            match result {
-                Ok(Ok(stream_res)) => {
-                    st.log_network(format!(
-                        "🌊 [SSE] {} {} -> HTTP {} ({} events in {} ms)",
-                        method_str,
-                        url,
-                        stream_res.status,
-                        stream_res.events.len(),
-                        stream_res.elapsed_ms
+        {
+            st.finish_request_send(req_id, &cancel_ui);
+            st.log_error(format!("🌊 [SSE] Spawn failed: {e}"));
+            st.set_request_protocol_log(
+                req_id,
+                vec![format!("SSE_ERR:{}", serde_json::json!({ "error": format!("spawn: {e}") }))],
+            );
+            return;
+        }
+
+        spawn(async move {
+            let mut cur_status = 0u16;
+            let mut cur_status_text = String::new();
+            let mut cur_connect_ms: Option<u128> = None;
+            let mut cur_ttfb_ms: Option<u128> = None;
+            let mut cur_elapsed_ms: u128 = 0;
+            let mut live_event_lines: Vec<String> = Vec::new();
+            let started_at = std::time::Instant::now();
+
+            loop {
+                let mut changed_live = false;
+                let mut done_res: Option<Result<crate::core::SseStreamResult, String>> = None;
+                let mut channel_closed = false;
+
+                loop {
+                    match rx.try_recv() {
+                        Ok(SseWorkerMsg::Progress(SseStreamProgress::Connected {
+                            status,
+                            status_text,
+                            connect_ms,
+                            ..
+                        })) => {
+                            cur_status = status;
+                            cur_status_text = status_text.clone();
+                            cur_connect_ms = Some(connect_ms);
+                            cur_elapsed_ms = connect_ms;
+                            changed_live = true;
+                            st.log_network(format!(
+                                "🌊 [SSE] Connected ({method_str}) {url} -> HTTP {status} {status_text} ({connect_ms} ms)"
+                            ));
+                            st.status_msg.set(format!(
+                                "SSE connected: HTTP {status} {status_text} ({connect_ms} ms)"
+                            ));
+                        }
+                        Ok(SseWorkerMsg::Progress(SseStreamProgress::Event(ev))) => {
+                            if cur_ttfb_ms.is_none() {
+                                cur_ttfb_ms = Some(ev.elapsed_ms);
+                            }
+                            cur_elapsed_ms = ev.elapsed_ms;
+                            let ev_json = serde_json::json!({
+                                "index": ev.index,
+                                "event": ev.event,
+                                "id": ev.id,
+                                "elapsed_ms": ev.elapsed_ms,
+                                "data": ev.data,
+                            });
+                            live_event_lines.push(format!("SSE_EVENT:{ev_json}"));
+                            changed_live = true;
+                        }
+                        Ok(SseWorkerMsg::Done(res)) => {
+                            done_res = Some(res);
+                            break;
+                        }
+                        Err(mpsc::TryRecvError::Empty) => break,
+                        Err(mpsc::TryRecvError::Disconnected) => {
+                            channel_closed = true;
+                            break;
+                        }
+                    }
+                }
+
+                if changed_live && done_res.is_none() {
+                    let state = if live_event_lines.is_empty() {
+                        "connected"
+                    } else {
+                        "streaming"
+                    };
+                    let mut log = Vec::with_capacity(live_event_lines.len() + 1);
+                    log.push(build_sse_meta_line(
+                        state,
+                        cur_status,
+                        &cur_status_text,
+                        cur_connect_ms,
+                        cur_elapsed_ms,
+                        cur_ttfb_ms,
+                        live_event_lines.len(),
+                        None,
+                        &method_str,
+                        &url,
                     ));
-                    if let Some(ref w) = stream_res.warning {
-                        st.log_warn(format!("🌊 [SSE] {w}"));
-                    }
-                    if st.app_settings.peek().ui.console_log_error_payloads {
-                        let mut sent = format!("─── SSE Connection Sent ───\n{method_str} {url}");
-                        if !headers.is_empty() {
-                            sent.push_str("\nHeaders:");
-                            for (k, v) in &headers {
-                                sent.push_str(&format!("\n  {k}: {v}"));
+                    log.extend(live_event_lines.iter().cloned());
+                    st.set_request_protocol_log(req_id, log);
+                }
+
+                if let Some(res) = done_res {
+                    match res {
+                        Ok(stream_res) => {
+                            st.log_network(format!(
+                                "🌊 [SSE] {} {} -> HTTP {} ({} events in {} ms)",
+                                method_str,
+                                url,
+                                stream_res.status,
+                                stream_res.events.len(),
+                                stream_res.elapsed_ms
+                            ));
+                            if let Some(ref w) = stream_res.warning {
+                                st.log_warn(format!("🌊 [SSE] {w}"));
                             }
-                        }
-                        if let Some(ref b) = body_opt {
-                            sent.push_str(&format!("\nBody:\n{b}"));
-                        }
-                        st.log_network(sent);
-                    }
-                    let mut structured_log = Vec::with_capacity(stream_res.events.len() + 1);
-                    let meta_json = serde_json::json!({
-                        "status": stream_res.status,
-                        "status_text": stream_res.status_text,
-                        "elapsed_ms": stream_res.elapsed_ms,
-                        "ttfb_ms": stream_res.ttfb_ms,
-                        "count": stream_res.events.len(),
-                        "warning": stream_res.warning,
-                        "method": method_str,
-                        "url": url,
-                    });
-                    structured_log.push(format!("SSE_META:{meta_json}"));
-                    let mut reconstructed = String::new();
-                    for ev in &stream_res.events {
-                        let ev_json = serde_json::json!({
-                            "index": ev.index,
-                            "event": ev.event,
-                            "id": ev.id,
-                            "elapsed_ms": ev.elapsed_ms,
-                            "data": ev.data,
-                        });
-                        structured_log.push(format!("SSE_EVENT:{ev_json}"));
-                        if !reconstructed.is_empty() {
-                            reconstructed.push('\n');
-                        }
-                        if !ev.id.is_empty() {
-                            reconstructed.push_str(&format!("id: {}\n", ev.id));
-                        }
-                        reconstructed.push_str(&format!("event: {}\n", ev.event));
-                        for line in ev.data.lines() {
-                            reconstructed.push_str(&format!("data: {line}\n"));
-                        }
-                    }
-                    let resp_view = Arc::new(ResponseView {
-                        status: stream_res.status,
-                        status_text: stream_res.status_text,
-                        headers: stream_res.response_headers,
-                        body: reconstructed,
-                        elapsed_ms: stream_res.elapsed_ms,
-                        error: None,
-                        pipeline_log: stream_res.log,
-                        console_messages: Vec::new(),
-                        test_results: Vec::new(),
-                        resolved_url: url,
-                        timing: TimingBreakdown {
-                            ttfb_ms: stream_res.ttfb_ms.unwrap_or(0),
-                            download_ms: stream_res
-                                .elapsed_ms
-                                .saturating_sub(stream_res.ttfb_ms.unwrap_or(0)),
-                            ..Default::default()
-                        },
-                        visualizer_html: String::new(),
-                        sent_headers: headers,
-                        sent_body: body_opt,
-                    });
-                    st.response.set(Some(resp_view.clone()));
-                    st.responses.write().insert(req_id, resp_view);
-                    st.protocol_log.set(structured_log);
-                }
-                Ok(Err(e)) => {
-                    st.log_error(format!("🌊 [SSE] Error: {e}"));
-                    if st.app_settings.peek().ui.console_log_error_payloads {
-                        let mut sent = format!("─── SSE Connection Sent ───\n{method_str} {url}");
-                        if !headers.is_empty() {
-                            sent.push_str("\nHeaders:");
-                            for (k, v) in &headers {
-                                sent.push_str(&format!("\n  {k}: {v}"));
+                            if st.app_settings.peek().ui.console_log_error_payloads {
+                                let mut sent =
+                                    format!("─── SSE Connection Sent ───\n{method_str} {url}");
+                                if !headers.is_empty() {
+                                    sent.push_str("\nHeaders:");
+                                    for (k, v) in &headers {
+                                        sent.push_str(&format!("\n  {k}: {v}"));
+                                    }
+                                }
+                                if let Some(ref b) = body_opt {
+                                    sent.push_str(&format!("\nBody:\n{b}"));
+                                }
+                                st.log_network(sent);
                             }
+                            let final_state = if cancel_ui.load(Ordering::SeqCst) {
+                                "stopped"
+                            } else {
+                                "completed"
+                            };
+                            let mut structured_log =
+                                Vec::with_capacity(stream_res.events.len() + 1);
+                            structured_log.push(build_sse_meta_line(
+                                final_state,
+                                stream_res.status,
+                                &stream_res.status_text,
+                                Some(stream_res.connect_ms),
+                                stream_res.elapsed_ms,
+                                stream_res.ttfb_ms,
+                                stream_res.events.len(),
+                                stream_res.warning.as_deref(),
+                                &method_str,
+                                &url,
+                            ));
+                            let mut reconstructed = String::new();
+                            for ev in &stream_res.events {
+                                let ev_json = serde_json::json!({
+                                    "index": ev.index,
+                                    "event": ev.event,
+                                    "id": ev.id,
+                                    "elapsed_ms": ev.elapsed_ms,
+                                    "data": ev.data,
+                                });
+                                structured_log.push(format!("SSE_EVENT:{ev_json}"));
+                                if !reconstructed.is_empty() {
+                                    reconstructed.push('\n');
+                                }
+                                if !ev.id.is_empty() {
+                                    reconstructed.push_str(&format!("id: {}\n", ev.id));
+                                }
+                                reconstructed.push_str(&format!("event: {}\n", ev.event));
+                                for line in ev.data.lines() {
+                                    reconstructed.push_str(&format!("data: {line}\n"));
+                                }
+                            }
+                            let resp_view = Arc::new(ResponseView {
+                                status: stream_res.status,
+                                status_text: stream_res.status_text,
+                                headers: stream_res.response_headers,
+                                body: reconstructed,
+                                elapsed_ms: stream_res.elapsed_ms,
+                                error: None,
+                                pipeline_log: stream_res.log,
+                                console_messages: Vec::new(),
+                                test_results: Vec::new(),
+                                resolved_url: url.clone(),
+                                timing: TimingBreakdown {
+                                    ttfb_ms: stream_res.ttfb_ms.unwrap_or(stream_res.connect_ms),
+                                    download_ms: stream_res
+                                        .elapsed_ms
+                                        .saturating_sub(stream_res.ttfb_ms.unwrap_or(stream_res.connect_ms)),
+                                    ..Default::default()
+                                },
+                                visualizer_html: String::new(),
+                                sent_headers: headers,
+                                sent_body: body_opt,
+                            });
+                            let mut map = st.responses.peek().clone();
+                            map.insert(req_id, resp_view.clone());
+                            st.responses.set(map);
+                            if st.draft.peek().id == req_id {
+                                st.response.set(Some(resp_view));
+                            }
+                            st.set_request_protocol_log(req_id, structured_log);
+                            st.status_msg.set(format!(
+                                "SSE HTTP {} ({} events in {} ms)",
+                                stream_res.status,
+                                stream_res.events.len(),
+                                stream_res.elapsed_ms
+                            ));
                         }
-                        if let Some(ref b) = body_opt {
-                            sent.push_str(&format!("\nBody:\n{b}"));
+                        Err(e) => {
+                            st.log_error(format!("🌊 [SSE] Error: {e}"));
+                            if st.app_settings.peek().ui.console_log_error_payloads {
+                                let mut sent =
+                                    format!("─── SSE Connection Sent ───\n{method_str} {url}");
+                                if !headers.is_empty() {
+                                    sent.push_str("\nHeaders:");
+                                    for (k, v) in &headers {
+                                        sent.push_str(&format!("\n  {k}: {v}"));
+                                    }
+                                }
+                                if let Some(ref b) = body_opt {
+                                    sent.push_str(&format!("\nBody:\n{b}"));
+                                }
+                                st.log_network(sent);
+                                st.log_error(format!("─── Received on Error ───\nError: {e}"));
+                            }
+                            let err_json = serde_json::json!({
+                                "error": e,
+                                "method": method_str,
+                                "url": url
+                            });
+                            st.set_request_protocol_log(req_id, vec![format!("SSE_ERR:{err_json}")]);
+                            st.status_msg.set(format!("SSE error: {e}"));
                         }
-                        st.log_network(sent);
-                        st.log_error(format!("─── Received on Error ───\nError: {e}"));
                     }
-                    let err_json = serde_json::json!({ "error": e, "method": method_str, "url": url });
-                    st.protocol_log.set(vec![format!("SSE_ERR:{err_json}")]);
+                    st.finish_request_send(req_id, &cancel_ui);
+                    break;
                 }
-                Err(e) => {
-                    st.log_error(format!("🌊 [SSE] Join error: {e}"));
-                    st.protocol_log.set(vec![format!("SSE_ERR:{}", serde_json::json!({ "error": format!("join: {e}") }))]);
+
+                if cancel_ui.load(Ordering::SeqCst) || channel_closed {
+                    let elapsed_now = started_at.elapsed().as_millis();
+                    let warn_text = if cur_status > 0 {
+                        "Disconnected by user"
+                    } else {
+                        "Connection cancelled before handshake completed"
+                    };
+                    let mut log = Vec::with_capacity(live_event_lines.len() + 1);
+                    log.push(build_sse_meta_line(
+                        "stopped",
+                        cur_status,
+                        &cur_status_text,
+                        cur_connect_ms,
+                        elapsed_now,
+                        cur_ttfb_ms,
+                        live_event_lines.len(),
+                        Some(warn_text),
+                        &method_str,
+                        &url,
+                    ));
+                    log.extend(live_event_lines.iter().cloned());
+                    st.set_request_protocol_log(req_id, log);
+                    st.finish_request_send(req_id, &cancel_ui);
+                    break;
                 }
+
+                tokio::time::sleep(Duration::from_millis(45)).await;
             }
-            st.sending.set(false);
         });
         return;
     }
@@ -405,7 +680,7 @@ pub fn run_protocol_action(mut st: WorkbenchState, action: String) {
             st.log_network("⚡ [WS] Disconnected");
         }
         "mqtt_publish" => {
-            st.sending.set(true);
+            let cancel_flag = st.start_request_send(req_id);
             let url = req.url.clone();
             let cid = req.mqtt_client_id.clone();
             let topic = req.mqtt_topic.clone();
@@ -445,12 +720,12 @@ pub fn run_protocol_action(mut st: WorkbenchState, action: String) {
                     }
                 }
                 lines.push(format!("{} ms", r.elapsed_ms));
-                st.protocol_log.set(lines);
-                st.sending.set(false);
+                st.set_request_protocol_log(req_id, lines);
+                st.finish_request_send(req_id, &cancel_flag);
             });
         }
         "mqtt_subscribe" => {
-            st.sending.set(true);
+            let cancel_flag = st.start_request_send(req_id);
             let url = req.url.clone();
             let cid = req.mqtt_client_id.clone();
             let topic = req.mqtt_topic.clone();
@@ -473,12 +748,12 @@ pub fn run_protocol_action(mut st: WorkbenchState, action: String) {
                 } else {
                     st.log_network(format!("📡 [MQTT] Received message in {} ms", r.elapsed_ms));
                 }
-                st.protocol_log.set(lines);
-                st.sending.set(false);
+                st.set_request_protocol_log(req_id, lines);
+                st.finish_request_send(req_id, &cancel_flag);
             });
         }
         "mcp_list" => {
-            st.sending.set(true);
+            let cancel_flag = st.start_request_send(req_id);
             let cmd = req.mcp_command.clone();
             let args = split_mcp_args(&req.mcp_args);
             st.log_network(format!("🤖 [MCP] Listing tools from '{cmd}'"));
@@ -492,26 +767,29 @@ pub fn run_protocol_action(mut st: WorkbenchState, action: String) {
                             .into_iter()
                             .map(|t| format!("{} — {}", t.name, t.description))
                             .collect();
-                        st.protocol_log.set(if lines.is_empty() {
-                            vec!["(no tools)".into()]
-                        } else {
-                            lines
-                        });
+                        st.set_request_protocol_log(
+                            req_id,
+                            if lines.is_empty() {
+                                vec!["(no tools)".into()]
+                            } else {
+                                lines
+                            },
+                        );
                     }
                     Ok(Err(e)) => {
                         st.log_error(format!("🤖 [MCP] List error: {e}"));
-                        st.protocol_log.set(vec![format!("mcp: {e}")]);
+                        st.set_request_protocol_log(req_id, vec![format!("mcp: {e}")]);
                     }
                     Err(e) => {
                         st.log_error(format!("🤖 [MCP] Join error: {e}"));
-                        st.protocol_log.set(vec![format!("mcp join: {e}")]);
+                        st.set_request_protocol_log(req_id, vec![format!("mcp join: {e}")]);
                     }
                 }
-                st.sending.set(false);
+                st.finish_request_send(req_id, &cancel_flag);
             });
         }
         "mcp_call" => {
-            st.sending.set(true);
+            let cancel_flag = st.start_request_send(req_id);
             let cmd = req.mcp_command.clone();
             let args = split_mcp_args(&req.mcp_args);
             let tool = req.mcp_tool_name.clone();
@@ -534,7 +812,7 @@ pub fn run_protocol_action(mut st: WorkbenchState, action: String) {
                                 "─── MCP Tool Call Sent ───\nTool: {tool}\nArgs:\n{args_json}\n─── Received Result ───\n{body}"
                             ));
                         }
-                        st.protocol_log.set(vec![body]);
+                        st.set_request_protocol_log(req_id, vec![body]);
                     }
                     Ok(Err(e)) => {
                         st.log_error(format!("🤖 [MCP] Tool '{tool}' error: {e}"));
@@ -544,18 +822,18 @@ pub fn run_protocol_action(mut st: WorkbenchState, action: String) {
                             ));
                             st.log_error(format!("─── Received on Error ───\nError: {e}"));
                         }
-                        st.protocol_log.set(vec![e]);
+                        st.set_request_protocol_log(req_id, vec![e]);
                     }
                     Err(e) => {
                         st.log_error(format!("🤖 [MCP] Tool '{tool}' join error: {e}"));
-                        st.protocol_log.set(vec![format!("join: {e}")]);
+                        st.set_request_protocol_log(req_id, vec![format!("join: {e}")]);
                     }
                 }
-                st.sending.set(false);
+                st.finish_request_send(req_id, &cancel_flag);
             });
         }
         "socketio_session" => {
-            st.sending.set(true);
+            let cancel_flag = st.start_request_send(req_id);
             let url = req.url.clone();
             let ev = req.socketio_event.clone();
             let body = req.body.clone();
@@ -576,7 +854,7 @@ pub fn run_protocol_action(mut st: WorkbenchState, action: String) {
                                 "─── Socket.IO Sent ───\nEvent: {ev}\nPayload:\n{body}"
                             ));
                         }
-                        st.protocol_log.set(lines);
+                        st.set_request_protocol_log(req_id, lines);
                     }
                     Ok(Err(e)) => {
                         st.log_error(format!("⚡ [Socket.IO] Error: {e}"));
@@ -586,19 +864,19 @@ pub fn run_protocol_action(mut st: WorkbenchState, action: String) {
                             ));
                             st.log_error(format!("─── Received on Error ───\nError: {e}"));
                         }
-                        st.protocol_log.set(vec![e]);
+                        st.set_request_protocol_log(req_id, vec![e]);
                     }
                     Err(e) => {
                         st.log_error(format!("⚡ [Socket.IO] Join error: {e}"));
-                        st.protocol_log.set(vec![format!("join: {e}")]);
+                        st.set_request_protocol_log(req_id, vec![format!("join: {e}")]);
                     }
                 }
-                st.sending.set(false);
+                st.finish_request_send(req_id, &cancel_flag);
             });
         }
         "graphql_ws_subscribe" => {
-            st.sending.set(true);
-            let vars = st.vars.peek();
+            let cancel_flag = st.start_request_send(req_id);
+            let vars = st.effective_vars_for_request(&req);
             let url = vars.resolve_string(&req.url);
             let raw_q = if req.graphql_ws_query.is_empty() {
                 &req.graphql_query
@@ -618,13 +896,13 @@ pub fn run_protocol_action(mut st: WorkbenchState, action: String) {
                 .map(|h| (vars.resolve_string(&h.key), vars.resolve_string(&h.value)))
                 .collect();
             match &req.auth.auth_type {
-                crate::core::AuthType::Bearer => {
+                AuthType::Bearer => {
                     let token = vars.resolve_string(&req.auth.token);
                     if !token.is_empty() {
                         headers.push(("Authorization".into(), format!("Bearer {token}")));
                     }
                 }
-                crate::core::AuthType::ApiKey => {
+                AuthType::ApiKey => {
                     let key = vars.resolve_string(&req.auth.api_key_header);
                     let val = vars.resolve_string(&req.auth.token);
                     if !key.is_empty() && !val.is_empty() {
@@ -661,7 +939,7 @@ pub fn run_protocol_action(mut st: WorkbenchState, action: String) {
                                 "─── GraphQL-WS Sent ───\nQuery:\n{q}\nVariables:\n{q_vars}"
                             ));
                         }
-                        st.protocol_log.set(lines);
+                        st.set_request_protocol_log(req_id, lines);
                     }
                     Ok(Err(e)) => {
                         st.log_error(format!("◈ [GraphQL-WS] Error: {e}"));
@@ -671,20 +949,20 @@ pub fn run_protocol_action(mut st: WorkbenchState, action: String) {
                             ));
                             st.log_error(format!("─── Received on Error ───\nError: {e}"));
                         }
-                        st.protocol_log.set(vec![e]);
+                        st.set_request_protocol_log(req_id, vec![e]);
                     }
                     Err(e) => {
                         st.log_error(format!("◈ [GraphQL-WS] Join error: {e}"));
-                        st.protocol_log.set(vec![format!("join: {e}")]);
+                        st.set_request_protocol_log(req_id, vec![format!("join: {e}")]);
                     }
                 }
-                st.sending.set(false);
+                st.finish_request_send(req_id, &cancel_flag);
             });
         }
         "grpc_reflect" => {
             let url = req.url.clone();
             st.log_network(format!("🔌 [gRPC] Reflecting {url}"));
-            st.protocol_log.set(grpc_reflection_list(&url));
+            st.set_request_protocol_log(req_id, grpc_reflection_list(&url));
         }
         _ => {}
     }

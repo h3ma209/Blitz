@@ -623,4 +623,158 @@ mod tests {
         assert_eq!(report.results.len(), 2);
         assert_eq!(report.failed_count(), 0, "{:?}", report.results);
     }
+
+    fn current_rss_kb() -> Option<u64> {
+        let pid = std::process::id().to_string();
+        let out = std::process::Command::new("ps")
+            .args(["-o", "rss=", "-p", &pid])
+            .output()
+            .ok()?;
+        String::from_utf8_lossy(&out.stdout).trim().parse::<u64>().ok()
+    }
+
+    #[test]
+    fn stress_test_open_requests_responses_sandbox_and_editor_memory_bounds() {
+        use std::collections::HashMap;
+        use std::fs;
+        use std::sync::Arc;
+        use crate::core::{run_js_sandbox_ex, ResponseView, SandboxExtras, SandboxResponse};
+        use crate::storage::{AppSnapshot, JsonStore};
+        use crate::ui::code_editor::TextHistory;
+        use crate::ui::workbench::state::prune_response_cache;
+
+        // 1. Open 250 requests while keeping tab bar capped at 36 and compacting inactive 1 MB responses.
+        let mut cols = Vec::new();
+        let mut all_reqs = Vec::new();
+        for c_i in 0..5 {
+            let mut col = Collection::new(format!("StressCol-{c_i}"));
+            for r_i in 0..50 {
+                let mut req = RequestDraft {
+                    name: format!("Req-{c_i}-{r_i}"),
+                    method: HttpMethod::Post,
+                    url: format!("http://127.0.0.1:9999/api/{c_i}/{r_i}"),
+                    ..Default::default()
+                };
+                req.body_mode = crate::core::BodyMode::Raw;
+                req.body = "p".repeat(16 * 1024);
+                col.add_request(req.clone());
+                all_reqs.push(req);
+            }
+            cols.push(col);
+        }
+
+        let mut open_tabs: Vec<RequestDraft> = Vec::new();
+        let mut responses: HashMap<uuid::Uuid, Arc<ResponseView>> = HashMap::new();
+        let mut prev_responses: HashMap<uuid::Uuid, Arc<ResponseView>> = HashMap::new();
+        let large_body = "x".repeat(1024 * 1024);
+
+        for (idx, req) in all_reqs.iter().enumerate() {
+            if !open_tabs.iter().any(|t| t.id == req.id) {
+                if open_tabs.len() >= 36 {
+                    open_tabs.remove(0);
+                }
+                open_tabs.push(req.clone());
+            }
+            if idx < 200 {
+                let mut view = ResponseView::error("ok", vec!["stress".into()]);
+                view.status = 200;
+                view.error = None;
+                view.body = large_body.clone();
+                if let Some(prev) = responses.get(&req.id).cloned() {
+                    prev_responses.insert(req.id, prev);
+                }
+                responses.insert(req.id, Arc::new(view));
+                prune_response_cache(&mut responses, &mut prev_responses, &open_tabs, Some(req.id));
+            }
+        }
+
+        let last_active_id = all_reqs[199].id;
+        assert!(open_tabs.len() <= 36);
+        assert!(responses.len() <= 32, "responses len = {}", responses.len());
+        assert!(prev_responses.len() <= 12);
+        assert!(responses
+            .iter()
+            .filter(|(id, _)| **id != last_active_id)
+            .all(|(_, v)| v.body.len() <= 256 * 1024 + 64));
+        let total_resp_bytes: usize = responses.values().map(|v| v.body.len() + v.visualizer_html.len()).sum();
+        assert!(
+            total_resp_bytes < 10 * 1024 * 1024,
+            "response cache bytes unexpectedly high: {total_resp_bytes}"
+        );
+
+        // 2. Editor TextHistory stays <= 32 steps and <= 1 MB under 200 x 100 KB edits.
+        let mut hist = TextHistory::new("");
+        let big_chunk = "y".repeat(100 * 1024);
+        for i in 0..200u64 {
+            let prev = format!("{big_chunk}{i}");
+            let next = format!("{big_chunk}{}", i + 1);
+            hist.record(&prev, prev.len(), &next, i * 600);
+        }
+        assert!(hist.past.len() <= 32);
+        assert!(hist.future.len() <= 32);
+        assert!(
+            hist.total_bytes() <= 1024 * 1024,
+            "TextHistory bytes exceeded 1 MB cap: {}",
+            hist.total_bytes()
+        );
+
+        // 3. Boa sandbox clears `__np` after 100 iterations with 512 KB payloads so RSS does not balloon.
+        let mut ctx = VariableContext::default();
+        let resp_payload = SandboxResponse {
+            status: 200,
+            status_text: "OK".into(),
+            body: "z".repeat(512 * 1024),
+            headers: vec![("content-type".into(), "application/json".into())],
+            response_time: 12,
+        };
+        let extras = SandboxExtras::default();
+        // Warm up first script execution before measuring RSS baseline.
+        let warm = run_js_sandbox_ex(
+            "blitz.environment.set('warm', '1');",
+            "test",
+            &mut ctx,
+            Some(&resp_payload),
+            &extras,
+        );
+        assert!(warm.error.is_none());
+        let rss_before = current_rss_kb().unwrap_or(0);
+        for i in 0..100 {
+            let out = run_js_sandbox_ex(
+                &format!("blitz.environment.set('step', '{i}');"),
+                "test",
+                &mut ctx,
+                Some(&resp_payload),
+                &extras,
+            );
+            assert!(out.error.is_none());
+        }
+        let rss_after = current_rss_kb().unwrap_or(0);
+        if rss_before > 0 && rss_after > 0 {
+            let delta_kb = rss_after.saturating_sub(rss_before);
+            assert!(
+                delta_kb < 64 * 1024,
+                "excessive sandbox RSS growth across 100 large runs: {delta_kb} KB (before={rss_before}, after={rss_after})"
+            );
+        }
+
+        // 4. JsonStore::save_view_state preserves existing collections.json without rewriting it.
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let tmp_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("target")
+            .join("test-tmp")
+            .join(format!("blitz-stress-store-{nanos}"));
+        let store = JsonStore::open(&tmp_dir).unwrap();
+        let marker = r#"[{"id":"00000000-0000-0000-0000-000000000001","name":"MarkerCol"}]"#;
+        fs::write(store.collections_path(), marker).unwrap();
+        let view_snap = AppSnapshot {
+            open_tabs,
+            ..Default::default()
+        };
+        store.save_view_state(&view_snap).unwrap();
+        assert_eq!(fs::read_to_string(store.collections_path()).unwrap(), marker);
+        let _ = fs::remove_dir_all(tmp_dir);
+    }
 }

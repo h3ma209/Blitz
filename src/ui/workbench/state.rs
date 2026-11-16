@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use std::path::Path;
-use std::sync::atomic::AtomicBool;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use uuid::Uuid;
@@ -8,12 +8,13 @@ use uuid::Uuid;
 use dioxus::prelude::*;
 
 use crate::core::{
-    collect_all_subtree_ids, ensure_default_environments, find_environment, find_request_across,
-    remove_across, sync_on_save, trash_collection, AppSettings, CaptureProxyHandle, Collection,
+    collect_all_subtree_ids, compact_response_for_disk, ensure_default_environments,
+    find_environment, find_request_across, remove_across, resolve_ancestor_auth, sync_on_save, trash_collection,
+    AncestorAuthOrigin, AppSettings, AuthConfig, AuthType, CaptureProxyHandle, Collection,
     CollectionItem, ConsoleLine, CookieJar, Environment, HistoryEntry, MockHandle, PerfReport,
-    compact_response_for_disk, RequestDraft, ResponseView, TeamActivity, UpdateInfo,
-    VariableContext, VaultStore, WsSession,
+    RequestDraft, ResponseView, TeamActivity, UpdateInfo, VariableContext, VaultStore, WsSession,
 };
+use crate::core::collection::RequestEnvOverride;
 use crate::runtime::RunnerReport;
 use crate::storage::{AppSnapshot, JsonStore};
 use crate::ui::{push_toast, ConflictState, Toast, ToastLevel};
@@ -21,9 +22,14 @@ use crate::ui::{push_toast, ConflictState, Toast, ToastLevel};
 struct SavePending {
     gen: u64,
     cloud: bool,
+    collections_dirty: bool,
 }
 
-static SAVE_PENDING: Mutex<SavePending> = Mutex::new(SavePending { gen: 0, cloud: false });
+static SAVE_PENDING: Mutex<SavePending> = Mutex::new(SavePending {
+    gen: 0,
+    cloud: false,
+    collections_dirty: false,
+});
 
 pub static MOCK_HANDLE: Mutex<Option<MockHandle>> = Mutex::new(None);
 pub static WS_SESSION: Mutex<Option<WsSession>> = Mutex::new(None);
@@ -113,6 +119,7 @@ pub struct WorkbenchState {
     pub responses: Signal<HashMap<Uuid, Arc<ResponseView>>>,
     pub prev_responses: Signal<HashMap<Uuid, Arc<ResponseView>>>,
     pub sending: Signal<bool>,
+    pub sending_requests: Signal<HashMap<Uuid, Arc<AtomicBool>>>,
     pub send_gen: Signal<u64>,
     pub send_cancel: Signal<Option<Arc<AtomicBool>>>,
     pub collections: Signal<Vec<Collection>>,
@@ -155,6 +162,7 @@ pub struct WorkbenchState {
     pub ws_timeline: Signal<Vec<crate::core::WsFrameItem>>,
     pub ws_auto_ping: Signal<bool>,
     pub protocol_log: Signal<Vec<String>>,
+    pub protocol_logs: Signal<HashMap<Uuid, Vec<String>>>,
     pub proxy_port: Signal<Option<u16>>,
     pub show_lint: Signal<bool>,
     pub show_perf: Signal<bool>,
@@ -205,6 +213,7 @@ impl WorkbenchState {
             responses: use_signal(HashMap::<Uuid, Arc<ResponseView>>::new),
             prev_responses: use_signal(HashMap::<Uuid, Arc<ResponseView>>::new),
             sending: use_signal(|| false),
+            sending_requests: use_signal(HashMap::<Uuid, Arc<AtomicBool>>::new),
             send_gen: use_signal(|| 0u64),
             send_cancel: use_signal(|| None::<Arc<AtomicBool>>),
             collections: use_signal(Vec::<Collection>::new),
@@ -247,6 +256,7 @@ impl WorkbenchState {
             ws_timeline: use_signal(Vec::<crate::core::WsFrameItem>::new),
             ws_auto_ping: use_signal(|| false),
             protocol_log: use_signal(Vec::<String>::new),
+            protocol_logs: use_signal(HashMap::<Uuid, Vec<String>>::new),
             proxy_port: use_signal(|| None::<u16>),
             show_lint: use_signal(|| false),
             show_perf: use_signal(|| false),
@@ -318,14 +328,23 @@ impl WorkbenchState {
         self.log(ConsoleLine::cloud(msg));
     }
 
-    pub fn build_snapshot(&self, settings: AppSettings, active_environment: String) -> AppSnapshot {
+    pub fn build_snapshot(
+        &self,
+        settings: AppSettings,
+        active_environment: String,
+        include_collections: bool,
+    ) -> AppSnapshot {
         let mut tabs = (self.open_tabs)();
         let cur = (self.draft)();
         if let Some(slot) = tabs.iter_mut().find(|t| t.id == cur.id) {
             *slot = cur;
         }
         AppSnapshot {
-            collections: (self.collections)(),
+            collections: if include_collections {
+                (self.collections)()
+            } else {
+                Vec::new()
+            },
             variables: (self.vars)(),
             active_environment,
             environments: (self.environments)(),
@@ -352,37 +371,40 @@ impl WorkbenchState {
 
     /// Coalesce bursts of saves. Latest state wins. Quit inside the window can drop the last edit.
     pub fn persist_local(&self) {
-        self.schedule_save(false);
+        self.schedule_save(false, false);
     }
 
     pub fn persist(&mut self) {
-        self.schedule_save(true);
+        self.schedule_save(true, true);
     }
 
-    fn schedule_save(&self, with_cloud: bool) {
+    fn schedule_save(&self, with_cloud: bool, collections_dirty: bool) {
         let gen = {
             let mut pending = SAVE_PENDING.lock().unwrap_or_else(|e| e.into_inner());
             pending.gen = pending.gen.wrapping_add(1);
             pending.cloud |= with_cloud;
+            pending.collections_dirty |= collections_dirty;
             pending.gen
         };
         let mut st = *self;
         spawn(async move {
             tokio::time::sleep(Duration::from_millis(400)).await;
-            let do_cloud = {
+            let (do_cloud, include_collections) = {
                 let mut pending = SAVE_PENDING.lock().unwrap_or_else(|e| e.into_inner());
                 if pending.gen != gen {
                     return;
                 }
                 let cloud = pending.cloud;
+                let dirty_cols = pending.collections_dirty;
                 pending.cloud = false;
-                cloud
+                pending.collections_dirty = false;
+                (cloud, dirty_cols)
             };
-            st.write_snapshot(do_cloud);
+            st.write_snapshot(do_cloud, include_collections);
         });
     }
 
-    fn write_snapshot(&mut self, with_cloud: bool) {
+    fn write_snapshot(&mut self, with_cloud: bool, include_collections: bool) {
         let root = (self.data_root)();
         let store = if !root.trim().is_empty() {
             JsonStore::open_path(&root)
@@ -399,17 +421,33 @@ impl WorkbenchState {
             if settings.storage_root.trim().is_empty() {
                 settings.storage_root = store.root().display().to_string();
             }
-            let mut snap = self.build_snapshot(settings.clone(), active_environment.clone());
-            match store.save(&snap) {
+            let write_collections = include_collections || !store.collections_path().exists();
+            let mut snap = self.build_snapshot(
+                settings.clone(),
+                active_environment.clone(),
+                write_collections,
+            );
+            let save_res = if write_collections {
+                store.save(&snap)
+            } else {
+                store.save_view_state(&snap)
+            };
+            match save_res {
                 Ok(()) => {
-                    record_gui_collections_mtime(store.root());
+                    if write_collections {
+                        record_gui_collections_mtime(store.root());
+                    }
                     let base = format!("saved · {}", store.root().display());
                     self.status_msg.set(base.clone());
                     if with_cloud && settings.cloud_sync.enabled && !(self.cloud_busy)() {
                         let mut st = *self;
                         let root = store.root().to_path_buf();
                         let mut settings_bg = settings;
-                        let cols = std::mem::take(&mut snap.collections);
+                        let cols = if write_collections {
+                            std::mem::take(&mut snap.collections)
+                        } else {
+                            (self.collections)()
+                        };
                         let envs = (self.environments)();
                         st.cloud_busy.set(true);
                         spawn(async move {
@@ -429,7 +467,7 @@ impl WorkbenchState {
                             if let Ok((result, updated_settings)) = res {
                                 st.app_settings.set(updated_settings);
                                 st.status_msg.set(format!("{base} · {}", result.message));
-                                st.write_snapshot(false);
+                                st.write_snapshot(false, false);
                             }
                         });
                     }
@@ -439,12 +477,187 @@ impl WorkbenchState {
         }
     }
 
+    pub fn is_request_sending(&self, req_id: Uuid) -> bool {
+        self.sending_requests.read().contains_key(&req_id)
+    }
+
+    pub fn start_request_send(&mut self, req_id: Uuid) -> Arc<AtomicBool> {
+        let flag = Arc::new(AtomicBool::new(false));
+        let mut map = self.sending_requests.peek().clone();
+        if let Some(prev) = map.insert(req_id, flag.clone()) {
+            prev.store(true, Ordering::SeqCst);
+        }
+        self.sending_requests.set(map);
+        self.sending.set(true);
+        flag
+    }
+
+    pub fn finish_request_send(&mut self, req_id: Uuid, flag: &Arc<AtomicBool>) {
+        let mut map = self.sending_requests.peek().clone();
+        if map.get(&req_id).is_some_and(|cur| Arc::ptr_eq(cur, flag)) {
+            map.remove(&req_id);
+            let any = !map.is_empty();
+            self.sending_requests.set(map);
+            self.sending.set(any);
+        }
+    }
+
+    pub fn cancel_request_send(&mut self, req_id: Uuid) -> bool {
+        let mut map = self.sending_requests.peek().clone();
+        if let Some(flag) = map.remove(&req_id) {
+            flag.store(true, Ordering::SeqCst);
+            let any = !map.is_empty();
+            self.sending_requests.set(map);
+            self.sending.set(any);
+            true
+        } else {
+            false
+        }
+    }
+
+    pub fn set_request_protocol_log(&mut self, req_id: Uuid, lines: Vec<String>) {
+        let mut logs = self.protocol_logs.peek().clone();
+        logs.insert(req_id, lines.clone());
+        self.protocol_logs.set(logs);
+        if self.draft.peek().id == req_id {
+            self.protocol_log.set(lines);
+        }
+    }
+
+    pub fn get_request_protocol_log(&self, req_id: Uuid) -> Vec<String> {
+        self.protocol_logs
+            .read()
+            .get(&req_id)
+            .cloned()
+            .unwrap_or_default()
+    }
+
+    pub fn compute_request_env_cache(&self, req_id: Uuid) -> CachedRequestEnv {
+        let mut ctx = (self.vars)();
+        let envs = self.environments.read();
+        let active_env = *self.active_env_id.read();
+        sync_env_vars(&envs, active_env, &mut ctx);
+
+        let cols = self.collections.read();
+        let active_col_id = *self.active_collection_id.read();
+        let owner_col = owning_collection(&cols, active_col_id, req_id);
+
+        let mut col_vars = HashMap::new();
+        let mut env_override = None;
+        if let Some(col) = owner_col {
+            col_vars = col.variables_map();
+            if active_env.is_some() {
+                for kv in &col.environment_overrides.variables {
+                    if kv.enabled && !kv.key.is_empty() {
+                        col_vars.insert(kv.key.clone(), kv.value.clone());
+                    }
+                }
+                if let Some(req_ov) = col.environment_overrides.requests.get(&req_id) {
+                    env_override = Some(req_ov.clone());
+                    for kv in &req_ov.variables {
+                        if kv.enabled && !kv.key.is_empty() {
+                            col_vars.insert(kv.key.clone(), kv.value.clone());
+                        }
+                    }
+                }
+            }
+        }
+        ctx.collection = col_vars;
+
+        let ancestor_resolved = resolve_ancestor_auth(&cols, req_id);
+        let ancestor_origin = ancestor_resolved.as_ref().map(|(_, o)| o.clone());
+        let mut inherited_auth = ancestor_resolved.and_then(|(a, _)| {
+            if a.auth_type != AuthType::Inherit && a.auth_type != AuthType::NoAuth {
+                Some(a)
+            } else {
+                None
+            }
+        });
+        if inherited_auth.is_none() {
+            if let Some(col) = owner_col {
+                let col_auth = if active_env.is_some() {
+                    col.environment_overrides
+                        .auth
+                        .as_ref()
+                        .unwrap_or(&col.auth)
+                } else {
+                    &col.auth
+                };
+                if col_auth.auth_type != AuthType::Inherit {
+                    inherited_auth = Some(col_auth.clone());
+                }
+            }
+        }
+
+        CachedRequestEnv {
+            ancestor_origin,
+            base_vars: ctx,
+            env_override,
+            inherited_auth,
+        }
+    }
+
+    pub fn effective_vars_for_request(&self, req: &RequestDraft) -> VariableContext {
+        self.compute_request_env_cache(req.id).apply(req).0
+    }
+
+    pub fn effective_draft_for_codegen(&self, req: &RequestDraft) -> RequestDraft {
+        self.compute_request_env_cache(req.id).apply(req).1
+    }
+
+    pub fn cleanup_closed_tabs(&mut self, open_tabs: &[RequestDraft], active_id: Option<Uuid>) {
+        let mut pinned: std::collections::HashSet<Uuid> =
+            open_tabs.iter().map(|t| t.id).collect();
+        if let Some(id) = active_id {
+            pinned.insert(id);
+        }
+
+        let cancel_ids: Vec<Uuid> = self
+            .sending_requests
+            .peek()
+            .keys()
+            .copied()
+            .filter(|id| !pinned.contains(id))
+            .collect();
+        for id in cancel_ids {
+            self.cancel_request_send(id);
+        }
+
+        let mut logs = self.protocol_logs.peek().clone();
+        let before_logs = logs.len();
+        logs.retain(|id, _| pinned.contains(id));
+        if logs.len() != before_logs {
+            self.protocol_logs.set(logs);
+        }
+
+        let mut resp_map = self.responses.peek().clone();
+        let mut prev_map = self.prev_responses.peek().clone();
+        prune_response_cache(&mut resp_map, &mut prev_map, open_tabs, active_id);
+        self.responses.set(resp_map);
+        self.prev_responses.set(prev_map);
+    }
+
     pub fn apply_snapshot(&mut self, snap: AppSnapshot, root: &Path) {
         self.collections.set(snap.collections.clone());
         self.environments.set(snap.environments.clone());
+        let mut active_col_id = snap
+            .active_collection_id
+            .or_else(|| snap.collections.first().map(|c| c.id));
+        if let Some(req_id) = snap.active_request_id {
+            if let Some((col_id, req)) = find_request_across(&snap.collections, req_id) {
+                self.draft.set(req.clone());
+                active_col_id = Some(col_id);
+            }
+        }
         let mut v = snap.variables;
         if let Ok(vault) = VaultStore::load(root) {
             v.vault = vault;
+        }
+        sync_env_vars(&snap.environments, snap.active_environment_id, &mut v);
+        if let Some(cid) = active_col_id {
+            if let Some(col) = snap.collections.iter().find(|c| c.id == cid) {
+                v.collection = col.variables_map();
+            }
         }
         self.vars.set(v);
         self.active_env_id.set(snap.active_environment_id);
@@ -468,18 +681,8 @@ impl WorkbenchState {
         self.show_perf.set(snap.show_perf);
         self.show_env_manager.set(snap.show_env_manager);
         self.show_col_vars.set(snap.show_col_vars);
-        self.active_collection_id.set(
-            snap.active_collection_id
-                .or_else(|| snap.collections.first().map(|c| c.id)),
-        );
+        self.active_collection_id.set(active_col_id);
         self.active_request_id.set(snap.active_request_id);
-
-        if let Some(req_id) = snap.active_request_id {
-            if let Some((col_id, req)) = find_request_across(&snap.collections, req_id) {
-                self.draft.set(req.clone());
-                self.active_collection_id.set(Some(col_id));
-            }
-        }
 
         self.data_root.set(root.display().to_string());
         record_gui_collections_mtime(root);
@@ -517,6 +720,53 @@ impl WorkbenchState {
             Err(e) => self.status_msg.set(format!("load error: {e}")),
         }
     }
+}
+
+#[derive(Clone, PartialEq)]
+pub struct CachedRequestEnv {
+    pub ancestor_origin: Option<AncestorAuthOrigin>,
+    pub base_vars: VariableContext,
+    pub env_override: Option<RequestEnvOverride>,
+    pub inherited_auth: Option<AuthConfig>,
+}
+
+impl CachedRequestEnv {
+    pub fn apply(&self, draft: &RequestDraft) -> (VariableContext, RequestDraft) {
+        let mut vars = self.base_vars.clone();
+        for p in &draft.path_params {
+            if p.enabled && !p.key.trim().is_empty() {
+                vars.path.insert(p.key.trim().to_string(), p.value.clone());
+            }
+        }
+
+        let mut codegen_draft = draft.clone();
+        if let Some(ref ov) = self.env_override {
+            codegen_draft = codegen_draft.apply_env_override(ov);
+        }
+        if codegen_draft.auth.auth_type == AuthType::Inherit {
+            if let Some(ref auth) = self.inherited_auth {
+                codegen_draft.auth = auth.clone();
+            }
+        }
+        (vars, codegen_draft)
+    }
+}
+
+fn owning_collection(
+    cols: &[Collection],
+    active_col_id: Option<Uuid>,
+    req_id: Uuid,
+) -> Option<&Collection> {
+    if let Some(cid) = active_col_id {
+        if let Some(col) = cols.iter().find(|c| c.id == cid) {
+            if col.find_request(req_id).is_some() {
+                return Some(col);
+            }
+        }
+    }
+    cols.iter()
+        .find(|c| c.find_request(req_id).is_some())
+        .or_else(|| active_col_id.and_then(|cid| cols.iter().find(|c| c.id == cid)))
 }
 
 pub fn apply_collection_env_pin(
@@ -660,9 +910,9 @@ pub fn prune_response_cache(
         }
     }
 
-    // Compact oversized payloads on non-pinned entries so metadata remains viewable without pinning multi-MB bodies.
+    // Compact oversized payloads on any non-active entries so dozens of open tabs never pin multi-MB bodies in RAM.
     for (id, view) in responses.iter_mut() {
-        if !pinned.contains(id)
+        if active_id != Some(*id)
             && (view.body.len() > IN_MEM_COMPACT_THRESHOLD
                 || view.visualizer_html.len() > IN_MEM_COMPACT_THRESHOLD)
         {
@@ -671,14 +921,25 @@ pub fn prune_response_cache(
     }
 
     if responses.len() > MAX_CACHED_RESPONSES {
-        let drop_ids: Vec<Uuid> = responses
+        let mut drop_ids: Vec<Uuid> = responses
             .keys()
             .copied()
             .filter(|id| !pinned.contains(id))
             .take(responses.len() - MAX_CACHED_RESPONSES)
             .collect();
-        for id in drop_ids {
+        for id in drop_ids.drain(..) {
             responses.remove(&id);
+        }
+        if responses.len() > MAX_CACHED_RESPONSES {
+            let extra: Vec<Uuid> = responses
+                .keys()
+                .copied()
+                .filter(|id| active_id != Some(*id))
+                .take(responses.len() - MAX_CACHED_RESPONSES)
+                .collect();
+            for id in extra {
+                responses.remove(&id);
+            }
         }
     }
 }
