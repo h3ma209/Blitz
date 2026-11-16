@@ -2774,13 +2774,15 @@ button.env-menu-row:hover,
 
 .theme-dot-theme-spotify { background: #1ed760; }
 .theme-dot-theme-linear { background: #6366f1; }
-.theme-dot-theme-not-postman { background: #ff6c37; }
-.theme-dot-theme-obsidian { background: #f59e0b; }
-.theme-dot-theme-blueprint { background: #ff5500; }
-.theme-dot-theme-blueprint-light { background: #ff5500; border-color: #333; }
-.theme-dot-theme-slate { background: #38bdf8; }
-.theme-dot-theme-light { background: #ffffff; border-color: #999; }
-.theme-dot-theme-high-contrast { background: #ffff00; }
+.theme-dot-theme-one-dark-pro { background: #61afef; }
+.theme-dot-theme-tokyo-night { background: #7aa2f7; }
+.theme-dot-theme-dracula { background: #bd93f9; }
+.theme-dot-theme-catppuccin-mocha { background: #cba6f7; }
+.theme-dot-theme-nord { background: #88c0d0; }
+.theme-dot-theme-gruvbox-dark { background: #fe8019; }
+.theme-dot-theme-github-light { background: #0969da; border-color: #d0d7de; }
+.theme-dot-theme-solarized-light { background: #268bd2; border-color: #93a1a1; }
+.theme-dot-theme-github-dark-hc { background: #71b7ff; border-color: #f0f6fc; }
 
 .theme-menu-info {
   display: flex;
@@ -3057,12 +3059,18 @@ button.env-menu-row:hover,
 
 .workbench-request-side,
 .workbench-response-side {
-  display: contents;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
 }
 
-.workbench-split.layout-column > .workbench-request-side,
+.workbench-split.layout-column > .workbench-request-side {
+  flex: 0 0 auto;
+}
+
 .workbench-split.layout-column > .workbench-response-side {
-  display: contents;
+  flex: 1 1 0%;
 }
 
 /* Non-HTTP Protocol full-screen mode (WebSocket, MQTT, MCP, etc.) */
@@ -3121,15 +3129,17 @@ button.env-menu-row:hover,
 }
 
 /* Side-by-Side (Row) layout */
-.workbench-split.layout-row {
-  flex-direction: row;
+.workbench-split.layout-row:not(.protocol-full) {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
   overflow: hidden;
 }
 
 .workbench-split.layout-row > .workbench-request-side {
   display: flex;
   flex-direction: column;
-  flex: 1 1 0%;
+  width: 100%;
   min-width: 0;
   height: 100%;
   min-height: 0;
@@ -3139,7 +3149,8 @@ button.env-menu-row:hover,
 
 .workbench-split.layout-row > .workbench-request-side .builder-pane {
   flex: 1;
-  height: 100%;
+  height: auto;
+  min-height: 0;
   max-height: none;
   border-bottom: none;
   overflow: auto;
@@ -3152,7 +3163,7 @@ button.env-menu-row:hover,
 .workbench-split.layout-row > .workbench-response-side {
   display: flex;
   flex-direction: column;
-  flex: 1 1 0%;
+  width: 100%;
   min-width: 0;
   height: 100%;
   min-height: 0;
@@ -3199,6 +3210,7 @@ button.env-menu-row:hover,
 
 .tab-strip {
   position: relative;
+  z-index: 40;
   display: flex;
   align-items: flex-end;
   gap: 8px;
@@ -3217,6 +3229,16 @@ button.env-menu-row:hover,
   gap: 6px;
   flex-shrink: 0;
   padding-bottom: 4px;
+}
+
+.tab-strip-trailing {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+  padding-bottom: 4px;
+  z-index: 45;
 }
 
 .tab-strip-scrollable {
@@ -3374,9 +3396,9 @@ button.env-menu-row:hover,
 
 .tab-close {
   flex: 0 0 auto;
-  opacity: 0.35;
-  width: 16px;
-  height: 16px;
+  opacity: 0.55;
+  width: 20px;
+  height: 20px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -3387,7 +3409,7 @@ button.env-menu-row:hover,
   background: transparent;
   color: inherit;
   font: inherit;
-  font-size: 13px;
+  font-size: 15px;
   line-height: 1;
   cursor: pointer;
   transition: all 140ms ease;
@@ -3935,6 +3957,55 @@ textarea:focus {
 }
 
 /* JSON Collapsible Tree Folding — Pro DevTools / VS Code Style */
+.json-tree {
+  white-space: normal;
+  font-family: var(--mono);
+  font-size: 12.5px;
+  line-height: 1.55;
+  user-select: text;
+}
+
+.json-row {
+  display: flex;
+  align-items: baseline;
+  padding: 1px 6px 1px 0;
+  border-radius: 4px;
+  min-height: 22px;
+}
+
+.json-row:hover {
+  background: rgba(255, 255, 255, 0.045);
+}
+
+.json-row-key {
+  flex-shrink: 0;
+  white-space: pre;
+}
+
+.json-row-val {
+  min-width: 0;
+  flex: 1;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.json-children {
+  margin-left: 7px;
+  padding-left: 16px;
+  border-left: 1px solid rgba(255, 255, 255, 0.10);
+  transition: border-color 120ms ease;
+}
+
+details.json-fold:hover > .json-children {
+  border-left-color: rgba(29, 185, 84, 0.42);
+}
+
+.json-fold-close {
+  display: flex;
+  align-items: center;
+  min-height: 20px;
+}
+
 details.json-fold {
   display: block;
   margin: 0;
@@ -3949,9 +4020,10 @@ details.json-fold > summary.json-fold-summary {
   user-select: none;
   outline: none;
   white-space: pre;
-  border-radius: 3px;
-  line-height: var(--lh-loose);
-  min-height: 20px;
+  border-radius: 4px;
+  line-height: 1.55;
+  min-height: 22px;
+  padding: 1px 6px 1px 0;
   transition: background 0.1s ease;
 }
 
@@ -7817,8 +7889,92 @@ html {
 }
 
 /* —— Color themes (UiTheme → class on `.app-shell`) —— */
-.app-shell.theme-spotify {
-  /* :root defaults */
+/* Spotify (Default): Astryx-guided Dark Glass & Spotify Green */
+.app-shell.theme-spotify,
+.app-shell.theme-spotify.accent-soft,
+.app-shell.theme-spotify.accent-normal,
+.app-shell.theme-spotify.accent-strong {
+  --surface-base: #0a0a0a;
+  --surface-panel: #121212;
+  --surface-editor: #0e0e0e;
+  --surface-raised: #1c1c1c;
+  --surface-border: rgba(255, 255, 255, 0.085);
+
+  --bg: var(--surface-base);
+  --bg-panel: var(--surface-panel);
+  --bg-elevated: var(--surface-raised);
+  --bg-input: rgba(14, 14, 14, 0.85);
+  --bg-hover: rgba(255, 255, 255, 0.06);
+  --bg-active: rgba(29, 185, 84, 0.18);
+
+  --border: var(--surface-border);
+  --border-strong: rgba(255, 255, 255, 0.18);
+
+  --text: #ffffff;
+  --text-muted: #b3b3b3;
+  --text-faint: #727272;
+
+  --accent: #1db954;
+  --accent-dim: #169c46;
+  --accent-soft: rgba(29, 185, 84, 0.16);
+  --accent-ink: #07140c;
+  --focus-ring: rgba(29, 185, 84, 0.42);
+}
+
+.app-shell.theme-spotify.accent-soft {
+  --accent-soft: rgba(29, 185, 84, 0.10);
+  --bg-active: rgba(29, 185, 84, 0.12);
+}
+
+.app-shell.theme-spotify.accent-strong {
+  --accent-soft: rgba(29, 185, 84, 0.26);
+  --bg-active: rgba(29, 185, 84, 0.28);
+}
+
+.app-shell.theme-spotify .tree-row {
+  border: 1px solid transparent;
+  border-radius: 6px;
+  transition: background 120ms ease, border-color 120ms ease;
+}
+
+.app-shell.theme-spotify .tree-row.active {
+  background: var(--bg-active);
+  border-color: rgba(29, 185, 84, 0.28);
+}
+
+.app-shell.theme-spotify .request-row {
+  border-radius: 8px;
+  border: 1px solid var(--surface-border);
+  transition: border-color 150ms ease, box-shadow 150ms ease;
+}
+
+.app-shell.theme-spotify .request-row:focus-within {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--focus-ring);
+}
+
+.app-shell.theme-spotify .btn-send {
+  background: linear-gradient(135deg, var(--spot-green-bright) 0%, var(--accent) 55%, var(--accent-dim) 100%);
+  color: var(--accent-ink);
+  font-weight: 700;
+  box-shadow: 0 2px 10px var(--accent-soft);
+  transition: filter 140ms ease, box-shadow 140ms ease;
+}
+
+.app-shell.theme-spotify .btn-send:hover {
+  filter: brightness(1.07);
+  box-shadow: 0 4px 16px rgba(29, 185, 84, 0.36);
+}
+
+.app-shell.theme-spotify .settings-card {
+  background: var(--surface-raised);
+  border: 1px solid var(--surface-border);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.28), var(--glass-shine);
+}
+
+.app-shell.theme-spotify :is(button, input, select, textarea):focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--focus-ring);
 }
 
 /* Linear Studio Dark: Hyper-refined midnight zinc & electric iris accent */
@@ -7926,1268 +8082,1290 @@ html:has(.app-shell.theme-linear) body {
   --bg-active: rgba(99, 102, 241, 0.28);
 }
 
-/* notPostman: Signature Postman dark workbench + iconic #FF6C37 orange */
-.app-shell.theme-not-postman,
-.app-shell.theme-not-postman.accent-soft,
-.app-shell.theme-not-postman.accent-normal,
-.app-shell.theme-not-postman.accent-strong {
-  --spot-green: #ff6c37;
-  --spot-green-bright: #ff8559;
-  --spot-green-dim: #e05626;
-  --spot-void: #1e1e1e;
-  --spot-black: #212121;
-  --spot-elevated: #262626;
-  --spot-highlight: #333333;
-  --spot-muted: #a6a6a6;
-  --spot-faint: #6e6e6e;
-  --paper: rgba(38, 38, 38, 0.72);
-  --paper-solid: #262626;
-  --paper-dim: #1e1e1e;
-  --paper-mute: #2d2d2d;
-  --bg: var(--spot-void);
-  --bg-input: rgba(0, 0, 0, 0.38);
-  --bg-hover: rgba(255, 108, 55, 0.08);
-  --accent: #ff6c37;
-  --accent-dim: #e05626;
-  --accent-soft: rgba(255, 108, 55, 0.16);
-  --accent-ink: #ffffff;
-  --bg-active: rgba(255, 108, 55, 0.20);
-  --glass-bg: rgba(38, 38, 38, 0.68);
-  --glass-bg-strong: rgba(33, 33, 33, 0.92);
-  --glass-border: 1px solid rgba(255, 108, 55, 0.18);
-  --glass-shine: inset 0 1px 0 rgba(255, 255, 255, 0.07);
-  --focus-ring: rgba(255, 108, 55, 0.45);
-  --ok: #0cbb52;
-  --syn-key: #ff8559;
-  --syn-str: #a5d6a7;
-  --syn-num: #ffb74d;
-  --syn-bool: #f48fb1;
-  --syn-null: #80cbc4;
-  --syn-punct: #90a4ae;
+/* =========================================================================
+   VS CODE IDE THEMES & ASTRYX-GUIDED CHASSIS SYSTEM
+   Principles:
+     1. Semantic tokens over hardcoded values (4-layer surface hierarchy)
+     2. Frame-first layout geometry (.chassis-ide & .chassis-zen)
+     3. Accessible contrast, crisp focus rings, & consistent elevation
+   ========================================================================= */
+
+/* —— 1. One Dark Pro (Atom / VS Code #1 Dark) —— */
+.app-shell.theme-one-dark-pro,
+.app-shell.theme-one-dark-pro.accent-soft,
+.app-shell.theme-one-dark-pro.accent-normal,
+.app-shell.theme-one-dark-pro.accent-strong {
+  --spot-green: #61afef;
+  --spot-green-bright: #7ec0f7;
+  --spot-green-dim: #4d97d6;
+  --spot-void: #21252b;
+  --spot-black: #21252b;
+  --spot-elevated: #282c34;
+  --spot-highlight: #2c313c;
+  --spot-muted: #abb2bf;
+  --spot-faint: #6b7280;
+
+  --surface-base: #21252b;
+  --surface-panel: #21252b;
+  --surface-editor: #282c34;
+  --surface-raised: #2c313c;
+  --surface-border: rgba(171, 178, 191, 0.14);
+
+  --paper: rgba(40, 44, 52, 0.88);
+  --paper-solid: #282c34;
+  --paper-dim: #21252b;
+  --paper-mute: #2c313c;
+
+  --hairline: rgba(171, 178, 191, 0.08);
+  --rule: rgba(171, 178, 191, 0.14);
+  --line: rgba(171, 178, 191, 0.14);
+  --line-strong: rgba(171, 178, 191, 0.24);
+
+  --gray-1: #21252b;
+  --gray-2: #2c313c;
+  --gray-3: #3e4451;
+  --gray-4: #5c6370;
+  --gray-5: #abb2bf;
+  --gray-6: #d7dae0;
+
+  --bg: var(--surface-base);
+  --bg-panel: var(--surface-panel);
+  --bg-elevated: var(--surface-raised);
+  --bg-input: #1d2026;
+  --bg-hover: rgba(171, 178, 191, 0.08);
+  --bg-active: rgba(97, 175, 239, 0.18);
+
+  --border: var(--surface-border);
+  --border-strong: rgba(171, 178, 191, 0.26);
+
+  --text: #e6e9ef;
+  --text-muted: #abb2bf;
+  --text-faint: #7f848e;
+
+  --accent: #61afef;
+  --accent-dim: #4d97d6;
+  --accent-soft: rgba(97, 175, 239, 0.16);
+  --accent-ink: #0f1419;
+
+  --glass-bg: rgba(33, 37, 43, 0.88);
+  --glass-bg-strong: rgba(33, 37, 43, 0.96);
+  --glass-border: 1px solid rgba(171, 178, 191, 0.16);
+  --glass-shine: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  --focus-ring: rgba(97, 175, 239, 0.45);
+
+  --ok: #98c379;
+  --ok-soft: rgba(152, 195, 121, 0.15);
+  --err: #e06c75;
+  --err-soft: rgba(224, 108, 117, 0.15);
+  --warn: #e5c07b;
+  --warn-soft: rgba(229, 192, 123, 0.15);
+  --info: #56b6c2;
+  --info-soft: rgba(86, 182, 194, 0.15);
+
+  --method-post: #98c379;
+  --method-get: #61afef;
+  --method-put: #e5c07b;
+  --method-delete: #e06c75;
+  --method-patch: #c678dd;
+
+  --syn-key: #e06c75;
+  --syn-str: #98c379;
+  --syn-num: #d19a66;
+  --syn-bool: #c678dd;
+  --syn-null: #56b6c2;
+  --syn-punct: #abb2bf;
 }
 
-html:has(.app-shell.theme-not-postman) body {
-  background-color: #1e1e1e;
+html:has(.app-shell.theme-one-dark-pro) body {
+  background-color: #21252b;
+  background-image: linear-gradient(180deg, #21252b 0%, #1e2228 100%);
+}
+
+.app-shell.theme-one-dark-pro.accent-soft {
+  --accent-soft: rgba(97, 175, 239, 0.10);
+  --bg-active: rgba(97, 175, 239, 0.12);
+}
+
+.app-shell.theme-one-dark-pro.accent-strong {
+  --accent-soft: rgba(97, 175, 239, 0.26);
+  --bg-active: rgba(97, 175, 239, 0.28);
+}
+
+/* —— 2. Tokyo Night (Deep Indigo & Electric Sapphire) —— */
+.app-shell.theme-tokyo-night,
+.app-shell.theme-tokyo-night.accent-soft,
+.app-shell.theme-tokyo-night.accent-normal,
+.app-shell.theme-tokyo-night.accent-strong {
+  --spot-green: #7aa2f7;
+  --spot-green-bright: #89b4fa;
+  --spot-green-dim: #5d87e6;
+  --spot-void: #16161e;
+  --spot-black: #16161e;
+  --spot-elevated: #1a1b26;
+  --spot-highlight: #24283b;
+  --spot-muted: #a9b1d6;
+  --spot-faint: #565f89;
+
+  --surface-base: #16161e;
+  --surface-panel: #16161e;
+  --surface-editor: #1a1b26;
+  --surface-raised: #24283b;
+  --surface-border: rgba(122, 162, 247, 0.14);
+
+  --paper: rgba(26, 27, 38, 0.88);
+  --paper-solid: #1a1b26;
+  --paper-dim: #16161e;
+  --paper-mute: #24283b;
+
+  --hairline: rgba(169, 177, 214, 0.08);
+  --rule: rgba(169, 177, 214, 0.13);
+  --line: rgba(169, 177, 214, 0.13);
+  --line-strong: rgba(122, 162, 247, 0.28);
+
+  --gray-1: #16161e;
+  --gray-2: #24283b;
+  --gray-3: #292e42;
+  --gray-4: #565f89;
+  --gray-5: #a9b1d6;
+  --gray-6: #c0caf5;
+
+  --bg: var(--surface-base);
+  --bg-panel: var(--surface-panel);
+  --bg-elevated: var(--surface-raised);
+  --bg-input: #13141c;
+  --bg-hover: rgba(122, 162, 247, 0.09);
+  --bg-active: rgba(122, 162, 247, 0.18);
+
+  --border: var(--surface-border);
+  --border-strong: rgba(122, 162, 247, 0.28);
+
+  --text: #c0caf5;
+  --text-muted: #9aa5ce;
+  --text-faint: #565f89;
+
+  --accent: #7aa2f7;
+  --accent-dim: #5d87e6;
+  --accent-soft: rgba(122, 162, 247, 0.16);
+  --accent-ink: #0f111a;
+
+  --glass-bg: rgba(22, 22, 30, 0.88);
+  --glass-bg-strong: rgba(22, 22, 30, 0.96);
+  --glass-border: 1px solid rgba(122, 162, 247, 0.18);
+  --glass-shine: inset 0 1px 0 rgba(192, 202, 245, 0.06);
+  --focus-ring: rgba(122, 162, 247, 0.48);
+
+  --ok: #9ece6a;
+  --ok-soft: rgba(158, 206, 106, 0.15);
+  --err: #f7768e;
+  --err-soft: rgba(247, 118, 142, 0.15);
+  --warn: #e0af68;
+  --warn-soft: rgba(224, 175, 104, 0.15);
+  --info: #7dcfff;
+  --info-soft: rgba(125, 207, 255, 0.15);
+
+  --method-post: #9ece6a;
+  --method-get: #7aa2f7;
+  --method-put: #e0af68;
+  --method-delete: #f7768e;
+  --method-patch: #bb9af7;
+
+  --syn-key: #7dcfff;
+  --syn-str: #9ece6a;
+  --syn-num: #ff9e64;
+  --syn-bool: #bb9af7;
+  --syn-null: #565f89;
+  --syn-punct: #89ddff;
+}
+
+html:has(.app-shell.theme-tokyo-night) body {
+  background-color: #16161e;
   background-image:
-    radial-gradient(ellipse 80% 50% at 10% -10%, rgba(255, 108, 55, 0.16), transparent 55%),
-    radial-gradient(ellipse 60% 40% at 90% 0%, rgba(224, 86, 38, 0.10), transparent 50%),
-    radial-gradient(ellipse 50% 60% at 70% 100%, rgba(255, 133, 89, 0.07), transparent 45%),
-    linear-gradient(180deg, #1c1c1c 0%, #242424 100%);
+    radial-gradient(ellipse 75% 45% at 50% -10%, rgba(122, 162, 247, 0.12), transparent 60%),
+    linear-gradient(180deg, #16161e 0%, #13141b 100%);
 }
 
-.app-shell.theme-not-postman.accent-soft {
-  --accent-soft: rgba(255, 108, 55, 0.09);
-  --bg-active: rgba(255, 108, 55, 0.12);
+.app-shell.theme-tokyo-night.accent-soft {
+  --accent-soft: rgba(122, 162, 247, 0.10);
+  --bg-active: rgba(122, 162, 247, 0.12);
 }
 
-.app-shell.theme-not-postman.accent-strong {
-  --accent-soft: rgba(255, 108, 55, 0.26);
-  --bg-active: rgba(255, 108, 55, 0.30);
+.app-shell.theme-tokyo-night.accent-strong {
+  --accent-soft: rgba(122, 162, 247, 0.26);
+  --bg-active: rgba(122, 162, 247, 0.28);
 }
 
-/* Obsidian Ember: Ultra-deep volcanic black + warm amber neon & gold embers */
-.app-shell.theme-obsidian,
-.app-shell.theme-obsidian.accent-soft,
-.app-shell.theme-obsidian.accent-normal,
-.app-shell.theme-obsidian.accent-strong {
-  --spot-green: #f59e0b;
-  --spot-green-bright: #fbbf24;
-  --spot-green-dim: #d97706;
-  --spot-void: #09090b;
-  --spot-black: #121215;
-  --spot-elevated: #18181c;
-  --spot-highlight: #27272f;
-  --spot-muted: #a1a1aa;
-  --spot-faint: #71717a;
-  --paper: rgba(24, 24, 28, 0.65);
-  --paper-solid: #18181c;
-  --paper-dim: #121215;
-  --paper-mute: #1d1d23;
-  --bg: var(--spot-void);
-  --bg-input: rgba(0, 0, 0, 0.45);
-  --bg-hover: rgba(251, 191, 36, 0.07);
-  --accent: #fbbf24;
-  --accent-dim: #d97706;
-  --accent-soft: rgba(251, 191, 36, 0.16);
-  --accent-ink: #000000;
-  --bg-active: rgba(251, 191, 36, 0.18);
-  --glass-bg: rgba(24, 24, 28, 0.62);
-  --glass-bg-strong: rgba(18, 18, 21, 0.88);
-  --glass-border: 1px solid rgba(251, 191, 36, 0.14);
-  --glass-shine: inset 0 1px 0 rgba(255, 255, 255, 0.08);
-  --focus-ring: rgba(251, 191, 36, 0.35);
-  --ok: #10b981;
-  --syn-key: #fbbf24;
-  --syn-str: #fde68a;
-  --syn-num: #fb923c;
-  --syn-bool: #38bdf8;
-  --syn-null: #71717a;
-  --syn-punct: #a1a1aa;
+/* —— 3. Dracula (Midnight Purple & Vibrant Pastels) —— */
+.app-shell.theme-dracula,
+.app-shell.theme-dracula.accent-soft,
+.app-shell.theme-dracula.accent-normal,
+.app-shell.theme-dracula.accent-strong {
+  --spot-green: #bd93f9;
+  --spot-green-bright: #cfa9ff;
+  --spot-green-dim: #9d6ef5;
+  --spot-void: #21222c;
+  --spot-black: #21222c;
+  --spot-elevated: #282a36;
+  --spot-highlight: #343746;
+  --spot-muted: #bfc3d9;
+  --spot-faint: #6272a4;
+
+  --surface-base: #21222c;
+  --surface-panel: #21222c;
+  --surface-editor: #282a36;
+  --surface-raised: #343746;
+  --surface-border: rgba(98, 114, 164, 0.28);
+
+  --paper: rgba(40, 42, 54, 0.90);
+  --paper-solid: #282a36;
+  --paper-dim: #21222c;
+  --paper-mute: #343746;
+
+  --hairline: rgba(98, 114, 164, 0.16);
+  --rule: rgba(98, 114, 164, 0.25);
+  --line: rgba(98, 114, 164, 0.25);
+  --line-strong: rgba(189, 147, 249, 0.35);
+
+  --gray-1: #21222c;
+  --gray-2: #343746;
+  --gray-3: #44475a;
+  --gray-4: #6272a4;
+  --gray-5: #bfc3d9;
+  --gray-6: #f8f8f2;
+
+  --bg: var(--surface-base);
+  --bg-panel: var(--surface-panel);
+  --bg-elevated: var(--surface-raised);
+  --bg-input: #1c1d26;
+  --bg-hover: rgba(189, 147, 249, 0.10);
+  --bg-active: rgba(189, 147, 249, 0.20);
+
+  --border: var(--surface-border);
+  --border-strong: rgba(189, 147, 249, 0.36);
+
+  --text: #f8f8f2;
+  --text-muted: #bfc3d9;
+  --text-faint: #6272a4;
+
+  --accent: #bd93f9;
+  --accent-dim: #9d6ef5;
+  --accent-soft: rgba(189, 147, 249, 0.18);
+  --accent-ink: #191a21;
+
+  --glass-bg: rgba(33, 34, 44, 0.90);
+  --glass-bg-strong: rgba(33, 34, 44, 0.97);
+  --glass-border: 1px solid rgba(98, 114, 164, 0.30);
+  --glass-shine: inset 0 1px 0 rgba(248, 248, 242, 0.06);
+  --focus-ring: rgba(189, 147, 249, 0.50);
+
+  --ok: #50fa7b;
+  --ok-soft: rgba(80, 250, 123, 0.15);
+  --err: #ff5555;
+  --err-soft: rgba(255, 85, 85, 0.15);
+  --warn: #f1fa8c;
+  --warn-soft: rgba(241, 250, 140, 0.15);
+  --info: #8be9fd;
+  --info-soft: rgba(139, 233, 253, 0.15);
+
+  --method-post: #50fa7b;
+  --method-get: #8be9fd;
+  --method-put: #ffb86c;
+  --method-delete: #ff5555;
+  --method-patch: #ff79c6;
+
+  --syn-key: #8be9fd;
+  --syn-str: #f1fa8c;
+  --syn-num: #bd93f9;
+  --syn-bool: #ff79c6;
+  --syn-null: #6272a4;
+  --syn-punct: #f8f8f2;
 }
 
-html:has(.app-shell.theme-obsidian) body {
-  background-color: #09090b;
+html:has(.app-shell.theme-dracula) body {
+  background-color: #21222c;
   background-image:
-    radial-gradient(ellipse 80% 50% at 10% -10%, rgba(245, 158, 11, 0.18), transparent 55%),
-    radial-gradient(ellipse 60% 40% at 90% 0%, rgba(239, 68, 68, 0.10), transparent 50%),
-    radial-gradient(ellipse 50% 60% at 70% 100%, rgba(251, 191, 36, 0.08), transparent 45%),
-    linear-gradient(180deg, #09090b 0%, #121215 100%);
+    radial-gradient(ellipse 70% 45% at 85% -10%, rgba(189, 147, 249, 0.12), transparent 55%),
+    linear-gradient(180deg, #21222c 0%, #191a21 100%);
 }
 
-.app-shell.theme-obsidian.accent-soft {
-  --accent-soft: rgba(251, 191, 36, 0.09);
-  --bg-active: rgba(251, 191, 36, 0.11);
+.app-shell.theme-dracula.accent-soft {
+  --accent-soft: rgba(189, 147, 249, 0.10);
+  --bg-active: rgba(189, 147, 249, 0.13);
 }
 
-.app-shell.theme-obsidian.accent-strong {
-  --accent-soft: rgba(251, 191, 36, 0.28);
-  --bg-active: rgba(251, 191, 36, 0.32);
+.app-shell.theme-dracula.accent-strong {
+  --accent-soft: rgba(189, 147, 249, 0.28);
+  --bg-active: rgba(189, 147, 249, 0.30);
 }
 
-.app-shell.theme-slate,
-.app-shell.theme-slate.accent-soft,
-.app-shell.theme-slate.accent-normal,
-.app-shell.theme-slate.accent-strong {
-  --spot-green: #3b82f6;
-  --spot-green-bright: #60a5fa;
-  --spot-green-dim: #2563eb;
-  --spot-void: #0c1017;
-  --spot-black: #111827;
-  --spot-elevated: #1a2332;
-  --spot-highlight: #243044;
-  --spot-muted: #94a3b8;
-  --spot-faint: #64748b;
-  --paper: rgba(26, 35, 50, 0.62);
-  --paper-solid: #1a2332;
-  --bg: var(--spot-void);
-  --bg-input: rgba(0, 0, 0, 0.4);
-  --accent: var(--spot-green-bright);
-  --accent-dim: var(--spot-green-dim);
-  --accent-soft: rgba(96, 165, 250, 0.16);
-  --bg-active: rgba(96, 165, 250, 0.18);
-  --glass-bg: rgba(26, 35, 50, 0.62);
-  --glass-bg-strong: rgba(17, 24, 39, 0.88);
-  --focus-ring: rgba(96, 165, 250, 0.32);
-  --ok: #34d399;
-  --method-post: #34d399;
-  --syn-key: #7dd3fc;
-  --syn-str: #a7f3d0;
-  --syn-num: #60a5fa;
-  --syn-bool: #c084fc;
-  --syn-null: #64748b;
-  --syn-punct: #94a3b8;
+/* —— 4. Catppuccin Mocha (Warm Espresso & Pastel Mauve) —— */
+.app-shell.theme-catppuccin-mocha,
+.app-shell.theme-catppuccin-mocha.accent-soft,
+.app-shell.theme-catppuccin-mocha.accent-normal,
+.app-shell.theme-catppuccin-mocha.accent-strong {
+  --spot-green: #cba6f7;
+  --spot-green-bright: #d8bdf9;
+  --spot-green-dim: #b48ef0;
+  --spot-void: #11111b;
+  --spot-black: #181825;
+  --spot-elevated: #1e1e2e;
+  --spot-highlight: #313244;
+  --spot-muted: #bac2de;
+  --spot-faint: #6c7086;
+
+  --surface-base: #11111b;
+  --surface-panel: #181825;
+  --surface-editor: #1e1e2e;
+  --surface-raised: #313244;
+  --surface-border: rgba(205, 214, 244, 0.10);
+
+  --paper: rgba(30, 30, 46, 0.86);
+  --paper-solid: #1e1e2e;
+  --paper-dim: #181825;
+  --paper-mute: #313244;
+
+  --hairline: rgba(205, 214, 244, 0.07);
+  --rule: rgba(205, 214, 244, 0.11);
+  --line: rgba(205, 214, 244, 0.11);
+  --line-strong: rgba(203, 166, 247, 0.28);
+
+  --gray-1: #181825;
+  --gray-2: #313244;
+  --gray-3: #45475a;
+  --gray-4: #6c7086;
+  --gray-5: #bac2de;
+  --gray-6: #cdd6f4;
+
+  --bg: var(--surface-base);
+  --bg-panel: var(--surface-panel);
+  --bg-elevated: var(--surface-raised);
+  --bg-input: #141420;
+  --bg-hover: rgba(203, 166, 247, 0.09);
+  --bg-active: rgba(203, 166, 247, 0.18);
+
+  --border: var(--surface-border);
+  --border-strong: rgba(203, 166, 247, 0.28);
+
+  --text: #cdd6f4;
+  --text-muted: #a6adc8;
+  --text-faint: #6c7086;
+
+  --accent: #cba6f7;
+  --accent-dim: #b48ef0;
+  --accent-soft: rgba(203, 166, 247, 0.16);
+  --accent-ink: #11111b;
+
+  --glass-bg: rgba(24, 24, 37, 0.86);
+  --glass-bg-strong: rgba(24, 24, 37, 0.96);
+  --glass-border: 1px solid rgba(205, 214, 244, 0.11);
+  --glass-shine: inset 0 1px 0 rgba(205, 214, 244, 0.07);
+  --focus-ring: rgba(203, 166, 247, 0.45);
+
+  --ok: #a6e3a1;
+  --ok-soft: rgba(166, 227, 161, 0.15);
+  --err: #f38ba8;
+  --err-soft: rgba(243, 139, 168, 0.15);
+  --warn: #f9e2af;
+  --warn-soft: rgba(249, 226, 175, 0.15);
+  --info: #89b4fa;
+  --info-soft: rgba(137, 180, 250, 0.15);
+
+  --method-post: #a6e3a1;
+  --method-get: #89b4fa;
+  --method-put: #fab387;
+  --method-delete: #f38ba8;
+  --method-patch: #cba6f7;
+
+  --syn-key: #89b4fa;
+  --syn-str: #a6e3a1;
+  --syn-num: #fab387;
+  --syn-bool: #cba6f7;
+  --syn-null: #6c7086;
+  --syn-punct: #9399b2;
 }
 
-html:has(.app-shell.theme-slate) body {
-  background-color: var(--spot-void);
+html:has(.app-shell.theme-catppuccin-mocha) body {
+  background-color: #11111b;
   background-image:
-    radial-gradient(ellipse 80% 50% at 10% -10%, rgba(59, 130, 246, 0.2), transparent 55%),
-    radial-gradient(ellipse 60% 40% at 90% 0%, rgba(45, 212, 191, 0.1), transparent 50%),
-    linear-gradient(180deg, #0c1017 0%, #111827 100%);
+    radial-gradient(ellipse 70% 45% at 20% -5%, rgba(203, 166, 247, 0.12), transparent 55%),
+    radial-gradient(ellipse 60% 45% at 90% 95%, rgba(137, 180, 250, 0.08), transparent 50%),
+    linear-gradient(180deg, #11111b 0%, #151522 100%);
 }
 
-.app-shell.theme-light,
-.app-shell.theme-light.accent-soft,
-.app-shell.theme-light.accent-normal,
-.app-shell.theme-light.accent-strong {
-  --spot-void: #eef0f4;
-  --spot-black: #e4e6eb;
+.app-shell.theme-catppuccin-mocha.accent-soft {
+  --accent-soft: rgba(203, 166, 247, 0.10);
+  --bg-active: rgba(203, 166, 247, 0.12);
+}
+
+.app-shell.theme-catppuccin-mocha.accent-strong {
+  --accent-soft: rgba(203, 166, 247, 0.26);
+  --bg-active: rgba(203, 166, 247, 0.28);
+}
+
+/* —— 5. Nord (Arctic Polar Night & Frost Cyan) —— */
+.app-shell.theme-nord,
+.app-shell.theme-nord.accent-soft,
+.app-shell.theme-nord.accent-normal,
+.app-shell.theme-nord.accent-strong {
+  --spot-green: #88c0d0;
+  --spot-green-bright: #8fbcbb;
+  --spot-green-dim: #5e81ac;
+  --spot-void: #242933;
+  --spot-black: #292e39;
+  --spot-elevated: #2e3440;
+  --spot-highlight: #3b4252;
+  --spot-muted: #d8dee9;
+  --spot-faint: #7b88a1;
+
+  --surface-base: #242933;
+  --surface-panel: #292e39;
+  --surface-editor: #2e3440;
+  --surface-raised: #3b4252;
+  --surface-border: rgba(216, 222, 233, 0.11);
+
+  --paper: rgba(46, 52, 64, 0.88);
+  --paper-solid: #2e3440;
+  --paper-dim: #292e39;
+  --paper-mute: #3b4252;
+
+  --hairline: rgba(216, 222, 233, 0.07);
+  --rule: rgba(216, 222, 233, 0.12);
+  --line: rgba(216, 222, 233, 0.12);
+  --line-strong: rgba(136, 192, 208, 0.30);
+
+  --gray-1: #292e39;
+  --gray-2: #3b4252;
+  --gray-3: #434c5e;
+  --gray-4: #4c566a;
+  --gray-5: #d8dee9;
+  --gray-6: #eceff4;
+
+  --bg: var(--surface-base);
+  --bg-panel: var(--surface-panel);
+  --bg-elevated: var(--surface-raised);
+  --bg-input: #232832;
+  --bg-hover: rgba(136, 192, 208, 0.09);
+  --bg-active: rgba(136, 192, 208, 0.18);
+
+  --border: var(--surface-border);
+  --border-strong: rgba(136, 192, 208, 0.28);
+
+  --text: #eceff4;
+  --text-muted: #d8dee9;
+  --text-faint: #818fa8;
+
+  --accent: #88c0d0;
+  --accent-dim: #5e81ac;
+  --accent-soft: rgba(136, 192, 208, 0.16);
+  --accent-ink: #1e232c;
+
+  --glass-bg: rgba(41, 46, 57, 0.88);
+  --glass-bg-strong: rgba(41, 46, 57, 0.96);
+  --glass-border: 1px solid rgba(216, 222, 233, 0.12);
+  --glass-shine: inset 0 1px 0 rgba(236, 239, 244, 0.06);
+  --focus-ring: rgba(136, 192, 208, 0.45);
+
+  --ok: #a3be8c;
+  --ok-soft: rgba(163, 190, 140, 0.16);
+  --err: #bf616a;
+  --err-soft: rgba(191, 97, 106, 0.18);
+  --warn: #ebcb8b;
+  --warn-soft: rgba(235, 203, 139, 0.16);
+  --info: #81a1c1;
+  --info-soft: rgba(129, 161, 193, 0.16);
+
+  --method-post: #a3be8c;
+  --method-get: #88c0d0;
+  --method-put: #ebcb8b;
+  --method-delete: #bf616a;
+  --method-patch: #b48ead;
+
+  --syn-key: #81a1c1;
+  --syn-str: #a3be8c;
+  --syn-num: #b48ead;
+  --syn-bool: #88c0d0;
+  --syn-null: #616e88;
+  --syn-punct: #d8dee9;
+}
+
+html:has(.app-shell.theme-nord) body {
+  background-color: #242933;
+  background-image:
+    radial-gradient(ellipse 75% 45% at 50% -10%, rgba(136, 192, 208, 0.11), transparent 55%),
+    linear-gradient(180deg, #242933 0%, #20252e 100%);
+}
+
+.app-shell.theme-nord.accent-soft {
+  --accent-soft: rgba(136, 192, 208, 0.10);
+  --bg-active: rgba(136, 192, 208, 0.12);
+}
+
+.app-shell.theme-nord.accent-strong {
+  --accent-soft: rgba(136, 192, 208, 0.26);
+  --bg-active: rgba(136, 192, 208, 0.28);
+}
+
+/* —— 6. Gruvbox Dark (Retro Warm Charcoal & Amber) —— */
+.app-shell.theme-gruvbox-dark,
+.app-shell.theme-gruvbox-dark.accent-soft,
+.app-shell.theme-gruvbox-dark.accent-normal,
+.app-shell.theme-gruvbox-dark.accent-strong {
+  --spot-green: #fe8019;
+  --spot-green-bright: #fabd2f;
+  --spot-green-dim: #d65d0e;
+  --spot-void: #1d2021;
+  --spot-black: #242424;
+  --spot-elevated: #282828;
+  --spot-highlight: #3c3836;
+  --spot-muted: #d5c4a1;
+  --spot-faint: #928374;
+
+  --surface-base: #1d2021;
+  --surface-panel: #242424;
+  --surface-editor: #282828;
+  --surface-raised: #3c3836;
+  --surface-border: rgba(235, 219, 178, 0.12);
+
+  --paper: rgba(40, 40, 40, 0.90);
+  --paper-solid: #282828;
+  --paper-dim: #1d2021;
+  --paper-mute: #3c3836;
+
+  --hairline: rgba(235, 219, 178, 0.07);
+  --rule: rgba(235, 219, 178, 0.13);
+  --line: rgba(235, 219, 178, 0.13);
+  --line-strong: rgba(254, 128, 25, 0.30);
+
+  --gray-1: #242424;
+  --gray-2: #3c3836;
+  --gray-3: #504945;
+  --gray-4: #928374;
+  --gray-5: #d5c4a1;
+  --gray-6: #ebdbb2;
+
+  --bg: var(--surface-base);
+  --bg-panel: var(--surface-panel);
+  --bg-elevated: var(--surface-raised);
+  --bg-input: #1b1d1e;
+  --bg-hover: rgba(254, 128, 25, 0.09);
+  --bg-active: rgba(254, 128, 25, 0.18);
+
+  --border: var(--surface-border);
+  --border-strong: rgba(254, 128, 25, 0.32);
+
+  --text: #ebdbb2;
+  --text-muted: #d5c4a1;
+  --text-faint: #928374;
+
+  --accent: #fe8019;
+  --accent-dim: #d65d0e;
+  --accent-soft: rgba(254, 128, 25, 0.17);
+  --accent-ink: #1d2021;
+
+  --glass-bg: rgba(36, 36, 36, 0.90);
+  --glass-bg-strong: rgba(29, 32, 33, 0.96);
+  --glass-border: 1px solid rgba(235, 219, 178, 0.12);
+  --glass-shine: inset 0 1px 0 rgba(251, 241, 199, 0.06);
+  --focus-ring: rgba(254, 128, 25, 0.45);
+
+  --ok: #b8bb26;
+  --ok-soft: rgba(184, 187, 38, 0.15);
+  --err: #fb4934;
+  --err-soft: rgba(251, 73, 52, 0.16);
+  --warn: #fabd2f;
+  --warn-soft: rgba(250, 189, 47, 0.16);
+  --info: #83a598;
+  --info-soft: rgba(131, 165, 152, 0.16);
+
+  --method-post: #b8bb26;
+  --method-get: #83a598;
+  --method-put: #fabd2f;
+  --method-delete: #fb4934;
+  --method-patch: #d3869b;
+
+  --syn-key: #83a598;
+  --syn-str: #b8bb26;
+  --syn-num: #d3869b;
+  --syn-bool: #fe8019;
+  --syn-null: #928374;
+  --syn-punct: #d5c4a1;
+}
+
+html:has(.app-shell.theme-gruvbox-dark) body {
+  background-color: #1d2021;
+  background-image:
+    radial-gradient(ellipse 75% 45% at 15% -10%, rgba(254, 128, 25, 0.10), transparent 55%),
+    linear-gradient(180deg, #1d2021 0%, #181a1b 100%);
+}
+
+.app-shell.theme-gruvbox-dark.accent-soft {
+  --accent-soft: rgba(254, 128, 25, 0.10);
+  --bg-active: rgba(254, 128, 25, 0.12);
+}
+
+.app-shell.theme-gruvbox-dark.accent-strong {
+  --accent-soft: rgba(254, 128, 25, 0.27);
+  --bg-active: rgba(254, 128, 25, 0.29);
+}
+
+/* —— 7. GitHub Light (Crisp Daylight & GitHub Blue) —— */
+.app-shell.theme-github-light,
+.app-shell.theme-github-light.accent-soft,
+.app-shell.theme-github-light.accent-normal,
+.app-shell.theme-github-light.accent-strong {
+  --spot-void: #f6f8fa;
+  --spot-black: #eaeef2;
   --spot-elevated: #ffffff;
   --spot-highlight: #f3f4f6;
-  --spot-muted: #5c6370;
-  --spot-faint: #8b919c;
-  --white: #111318;
-  --ink: #111318;
-  --paper: rgba(255, 255, 255, 0.82);
+  --spot-muted: #57606a;
+  --spot-faint: #6e7781;
+
+  --white: #1f2328;
+  --ink: #1f2328;
+  --surface-base: #f6f8fa;
+  --surface-panel: #f6f8fa;
+  --surface-editor: #ffffff;
+  --surface-raised: #ffffff;
+  --surface-border: #d0d7de;
+
+  --paper: rgba(255, 255, 255, 0.92);
   --paper-solid: #ffffff;
-  --paper-dim: #f0f2f5;
-  --paper-mute: #e8eaef;
-  --hairline: rgba(17, 19, 24, 0.08);
-  --rule: rgba(17, 19, 24, 0.12);
-  --line: rgba(17, 19, 24, 0.14);
-  --line-strong: rgba(17, 19, 24, 0.22);
-  --gray-1: #f3f4f6;
-  --gray-2: #e5e7eb;
-  --gray-3: #d1d5db;
-  --gray-4: #9ca3af;
-  --gray-5: #6b7280;
-  --gray-6: #374151;
-  --bg: var(--spot-void);
-  --bg-input: rgba(255, 255, 255, 0.95);
-  --bg-hover: rgba(17, 19, 24, 0.05);
-  --bg-active: rgba(5, 150, 105, 0.12);
-  --text: #111318;
-  --text-muted: #5c6370;
-  --text-faint: #6b7280;
-  --spot-green: #059669;
-  --spot-green-bright: #10b981;
-  --spot-green-dim: #047857;
-  --accent: #059669;
-  --accent-dim: #047857;
-  --accent-soft: rgba(5, 150, 105, 0.12);
+  --paper-dim: #f6f8fa;
+  --paper-mute: #eaeef2;
+
+  --hairline: rgba(31, 35, 40, 0.08);
+  --rule: #d8dee4;
+  --line: #d0d7de;
+  --line-strong: #afb8c1;
+
+  --gray-1: #f6f8fa;
+  --gray-2: #eaeef2;
+  --gray-3: #d0d7de;
+  --gray-4: #8c959f;
+  --gray-5: #57606a;
+  --gray-6: #24292f;
+
+  --bg: var(--surface-base);
+  --bg-panel: var(--surface-panel);
+  --bg-elevated: var(--surface-raised);
+  --bg-input: #ffffff;
+  --bg-hover: rgba(31, 35, 40, 0.05);
+  --bg-active: rgba(9, 105, 218, 0.11);
+
+  --border: var(--surface-border);
+  --border-strong: #afb8c1;
+
+  --text: #1f2328;
+  --text-muted: #57606a;
+  --text-faint: #6e7781;
+
+  --spot-green: #0969da;
+  --spot-green-bright: #218bff;
+  --spot-green-dim: #0550ae;
+  --accent: #0969da;
+  --accent-dim: #0550ae;
+  --accent-soft: rgba(9, 105, 218, 0.12);
   --accent-ink: #ffffff;
-  --ok: #059669;
-  --ok-soft: rgba(5, 150, 105, 0.12);
-  --err: #dc2626;
-  --err-soft: rgba(220, 38, 38, 0.12);
-  --warn: #d97706;
-  --warn-soft: rgba(217, 119, 6, 0.12);
-  --info: #2563eb;
-  --info-soft: rgba(37, 99, 235, 0.12);
-  --status-2xx: #059669;
-  --status-2xx-soft: rgba(5, 150, 105, 0.12);
-  --status-3xx: #2563eb;
-  --status-3xx-soft: rgba(37, 99, 235, 0.12);
-  --status-4xx: #d97706;
-  --status-4xx-soft: rgba(217, 119, 6, 0.12);
-  --status-5xx: #dc2626;
-  --status-5xx-soft: rgba(220, 38, 38, 0.12);
-  --glass-bg: rgba(255, 255, 255, 0.78);
-  --glass-bg-strong: rgba(255, 255, 255, 0.94);
-  --glass-border: 1px solid rgba(17, 19, 24, 0.1);
+
+  --ok: #1a7f37;
+  --ok-soft: rgba(26, 127, 55, 0.12);
+  --err: #cf222e;
+  --err-soft: rgba(207, 34, 46, 0.12);
+  --warn: #9a6700;
+  --warn-soft: rgba(154, 103, 0, 0.12);
+  --info: #0969da;
+  --info-soft: rgba(9, 105, 218, 0.12);
+
+  --status-2xx: #1a7f37;
+  --status-2xx-soft: rgba(26, 127, 55, 0.12);
+  --status-3xx: #0969da;
+  --status-3xx-soft: rgba(9, 105, 218, 0.12);
+  --status-4xx: #9a6700;
+  --status-4xx-soft: rgba(154, 103, 0, 0.12);
+  --status-5xx: #cf222e;
+  --status-5xx-soft: rgba(207, 34, 46, 0.12);
+
+  --method-post: #1a7f37;
+  --method-get: #0969da;
+  --method-put: #9a6700;
+  --method-delete: #cf222e;
+  --method-patch: #8250df;
+
+  --glass-bg: rgba(255, 255, 255, 0.90);
+  --glass-bg-strong: rgba(255, 255, 255, 0.98);
+  --glass-border: 1px solid #d0d7de;
   --glass-shine: inset 0 1px 0 rgba(255, 255, 255, 0.9);
-  --shadow-modal: 0 24px 64px rgba(17, 19, 24, 0.18), var(--glass-shine);
-  --focus-ring: rgba(5, 150, 105, 0.32);
-  --syn-key: #047857;
-  --syn-str: #b45309;
-  --syn-num: #1d4ed8;
-  --syn-bool: #6d28d9;
-  --syn-null: #6b7280;
-  --syn-punct: #4b5563;
+  --shadow-modal: 0 20px 56px rgba(31, 35, 40, 0.16), 0 0 0 1px #d0d7de;
+  --focus-ring: rgba(9, 105, 218, 0.35);
+
+  --syn-key: #0550ae;
+  --syn-str: #0a3069;
+  --syn-num: #0550ae;
+  --syn-bool: #cf222e;
+  --syn-null: #6e7781;
+  --syn-punct: #57606a;
 }
 
-html:has(.app-shell.theme-light) body {
-  background-color: #eef0f4;
-  background-image:
-    radial-gradient(ellipse 70% 45% at 15% -5%, rgba(5, 150, 105, 0.1), transparent 50%),
-    radial-gradient(ellipse 50% 40% at 85% 0%, rgba(37, 99, 235, 0.08), transparent 45%),
-    linear-gradient(180deg, #f5f6f8 0%, #eef0f4 100%);
-  color: #111318;
+html:has(.app-shell.theme-github-light) body {
+  background-color: #f6f8fa;
+  background-image: linear-gradient(180deg, #ffffff 0%, #f6f8fa 100%);
+  color: #1f2328;
 }
 
-.app-shell.theme-light .btn-send {
-  background: linear-gradient(180deg, #10b981, #059669);
+.app-shell.theme-github-light.accent-soft {
+  --accent-soft: rgba(9, 105, 218, 0.08);
+  --bg-active: rgba(9, 105, 218, 0.08);
+}
+
+.app-shell.theme-github-light.accent-strong {
+  --accent-soft: rgba(9, 105, 218, 0.18);
+  --bg-active: rgba(9, 105, 218, 0.18);
+}
+
+/* —— 8. Solarized Light (Warm Parchment & Low-Strain Ink) —— */
+.app-shell.theme-solarized-light,
+.app-shell.theme-solarized-light.accent-soft,
+.app-shell.theme-solarized-light.accent-normal,
+.app-shell.theme-solarized-light.accent-strong {
+  --spot-void: #eee8d5;
+  --spot-black: #e4decb;
+  --spot-elevated: #fdf6e3;
+  --spot-highlight: #f5efd9;
+  --spot-muted: #586e75;
+  --spot-faint: #93a1a1;
+
+  --white: #073642;
+  --ink: #073642;
+  --surface-base: #eee8d5;
+  --surface-panel: #f5efd9;
+  --surface-editor: #fdf6e3;
+  --surface-raised: #fdf6e3;
+  --surface-border: rgba(101, 123, 131, 0.24);
+
+  --paper: rgba(253, 246, 227, 0.90);
+  --paper-solid: #fdf6e3;
+  --paper-dim: #eee8d5;
+  --paper-mute: #e4decb;
+
+  --hairline: rgba(101, 123, 131, 0.14);
+  --rule: rgba(101, 123, 131, 0.22);
+  --line: rgba(101, 123, 131, 0.24);
+  --line-strong: rgba(88, 110, 117, 0.36);
+
+  --gray-1: #eee8d5;
+  --gray-2: #e4decb;
+  --gray-3: #d6cfb8;
+  --gray-4: #93a1a1;
+  --gray-5: #657b83;
+  --gray-6: #073642;
+
+  --bg: var(--surface-base);
+  --bg-panel: var(--surface-panel);
+  --bg-elevated: var(--surface-raised);
+  --bg-input: #fdf6e3;
+  --bg-hover: rgba(7, 54, 66, 0.05);
+  --bg-active: rgba(38, 139, 210, 0.13);
+
+  --border: var(--surface-border);
+  --border-strong: rgba(88, 110, 117, 0.36);
+
+  --text: #073642;
+  --text-muted: #586e75;
+  --text-faint: #839496;
+
+  --spot-green: #268bd2;
+  --spot-green-bright: #2aa198;
+  --spot-green-dim: #1e6fa8;
+  --accent: #268bd2;
+  --accent-dim: #1e6fa8;
+  --accent-soft: rgba(38, 139, 210, 0.13);
+  --accent-ink: #fdf6e3;
+
+  --ok: #859900;
+  --ok-soft: rgba(133, 153, 0, 0.14);
+  --err: #dc322f;
+  --err-soft: rgba(220, 50, 47, 0.13);
+  --warn: #b58900;
+  --warn-soft: rgba(181, 137, 0, 0.14);
+  --info: #268bd2;
+  --info-soft: rgba(38, 139, 210, 0.14);
+
+  --status-2xx: #859900;
+  --status-2xx-soft: rgba(133, 153, 0, 0.14);
+  --status-3xx: #268bd2;
+  --status-3xx-soft: rgba(38, 139, 210, 0.14);
+  --status-4xx: #b58900;
+  --status-4xx-soft: rgba(181, 137, 0, 0.14);
+  --status-5xx: #dc322f;
+  --status-5xx-soft: rgba(220, 50, 47, 0.14);
+
+  --method-post: #859900;
+  --method-get: #268bd2;
+  --method-put: #cb4b16;
+  --method-delete: #dc322f;
+  --method-patch: #6c71c4;
+
+  --glass-bg: rgba(253, 246, 227, 0.90);
+  --glass-bg-strong: rgba(253, 246, 227, 0.97);
+  --glass-border: 1px solid rgba(101, 123, 131, 0.24);
+  --glass-shine: inset 0 1px 0 rgba(255, 255, 255, 0.65);
+  --shadow-modal: 0 20px 56px rgba(7, 54, 66, 0.16), 0 0 0 1px rgba(101, 123, 131, 0.26);
+  --focus-ring: rgba(38, 139, 210, 0.36);
+
+  --syn-key: #268bd2;
+  --syn-str: #2aa198;
+  --syn-num: #d33682;
+  --syn-bool: #cb4b16;
+  --syn-null: #93a1a1;
+  --syn-punct: #657b83;
+}
+
+html:has(.app-shell.theme-solarized-light) body {
+  background-color: #eee8d5;
+  background-image: linear-gradient(180deg, #f5efd9 0%, #eee8d5 100%);
+  color: #073642;
+}
+
+.app-shell.theme-solarized-light.accent-soft {
+  --accent-soft: rgba(38, 139, 210, 0.08);
+  --bg-active: rgba(38, 139, 210, 0.09);
+}
+
+.app-shell.theme-solarized-light.accent-strong {
+  --accent-soft: rgba(38, 139, 210, 0.20);
+  --bg-active: rgba(38, 139, 210, 0.20);
+}
+
+/* —— Shared Light-Theme Contrast Layer (GitHub Light & Solarized Light) —— */
+.app-shell:is(.theme-github-light, .theme-solarized-light) .btn-send {
+  background: linear-gradient(180deg, var(--accent), var(--accent-dim));
   color: #ffffff !important;
 }
 
-.app-shell.theme-light .btn-send * {
+.app-shell:is(.theme-github-light, .theme-solarized-light) .btn-send * {
   color: #ffffff !important;
 }
 
-.app-shell.theme-light .diff-line-add {
-  background: rgba(5, 150, 105, 0.1);
-  border-left-color: #059669;
-  color: #047857;
+.app-shell:is(.theme-github-light, .theme-solarized-light) .diff-line-add {
+  background: var(--ok-soft);
+  border-left-color: var(--ok);
+  color: var(--ok);
 }
 
-.app-shell.theme-light .diff-line-del {
-  background: rgba(220, 38, 38, 0.1);
-  border-left-color: #dc2626;
-  color: #b91c1c;
+.app-shell:is(.theme-github-light, .theme-solarized-light) .diff-line-del {
+  background: var(--err-soft);
+  border-left-color: var(--err);
+  color: var(--err);
 }
 
-.app-shell.theme-light .top-icon:hover,
-.app-shell.theme-light .btn-icon:hover {
-  background: rgba(17, 19, 24, 0.06);
+.app-shell:is(.theme-github-light, .theme-solarized-light) .top-icon:hover,
+.app-shell:is(.theme-github-light, .theme-solarized-light) .btn-icon:hover {
+  background: var(--bg-hover);
 }
 
-.app-shell.theme-light .menu-dropdown,
-.app-shell.theme-light .env-menu,
-.app-shell.theme-light .theme-menu,
-.app-shell.theme-light .env-quicklook-popover,
-.app-shell.theme-light .var-popover,
-.app-shell.theme-light .var-suggest-menu,
-.app-shell.theme-light .modal.palette-modal,
-.app-shell.theme-blueprint-light .menu-dropdown,
-.app-shell.theme-blueprint-light .env-menu,
-.app-shell.theme-blueprint-light .theme-menu,
-.app-shell.theme-blueprint-light .env-quicklook-popover,
-.app-shell.theme-blueprint-light .var-popover,
-.app-shell.theme-blueprint-light .var-suggest-menu,
-.app-shell.theme-blueprint-light .modal.palette-modal {
-  background: var(--bg-elevated) !important;
-  color: var(--text) !important;
-  border-color: var(--border-strong) !important;
-  box-shadow: 0 18px 44px rgba(17, 19, 24, 0.18), 0 0 0 1px var(--border) !important;
+.app-shell:is(.theme-github-light, .theme-solarized-light) :is(
+  .menu-dropdown,
+  .env-menu,
+  .theme-menu,
+  .env-quicklook-popover,
+  .var-popover,
+  .var-suggest-menu,
+  .modal.palette-modal
+) {
+  background: var(--glass-bg-strong);
+  border: 1px solid var(--border-strong);
+  box-shadow: var(--shadow-modal);
+  color: var(--text);
 }
 
-.app-shell.theme-light .env-quicklook-header,
-.app-shell.theme-blueprint-light .env-quicklook-header,
-.app-shell.theme-light .palette-search-wrap,
-.app-shell.theme-blueprint-light .palette-search-wrap {
-  background: var(--bg-panel);
+.app-shell:is(.theme-github-light, .theme-solarized-light) :is(.env-quicklook-header, .palette-search-wrap) {
   border-bottom-color: var(--border);
 }
 
-.app-shell.theme-light .env-quicklook-title,
-.app-shell.theme-blueprint-light .env-quicklook-title,
-.app-shell.theme-light .theme-menu-label,
-.app-shell.theme-blueprint-light .theme-menu-label,
-.app-shell.theme-light .env-menu-name,
-.app-shell.theme-blueprint-light .env-menu-name {
+.app-shell:is(.theme-github-light, .theme-solarized-light) :is(.env-quicklook-title, .theme-menu-label, .env-menu-name) {
   color: var(--text);
 }
 
-.app-shell.theme-light .theme-menu-row:hover,
-.app-shell.theme-blueprint-light .theme-menu-row:hover,
-.app-shell.theme-light .team-tab:hover,
-.app-shell.theme-blueprint-light .team-tab:hover {
+.app-shell:is(.theme-github-light, .theme-solarized-light) :is(.theme-menu-row:hover, .team-tab:hover) {
   background: var(--bg-hover);
-  color: var(--text);
 }
 
-.app-shell.theme-light .workbench-empty-page,
-.app-shell.theme-blueprint-light .workbench-empty-page {
-  background: radial-gradient(circle at 50% 25%, var(--accent-soft) 0%, var(--bg) 75%);
-  color: var(--text-muted);
+.app-shell:is(.theme-github-light, .theme-solarized-light) .workbench-empty-page {
+  background: var(--surface-base);
 }
 
-.app-shell.theme-light .code-editor-mirror .js-keyword,
-.app-shell.theme-blueprint-light .code-editor-mirror .js-keyword {
-  color: #7c3aed;
+.app-shell:is(.theme-github-light, .theme-solarized-light) .code-editor-mirror .js-keyword {
+  color: #cf222e;
 }
 
-.app-shell.theme-light .code-editor-mirror .js-string,
-.app-shell.theme-blueprint-light .code-editor-mirror .js-string {
-  color: #047857;
+.app-shell:is(.theme-github-light, .theme-solarized-light) .code-editor-mirror .js-string {
+  color: #0a3069;
 }
 
-.app-shell.theme-light .code-editor-mirror .js-number,
-.app-shell.theme-blueprint-light .code-editor-mirror .js-number {
-  color: #c2410c;
+.app-shell:is(.theme-github-light, .theme-solarized-light) .code-editor-mirror .js-number {
+  color: #0550ae;
 }
 
-.app-shell.theme-light .code-editor-mirror .js-pm,
-.app-shell.theme-light .code-editor-mirror .js-builtin,
-.app-shell.theme-blueprint-light .code-editor-mirror .js-pm,
-.app-shell.theme-blueprint-light .code-editor-mirror .js-builtin {
-  color: #0f766e;
+.app-shell:is(.theme-github-light, .theme-solarized-light) :is(.code-editor-mirror .js-pm, .code-editor-mirror .js-builtin) {
+  color: #8250df;
 }
 
-.app-shell.theme-light .console-body,
-.app-shell.theme-blueprint-light .console-body {
-  background: #ffffff;
-  color: #16181d;
-  border-top-color: var(--border);
+.app-shell:is(.theme-github-light, .theme-solarized-light) .console-body {
+  background: var(--surface-editor);
 }
 
-.app-shell.theme-high-contrast,
-.app-shell.theme-high-contrast.accent-soft,
-.app-shell.theme-high-contrast.accent-normal,
-.app-shell.theme-high-contrast.accent-strong {
-  --spot-void: #000000;
-  --spot-black: #000000;
-  --spot-elevated: #0a0a0a;
-  --spot-highlight: #141414;
-  --spot-muted: #e8e8e8;
-  --spot-faint: #c8c8c8;
-  --paper: rgba(10, 10, 10, 0.92);
-  --paper-solid: #0a0a0a;
-  --hairline: rgba(255, 255, 255, 0.22);
-  --rule: rgba(255, 255, 255, 0.35);
-  --line: rgba(255, 255, 255, 0.28);
-  --line-strong: rgba(255, 255, 255, 0.5);
-  --bg-input: #000000;
+/* —— 9. GitHub Dark High Contrast (WCAG AAA Accessibility) —— */
+.app-shell.theme-github-dark-hc,
+.app-shell.theme-github-dark-hc.accent-soft,
+.app-shell.theme-github-dark-hc.accent-normal,
+.app-shell.theme-github-dark-hc.accent-strong {
+  --spot-green: #71b7ff;
+  --spot-green-bright: #91cbff;
+  --spot-green-dim: #409eff;
+  --spot-void: #010409;
+  --spot-black: #0a0c10;
+  --spot-elevated: #0a0c10;
+  --spot-highlight: #272b33;
+  --spot-muted: #f0f6fc;
+  --spot-faint: #bdc4cc;
+
+  --surface-base: #010409;
+  --surface-panel: #010409;
+  --surface-editor: #0a0c10;
+  --surface-raised: #161b22;
+  --surface-border: #7a828e;
+
+  --paper: #0a0c10;
+  --paper-solid: #0a0c10;
+  --paper-dim: #010409;
+  --paper-mute: #161b22;
+
+  --hairline: rgba(240, 246, 252, 0.25);
+  --rule: #7a828e;
+  --line: #7a828e;
+  --line-strong: #f0f6fc;
+
+  --gray-1: #0a0c10;
+  --gray-2: #161b22;
+  --gray-3: #272b33;
+  --gray-4: #7a828e;
+  --gray-5: #d0d7de;
+  --gray-6: #ffffff;
+
+  --bg: var(--surface-base);
+  --bg-panel: var(--surface-panel);
+  --bg-elevated: var(--surface-raised);
+  --bg-input: #010409;
+  --bg-hover: rgba(113, 183, 255, 0.14);
+  --bg-active: rgba(113, 183, 255, 0.26);
+
+  --border: #7a828e;
+  --border-strong: #f0f6fc;
+
   --text: #ffffff;
-  --text-muted: #e0e0e0;
-  --accent: #5cff9a;
-  --accent-dim: #3de07a;
-  --accent-soft: rgba(92, 255, 154, 0.22);
-  --bg-active: rgba(92, 255, 154, 0.28);
-  --glass-border: 1px solid rgba(255, 255, 255, 0.35);
-  --focus-ring: rgba(92, 255, 154, 0.45);
-  --focus-ring-width: 2px;
-  --ok: #5cff9a;
-  --err: #ff6b7a;
-  --syn-key: #5cff9a;
-  --syn-str: #ffe066;
-  --syn-num: #74c0fc;
-  --syn-bool: #ff8787;
-  --syn-null: #c8c8c8;
+  --text-muted: #f0f6fc;
+  --text-faint: #bdc4cc;
+
+  --accent: #71b7ff;
+  --accent-dim: #409eff;
+  --accent-soft: rgba(113, 183, 255, 0.22);
+  --accent-ink: #010409;
+
+  --glass-bg: #010409;
+  --glass-bg-strong: #0a0c10;
+  --glass-border: 1px solid #f0f6fc;
+  --glass-shine: none;
+  --focus-ring: #91cbff;
+
+  --ok: #7ee787;
+  --ok-soft: rgba(126, 231, 135, 0.20);
+  --err: #ffa198;
+  --err-soft: rgba(255, 161, 152, 0.20);
+  --warn: #f0b72f;
+  --warn-soft: rgba(240, 183, 47, 0.20);
+  --info: #71b7ff;
+  --info-soft: rgba(113, 183, 255, 0.20);
+
+  --method-post: #7ee787;
+  --method-get: #71b7ff;
+  --method-put: #f0b72f;
+  --method-delete: #ffa198;
+  --method-patch: #cb9eff;
+
+  --syn-key: #71b7ff;
+  --syn-str: #a5d6ff;
+  --syn-num: #7ee787;
+  --syn-bool: #ffa198;
+  --syn-null: #bdc4cc;
   --syn-punct: #ffffff;
 }
 
-html:has(.app-shell.theme-high-contrast) body {
-  background-color: #000000;
+html:has(.app-shell.theme-github-dark-hc) body {
+  background-color: #010409;
   background-image: none;
-  color: #ffffff;
 }
 
-.app-shell.theme-slate.accent-soft {
-  --accent-soft: rgba(96, 165, 250, 0.1);
-  --bg-active: rgba(96, 165, 250, 0.12);
+.app-shell.theme-github-dark-hc.accent-soft {
+  --accent-soft: rgba(113, 183, 255, 0.14);
+  --bg-active: rgba(113, 183, 255, 0.18);
 }
 
-.app-shell.theme-slate.accent-strong {
-  --accent-soft: rgba(96, 165, 250, 0.28);
-  --bg-active: rgba(96, 165, 250, 0.34);
-}
-
-.app-shell.theme-light.accent-soft {
-  --accent-soft: rgba(22, 156, 70, 0.08);
-  --bg-active: rgba(22, 156, 70, 0.1);
-}
-
-.app-shell.theme-light.accent-strong {
-  --accent-soft: rgba(22, 156, 70, 0.22);
-  --bg-active: rgba(22, 156, 70, 0.2);
-}
-
-.app-shell.theme-high-contrast.accent-soft {
-  --accent-soft: rgba(92, 255, 154, 0.14);
-}
-
-.app-shell.theme-high-contrast.accent-strong {
-  --accent-soft: rgba(92, 255, 154, 0.32);
-  --bg-active: rgba(92, 255, 154, 0.38);
+.app-shell.theme-github-dark-hc.accent-strong {
+  --accent-soft: rgba(113, 183, 255, 0.34);
+  --bg-active: rgba(113, 183, 255, 0.36);
 }
 
 /* =========================================================================
-   HARDWARE BLUEPRINT CHASSIS (`.chassis-blueprint`) + DARK / LIGHT PALETTES
-   Complete Ground-Up Architectural Rebuild:
-   - Bottom Command Dock (`grid-template-rows: 1fr var(--bar-h)`)
-   - Disassembled Split Rack Modules (`.workbench-request-side` and `.workbench-response-side`
-     become independent hardware units separated by an 8px chassis gap)
-   - Unified Monolithic Signal Bus Bar (`[PROTO] | [METHOD] | [URL] | [SEND]`)
-   - Recessed OLED Telemetry Readout Boxes for Status, Latency, and Payload Size
-   - Engraved CAD Module Serial Stamps (`SYS-01 // COLLECTIONS`, `TX-02 // SIGNAL TRANSMITTER`, `RX-03 // TELEMETRY`)
-   - Tactile 3D Mechanical Switches with physical bottom lip & travel
+   CHASSIS A: CRISP VS CODE IDE GRID (`.chassis-ide`)
+   Astryx Principles: Frame-first 1px grid, zero-waste gutter, crisp focus
    ========================================================================= */
-
-/* —— Blueprint Dark Palette (`theme-blueprint`) —— */
-.app-shell.theme-blueprint,
-.app-shell.theme-blueprint.accent-soft,
-.app-shell.theme-blueprint.accent-normal,
-.app-shell.theme-blueprint.accent-strong {
-  --bp-chassis: #08090c;
-  --bp-module: #13151b;
-  --bp-header: #0d0f14;
-  --bp-well: #07080a;
-  --bp-edge: #2b303c;
-  --bp-edge-sub: #252934;
-  --bp-lip: #040507;
-  --bp-keycap: #1e222b;
-  --bp-keycap-hover: #272c37;
-  --bp-keycap-border: #363c4b;
-  --bp-keycap-border-hover: #4c556a;
-  --bp-serial: #6c7486;
-  --bp-telemetry: #00e5a3;
-  --bp-shadow: 0 8px 20px rgba(0, 0, 0, 0.45);
-  --bp-inset-shadow: inset 0 2px 5px rgba(0, 0, 0, 0.75);
-
-  --spot-green: #ff5500;
-  --spot-green-bright: #ff6a1a;
-  --spot-green-dim: #cc4400;
-  --spot-void: #090a0d;
-  --spot-black: #12141a;
-  --spot-elevated: #181b22;
-  --spot-highlight: #222630;
-  --spot-muted: #9ba2b2;
-  --spot-faint: #5e6575;
-
-  --white: #f4f1ea;
-  --ink: #f4f1ea;
-  --paper: #14161c;
-  --paper-solid: #14161c;
-  --paper-dim: #0d0f13;
-  --paper-mute: #1a1d24;
-
-  --hairline: #252934;
-  --rule: #303543;
-  --line: #2b303c;
-  --line-strong: #42495c;
-
-  --bg: #090a0d;
-  --bg-panel: #14161c;
-  --bg-elevated: #181b22;
-  --bg-input: #07080a;
-  --bg-hover: rgba(244, 241, 234, 0.05);
-  --bg-active: rgba(255, 85, 0, 0.16);
-
-  --border: #2b303c;
-  --border-strong: #42495c;
-  --text: #f4f1ea;
-  --text-muted: #9ba2b2;
-  --text-faint: #5e6575;
-
-  --accent: #ff5500;
-  --accent-dim: #cc4400;
-  --accent-soft: rgba(255, 85, 0, 0.15);
-  --accent-ink: #090a0d;
-
-  --radius: 2px;
-  --radius-sm: 2px;
-  --radius-md: 2px;
-  --radius-lg: 3px;
-  --radius-pill: 2px;
-
-  --glass-bg: #14161c;
-  --glass-bg-strong: #181b22;
-  --glass-blur: none;
-  --glass-border: 1px solid #2b303c;
-  --glass-shine: inset 0 1px 0 rgba(255, 255, 255, 0.06);
-  --focus-ring: rgba(255, 85, 0, 0.45);
-  --focus-ring-width: 1px;
-
-  --ok: #00e5a3;
-  --ok-soft: rgba(0, 229, 163, 0.14);
-  --err: #ff3b30;
-  --err-soft: rgba(255, 59, 48, 0.15);
-  --warn: #ffcc00;
-  --warn-soft: rgba(255, 204, 0, 0.14);
-
-  --method-get: #38bdf8;
-  --method-get-soft: rgba(56, 189, 248, 0.14);
-  --method-post: #00e5a3;
-  --method-post-soft: rgba(0, 229, 163, 0.14);
-  --method-put: #ff9f0a;
-  --method-put-soft: rgba(255, 159, 10, 0.14);
-  --method-patch: #c084fc;
-  --method-patch-soft: rgba(192, 132, 252, 0.14);
-  --method-delete: #ff453a;
-  --method-delete-soft: rgba(255, 69, 58, 0.15);
-
-  --syn-key: #38bdf8;
-  --syn-str: #00e5a3;
-  --syn-num: #ff6a1a;
-  --syn-bool: #c084fc;
-  --syn-null: #5e6575;
-  --syn-punct: #9ba2b2;
+.app-shell.chassis-ide {
+  --ide-radius-panel: 6px;
+  --ide-radius-control: 5px;
+  --ide-shadow-float: 0 12px 32px rgba(0, 0, 0, 0.34);
+  gap: 0;
+  padding: 0;
 }
 
-.app-shell.theme-blueprint.accent-soft {
-  --accent-soft: rgba(255, 85, 0, 0.09);
-  --bg-active: rgba(255, 85, 0, 0.10);
-}
-
-.app-shell.theme-blueprint.accent-strong {
-  --accent-soft: rgba(255, 85, 0, 0.25);
-  --bg-active: rgba(255, 85, 0, 0.28);
-}
-
-html:has(.app-shell.theme-blueprint) body {
-  background-color: #08090c;
-  background-image:
-    radial-gradient(rgba(255, 255, 255, 0.09) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(255, 255, 255, 0.02) 1px, transparent 1px),
-    linear-gradient(180deg, rgba(255, 255, 255, 0.02) 1px, transparent 1px);
-  background-size: 16px 16px, 64px 64px, 64px 64px;
-}
-
-/* —— Blueprint Light Palette (`theme-blueprint-light` — Drafting Paper & Braun/TE Enclosure) —— */
-.app-shell.theme-blueprint-light,
-.app-shell.theme-blueprint-light.accent-soft,
-.app-shell.theme-blueprint-light.accent-normal,
-.app-shell.theme-blueprint-light.accent-strong {
-  --bp-chassis: #e8e5dc;
-  --bp-module: #fbfaf6;
-  --bp-header: #f1efe7;
-  --bp-well: #ece9df;
-  --bp-edge: #c8c4b7;
-  --bp-edge-sub: #d7d3c7;
-  --bp-lip: #969182;
-  --bp-keycap: #f4f2ea;
-  --bp-keycap-hover: #ffffff;
-  --bp-keycap-border: #c5c0b2;
-  --bp-keycap-border-hover: #9c9686;
-  --bp-serial: #5c606b;
-  --bp-telemetry: #047857;
-  --bp-shadow: 0 6px 16px rgba(22, 24, 29, 0.08);
-  --bp-inset-shadow: inset 0 1px 3px rgba(22, 24, 29, 0.12);
-
-  --spot-green: #ff5500;
-  --spot-green-bright: #e04800;
-  --spot-green-dim: #b83b00;
-  --spot-void: #f3f1ea;
-  --spot-black: #e9e6dc;
-  --spot-elevated: #fbfaf6;
-  --spot-highlight: #eae7dd;
-  --spot-muted: #525660;
-  --spot-faint: #7d828d;
-
-  --white: #16181d;
-  --ink: #16181d;
-  --paper: #fbfaf6;
-  --paper-solid: #fbfaf6;
-  --paper-dim: #f1efe7;
-  --paper-mute: #e6e3d8;
-
-  --hairline: #dcd8cc;
-  --rule: #c8c4b7;
-  --line: #c8c4b7;
-  --line-strong: #9e998b;
-
-  --bg: #f3f1ea;
-  --bg-panel: #fbfaf6;
-  --bg-elevated: #ffffff;
-  --bg-input: #ece9df;
-  --bg-hover: rgba(22, 24, 29, 0.05);
-  --bg-active: rgba(255, 85, 0, 0.14);
-
-  --border: #c8c4b7;
-  --border-strong: #9e998b;
-  --text: #16181d;
-  --text-muted: #525660;
-  --text-faint: #7d828d;
-
-  --accent: #ff5500;
-  --accent-dim: #cc4400;
-  --accent-soft: rgba(255, 85, 0, 0.12);
-  --accent-ink: #ffffff;
-
-  --radius: 2px;
-  --radius-sm: 2px;
-  --radius-md: 2px;
-  --radius-lg: 3px;
-  --radius-pill: 2px;
-
-  --glass-bg: #fbfaf6;
-  --glass-bg-strong: #ffffff;
-  --glass-blur: none;
-  --glass-border: 1px solid #c8c4b7;
-  --glass-shine: inset 0 1px 0 rgba(255, 255, 255, 0.8);
-  --focus-ring: rgba(255, 85, 0, 0.35);
-  --focus-ring-width: 1px;
-
-  --ok: #047857;
-  --ok-soft: rgba(4, 120, 87, 0.12);
-  --err: #dc2626;
-  --err-soft: rgba(220, 38, 38, 0.12);
-  --warn: #d97706;
-  --warn-soft: rgba(217, 119, 6, 0.12);
-
-  --method-get: #0284c7;
-  --method-get-soft: rgba(2, 132, 199, 0.12);
-  --method-post: #047857;
-  --method-post-soft: rgba(4, 120, 87, 0.12);
-  --method-put: #d97706;
-  --method-put-soft: rgba(217, 119, 6, 0.12);
-  --method-patch: #7c3aed;
-  --method-patch-soft: rgba(124, 58, 237, 0.12);
-  --method-delete: #dc2626;
-  --method-delete-soft: rgba(220, 38, 38, 0.12);
-
-  --syn-key: #0369a1;
-  --syn-str: #047857;
-  --syn-num: #d9460f;
-  --syn-bool: #6d28d9;
-  --syn-null: #7d828d;
-  --syn-punct: #525660;
-}
-
-html:has(.app-shell.theme-blueprint-light) body {
-  background-color: #e8e5dc;
-  background-image:
-    radial-gradient(rgba(22, 24, 29, 0.12) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(22, 24, 29, 0.035) 1px, transparent 1px),
-    linear-gradient(180deg, rgba(22, 24, 29, 0.035) 1px, transparent 1px);
-  background-size: 16px 16px, 64px 64px, 64px 64px;
-  color: #16181d;
-}
-
-/* —— 1. INVERTED SHELL ARCHITECTURE (`.chassis-blueprint`): Workspace on Top, Master Control Deck at Bottom —— */
-.app-shell.chassis-blueprint {
-  grid-template-columns: var(--sidebar-w) minmax(0, 1fr);
-  grid-template-rows: minmax(0, 1fr) var(--bar-h);
-  grid-template-areas:
-    "sidebar main"
-    "topbar topbar";
-  padding: 10px;
-  gap: 10px;
-  background: transparent;
-}
-
-.app-shell.chassis-blueprint > .top-bar {
-  grid-area: topbar;
-  min-height: var(--bar-h);
-  height: var(--bar-h);
-  background: var(--bp-module);
-  border: 1px solid var(--bp-edge);
-  border-top: 2px solid #ff5500;
-  border-bottom: 2px solid var(--bp-lip);
-  border-radius: 3px;
-  box-shadow: var(--bp-shadow), var(--glass-shine);
-  padding: 0 14px;
-}
-
-/* Make top-bar dropdown menus pop UPWARD and clamp height so they never clip off-screen */
-.app-shell.chassis-blueprint .top-bar .menu-dropdown,
-.app-shell.chassis-blueprint .top-bar .env-menu,
-.app-shell.chassis-blueprint .top-bar .theme-menu,
-.app-shell.chassis-blueprint .top-bar .env-quicklook-popover {
-  top: auto !important;
-  bottom: calc(100% + 8px) !important;
-  max-height: calc(100vh - 80px);
-  overflow-y: auto;
-  transform-origin: bottom left;
-}
-
-.app-shell.chassis-blueprint .top-bar .env-menu,
-.app-shell.chassis-blueprint .top-bar .theme-menu,
-.app-shell.chassis-blueprint .top-bar .env-quicklook-popover {
-  transform-origin: bottom right;
-}
-
-/* Invert carets to point upward in bottom toolbar */
-.app-shell.chassis-blueprint .top-bar .top-caret,
-.app-shell.chassis-blueprint .top-bar .env-select-caret {
-  display: inline-block;
-  transform: rotate(180deg) translateY(-1px);
-}
-
-/* Keep origin ⚡ Blitz logo intact, framed in an industrial anodized bezel */
-.app-shell.chassis-blueprint .brand {
-  padding-right: 12px;
-  border-right: 1px solid var(--bp-edge);
-  margin-right: 4px;
-}
-
-.app-shell.chassis-blueprint .brand-logo {
-  width: 24px;
-  height: 24px;
-  border-radius: 3px;
-  box-shadow: 0 0 0 1px #ff5500, 0 0 10px rgba(255, 85, 0, 0.4);
-  animation: none;
-}
-
-.app-shell.chassis-blueprint .brand-name {
-  font-family: var(--mono);
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
-  font-size: 14px;
-}
-
-.app-shell.chassis-blueprint .brand::after {
-  content: "HW//OS";
-  font-family: var(--mono);
-  font-size: 9px;
-  font-weight: 700;
-  color: #ff5500;
-  background: rgba(255, 85, 0, 0.12);
-  border: 1px solid rgba(255, 85, 0, 0.35);
-  padding: 2px 5px;
-  margin-left: 8px;
-  letter-spacing: 0.08em;
-  border-radius: 2px;
-}
-
-/* —— 2. SIDEBAR RACK UNIT (`SYS-01 // EXPLORER`) —— */
-.app-shell.chassis-blueprint > .sidebar-slot {
-  grid-area: sidebar;
-  background: var(--bp-module);
-  border: 1px solid var(--bp-edge);
-  border-radius: 3px;
-  box-shadow: var(--glass-shine), var(--bp-shadow);
-}
-
-.app-shell.chassis-blueprint .sidebar-slot::before {
-  content: "SYS-01 // SIGNAL DIRECTORY";
-  display: block;
-  padding: 6px 12px;
-  background: var(--bp-header);
-  border-bottom: 1px solid var(--bp-edge-sub);
-  font-family: var(--mono);
-  font-size: 9px;
-  font-weight: 700;
-  letter-spacing: 0.16em;
-  color: var(--bp-serial);
-  flex-shrink: 0;
-}
-
-/* —— 3. DISASSEMBLED WORKBENCH: Transparent Carrier with Separate Hardware Modules —— */
-.app-shell.chassis-blueprint > .workbench {
-  grid-area: main;
-  background: transparent;
-  border: none;
+.app-shell.chassis-ide > .top-bar {
+  background: var(--surface-panel);
+  border-bottom: 1px solid var(--surface-border);
   box-shadow: none;
-  backdrop-filter: none;
-  -webkit-backdrop-filter: none;
-  gap: 8px;
-  overflow: hidden;
+  padding: 0 12px;
 }
 
-.app-shell.chassis-blueprint > .workbench.workbench-settings {
-  grid-area: main;
-  background: var(--bp-module);
-  border: 1px solid var(--bp-edge);
-  border-radius: 3px;
-  box-shadow: var(--bp-shadow);
+.app-shell.chassis-ide .sidebar-slot {
+  background: var(--surface-panel);
+  border-right: 1px solid var(--surface-border);
 }
 
-.app-shell.chassis-blueprint .collection-editor-pane,
-.app-shell.chassis-blueprint .conflict-resolver-pane {
-  background: var(--bp-module);
-  border: 1px solid var(--bp-edge);
-  border-radius: 3px;
-  box-shadow: var(--bp-shadow);
+.app-shell.chassis-ide .sidebar-search {
+  border-radius: var(--ide-radius-control);
+  border: 1px solid var(--surface-border);
+  background: var(--bg-input);
 }
 
-/* Top Tab Strip becomes a standalone patch-bay selector bar */
-.app-shell.chassis-blueprint .tab-strip {
-  background: var(--bp-module);
-  border: 1px solid var(--bp-edge);
-  border-radius: 3px;
-  padding: 5px 10px;
-  gap: 8px;
-  align-items: center;
-  box-shadow: var(--glass-shine), var(--bp-shadow);
+.app-shell.chassis-ide .sidebar-search:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--focus-ring);
 }
 
-.app-shell.chassis-blueprint .tab-strip-fixed {
-  padding-bottom: 0;
-  border-right: 1px solid var(--bp-edge);
-  padding-right: 10px;
+.app-shell.chassis-ide .tree-row {
+  border-radius: 4px;
 }
 
-.app-shell.chassis-blueprint .tab-name {
-  font-family: var(--mono);
-  font-size: 12px;
-  font-weight: 700;
-  background: var(--bp-well);
-  border: 1px solid var(--bp-edge-sub);
-  padding: 4px 8px;
-  border-radius: 2px;
-  color: var(--spot-green-bright);
+.app-shell.chassis-ide .workbench {
+  background: var(--surface-editor);
 }
 
-.app-shell.chassis-blueprint .tab-strip-scrollable {
-  align-items: center;
-  gap: 4px;
-}
-
-.app-shell.chassis-blueprint .tab {
-  border-radius: 2px;
-  font-family: var(--mono);
-  font-size: 11px;
-  background: var(--bp-header);
-  border: 1px solid var(--bp-edge-sub);
-  padding: 5px 10px;
-  margin-bottom: 0;
-}
-
-.app-shell.chassis-blueprint .tab.active {
-  background: var(--bp-module);
-  border: 1px solid #ff5500;
-  border-left: 3px solid #ff5500;
-  color: var(--text);
-  margin-bottom: 0;
-  box-shadow: 0 2px 8px rgba(255, 85, 0, 0.2);
-}
-
-.app-shell.chassis-blueprint .tab.active::after {
-  display: none;
-}
-
-/* Split Request & Response into two distinct floating hardware enclosures! */
-.app-shell.chassis-blueprint .workbench-split {
-  gap: 6px;
-  background: transparent;
-}
-
-/* Tactile 6px resize handle with 3 mechanical grip ticks between Request & Response modules */
-.app-shell.chassis-blueprint .pane-resize-h {
-  height: 6px;
-  margin: 0;
-  background: transparent;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  position: relative;
-  flex-shrink: 0;
-}
-
-.app-shell.chassis-blueprint .pane-resize-h::after {
-  content: "• • •";
-  font-size: 8px;
-  letter-spacing: 3px;
-  color: var(--bp-serial);
-  line-height: 1;
-}
-
-.app-shell.chassis-blueprint .pane-resize-h:hover::after,
-.app-shell.chassis-blueprint .pane-resize-h.active::after {
-  color: #ff5500;
-}
-
-.app-shell.chassis-blueprint .workbench-split.layout-column > .workbench-request-side {
-  display: flex;
-  flex-direction: column;
-  height: var(--request-h);
-  min-height: 140px;
-  flex-shrink: 0;
-  background: var(--bp-module);
-  border: 1px solid var(--bp-edge);
-  border-radius: 3px;
-  overflow: hidden;
-  box-shadow: var(--glass-shine), var(--bp-shadow);
-}
-
-.app-shell.chassis-blueprint .workbench-split.layout-column > .workbench-request-side > .request-pane {
-  flex: 1;
-  height: auto;
-  min-height: 0;
-  border-bottom: none;
-}
-
-.app-shell.chassis-blueprint .workbench-split.layout-column > .workbench-response-side {
-  display: flex;
-  flex-direction: column;
-  flex: 1;
-  min-height: 0;
-  background: var(--bp-module);
-  border: 1px solid var(--bp-edge);
-  border-radius: 3px;
-  overflow: hidden;
-  box-shadow: var(--glass-shine), var(--bp-shadow);
-}
-
-.app-shell.chassis-blueprint .workbench-split.layout-row {
-  gap: 10px;
-}
-
-.app-shell.chassis-blueprint .workbench-split.layout-row > .workbench-request-side,
-.app-shell.chassis-blueprint .workbench-split.layout-row > .workbench-response-side {
-  background: var(--bp-module);
-  border: 1px solid var(--bp-edge);
-  border-radius: 3px;
-  box-shadow: var(--glass-shine), var(--bp-shadow);
-}
-
-/* Engraved hardware headers on Request & Response modules */
-.app-shell.chassis-blueprint .workbench-request-side::before {
-  content: "TX-02 // REQUEST TRANSMITTER";
-  display: block;
-  padding: 5px 12px;
-  background: var(--bp-header);
-  border-bottom: 1px solid var(--bp-edge-sub);
-  font-family: var(--mono);
-  font-size: 9px;
-  font-weight: 700;
-  letter-spacing: 0.16em;
-  color: var(--spot-green-bright);
-  flex-shrink: 0;
-}
-
-.app-shell.chassis-blueprint .workbench-response-side::before {
-  content: "RX-03 // TELEMETRY & PAYLOAD OSCILLOSCOPE";
-  display: block;
-  padding: 5px 12px;
-  background: var(--bp-header);
-  border-bottom: 1px solid var(--bp-edge-sub);
-  font-family: var(--mono);
-  font-size: 9px;
-  font-weight: 700;
-  letter-spacing: 0.16em;
-  color: var(--bp-telemetry);
-  flex-shrink: 0;
-}
-
-/* —— 4. UNIFIED SIGNAL BUS BAR (Request Row) —— */
-.app-shell.chassis-blueprint .request-row {
-  background: var(--bp-header);
-  border-bottom: 1px solid var(--bp-edge);
-  padding: 10px 12px;
+.app-shell.chassis-ide .tab-strip {
+  background: var(--surface-panel);
+  border-bottom: 1px solid var(--surface-border);
+  padding: 0 8px;
   gap: 0;
 }
 
-.app-shell.chassis-blueprint .request-row .protocol-select {
-  border-radius: 2px 0 0 2px;
-  border-right: none;
-  height: 34px;
-  background: var(--bp-module);
-  border-color: var(--bp-edge);
-}
-
-.app-shell.chassis-blueprint .request-row .method-select:not(.protocol-select) {
+.app-shell.chassis-ide .tab {
   border-radius: 0;
-  border-right: none;
-  height: 34px;
-  border-color: var(--bp-edge);
+  border-right: 1px solid var(--hairline);
+  padding: 0 12px;
+  height: 35px;
+  background: transparent;
+  transition: background 120ms ease, color 120ms ease;
 }
 
-.app-shell.chassis-blueprint .request-row .var-hover-host {
-  margin-right: 8px;
-}
-
-.app-shell.chassis-blueprint .request-row .url-input {
-  height: 34px;
-  border-radius: 0 2px 2px 0;
-  background: var(--bp-well);
-  border: 1px solid var(--bp-edge);
-  color: var(--bp-telemetry);
-  font-weight: 500;
-  box-shadow: var(--bp-inset-shadow);
-}
-
-.app-shell.chassis-blueprint .request-row .url-input:focus {
-  border-color: #ff5500;
+.app-shell.chassis-ide .tab.active {
+  background: var(--surface-editor);
   color: var(--text);
+  box-shadow: inset 0 2px 0 var(--accent);
 }
 
-/* —— 5. RECESSED OLED TELEMETRY GAUGES (Response Meta) —— */
-.app-shell.chassis-blueprint .response-pane {
-  background: var(--bp-module);
-  padding: 8px 12px;
-}
-
-.app-shell.chassis-blueprint .response-meta {
-  background: var(--bp-well);
-  border: 1px solid var(--bp-edge-sub);
-  border-radius: 2px;
-  padding: 4px 8px;
-  gap: 6px;
-  align-items: center;
-  box-shadow: var(--bp-inset-shadow);
-}
-
-.app-shell.chassis-blueprint .status-chip {
-  padding: 2px 6px;
-  font-size: 11px;
-  border-radius: 2px;
-}
-
-.app-shell.chassis-blueprint .meta-pair {
-  background: var(--bp-module);
-  border: 1px solid var(--bp-edge-sub);
-  padding: 2px 6px;
-  border-radius: 2px;
-  gap: 4px;
-}
-
-.app-shell.chassis-blueprint .meta-pair .meta-label {
-  font-size: 8px;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: var(--bp-serial);
-}
-
-.app-shell.chassis-blueprint .meta-pair .meta-value {
-  color: var(--bp-telemetry);
-  font-family: var(--mono);
-  font-weight: 700;
-  font-size: 11px;
-}
-
-.app-shell.chassis-blueprint .response-meta .btn {
-  height: 22px;
-  padding: 0 6px;
-  font-size: 10px;
-}
-
-.app-shell.chassis-blueprint .response-body {
-  background: var(--bp-well);
-  border: 1px solid var(--bp-edge-sub);
-  border-radius: 2px;
-  box-shadow: var(--bp-inset-shadow);
-}
-
-/* —— 6. TACTILE MECHANICAL KEYCAP SWITCHES —— */
-.app-shell.chassis-blueprint .btn,
-.app-shell.chassis-blueprint .top-link,
-.app-shell.chassis-blueprint .top-icon,
-.app-shell.chassis-blueprint .env-select-trigger,
-.app-shell.chassis-blueprint .theme-picker {
-  border-radius: 2px;
-  font-family: var(--mono);
-  font-size: 11px;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  background: var(--bp-keycap);
-  border: 1px solid var(--bp-keycap-border);
-  border-bottom: 2px solid var(--bp-lip);
-  box-shadow: var(--glass-shine), 0 1px 2px rgba(0, 0, 0, 0.25);
-  transition: transform 50ms ease, background 90ms ease;
-}
-
-.app-shell.chassis-blueprint .btn:hover,
-.app-shell.chassis-blueprint .top-link:hover,
-.app-shell.chassis-blueprint .top-icon:hover,
-.app-shell.chassis-blueprint .env-select-trigger:hover {
-  background: var(--bp-keycap-hover);
-  border-color: var(--bp-keycap-border-hover);
-  border-bottom-color: var(--bp-lip);
-  color: var(--text);
-  transform: none;
-}
-
-.app-shell.chassis-blueprint .btn:active,
-.app-shell.chassis-blueprint .top-link:active,
-.app-shell.chassis-blueprint .top-icon:active {
-  transform: translateY(1px);
-  border-bottom-width: 1px;
-}
-
-/* International Orange Master Trigger */
-.app-shell.chassis-blueprint .btn-send,
-.app-shell.chassis-blueprint .btn-primary {
-  background: #ff5500;
-  color: #ffffff;
-  font-weight: 800;
-  height: 34px;
-  border: 1px solid #ff7733;
-  border-bottom: 3px solid #8f2d00;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.3), 0 2px 8px rgba(255, 85, 0, 0.35);
-}
-
-.app-shell.chassis-blueprint .btn-send:hover,
-.app-shell.chassis-blueprint .btn-primary:hover {
-  background: #ff661a;
-  border-color: #ff884d;
-  border-bottom-color: #8f2d00;
-  color: #ffffff;
-  filter: none;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.4), 0 3px 12px rgba(255, 85, 0, 0.5);
-  transform: none;
-}
-
-.app-shell.chassis-blueprint .btn-send:active,
-.app-shell.chassis-blueprint .btn-primary:active {
-  transform: translateY(2px);
-  border-bottom-width: 1px;
-}
-
-.app-shell.chassis-blueprint .btn-save {
-  background: var(--bp-keycap);
-  color: var(--spot-green-bright);
-  border: 1px solid rgba(255, 85, 0, 0.45);
-  border-bottom: 2px solid var(--bp-lip);
-}
-
-/* —— 7. SIDEBAR TREE, KV SPEC SHEET & CONSOLE —— */
-.app-shell.chassis-blueprint .sidebar-search,
-.app-shell.chassis-blueprint input[type="text"]:not(.url-input):not(.tab-name),
-.app-shell.chassis-blueprint input[type="password"],
-.app-shell.chassis-blueprint input[type="number"],
-.app-shell.chassis-blueprint textarea {
-  background: var(--bp-well);
-  border: 1px solid var(--bp-edge-sub);
-  border-radius: 2px;
-  box-shadow: var(--bp-inset-shadow);
-  font-family: var(--mono);
-  color: var(--text);
-}
-
-.app-shell.chassis-blueprint .sidebar h3,
-.app-shell.chassis-blueprint .sidebar .type-label {
-  font-family: var(--mono);
-  font-size: 10px;
-  letter-spacing: 0.14em;
-  color: var(--bp-serial);
-}
-
-.app-shell.chassis-blueprint .tree-row {
-  border-radius: 2px;
-  border-left: 2px solid transparent;
-  font-family: var(--mono);
-  font-size: 12px;
-}
-
-.app-shell.chassis-blueprint .tree-row:hover {
-  background: var(--bg-hover);
-  border-left-color: var(--bp-edge);
-}
-
-.app-shell.chassis-blueprint .tree-row.active {
-  background: rgba(255, 85, 0, 0.12);
-  border-color: rgba(255, 85, 0, 0.28);
-  border-left: 3px solid #ff5500;
-  box-shadow: none;
-}
-
-.app-shell.chassis-blueprint .method-badge {
-  border-radius: 2px;
-  font-weight: 800;
-  letter-spacing: 0.06em;
-  box-shadow: none;
-}
-
-.app-shell.chassis-blueprint .builder-tabs,
-.app-shell.chassis-blueprint .response-tabs {
-  background: var(--bp-header);
-  border-bottom: 1px solid var(--bp-edge-sub);
-  padding: 4px 10px;
-  gap: 4px;
-}
-
-.app-shell.chassis-blueprint .builder-tab,
-.app-shell.chassis-blueprint .response-tab {
-  font-family: var(--mono);
-  font-size: 10px;
-  letter-spacing: 0.08em;
-  border-radius: 2px;
-  padding: 5px 10px;
-  border: 1px solid transparent;
-}
-
-.app-shell.chassis-blueprint .builder-tab.active,
-.app-shell.chassis-blueprint .response-tab.active {
-  color: #ffffff;
-  background: #ff5500;
-  border-color: #ff7733;
-  font-weight: 800;
-}
-
-.app-shell.chassis-blueprint .builder-tab.active::after,
-.app-shell.chassis-blueprint .response-tab.active::after {
+.app-shell.chassis-ide .tab.active::after {
   display: none;
 }
 
-.app-shell.chassis-blueprint .kv-table th,
-.app-shell.chassis-blueprint .kv-table td {
-  border: 1px solid var(--bp-edge-sub);
-  padding: 4px 8px;
+.app-shell.chassis-ide .request-row {
+  border-radius: var(--ide-radius-control);
+  border: 1px solid var(--surface-border);
+  background: var(--bg-input);
+  transition: border-color 140ms ease, box-shadow 140ms ease;
 }
 
-.app-shell.chassis-blueprint .kv-table th {
-  background: var(--bp-header);
-  font-family: var(--mono);
-  font-size: 10px;
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
+.app-shell.chassis-ide .request-row:focus-within {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--focus-ring);
 }
 
-.app-shell.chassis-blueprint .console-wrap {
-  background: var(--bp-module);
-  border: 1px solid var(--bp-edge);
-  border-radius: 3px;
+.app-shell.chassis-ide .btn-send {
+  border-radius: var(--ide-radius-control);
+  font-weight: 600;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.22);
 }
 
-.app-shell.chassis-blueprint .console-body {
-  background: var(--bp-well);
+.app-shell.chassis-ide .builder-tabs,
+.app-shell.chassis-ide .response-tabs {
+  border-bottom: 1px solid var(--surface-border);
+}
+
+.app-shell.chassis-ide .builder-tab.active::after,
+.app-shell.chassis-ide .response-tab.active::after {
+  height: 2px;
+  background: var(--accent);
+}
+
+.app-shell.chassis-ide .settings-card {
+  border-radius: var(--ide-radius-panel);
+  border: 1px solid var(--surface-border);
+  background: var(--surface-raised);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.14);
+}
+
+.app-shell.chassis-ide :is(.menu-dropdown, .env-menu, .theme-menu, .modal) {
+  border-radius: var(--ide-radius-panel);
+  box-shadow: var(--ide-shadow-float);
+}
+
+/* =========================================================================
+   CHASSIS B: COZY TACTILE ISLANDS (`.chassis-zen`)
+   Astryx Principles: Floating surface elevation, soft radii, calm breathing room
+   ========================================================================= */
+.app-shell.chassis-zen {
+  --zen-radius-panel: 12px;
+  --zen-radius-control: 8px;
+  --zen-shadow-island: 0 6px 24px rgba(0, 0, 0, 0.24), var(--glass-shine);
+  display: grid;
+  grid-template-columns: var(--sidebar-w) minmax(0, 1fr);
+  grid-template-rows: var(--bar-h) minmax(0, 1fr);
+  grid-template-areas:
+    "topbar topbar"
+    "sidebar main";
+  gap: 8px;
+  padding: 8px;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  box-sizing: border-box;
+  background: transparent;
+}
+
+.app-shell.chassis-zen > .top-bar {
+  grid-area: topbar;
+  border-radius: var(--zen-radius-panel);
+  border: 1px solid var(--surface-border);
+  background: var(--glass-bg);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  box-shadow: var(--zen-shadow-island);
+  padding: 0 14px;
+}
+
+.app-shell.chassis-zen .sidebar-slot {
+  border-radius: var(--zen-radius-panel);
+  border: 1px solid var(--surface-border);
+  background: var(--glass-bg);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  box-shadow: var(--zen-shadow-island);
+  overflow: hidden;
+}
+
+.app-shell.chassis-zen .sidebar-search {
+  border-radius: var(--zen-radius-control);
+  border: 1px solid var(--surface-border);
+  background: var(--bg-input);
+}
+
+.app-shell.chassis-zen .sidebar-search:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--focus-ring);
+}
+
+.app-shell.chassis-zen .tree-row {
+  border-radius: var(--zen-radius-control);
+}
+
+.app-shell.chassis-zen .workbench {
+  border-radius: var(--zen-radius-panel);
+  border: 1px solid var(--surface-border);
+  background: var(--surface-editor);
+  box-shadow: var(--zen-shadow-island);
+  overflow: hidden;
+}
+
+.app-shell.chassis-zen .tab-strip {
+  background: var(--surface-panel);
+  border-bottom: 1px solid var(--surface-border);
+  padding: 6px 10px;
+  gap: 6px;
+}
+
+.app-shell.chassis-zen .tab {
+  border-radius: var(--zen-radius-control);
+  padding: 0 12px;
+  height: 30px;
+  border: 1px solid transparent;
+  transition: background 140ms ease, border-color 140ms ease;
+}
+
+.app-shell.chassis-zen .tab:hover {
+  background: var(--bg-hover);
+}
+
+.app-shell.chassis-zen .tab.active {
+  background: var(--surface-raised);
+  border-color: var(--surface-border);
   color: var(--text);
-  border-top: 1px solid var(--bp-edge-sub);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.16);
 }
 
-.app-shell.chassis-blueprint .status-line {
-  background: var(--bp-header);
-  border: 1px solid var(--bp-edge-sub);
-  border-radius: 2px;
-  padding: 4px 12px;
-  color: var(--text-muted);
+.app-shell.chassis-zen .tab.active::after {
+  display: none;
 }
 
-.app-shell.chassis-blueprint .modal,
-.app-shell.chassis-blueprint .menu-dropdown,
-.app-shell.chassis-blueprint .ctx-menu {
-  background: var(--bp-module);
-  border: 1px solid var(--bp-edge);
-  border-top: 2px solid #ff5500;
-  border-radius: 3px;
-  box-shadow: var(--bp-shadow);
+.app-shell.chassis-zen .request-row {
+  border-radius: 10px;
+  border: 1px solid var(--surface-border);
+  background: var(--bg-input);
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.12);
+  transition: border-color 150ms ease, box-shadow 150ms ease;
 }
 
-.app-shell.chassis-blueprint .settings-card {
-  background: var(--bp-header);
-  border: 1px solid var(--bp-edge-sub);
-  border-radius: 2px;
-  box-shadow: none;
+.app-shell.chassis-zen .request-row:focus-within {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--focus-ring);
+}
+
+.app-shell.chassis-zen .btn-send {
+  border-radius: var(--zen-radius-control);
+  font-weight: 600;
+  box-shadow: 0 2px 10px var(--accent-soft);
+}
+
+.app-shell.chassis-zen .settings-card {
+  border-radius: var(--zen-radius-panel);
+  border: 1px solid var(--surface-border);
+  background: var(--surface-raised);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.14);
+}
+
+.app-shell.chassis-zen :is(.menu-dropdown, .env-menu, .theme-menu, .modal) {
+  border-radius: var(--zen-radius-panel);
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.32);
+}
+
+.app-shell.chassis-zen.theme-solarized-light {
+  --zen-shadow-island: 0 4px 18px rgba(7, 54, 66, 0.08), var(--glass-shine);
 }
 
 /* =========================================================================
    LINEAR STUDIO CHASSIS (`.chassis-linear`)
-   Pro UI/UX Architecture: Floating Islands, Omnibar Capsule, Segmented Controls
+   Astryx-Guided Architecture: Semantic Tokens, Floating Islands, Zero-Shift Borders
    ========================================================================= */
 .app-shell.chassis-linear {
+  --linear-radius-panel: 8px;
+  --linear-radius-control: 6px;
+  --linear-shadow-island: 0 4px 20px rgba(0, 0, 0, 0.34), var(--glass-shine);
+  --linear-shadow-float: 0 16px 48px rgba(0, 0, 0, 0.48), var(--glass-shine);
   display: grid;
   grid-template-columns: var(--sidebar-w) minmax(0, 1fr);
   grid-template-rows: var(--bar-h) minmax(0, 1fr);
@@ -9196,7 +9374,6 @@ html:has(.app-shell.theme-blueprint-light) body {
     "sidebar main";
   gap: 6px;
   padding: 6px 8px 8px 8px;
-  height: 100vh;
   height: 100%;
   min-width: 0;
   min-height: 0;
@@ -9208,72 +9385,70 @@ html:has(.app-shell.theme-blueprint-light) body {
 /* 1. Header Capsule Island */
 .app-shell.chassis-linear > .top-bar {
   grid-area: topbar;
-  border-radius: 8px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  background: rgba(14, 16, 23, 0.82);
+  border-radius: var(--linear-radius-panel);
+  border: 1px solid var(--surface-border);
+  background: var(--glass-bg);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  box-shadow: var(--linear-shadow-island);
   padding: 0 12px;
 }
 
 .app-shell.chassis-linear .top-link {
   height: 28px;
-  border-radius: 6px;
+  border-radius: var(--linear-radius-control);
   padding: 0 10px;
   font-weight: 500;
-  transition: all 120ms ease;
+  transition: background 120ms ease, color 120ms ease;
 }
 
 .app-shell.chassis-linear .top-link:hover {
-  background: rgba(255, 255, 255, 0.06);
-  color: #ffffff;
+  background: var(--bg-hover);
+  color: var(--text);
 }
 
 /* 2. Floating Sidebar Island */
 .app-shell.chassis-linear .sidebar-slot {
-  border-radius: 8px;
-  border: 1px solid rgba(255, 255, 255, 0.075);
-  background: rgba(14, 16, 23, 0.72);
+  border-radius: var(--linear-radius-panel);
+  border: 1px solid var(--surface-border);
+  background: var(--glass-bg);
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  box-shadow: var(--linear-shadow-island);
   overflow: hidden;
 }
 
 .app-shell.chassis-linear .sidebar-search {
-  margin: 8px 10px;
-  border-radius: 6px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  background: rgba(0, 0, 0, 0.28);
+  border-radius: var(--linear-radius-control);
+  border: 1px solid var(--surface-border);
+  background: var(--bg-input);
   transition: border-color 150ms ease, box-shadow 150ms ease;
 }
 
 .app-shell.chassis-linear .sidebar-search:focus {
-  border-color: rgba(99, 102, 241, 0.55);
-  box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.16);
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--focus-ring);
 }
 
 .app-shell.chassis-linear .tree-row {
-  margin: 1px 6px;
-  border-radius: 6px;
-  height: 28px;
+  border-radius: var(--linear-radius-control);
+  border: 1px solid transparent;
   transition: background 100ms ease, border-color 100ms ease;
 }
 
 .app-shell.chassis-linear .tree-row:hover {
-  background: rgba(255, 255, 255, 0.05);
+  background: var(--bg-hover);
 }
 
 .app-shell.chassis-linear .tree-row.active {
-  background: rgba(99, 102, 241, 0.14);
-  border: 1px solid rgba(99, 102, 241, 0.28);
+  background: var(--bg-active);
+  border-color: var(--accent-soft);
 }
 
 /* Linear tree guides: clean 1px lines, no bulky elbows */
 .app-shell.chassis-linear .tree-guide-vertical {
   width: 1px;
-  background: rgba(255, 255, 255, 0.08);
+  background: var(--hairline);
 }
 
 .app-shell.chassis-linear .tree-guide-elbow,
@@ -9283,7 +9458,7 @@ html:has(.app-shell.theme-blueprint-light) body {
 
 .app-shell.chassis-linear .tree-row:hover .tree-guide-vertical,
 .app-shell.chassis-linear .tree-row.active .tree-guide-vertical {
-  background: rgba(99, 102, 241, 0.55);
+  background: var(--accent);
 }
 
 .app-shell.chassis-linear .method-badge {
@@ -9296,12 +9471,12 @@ html:has(.app-shell.theme-blueprint-light) body {
 
 /* 3. Floating Workbench Island */
 .app-shell.chassis-linear .workbench {
-  border-radius: 8px;
-  border: 1px solid rgba(255, 255, 255, 0.075);
-  background: rgba(14, 16, 23, 0.75);
+  border-radius: var(--linear-radius-panel);
+  border: 1px solid var(--surface-border);
+  background: var(--glass-bg);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
-  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  box-shadow: var(--linear-shadow-island);
   overflow: hidden;
 }
 
@@ -9309,7 +9484,7 @@ html:has(.app-shell.theme-blueprint-light) body {
 .app-shell.chassis-linear .tab-strip {
   height: 38px;
   background: rgba(0, 0, 0, 0.22);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  border-bottom: 1px solid var(--hairline);
   padding: 0 6px;
   align-items: center;
 }
@@ -9318,22 +9493,22 @@ html:has(.app-shell.theme-blueprint-light) body {
   height: 28px;
   margin: 0 2px;
   padding: 0 12px;
-  border-radius: 6px;
+  border-radius: var(--linear-radius-control);
   border: 1px solid transparent;
   background: transparent;
-  transition: all 120ms cubic-bezier(0.16, 1, 0.3, 1);
+  transition: background 120ms cubic-bezier(0.16, 1, 0.3, 1), border-color 120ms ease, color 120ms ease;
 }
 
 .app-shell.chassis-linear .tab:hover {
-  background: rgba(255, 255, 255, 0.05);
-  color: #ffffff;
+  background: var(--bg-hover);
+  color: var(--text);
 }
 
 .app-shell.chassis-linear .tab.active {
-  background: rgba(255, 255, 255, 0.09);
-  border-color: rgba(255, 255, 255, 0.12);
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.25), inset 0 1px 0 rgba(255, 255, 255, 0.14);
-  color: #ffffff;
+  background: var(--surface-raised);
+  border-color: var(--line);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.25), var(--glass-shine);
+  color: var(--text);
 }
 
 .app-shell.chassis-linear .tab.active::after {
@@ -9344,23 +9519,23 @@ html:has(.app-shell.theme-blueprint-light) body {
 .app-shell.chassis-linear .request-row {
   margin: 10px 14px 6px 14px;
   padding: 3px;
-  background: rgba(9, 10, 15, 0.85);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 8px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  background: var(--surface-editor);
+  border: 1px solid var(--line);
+  border-radius: var(--linear-radius-panel);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.28);
   transition: border-color 150ms ease, box-shadow 150ms ease;
 }
 
 .app-shell.chassis-linear .request-row:focus-within {
-  border-color: rgba(99, 102, 241, 0.55);
-  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.18), 0 2px 12px rgba(0, 0, 0, 0.4);
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--focus-ring), 0 2px 12px rgba(0, 0, 0, 0.38);
 }
 
 .app-shell.chassis-linear .request-row .method-select {
   height: 32px;
-  border-radius: 6px 0 0 6px;
+  border-radius: var(--linear-radius-control) 0 0 var(--linear-radius-control);
   border: none;
-  background: rgba(255, 255, 255, 0.05);
+  background: var(--bg-hover);
   font-weight: 700;
   padding: 0 10px;
 }
@@ -9369,41 +9544,40 @@ html:has(.app-shell.theme-blueprint-light) body {
   background: transparent;
   border: none;
   height: 32px;
-  font-size: 13px;
+  font-size: var(--fs-base);
 }
 
 .app-shell.chassis-linear .btn-send {
   height: 32px;
-  border-radius: 6px;
-  background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%);
-  color: #ffffff;
+  border-radius: var(--linear-radius-control);
+  background: linear-gradient(135deg, var(--accent) 0%, var(--accent-dim) 100%);
+  color: var(--accent-ink);
   font-weight: 600;
   padding: 0 16px;
   border: none;
-  box-shadow: 0 2px 8px rgba(99, 102, 241, 0.35);
-  transition: all 140ms ease;
+  box-shadow: 0 2px 10px var(--accent-soft);
+  transition: filter 140ms ease, box-shadow 140ms ease;
 }
 
 .app-shell.chassis-linear .btn-send:hover {
-  background: linear-gradient(135deg, #818cf8 0%, #6366f1 100%);
-  box-shadow: 0 4px 14px rgba(99, 102, 241, 0.5);
-  transform: translateY(-0.5px);
+  filter: brightness(1.08);
+  box-shadow: 0 4px 14px var(--focus-ring);
 }
 
 .app-shell.chassis-linear .btn-save {
   height: 32px;
-  border-radius: 6px;
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: var(--linear-radius-control);
+  background: var(--bg-hover);
+  border: 1px solid var(--surface-border);
 }
 
-/* 6. Apple/Linear Segmented Subtabs */
+/* 6. Segmented Subtabs */
 .app-shell.chassis-linear .builder-tabs,
 .app-shell.chassis-linear .response-tabs {
   display: inline-flex;
-  background: rgba(0, 0, 0, 0.3);
-  border: 1px solid rgba(255, 255, 255, 0.06);
-  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.28);
+  border: 1px solid var(--hairline);
+  border-radius: var(--linear-radius-panel);
   padding: 3px;
   margin: 6px 14px 10px 14px;
   gap: 2px;
@@ -9419,14 +9593,14 @@ html:has(.app-shell.theme-blueprint-light) body {
   font-weight: 500;
   border: none;
   background: transparent;
-  transition: all 120ms ease;
+  transition: background 120ms ease, color 120ms ease;
 }
 
 .app-shell.chassis-linear .builder-tab.active,
 .app-shell.chassis-linear .response-tab.active {
-  background: rgba(255, 255, 255, 0.12);
-  color: #ffffff;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+  background: var(--surface-raised);
+  color: var(--text);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25), var(--glass-shine);
 }
 
 .app-shell.chassis-linear .builder-tab.active::after,
@@ -9434,32 +9608,45 @@ html:has(.app-shell.theme-blueprint-light) body {
   display: none !important;
 }
 
-/* 7. Response Meta Bar & Status Chip */
+/* 7. Response Meta Bar, Floating Overlays & Focus Accessibility */
 .app-shell.chassis-linear .response-meta {
   padding: 6px 14px;
-  background: rgba(0, 0, 0, 0.15);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  background: rgba(0, 0, 0, 0.16);
+  border-bottom: 1px solid var(--hairline);
   gap: 10px;
 }
 
 .app-shell.chassis-linear .status-chip {
-  border-radius: 6px;
+  border-radius: var(--linear-radius-control);
   font-weight: 600;
   padding: 3px 8px;
   font-size: 12px;
 }
 
 .app-shell.chassis-linear .meta-pair {
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(255, 255, 255, 0.06);
+  background: var(--bg-hover);
+  border: 1px solid var(--hairline);
   border-radius: 5px;
   padding: 2px 8px;
 }
 
 .app-shell.chassis-linear .settings-card {
-  border-radius: 8px;
-  border: 1px solid rgba(255, 255, 255, 0.075);
-  background: rgba(14, 16, 23, 0.65);
+  border-radius: var(--linear-radius-panel);
+  border: 1px solid var(--surface-border);
+  background: var(--surface-raised);
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.18);
+}
+
+.app-shell.chassis-linear :is(.menu-dropdown, .env-menu, .theme-menu, .modal) {
+  border-radius: var(--linear-radius-panel);
+  background: var(--glass-bg-strong);
+  border: 1px solid var(--line);
+  box-shadow: var(--linear-shadow-float);
+}
+
+.app-shell.chassis-linear :is(button, input, select, textarea):focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--focus-ring);
 }
 
 /* =========================================================================
@@ -10233,9 +10420,10 @@ mark.search-match {
    Fluid layout breakpoints, compact screens, and modular typography
    ===================================================================== */
 
-/* Medium-narrow windows (<= 960px): auto-stack Row split before horizontal crowding */
-@media screen and (max-width: 960px) {
-  .workbench-split.layout-row {
+/* Very narrow windows (<= 640px): auto-stack Row split before horizontal crowding */
+@media screen and (max-width: 640px) {
+  .workbench-split.layout-row:not(.protocol-full) {
+    display: flex;
     flex-direction: column;
   }
 
@@ -10339,23 +10527,6 @@ mark.search-match {
   .btn-send {
     flex: 0 0 auto;
     padding: 0 10px;
-  }
-
-  /* Force vertical stacked layout on narrow screens */
-  .workbench-split.layout-row {
-    flex-direction: column !important;
-  }
-
-  .workbench-split.layout-row > .workbench-request-side {
-    flex: 1 1 50% !important;
-    min-width: 100% !important;
-    border-right: none !important;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.08) !important;
-  }
-
-  .workbench-split.layout-row > .workbench-response-side {
-    flex: 1 1 50% !important;
-    min-width: 100% !important;
   }
 
   .modal {
@@ -11290,17 +11461,47 @@ mark.search-match {
   background: rgba(239, 68, 68, 0.15);
 }
 
+.tab-flat-cluster {
+  display: inline-flex;
+  align-items: flex-end;
+  gap: 2px;
+}
+
+.tab-group-cluster {
+  display: inline-flex;
+  align-items: flex-end;
+  gap: 3px;
+  padding: 3px 5px 0 4px;
+  margin: 0 4px 0 2px;
+  border-radius: 8px 8px 0 0;
+  background: color-mix(in srgb, var(--tab-group-color, #10b981) 7%, transparent);
+  border: 1px solid color-mix(in srgb, var(--tab-group-color, #10b981) 26%, transparent);
+  border-bottom: 2px solid var(--tab-group-color, #10b981);
+  flex-shrink: 0;
+}
+
+.tab-group-cluster.collapsed {
+  border-radius: 8px;
+  padding-bottom: 3px;
+  margin-bottom: 3px;
+}
+
+.tab-group-cluster.has-active {
+  background: color-mix(in srgb, var(--tab-group-color, #10b981) 11%, transparent);
+  border-color: color-mix(in srgb, var(--tab-group-color, #10b981) 50%, transparent);
+}
+
 .tab-group-pill {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
+  gap: 6px;
   padding: 4px 8px;
-  margin: 0 2px 3px 4px;
+  margin: 0 2px 3px 0;
   border-radius: 6px;
-  background: color-mix(in srgb, var(--tab-group-color, #38bdf8) 12%, transparent);
-  border: 1px solid color-mix(in srgb, var(--tab-group-color, #38bdf8) 36%, transparent);
+  background: color-mix(in srgb, var(--tab-group-color, #10b981) 16%, transparent);
+  border: 1px solid color-mix(in srgb, var(--tab-group-color, #10b981) 38%, transparent);
   color: var(--text);
-  font-size: 11px;
+  font-size: 11.5px;
   font-weight: 600;
   cursor: pointer;
   flex-shrink: 0;
@@ -11309,23 +11510,23 @@ mark.search-match {
 }
 
 .tab-group-pill:hover {
-  background: color-mix(in srgb, var(--tab-group-color, #38bdf8) 20%, transparent);
+  background: color-mix(in srgb, var(--tab-group-color, #10b981) 24%, transparent);
 }
 
 .tab-group-pill.has-active {
-  border-color: var(--tab-group-color, #38bdf8);
+  border-color: var(--tab-group-color, #10b981);
 }
 
 .tab-group-dot {
   width: 7px;
   height: 7px;
   border-radius: 999px;
-  background: var(--tab-group-color, #38bdf8);
+  background: var(--tab-group-color, #10b981);
   flex-shrink: 0;
 }
 
 .tab-group-name {
-  max-width: 110px;
+  max-width: 130px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -11334,32 +11535,39 @@ mark.search-match {
 .tab-group-count {
   font-family: var(--mono);
   font-size: 10px;
-  opacity: 0.72;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--tab-group-color, #10b981) 22%, transparent);
+  color: var(--text-bright, #f8fafc);
 }
 
 .tab-group-chevron {
-  font-size: 9px;
-  opacity: 0.7;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 4px;
+  color: var(--text);
+  opacity: 0.85;
 }
 
 .tab-group-close {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 14px;
-  height: 14px;
+  width: 22px;
+  height: 22px;
   border: none;
   background: transparent;
   color: var(--text-muted);
-  border-radius: 3px;
-  font-size: 12px;
-  line-height: 1;
+  border-radius: 4px;
   cursor: pointer;
   padding: 0;
 }
 
 .tab-group-close:hover {
-  background: rgba(239, 68, 68, 0.22);
+  background: rgba(239, 68, 68, 0.24);
   color: var(--err, #f87171);
 }
 

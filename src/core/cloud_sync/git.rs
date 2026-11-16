@@ -248,17 +248,14 @@ pub fn commit_timestamp_utc() -> String {
     Utc::now().to_rfc3339_opts(SecondsFormat::Secs, true)
 }
 
-/// Build a clean, standard, self-explanatory commit message following Conventional Commits format:
-/// `sync(<scope>): <action> <details>`
+/// Build a structured Conventional Commit message with a concise subject line
+/// (`sync(<scope>): <summary>`) and a grouped, contextual body + metadata footer.
 ///
 /// Examples:
-/// - `sync(requests): add 'login'`
-/// - `sync(requests): update 'login' and 'logout'`
-/// - `sync(environments): update 'production'`
-/// - `sync(workspace): update 'login' request, update 'production' environment`
-/// - `sync(requests): update 5 requests`
-/// - `sync(workspace): update 8 files (5 requests, 3 environments)`
-pub fn build_commit_message(name_status: &str, _timestamp: &str) -> String {
+/// - `sync(requests): add 'login', update 'health' (hakki)`
+/// - `sync(requests): rename 'old' -> 'new'`
+/// - `sync(workspace): 8 changes (5 requests, 3 environments)`
+pub fn build_commit_message(name_status: &str, timestamp: &str) -> String {
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     enum Action {
         Add,
@@ -268,12 +265,21 @@ pub fn build_commit_message(name_status: &str, _timestamp: &str) -> String {
     }
 
     impl Action {
-        fn verb(&self) -> &'static str {
+        fn verb(self) -> &'static str {
             match self {
                 Action::Add => "add",
                 Action::Update => "update",
                 Action::Delete => "delete",
                 Action::Rename => "rename",
+            }
+        }
+
+        fn tag(self) -> &'static str {
+            match self {
+                Action::Add => "add",
+                Action::Update => "upd",
+                Action::Delete => "del",
+                Action::Rename => "ren",
             }
         }
     }
@@ -289,12 +295,145 @@ pub fn build_commit_message(name_status: &str, _timestamp: &str) -> String {
         Workspace,
     }
 
+    impl ScopeKind {
+        fn scope_name(self) -> &'static str {
+            match self {
+                ScopeKind::Requests => "requests",
+                ScopeKind::Environments => "environments",
+                ScopeKind::Collections => "collections",
+                ScopeKind::Variables => "variables",
+                ScopeKind::Config => "config",
+                ScopeKind::Docs => "docs",
+                ScopeKind::Workspace => "workspace",
+            }
+        }
+
+        fn section_title(self) -> &'static str {
+            match self {
+                ScopeKind::Requests => "Requests",
+                ScopeKind::Environments => "Environments",
+                ScopeKind::Collections => "Collections",
+                ScopeKind::Variables => "Variables",
+                ScopeKind::Config => "Config",
+                ScopeKind::Docs => "Docs",
+                ScopeKind::Workspace => "Workspace",
+            }
+        }
+
+        fn singular_label(self) -> &'static str {
+            match self {
+                ScopeKind::Requests => "request",
+                ScopeKind::Environments => "environment",
+                ScopeKind::Collections => "collection",
+                ScopeKind::Variables => "globals",
+                ScopeKind::Config => "config",
+                ScopeKind::Docs => "docs",
+                ScopeKind::Workspace => "file",
+            }
+        }
+
+        fn plural_label(self) -> &'static str {
+            match self {
+                ScopeKind::Requests => "requests",
+                ScopeKind::Environments => "environments",
+                ScopeKind::Collections => "collections",
+                _ => "files",
+            }
+        }
+
+        fn is_unquoted(self) -> bool {
+            matches!(self, ScopeKind::Variables | ScopeKind::Config | ScopeKind::Docs)
+        }
+    }
+
     #[derive(Debug, Clone)]
     struct ParsedEntry {
         action: Action,
         kind: ScopeKind,
         item_name: String,
-        kind_label: &'static str,
+        old_name: Option<String>,
+        context: Option<String>,
+        collection: Option<String>,
+    }
+
+    fn strip_item_suffix(file_name: &str) -> &str {
+        file_name
+            .strip_suffix(".request.json")
+            .or_else(|| file_name.strip_suffix(".environment.json"))
+            .unwrap_or(file_name)
+    }
+
+    /// Extract `(collection, folder_context)` from `collections/<col>/folders/<a/b>/...`.
+    fn extract_collection_context(norm_path: &str) -> (Option<String>, Option<String>) {
+        let segs: Vec<&str> = norm_path.split('/').filter(|s| !s.is_empty()).collect();
+        let Some(col_pos) = segs.iter().position(|&s| s == "collections") else {
+            return (None, None);
+        };
+        let Some(&col_name) = segs.get(col_pos + 1) else {
+            return (None, None);
+        };
+        let col = col_name.to_string();
+        if let Some(folders_pos) = segs[col_pos + 2..].iter().position(|&s| s == "folders") {
+            let folder_start = col_pos + 2 + folders_pos + 1;
+            if folder_start + 1 < segs.len() {
+                let folder_chain = segs[folder_start..segs.len() - 1].join(" / ");
+                if !folder_chain.is_empty() {
+                    return (Some(col.clone()), Some(format!("{col} / {folder_chain}")));
+                }
+            }
+        }
+        (Some(col.clone()), Some(col))
+    }
+
+    fn classify_path(raw_path: &str) -> (ScopeKind, String, Option<String>, Option<String>) {
+        let norm = raw_path.replace('\\', "/");
+        let file_name = Path::new(&norm)
+            .file_name()
+            .and_then(|s| s.to_str())
+            .unwrap_or(&norm);
+        let (collection, context) = extract_collection_context(&norm);
+
+        if norm.ends_with(".request.json") {
+            let clean = file_name.strip_suffix(".request.json").unwrap_or(file_name);
+            (ScopeKind::Requests, clean.to_string(), context, collection)
+        } else if norm.ends_with(".environment.json") {
+            let clean = file_name
+                .strip_suffix(".environment.json")
+                .unwrap_or(file_name);
+            (ScopeKind::Environments, clean.to_string(), None, None)
+        } else if norm.ends_with("collection.json") {
+            let col = Path::new(&norm)
+                .parent()
+                .and_then(|p| p.file_name())
+                .and_then(|s| s.to_str())
+                .unwrap_or(file_name);
+            (
+                ScopeKind::Collections,
+                col.to_string(),
+                None,
+                Some(col.to_string()),
+            )
+        } else if norm.ends_with("globals.json") {
+            (ScopeKind::Variables, "global variables".to_string(), None, None)
+        } else if norm.ends_with("project.json") {
+            (ScopeKind::Config, "project settings".to_string(), None, None)
+        } else if norm.ends_with(".gitignore") {
+            (ScopeKind::Config, ".gitignore".to_string(), None, None)
+        } else if norm.to_ascii_lowercase().contains("readme") {
+            (ScopeKind::Docs, "README".to_string(), None, None)
+        } else {
+            (ScopeKind::Workspace, file_name.to_string(), context, collection)
+        }
+    }
+
+    fn format_entry_name(e: &ParsedEntry) -> String {
+        if let Some(old) = &e.old_name {
+            format!("'{old}' -> '{}'", e.item_name)
+        } else if e.kind.is_unquoted() {
+            e.item_name.clone()
+        } else {
+            format!("'{}'", e.item_name)
+        }
     }
 
     let mut entries: Vec<ParsedEntry> = Vec::new();
@@ -304,62 +443,49 @@ pub fn build_commit_message(name_status: &str, _timestamp: &str) -> String {
             continue;
         }
 
-        let (status_char, raw_path) = if let Some((st, p)) = line.split_once('\t') {
-            let path = p.rsplit('\t').next().unwrap_or(p).trim();
-            (st.trim().chars().next().unwrap_or('M'), path)
+        let (status_token, rest) = if let Some((st, p)) = line.split_once('\t') {
+            (st.trim(), p.trim())
         } else if let Some((st, p)) = line.split_once(' ') {
-            (st.trim().chars().next().unwrap_or('M'), p.trim())
+            (st.trim(), p.trim())
         } else {
             continue;
         };
 
-        if raw_path.is_empty() {
+        let status_char = status_token.chars().next().unwrap_or('M');
+        if rest.is_empty() {
             continue;
         }
 
-        let action = match status_char {
-            'A' | '?' => Action::Add,
-            'D' => Action::Delete,
-            'R' => Action::Rename,
-            _ => Action::Update,
+        let (action, old_path, raw_path) = match status_char {
+            'A' | '?' => (Action::Add, None, rest),
+            'D' => (Action::Delete, None, rest),
+            'R' => {
+                if let Some((old_p, new_p)) = rest.split_once('\t') {
+                    (Action::Rename, Some(old_p.trim()), new_p.trim())
+                } else {
+                    (Action::Rename, None, rest)
+                }
+            }
+            _ => (Action::Update, None, rest),
         };
 
-        let norm = raw_path.replace('\\', "/");
-        let file_name = Path::new(&norm)
-            .file_name()
-            .and_then(|s| s.to_str())
-            .unwrap_or(&norm);
-
-        let (kind, item_name, kind_label) = if norm.ends_with(".request.json") {
-            let clean = file_name.strip_suffix(".request.json").unwrap_or(file_name);
-            (ScopeKind::Requests, clean.to_string(), "request")
-        } else if norm.ends_with(".environment.json") {
-            let clean = file_name.strip_suffix(".environment.json").unwrap_or(file_name);
-            (ScopeKind::Environments, clean.to_string(), "environment")
-        } else if norm.ends_with("collection.json") {
-            let col = Path::new(&norm)
-                .parent()
-                .and_then(|p| p.file_name())
+        let (kind, item_name, context, collection) = classify_path(raw_path);
+        let old_name = old_path.map(|p| {
+            let norm = p.replace('\\', "/");
+            let fname = Path::new(&norm)
+                .file_name()
                 .and_then(|s| s.to_str())
-                .unwrap_or(file_name);
-            (ScopeKind::Collections, col.to_string(), "collection")
-        } else if norm.ends_with("globals.json") {
-            (ScopeKind::Variables, "global variables".to_string(), "globals")
-        } else if norm.ends_with("project.json") {
-            (ScopeKind::Config, "project settings".to_string(), "settings")
-        } else if norm.ends_with(".gitignore") {
-            (ScopeKind::Config, ".gitignore".to_string(), "config")
-        } else if norm.to_ascii_lowercase().contains("readme") {
-            (ScopeKind::Docs, "README".to_string(), "docs")
-        } else {
-            (ScopeKind::Workspace, file_name.to_string(), "file")
-        };
+                .unwrap_or(&norm);
+            strip_item_suffix(fname).to_string()
+        });
 
         entries.push(ParsedEntry {
             action,
             kind,
             item_name,
-            kind_label,
+            old_name,
+            context,
+            collection,
         });
     }
 
@@ -367,135 +493,178 @@ pub fn build_commit_message(name_status: &str, _timestamp: &str) -> String {
         return "sync(workspace): update workspace".to_string();
     }
 
-    // Determine overall scope: if all entries match one kind, use that kind's scope.
     let first_kind = entries[0].kind;
     let single_kind = entries.iter().all(|e| e.kind == first_kind);
-
     let scope_tag = if single_kind {
-        match first_kind {
-            ScopeKind::Requests => "requests",
-            ScopeKind::Environments => "environments",
-            ScopeKind::Collections => "collections",
-            ScopeKind::Variables => "variables",
-            ScopeKind::Config => "config",
-            ScopeKind::Docs => "docs",
-            ScopeKind::Workspace => "workspace",
-        }
+        first_kind.scope_name()
     } else {
         "workspace"
     };
 
-    // 1 to 3 items: describe each item explicitly
-    if entries.len() <= 3 {
+    // Detect single shared collection for concise subject context.
+    let shared_collection: Option<&str> = entries
+        .first()
+        .and_then(|e| e.collection.as_deref())
+        .filter(|col| entries.iter().all(|e| e.collection.as_deref() == Some(*col)));
+
+    let subject_core = if entries.len() <= 3 {
         if single_kind {
-            // Check if all actions are identical
             let first_action = entries[0].action;
             let same_action = entries.iter().all(|e| e.action == first_action);
-
-            let desc = if same_action {
+            if same_action {
                 let verb = first_action.verb();
-                if entries.len() == 1 {
-                    if first_kind == ScopeKind::Variables || first_kind == ScopeKind::Config || first_kind == ScopeKind::Docs {
-                        format!("{verb} {}", entries[0].item_name)
-                    } else {
-                        format!("{verb} '{}'", entries[0].item_name)
-                    }
-                } else if entries.len() == 2 {
-                    format!("{verb} '{}' and '{}'", entries[0].item_name, entries[1].item_name)
-                } else {
-                    format!(
-                        "{verb} '{}', '{}' and '{}'",
-                        entries[0].item_name, entries[1].item_name, entries[2].item_name
-                    )
+                let names: Vec<String> = entries.iter().map(format_entry_name).collect();
+                match names.len() {
+                    1 => format!("{verb} {}", names[0]),
+                    2 => format!("{verb} {} and {}", names[0], names[1]),
+                    _ => format!("{verb} {}, {} and {}", names[0], names[1], names[2]),
                 }
             } else {
                 entries
                     .iter()
-                    .map(|e| format!("{} '{}'", e.action.verb(), e.item_name))
+                    .map(|e| format!("{} {}", e.action.verb(), format_entry_name(e)))
                     .collect::<Vec<_>>()
                     .join(", ")
-            };
-            return format!("sync({scope_tag}): {desc}");
+            }
         } else {
-            // Mixed scopes: mention the kind label for clarity (e.g. "update 'login' request, update 'staging' environment")
-            let parts: Vec<String> = entries
+            entries
                 .iter()
                 .map(|e| {
-                    if e.kind == ScopeKind::Variables || e.kind == ScopeKind::Config || e.kind == ScopeKind::Docs {
-                        format!("{} {}", e.action.verb(), e.item_name)
-                    } else if e.kind == ScopeKind::Workspace {
-                        format!("{} '{}'", e.action.verb(), e.item_name)
+                    let name = format_entry_name(e);
+                    if e.kind.is_unquoted() || e.kind == ScopeKind::Workspace {
+                        format!("{} {name}", e.action.verb())
                     } else {
-                        format!("{} '{}' {}", e.action.verb(), e.item_name, e.kind_label)
+                        format!("{} {name} {}", e.action.verb(), e.kind.singular_label())
                     }
                 })
-                .collect();
-            return format!("sync(workspace): {}", parts.join(", "));
+                .collect::<Vec<_>>()
+                .join(", ")
         }
-    }
-
-    // More than 3 items: summarize by counts
-    if single_kind {
+    } else if single_kind {
         let adds = entries.iter().filter(|e| e.action == Action::Add).count();
         let updates = entries.iter().filter(|e| e.action == Action::Update).count();
         let deletes = entries.iter().filter(|e| e.action == Action::Delete).count();
+        let renames = entries.iter().filter(|e| e.action == Action::Rename).count();
 
         let mut action_parts = Vec::new();
-        if adds > 0 {
-            action_parts.push(format!("add {adds}"));
+        for (count, verb) in [
+            (adds, "add"),
+            (updates, "update"),
+            (deletes, "delete"),
+            (renames, "rename"),
+        ] {
+            if count > 0 {
+                action_parts.push(format!("{verb} {count}"));
+            }
         }
-        if updates > 0 {
-            action_parts.push(format!("update {updates}"));
-        }
-        if deletes > 0 {
-            action_parts.push(format!("delete {deletes}"));
-        }
-
-        let noun = match first_kind {
-            ScopeKind::Requests => "requests",
-            ScopeKind::Environments => "environments",
-            ScopeKind::Collections => "collections",
-            _ => "files",
-        };
-
+        let noun = first_kind.plural_label();
         if action_parts.len() == 1 {
-            let act = if adds > 0 {
-                "add"
-            } else if deletes > 0 {
-                "delete"
-            } else {
-                "update"
-            };
-            format!("sync({scope_tag}): {act} {} {noun}", entries.len())
+            let act = action_parts[0].split_whitespace().next().unwrap_or("update");
+            format!("{act} {} {noun}", entries.len())
         } else {
-            format!("sync({scope_tag}): {} {noun}", action_parts.join(", "))
+            format!("{} {noun}", action_parts.join(", "))
         }
     } else {
-        let req_count = entries.iter().filter(|e| e.kind == ScopeKind::Requests).count();
-        let env_count = entries.iter().filter(|e| e.kind == ScopeKind::Environments).count();
-        let col_count = entries.iter().filter(|e| e.kind == ScopeKind::Collections).count();
-
         let mut breakdown = Vec::new();
-        if req_count > 0 {
-            breakdown.push(format!("{req_count} requests"));
+        for (kind, label) in [
+            (ScopeKind::Requests, "requests"),
+            (ScopeKind::Environments, "environments"),
+            (ScopeKind::Collections, "collections"),
+        ] {
+            let count = entries.iter().filter(|e| e.kind == kind).count();
+            if count > 0 {
+                breakdown.push(format!("{count} {label}"));
+            }
         }
-        if env_count > 0 {
-            breakdown.push(format!("{env_count} environments"));
-        }
-        if col_count > 0 {
-            breakdown.push(format!("{col_count} collections"));
-        }
-
-        if !breakdown.is_empty() {
-            format!(
-                "sync(workspace): update {} items ({})",
-                entries.len(),
-                breakdown.join(", ")
-            )
+        if breakdown.is_empty() {
+            format!("update {} files", entries.len())
         } else {
-            format!("sync(workspace): update {} files", entries.len())
+            format!("{} changes ({})", entries.len(), breakdown.join(", "))
+        }
+    };
+
+    let subject = match shared_collection {
+        Some(col) if first_kind != ScopeKind::Collections => {
+            format!("sync({scope_tag}): {subject_core} ({col})")
+        }
+        _ => format!("sync({scope_tag}): {subject_core}"),
+    };
+
+    // Build structured commit body grouped by ScopeKind.
+    const MAX_BODY_LINES: usize = 15;
+    let kind_order = [
+        ScopeKind::Collections,
+        ScopeKind::Requests,
+        ScopeKind::Environments,
+        ScopeKind::Variables,
+        ScopeKind::Config,
+        ScopeKind::Docs,
+        ScopeKind::Workspace,
+    ];
+
+    let mut body_lines: Vec<String> = Vec::new();
+    let mut emitted = 0usize;
+    for kind in kind_order {
+        let group: Vec<&ParsedEntry> = entries.iter().filter(|e| e.kind == kind).collect();
+        if group.is_empty() {
+            continue;
+        }
+        if emitted >= MAX_BODY_LINES {
+            break;
+        }
+        if !single_kind {
+            body_lines.push(format!("{}:", kind.section_title()));
+        }
+        for e in group {
+            if emitted >= MAX_BODY_LINES {
+                break;
+            }
+            let name = format_entry_name(e);
+            let ctx = match &e.context {
+                Some(c) => format!(" ({c})"),
+                None => String::new(),
+            };
+            body_lines.push(format!("- [{}] {name}{ctx}", e.action.tag()));
+            emitted += 1;
         }
     }
+    if entries.len() > emitted {
+        body_lines.push(format!("- ... and {} more", entries.len() - emitted));
+    }
+
+    let adds = entries.iter().filter(|e| e.action == Action::Add).count();
+    let updates = entries.iter().filter(|e| e.action == Action::Update).count();
+    let deletes = entries.iter().filter(|e| e.action == Action::Delete).count();
+    let renames = entries.iter().filter(|e| e.action == Action::Rename).count();
+    let mut stat_parts = Vec::new();
+    if adds > 0 {
+        stat_parts.push(format!("+{adds}"));
+    }
+    if updates > 0 {
+        stat_parts.push(format!("~{updates}"));
+    }
+    if deletes > 0 {
+        stat_parts.push(format!("-{deletes}"));
+    }
+    if renames > 0 {
+        stat_parts.push(format!(">{renames}"));
+    }
+
+    let mut footer_lines = vec![format!(
+        "Changes: {} ({} total)",
+        stat_parts.join(" "),
+        entries.len()
+    )];
+    let ts = timestamp.trim();
+    if !ts.is_empty() {
+        footer_lines.push(format!("Synced-At: {ts}"));
+    }
+
+    format!(
+        "{subject}\n\n{}\n\n{}",
+        body_lines.join("\n"),
+        footer_lines.join("\n")
+    )
 }
 
 /// Resolve commit message: non-empty override wins; else auto from cached name-status.
@@ -530,11 +699,12 @@ pub fn commit_local_changes(
     let name_status = run_git(cwd, &["diff", "--cached", "--name-status"]).unwrap_or_default();
     let message = resolve_commit_message(message_override, &name_status);
 
+    let subject = message.lines().next().unwrap_or(&message).to_string();
     match run_git(cwd, &["commit", "-m", &message]) {
         Ok(_) => Ok(SyncResult {
             ok: true,
             skipped: false,
-            message: format!("committed · {branch}: {message}"),
+            message: format!("committed · {branch}: {subject}"),
             branch,
         }),
         Err(e) => {
@@ -1070,10 +1240,15 @@ mod tests {
             "A\tcollections/hakki/folders/auth/login.request.json\nM\tcollections/hakki/requests/health.request.json\n",
             "2026-10-17T16:03:00Z",
         );
+        let subject = msg.lines().next().unwrap();
         assert_eq!(
-            msg,
-            "sync(requests): add 'login', update 'health'"
+            subject,
+            "sync(requests): add 'login', update 'health' (hakki)"
         );
+        assert!(msg.contains("- [add] 'login' (hakki / auth)"));
+        assert!(msg.contains("- [upd] 'health' (hakki)"));
+        assert!(msg.contains("Changes: +1 ~1 (2 total)"));
+        assert!(msg.contains("Synced-At: 2026-10-17T16:03:00Z"));
     }
 
     #[test]
@@ -1083,17 +1258,44 @@ mod tests {
             status.push_str(&format!("M\tfile{i}.json\n"));
         }
         let msg = build_commit_message(&status, "2026-10-17T16:03:00Z");
-        assert_eq!(msg, "sync(workspace): update 6 files");
+        let subject = msg.lines().next().unwrap();
+        assert_eq!(subject, "sync(workspace): update 6 files");
+        assert!(msg.contains("Changes: ~6 (6 total)"));
     }
 
     #[test]
     fn build_commit_message_mixed_scopes() {
         let status = "M\tcollections/auth/login.request.json\nM\tenvironments/production.environment.json\n";
         let msg = build_commit_message(status, "2026-10-17T16:03:00Z");
+        let subject = msg.lines().next().unwrap();
         assert_eq!(
-            msg,
+            subject,
             "sync(workspace): update 'login' request, update 'production' environment"
         );
+        assert!(msg.contains("Requests:\n- [upd] 'login' (auth)"));
+        assert!(msg.contains("Environments:\n- [upd] 'production'"));
+    }
+
+    #[test]
+    fn build_commit_message_handles_renames_and_truncates_large_body() {
+        let mut status = String::from("R100\tcollections/api/requests/old_ep.request.json\tcollections/api/requests/new_ep.request.json\n");
+        let rename_msg = build_commit_message(&status, "2026-10-17T16:03:00Z");
+        assert_eq!(
+            rename_msg.lines().next().unwrap(),
+            "sync(requests): rename 'old_ep' -> 'new_ep' (api)"
+        );
+        assert!(rename_msg.contains("- [ren] 'old_ep' -> 'new_ep' (api)"));
+
+        for i in 0..18 {
+            status.push_str(&format!("A\tcollections/api/requests/ep{i}.request.json\n"));
+        }
+        let bulk_msg = build_commit_message(&status, "2026-10-17T16:03:00Z");
+        assert_eq!(
+            bulk_msg.lines().next().unwrap(),
+            "sync(requests): add 18, rename 1 requests (api)"
+        );
+        assert!(bulk_msg.contains("- ... and 4 more"));
+        assert!(bulk_msg.contains("Changes: +18 >1 (19 total)"));
     }
 
     #[test]
@@ -1115,7 +1317,8 @@ mod tests {
             "custom msg"
         );
         let auto = resolve_commit_message(None, "D\told.request.json\n");
-        assert_eq!(auto, "sync(requests): delete 'old'");
+        assert_eq!(auto.lines().next().unwrap(), "sync(requests): delete 'old'");
+        assert!(auto.contains("- [del] 'old'"));
     }
 
     #[test]

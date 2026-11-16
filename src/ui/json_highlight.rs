@@ -210,7 +210,13 @@ pub fn should_highlight_json(body: &str, headers: &[(String, String)]) -> bool {
 /// Render an already-parsed JSON [`Value`] as beautified syntax-highlighted HTML.
 pub fn render_json_value_html(v: &Value, enable_folding: bool) -> String {
     let mut out = String::with_capacity(1024);
-    render_node(None, v, false, &mut out, 0, enable_folding);
+    if enable_folding {
+        out.push_str("<div class=\"json-tree\">");
+        render_node(None, v, false, &mut out, 0, true);
+        out.push_str("</div>");
+    } else {
+        render_node(None, v, false, &mut out, 0, false);
+    }
     out
 }
 
@@ -239,6 +245,14 @@ pub fn render_json_highlight_html_with_fold(body: &str, enable_folding: bool) ->
     }
 }
 
+fn push_key_html(out: &mut String, key: Option<&str>) {
+    if let Some(k) = key {
+        out.push_str("<span class=\"json-key\">\"");
+        out.push_str(&escape_html(k));
+        out.push_str("\"</span><span class=\"json-punct\">: </span>");
+    }
+}
+
 fn render_node(
     key: Option<&str>,
     v: &Value,
@@ -249,14 +263,17 @@ fn render_node(
 ) {
     match v {
         Value::Null | Value::Bool(_) | Value::Number(_) | Value::String(_) => {
-            push_indent(out, indent);
             if enable_folding {
-                out.push_str("<span class=\"json-fold-spacer\"></span>");
-            }
-            if let Some(k) = key {
-                out.push_str("<span class=\"json-key\">\"");
-                out.push_str(&escape_html(k));
-                out.push_str("\"</span><span class=\"json-punct\">: </span>");
+                out.push_str("<div class=\"json-row\"><span class=\"json-fold-spacer\"></span>");
+                if key.is_some() {
+                    out.push_str("<span class=\"json-row-key\">");
+                    push_key_html(out, key);
+                    out.push_str("</span>");
+                }
+                out.push_str("<span class=\"json-row-val\">");
+            } else {
+                push_indent(out, indent);
+                push_key_html(out, key);
             }
             match v {
                 Value::Null => out.push_str("<span class=\"json-null\">null</span>"),
@@ -280,24 +297,35 @@ fn render_node(
             if has_trailing_comma {
                 out.push_str("<span class=\"json-punct\">,</span>");
             }
-            out.push('\n');
+            if enable_folding {
+                out.push_str("</span></div>");
+            } else {
+                out.push('\n');
+            }
         }
         Value::Array(arr) => {
             if arr.is_empty() {
-                push_indent(out, indent);
                 if enable_folding {
-                    out.push_str("<span class=\"json-fold-spacer\"></span>");
+                    out.push_str("<div class=\"json-row\"><span class=\"json-fold-spacer\"></span>");
+                    if key.is_some() {
+                        out.push_str("<span class=\"json-row-key\">");
+                        push_key_html(out, key);
+                        out.push_str("</span>");
+                    }
+                    out.push_str("<span class=\"json-row-val\"><span class=\"json-punct\">[]");
+                    if has_trailing_comma {
+                        out.push(',');
+                    }
+                    out.push_str("</span></span></div>");
+                } else {
+                    push_indent(out, indent);
+                    push_key_html(out, key);
+                    out.push_str("<span class=\"json-punct\">[]");
+                    if has_trailing_comma {
+                        out.push(',');
+                    }
+                    out.push_str("</span>\n");
                 }
-                if let Some(k) = key {
-                    out.push_str("<span class=\"json-key\">\"");
-                    out.push_str(&escape_html(k));
-                    out.push_str("\"</span><span class=\"json-punct\">: </span>");
-                }
-                out.push_str("<span class=\"json-punct\">[]</span>");
-                if has_trailing_comma {
-                    out.push_str("<span class=\"json-punct\">,</span>");
-                }
-                out.push('\n');
                 return;
             }
 
@@ -306,12 +334,11 @@ fn render_node(
 
             if enable_folding {
                 out.push_str("<details class=\"json-fold\" open><summary class=\"json-fold-summary\">");
-                push_indent(out, indent);
                 out.push_str("<span class=\"json-fold-toggle\" title=\"Toggle fold\"><svg class=\"fold-icon\" viewBox=\"0 0 16 16\"><path fill=\"currentColor\" d=\"M4 6h8l-4 5z\"/></svg></span>");
-                if let Some(k) = key {
-                    out.push_str("<span class=\"json-key\">\"");
-                    out.push_str(&escape_html(k));
-                    out.push_str("\"</span><span class=\"json-punct\">: </span>");
+                if key.is_some() {
+                    out.push_str("<span class=\"json-row-key\">");
+                    push_key_html(out, key);
+                    out.push_str("</span>");
                 }
                 out.push_str("<span class=\"json-punct\">[</span>");
                 out.push_str(&format!("<span class=\"json-fold-badge\">{len_label}</span>"));
@@ -319,32 +346,25 @@ fn render_node(
                 if has_trailing_comma {
                     out.push_str("<span class=\"json-punct json-fold-close-comma\">,</span>");
                 }
-                out.push_str("</summary>\n");
+                out.push_str("</summary><div class=\"json-children\">");
 
                 for (i, item) in arr.iter().enumerate() {
                     let child_comma = i + 1 < arr.len();
-                    render_node(None, item, child_comma, out, indent + 1, enable_folding);
+                    render_node(None, item, child_comma, out, indent + 1, true);
                 }
 
-                push_indent(out, indent);
-                out.push_str("<span class=\"json-fold-spacer\"></span>");
-                out.push_str("<span class=\"json-punct\">]");
+                out.push_str("</div><div class=\"json-fold-close\"><span class=\"json-fold-spacer\"></span><span class=\"json-punct\">]");
                 if has_trailing_comma {
                     out.push(',');
                 }
-                out.push_str("</span>\n");
-                out.push_str("</details>");
+                out.push_str("</span></div></details>");
             } else {
                 push_indent(out, indent);
-                if let Some(k) = key {
-                    out.push_str("<span class=\"json-key\">\"");
-                    out.push_str(&escape_html(k));
-                    out.push_str("\"</span><span class=\"json-punct\">: </span>");
-                }
+                push_key_html(out, key);
                 out.push_str("<span class=\"json-punct\">[</span>\n");
                 for (i, item) in arr.iter().enumerate() {
                     let child_comma = i + 1 < arr.len();
-                    render_node(None, item, child_comma, out, indent + 1, enable_folding);
+                    render_node(None, item, child_comma, out, indent + 1, false);
                 }
                 push_indent(out, indent);
                 out.push_str("<span class=\"json-punct\">]");
@@ -356,20 +376,27 @@ fn render_node(
         }
         Value::Object(map) => {
             if map.is_empty() {
-                push_indent(out, indent);
                 if enable_folding {
-                    out.push_str("<span class=\"json-fold-spacer\"></span>");
+                    out.push_str("<div class=\"json-row\"><span class=\"json-fold-spacer\"></span>");
+                    if key.is_some() {
+                        out.push_str("<span class=\"json-row-key\">");
+                        push_key_html(out, key);
+                        out.push_str("</span>");
+                    }
+                    out.push_str("<span class=\"json-row-val\"><span class=\"json-punct\">{}");
+                    if has_trailing_comma {
+                        out.push(',');
+                    }
+                    out.push_str("</span></span></div>");
+                } else {
+                    push_indent(out, indent);
+                    push_key_html(out, key);
+                    out.push_str("<span class=\"json-punct\">{}");
+                    if has_trailing_comma {
+                        out.push(',');
+                    }
+                    out.push_str("</span>\n");
                 }
-                if let Some(k) = key {
-                    out.push_str("<span class=\"json-key\">\"");
-                    out.push_str(&escape_html(k));
-                    out.push_str("\"</span><span class=\"json-punct\">: </span>");
-                }
-                out.push_str("<span class=\"json-punct\">{}</span>");
-                if has_trailing_comma {
-                    out.push_str("<span class=\"json-punct\">,</span>");
-                }
-                out.push('\n');
                 return;
             }
 
@@ -378,12 +405,11 @@ fn render_node(
 
             if enable_folding {
                 out.push_str("<details class=\"json-fold\" open><summary class=\"json-fold-summary\">");
-                push_indent(out, indent);
                 out.push_str("<span class=\"json-fold-toggle\" title=\"Toggle fold\"><svg class=\"fold-icon\" viewBox=\"0 0 16 16\"><path fill=\"currentColor\" d=\"M4 6h8l-4 5z\"/></svg></span>");
-                if let Some(k) = key {
-                    out.push_str("<span class=\"json-key\">\"");
-                    out.push_str(&escape_html(k));
-                    out.push_str("\"</span><span class=\"json-punct\">: </span>");
+                if key.is_some() {
+                    out.push_str("<span class=\"json-row-key\">");
+                    push_key_html(out, key);
+                    out.push_str("</span>");
                 }
                 out.push_str("<span class=\"json-punct\">{</span>");
                 out.push_str(&format!("<span class=\"json-fold-badge\">{count_label}</span>"));
@@ -391,34 +417,27 @@ fn render_node(
                 if has_trailing_comma {
                     out.push_str("<span class=\"json-punct json-fold-close-comma\">,</span>");
                 }
-                out.push_str("</summary>\n");
+                out.push_str("</summary><div class=\"json-children\">");
 
                 let entries: Vec<_> = map.iter().collect();
                 for (i, (child_key, child_val)) in entries.iter().enumerate() {
                     let child_comma = i + 1 < entries.len();
-                    render_node(Some(child_key), child_val, child_comma, out, indent + 1, enable_folding);
+                    render_node(Some(child_key), child_val, child_comma, out, indent + 1, true);
                 }
 
-                push_indent(out, indent);
-                out.push_str("<span class=\"json-fold-spacer\"></span>");
-                out.push_str("<span class=\"json-punct\">}");
+                out.push_str("</div><div class=\"json-fold-close\"><span class=\"json-fold-spacer\"></span><span class=\"json-punct\">}");
                 if has_trailing_comma {
                     out.push(',');
                 }
-                out.push_str("</span>\n");
-                out.push_str("</details>");
+                out.push_str("</span></div></details>");
             } else {
                 push_indent(out, indent);
-                if let Some(k) = key {
-                    out.push_str("<span class=\"json-key\">\"");
-                    out.push_str(&escape_html(k));
-                    out.push_str("\"</span><span class=\"json-punct\">: </span>");
-                }
+                push_key_html(out, key);
                 out.push_str("<span class=\"json-punct\">{</span>\n");
                 let entries: Vec<_> = map.iter().collect();
                 for (i, (child_key, child_val)) in entries.iter().enumerate() {
                     let child_comma = i + 1 < entries.len();
-                    render_node(Some(child_key), child_val, child_comma, out, indent + 1, enable_folding);
+                    render_node(Some(child_key), child_val, child_comma, out, indent + 1, false);
                 }
                 push_indent(out, indent);
                 out.push_str("<span class=\"json-punct\">}");

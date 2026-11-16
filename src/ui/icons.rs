@@ -1,7 +1,8 @@
 use dioxus::prelude::*;
 use lucide_dioxus::{
     Activity, ArrowUpDown, Award, Bell, Bookmark, Boxes, Braces, Briefcase, Bug, Building,
-    Calendar, Camera, ChartBar, Check, ChevronsDownUp, ChevronsUpDown, Clock, Cloud, Code,
+    Calendar, Camera, ChartBar, Check, ChevronDown, ChevronRight, ChevronsDownUp, ChevronsUpDown,
+    Clock, Cloud, Code,
     Columns2, Compass, Copy, Cpu, CreditCard, Database, Download, Eye, FileCode, FilePlus,
     FileText, Flag, Flame, FlaskConical, Folder, FolderPlus, Funnel, GitBranch,
     GitCommitHorizontal, GitMerge, Globe, HardDrive, Heart, House, Image, KeyRound, Laptop,
@@ -9,7 +10,7 @@ use lucide_dioxus::{
     Palette, Pencil, Plug, Plus, Radio, Redo2, Rocket, Rows2, Rss, Save, Search, Send, Server,
     Settings, Share2, ShieldCheck, ShoppingCart, SlidersHorizontal, Smartphone, Sparkles, Star,
     Tag, Target, Terminal, Trash, Truck, Undo2, Upload, User, Users, Video, Wallet, WandSparkles,
-    Webhook, Wifi, Wrench, Zap,
+    Webhook, Wifi, Wrench, X, Zap,
 };
 
 use super::DismissBackdrop;
@@ -105,6 +106,9 @@ pub fn ActionIcon(
         "users" => rsx! { Users { size, stroke_width, class: cls, style } },
         "braces" => rsx! { Braces { size, stroke_width, class: cls, style } },
         "layers" => rsx! { Layers { size, stroke_width, class: cls, style } },
+        "chevron-right" => rsx! { ChevronRight { size, stroke_width, class: cls, style } },
+        "chevron-down" => rsx! { ChevronDown { size, stroke_width, class: cls, style } },
+        "close" => rsx! { X { size, stroke_width, class: cls, style } },
         _ => rsx! { Zap { size, stroke_width, class: cls, style } },
     }
 }

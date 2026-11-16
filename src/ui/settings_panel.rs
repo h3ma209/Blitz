@@ -2,7 +2,7 @@ use dioxus::prelude::*;
 
 use crate::core::{
     AccentIntensity, AppSettings, ClientCertSettings, CloudSyncSettings, DefaultResponseTab,
-    ProxyMode, ProxySettings, UiDensity, UiSettings, UiTheme, WorkbenchLayout, DEFAULT_CLOUD_REMOTE,
+    ProxyMode, ProxySettings, UiDensity, UiSettings, UiTheme, DEFAULT_CLOUD_REMOTE,
 };
 
 #[derive(Clone, PartialEq)]
@@ -170,17 +170,7 @@ pub fn SettingsPanel(
         UiDensity::Comfortable => "comfortable",
         UiDensity::Compact => "compact",
     };
-    let theme_str = match theme() {
-        UiTheme::Spotify => "spotify",
-        UiTheme::Linear => "linear",
-        UiTheme::NotPostman => "not_postman",
-        UiTheme::Obsidian => "obsidian",
-        UiTheme::Blueprint => "blueprint",
-        UiTheme::BlueprintLight => "blueprint_light",
-        UiTheme::Slate => "slate",
-        UiTheme::Light => "light",
-        UiTheme::HighContrast => "high_contrast",
-    };
+    let theme_str = theme().serde_key();
     let accent_str = match accent() {
         AccentIntensity::Soft => "soft",
         AccentIntensity::Normal => "normal",
@@ -289,27 +279,14 @@ pub fn SettingsPanel(
                                         select {
                                             value: "{theme_str}",
                                             onchange: move |evt: Event<FormData>| {
-                                                theme.set(match evt.value().as_str() {
-                                                    "linear" => UiTheme::Linear,
-                                                    "not_postman" => UiTheme::NotPostman,
-                                                    "obsidian" => UiTheme::Obsidian,
-                                                    "blueprint" => UiTheme::Blueprint,
-                                                    "blueprint_light" => UiTheme::BlueprintLight,
-                                                    "slate" => UiTheme::Slate,
-                                                    "light" => UiTheme::Light,
-                                                    "high_contrast" => UiTheme::HighContrast,
-                                                    _ => UiTheme::Spotify,
-                                                });
+                                                theme.set(UiTheme::from_key(evt.value().as_str()));
                                             },
-                                            option { value: "spotify", "Spotify (Dark & Green)" }
-                                            option { value: "linear", "Linear (Studio Dark)" }
-                                            option { value: "not_postman", "notPostman (Dark & Orange)" }
-                                            option { value: "obsidian", "Obsidian Ember (Dark & Amber)" }
-                                            option { value: "blueprint", "Hardware Blueprint (Industrial & Tactile)" }
-                                            option { value: "blueprint_light", "Hardware Blueprint Light (Drafting Paper)" }
-                                            option { value: "slate", "Dark Slate" }
-                                            option { value: "light", "Light Surface" }
-                                            option { value: "high_contrast", "High Contrast" }
+                                            for t in UiTheme::all() {
+                                                option {
+                                                    value: "{t.serde_key()}",
+                                                    "{t.label()} — {t.description()}"
+                                                }
+                                            }
                                         }
                                     }
                                     div { class: "settings-field",
@@ -536,6 +513,7 @@ pub fn SettingsPanel(
                                             option { value: "headers", "Response Headers" }
                                         }
                                     }
+                                    /* Workbench Split Layout disabled for now
                                     div { class: "settings-field",
                                         label { "Workbench Split Layout" }
                                         select {
@@ -553,6 +531,7 @@ pub fn SettingsPanel(
                                             option { value: "row", "Side-by-Side (Left / Right)" }
                                         }
                                     }
+                                    */
                                 }
 
                                 div { class: "settings-toggles-list",

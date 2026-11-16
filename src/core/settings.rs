@@ -122,7 +122,7 @@ pub struct ThemeGroup {
 }
 
 /// Workbench color theme (class token on `.app-shell`).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum UiTheme {
     /// Dark glass + Spotify green accent (default).
@@ -130,44 +130,83 @@ pub enum UiTheme {
     Spotify,
     /// Linear Studio Dark — hyper-refined midnight zinc & electric iris.
     Linear,
-    /// Postman dark stage + signature orange accent ("notPostman").
-    NotPostman,
-    /// Obsidian & Electric Amber / Cyberpunk minimal terminal dark stage.
-    Obsidian,
-    /// Swiss Blueprint / Industrial Hardware Studio (floating islands, 0px mechanical geometry, International Orange).
-    Blueprint,
-    /// Swiss Blueprint Light — warm drafting paper + International Orange on `.chassis-blueprint`.
-    BlueprintLight,
-    /// Cool dark slate + blue accent.
-    Slate,
-    /// Light surfaces + green accent.
-    Light,
-    /// High-contrast dark (accessibility).
-    HighContrast,
+    /// Atom/VS Code One Dark Pro — iconic charcoal & crisp syntax spectrum.
+    OneDarkPro,
+    /// Tokyo Night — deep indigo night & electric sapphire accents.
+    TokyoNight,
+    /// Dracula — classic midnight purple & vibrant neon pastels.
+    Dracula,
+    /// Catppuccin Mocha — warm espresso dark & pastel mauve accents.
+    CatppuccinMocha,
+    /// Nord — arctic polar night & frost cyan accents.
+    Nord,
+    /// Gruvbox Dark — retro warm charcoal & amber-orange contrast.
+    GruvboxDark,
+    /// GitHub Light — clean crisp daylight surfaces & GitHub blue.
+    GitHubLight,
+    /// Solarized Light — warm parchment low-strain daylight palette.
+    SolarizedLight,
+    /// GitHub Dark High Contrast — WCAG AAA dark accessibility theme.
+    GitHubDarkHc,
 }
 
 impl UiTheme {
+    /// Stable snake_case serialization key.
+    pub fn serde_key(self) -> &'static str {
+        match self {
+            Self::Spotify => "spotify",
+            Self::Linear => "linear",
+            Self::OneDarkPro => "one_dark_pro",
+            Self::TokyoNight => "tokyo_night",
+            Self::Dracula => "dracula",
+            Self::CatppuccinMocha => "catppuccin_mocha",
+            Self::Nord => "nord",
+            Self::GruvboxDark => "gruvbox_dark",
+            Self::GitHubLight => "github_light",
+            Self::SolarizedLight => "solarized_light",
+            Self::GitHubDarkHc => "github_dark_hc",
+        }
+    }
+
+    /// Parse from snake_case key (falls back to `Spotify`).
+    pub fn from_key(key: &str) -> Self {
+        Self::all()
+            .iter()
+            .copied()
+            .find(|t| t.serde_key() == key)
+            .unwrap_or(Self::Spotify)
+    }
+
     /// CSS class on `.app-shell` (e.g. `theme-spotify`).
     pub fn class_token(self) -> &'static str {
         match self {
             Self::Spotify => "theme-spotify",
             Self::Linear => "theme-linear",
-            Self::NotPostman => "theme-not-postman",
-            Self::Obsidian => "theme-obsidian",
-            Self::Blueprint => "theme-blueprint",
-            Self::BlueprintLight => "theme-blueprint-light",
-            Self::Slate => "theme-slate",
-            Self::Light => "theme-light",
-            Self::HighContrast => "theme-high-contrast",
+            Self::OneDarkPro => "theme-one-dark-pro",
+            Self::TokyoNight => "theme-tokyo-night",
+            Self::Dracula => "theme-dracula",
+            Self::CatppuccinMocha => "theme-catppuccin-mocha",
+            Self::Nord => "theme-nord",
+            Self::GruvboxDark => "theme-gruvbox-dark",
+            Self::GitHubLight => "theme-github-light",
+            Self::SolarizedLight => "theme-solarized-light",
+            Self::GitHubDarkHc => "theme-github-dark-hc",
         }
     }
 
     /// Structural layout family (shared geometry, separate palettes).
     pub fn chassis_token(self) -> Option<&'static str> {
         match self {
-            Self::Blueprint | Self::BlueprintLight => Some("chassis-blueprint"),
             Self::Linear => Some("chassis-linear"),
-            _ => None,
+            Self::OneDarkPro
+            | Self::TokyoNight
+            | Self::Dracula
+            | Self::GitHubLight
+            | Self::GitHubDarkHc => Some("chassis-ide"),
+            Self::CatppuccinMocha | Self::Nord | Self::GruvboxDark | Self::SolarizedLight => {
+                Some("chassis-zen")
+            }
+            Self::Spotify => None,
         }
     }
 
@@ -176,13 +215,15 @@ impl UiTheme {
         match self {
             Self::Spotify => "Spotify (default)",
             Self::Linear => "Linear (Studio Dark)",
-            Self::NotPostman => "notPostman",
-            Self::Obsidian => "Obsidian Ember",
-            Self::Blueprint => "Hardware Blueprint",
-            Self::BlueprintLight => "Hardware Blueprint Light",
-            Self::Slate => "Dark slate",
-            Self::Light => "Light",
-            Self::HighContrast => "High contrast",
+            Self::OneDarkPro => "One Dark Pro",
+            Self::TokyoNight => "Tokyo Night",
+            Self::Dracula => "Dracula",
+            Self::CatppuccinMocha => "Catppuccin Mocha",
+            Self::Nord => "Nord",
+            Self::GruvboxDark => "Gruvbox Dark",
+            Self::GitHubLight => "GitHub Light",
+            Self::SolarizedLight => "Solarized Light",
+            Self::GitHubDarkHc => "GitHub Dark HC",
         }
     }
 
@@ -191,13 +232,15 @@ impl UiTheme {
         match self {
             Self::Spotify => "Dark glass & Spotify green",
             Self::Linear => "Midnight zinc & electric iris",
-            Self::NotPostman => "Dark workbench & signature orange",
-            Self::Obsidian => "Volcanic black & warm amber",
-            Self::Slate => "Deep navy & sky blue",
-            Self::Blueprint => "Anodized industrial & orange",
-            Self::BlueprintLight => "Warm drafting paper & grid",
-            Self::Light => "Clean minimal light surfaces",
-            Self::HighContrast => "High contrast black & yellow",
+            Self::OneDarkPro => "Atom charcoal & crisp syntax",
+            Self::TokyoNight => "Deep indigo & sapphire neon",
+            Self::Dracula => "Midnight purple & vibrant pastels",
+            Self::CatppuccinMocha => "Warm espresso & pastel mauve",
+            Self::Nord => "Arctic polar night & frost cyan",
+            Self::GruvboxDark => "Retro warm charcoal & amber",
+            Self::GitHubLight => "Crisp daylight & GitHub blue",
+            Self::SolarizedLight => "Warm parchment & low-strain ink",
+            Self::GitHubDarkHc => "High-contrast black & bright blue",
         }
     }
 
@@ -205,28 +248,20 @@ impl UiTheme {
     pub fn grouped() -> &'static [ThemeGroup] {
         &[
             ThemeGroup {
-                category: "Modern Dark & Studio",
-                themes: &[
-                    Self::Spotify,
-                    Self::Linear,
-                    Self::NotPostman,
-                    Self::Obsidian,
-                    Self::Slate,
-                ],
+                category: "Signature Studio",
+                themes: &[Self::Spotify, Self::Linear],
             },
             ThemeGroup {
-                category: "Industrial & Hardware",
-                themes: &[
-                    Self::Blueprint,
-                    Self::BlueprintLight,
-                ],
+                category: "VS Code — Crisp IDE",
+                themes: &[Self::OneDarkPro, Self::TokyoNight, Self::Dracula],
             },
             ThemeGroup {
-                category: "Light & High Contrast",
-                themes: &[
-                    Self::Light,
-                    Self::HighContrast,
-                ],
+                category: "VS Code — Cozy & Atmospheric",
+                themes: &[Self::CatppuccinMocha, Self::Nord, Self::GruvboxDark],
+            },
+            ThemeGroup {
+                category: "VS Code — Light & High Contrast",
+                themes: &[Self::GitHubLight, Self::SolarizedLight, Self::GitHubDarkHc],
             },
         ]
     }
@@ -236,14 +271,23 @@ impl UiTheme {
         &[
             Self::Spotify,
             Self::Linear,
-            Self::NotPostman,
-            Self::Obsidian,
-            Self::Blueprint,
-            Self::BlueprintLight,
-            Self::Slate,
-            Self::Light,
-            Self::HighContrast,
+            Self::OneDarkPro,
+            Self::TokyoNight,
+            Self::Dracula,
+            Self::CatppuccinMocha,
+            Self::Nord,
+            Self::GruvboxDark,
+            Self::GitHubLight,
+            Self::SolarizedLight,
+            Self::GitHubDarkHc,
         ]
+    }
+}
+
+impl<'de> Deserialize<'de> for UiTheme {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let key = String::deserialize(deserializer)?;
+        Ok(Self::from_key(&key))
     }
 }
 
@@ -268,6 +312,7 @@ pub enum WorkbenchLayout {
     Row,
 }
 
+#[allow(dead_code)]
 impl WorkbenchLayout {
     pub fn toggle(self) -> Self {
         match self {
@@ -694,24 +739,25 @@ mod tests {
     }
 
     #[test]
-    fn blueprint_chassis_tokens() {
-        assert_eq!(UiTheme::Blueprint.chassis_token(), Some("chassis-blueprint"));
-        assert_eq!(
-            UiTheme::BlueprintLight.chassis_token(),
-            Some("chassis-blueprint")
-        );
+    fn theme_chassis_and_fallback_tokens() {
+        assert_eq!(UiTheme::OneDarkPro.chassis_token(), Some("chassis-ide"));
+        assert_eq!(UiTheme::GitHubLight.chassis_token(), Some("chassis-ide"));
+        assert_eq!(UiTheme::CatppuccinMocha.chassis_token(), Some("chassis-zen"));
         assert_eq!(UiTheme::Linear.chassis_token(), Some("chassis-linear"));
         assert_eq!(UiTheme::Spotify.chassis_token(), None);
-        assert_eq!(UiTheme::NotPostman.chassis_token(), None);
-        assert_eq!(UiTheme::NotPostman.class_token(), "theme-not-postman");
-        assert_eq!(UiTheme::NotPostman.label(), "notPostman");
+        assert_eq!(UiTheme::Dracula.class_token(), "theme-dracula");
+        assert_eq!(UiTheme::Dracula.label(), "Dracula");
 
-        let ui_light = UiSettings {
-            theme: UiTheme::BlueprintLight,
+        let ui_zen = UiSettings {
+            theme: UiTheme::Nord,
             ..Default::default()
         };
-        let tokens = ui_light.shell_class_tokens();
-        assert!(tokens.contains("theme-blueprint-light"));
-        assert!(tokens.contains("chassis-blueprint"));
+        let tokens = ui_zen.shell_class_tokens();
+        assert!(tokens.contains("theme-nord"));
+        assert!(tokens.contains("chassis-zen"));
+
+        // Legacy theme keys fall back safely to Spotify
+        let legacy: UiSettings = serde_json::from_str(r#"{"theme":"blueprint"}"#).unwrap();
+        assert_eq!(legacy.theme, UiTheme::Spotify);
     }
 }

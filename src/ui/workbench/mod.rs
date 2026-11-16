@@ -2182,24 +2182,6 @@ pub fn Workbench() -> Element {
                 class: "{workbench_class}",
                 style: "{workbench_style}",
                 div { class: "tab-strip",
-                    div { class: "tab-strip-fixed",
-                        button {
-                            class: if !show_settings() && is_draft_dirty(&draft(), &collections()) {
-                                "btn btn-save is-dirty"
-                            } else {
-                                "btn btn-save"
-                            },
-                            disabled: show_settings(),
-                            title: if show_settings() { "Save request (⌘S) — use Save Changes in Settings" } else { "Save request (⌘S)" },
-                            onclick: move |_| {
-                                if !show_settings() {
-                                    do_save(());
-                                }
-                            },
-                            crate::ui::icons::ActionIcon { name: "save", size: 16 }
-                            span { "Save" }
-                        }
-                    }
                     div { class: "tab-strip-scrollable",
                         {
                             let cols_snap = collections();
@@ -2222,63 +2204,101 @@ pub fn Workbench() -> Element {
                             rsx! {
                                 for (gkey, glabel, gtabs) in display_groups {
                                     {
-                                        let is_collapsed = grouped_mode && !gkey.is_empty() && collapsed_snap.contains(&gkey);
-                                        let gcolor = tab_group_accent_color(&gkey);
+                                        let is_group = grouped_mode && !gkey.is_empty();
+                                        let is_collapsed = is_group && collapsed_snap.contains(&gkey);
+                                        let col_match = gkey
+                                            .strip_prefix("col:")
+                                            .and_then(|cid| Uuid::parse_str(cid).ok())
+                                            .and_then(|cid| cols_snap.iter().find(|c| c.id == cid));
+                                        let col_icon = col_match.and_then(|c| c.icon.clone());
+                                        let gcolor = col_match
+                                            .and_then(|c| c.color.clone())
+                                            .unwrap_or_else(|| tab_group_accent_color(&gkey).to_string());
                                         let gcount = gtabs.len();
                                         let group_has_active = !settings_active && gtabs.iter().any(|(_, t)| t.id == cur_draft_id);
                                         let gkey_toggle = gkey.clone();
                                         let gkey_close = gkey.clone();
+                                        let cluster_cls = if is_group {
+                                            format!(
+                                                "tab-group-cluster {}{}",
+                                                if is_collapsed { "collapsed" } else { "expanded" },
+                                                if group_has_active { " has-active" } else { "" }
+                                            )
+                                        } else {
+                                            "tab-flat-cluster".to_string()
+                                        };
+                                        let cluster_style = if is_group {
+                                            format!("--tab-group-color: {gcolor};")
+                                        } else {
+                                            String::new()
+                                        };
+                                        let pill_title = if is_collapsed {
+                                            format!("Expand '{glabel}' ({gcount} open)")
+                                        } else {
+                                            format!("Collapse '{glabel}' ({gcount} open)")
+                                        };
+                                        let chev_name = if is_collapsed { "chevron-right" } else { "chevron-down" };
+                                        let is_col_group = col_match.is_some();
+                                        let gcolor_opt = Some(gcolor.clone());
                                         rsx! {
-                                            if grouped_mode && !gkey.is_empty() {
-                                                div {
-                                                    key: "grp-{gkey}",
-                                                    class: if group_has_active { "tab-group-pill has-active" } else { "tab-group-pill" },
-                                                    style: "--tab-group-color: {gcolor};",
-                                                    title: if is_collapsed {
-                                                        format!("Expand group '{glabel}' ({gcount} tabs)")
-                                                    } else {
-                                                        format!("Collapse group '{glabel}' ({gcount} tabs)")
-                                                    },
-                                                    onclick: move |_| {
-                                                        let mut set = collapsed_tab_groups();
-                                                        if set.contains(&gkey_toggle) {
-                                                            set.remove(&gkey_toggle);
-                                                        } else {
-                                                            set.insert(gkey_toggle.clone());
-                                                        }
-                                                        collapsed_tab_groups.set(set);
-                                                    },
-                                                    span { class: "tab-group-dot" }
-                                                    span { class: "tab-group-name", "{glabel}" }
-                                                    span { class: "tab-group-count", "{gcount}" }
-                                                    span { class: "tab-group-chevron", if is_collapsed { "▸" } else { "▾" } }
-                                                    button {
-                                                        class: "tab-group-close",
-                                                        r#type: "button",
-                                                        title: "Close all tabs in group '{glabel}'",
-                                                        onclick: move |evt: MouseEvent| {
-                                                            evt.stop_propagation();
-                                                            do_close_group_tabs(gkey_close.clone());
+                                            div {
+                                                key: "cluster-{gkey}",
+                                                class: "{cluster_cls}",
+                                                style: "{cluster_style}",
+                                                if is_group {
+                                                    div {
+                                                        key: "grp-{gkey}",
+                                                        class: if group_has_active { "tab-group-pill has-active" } else { "tab-group-pill" },
+                                                        title: "{pill_title}",
+                                                        onclick: move |_| {
+                                                            let mut set = collapsed_tab_groups();
+                                                            if set.contains(&gkey_toggle) {
+                                                                set.remove(&gkey_toggle);
+                                                            } else {
+                                                                set.insert(gkey_toggle.clone());
+                                                            }
+                                                            collapsed_tab_groups.set(set);
                                                         },
-                                                        "×"
+                                                        if is_col_group {
+                                                            crate::ui::icons::CollectionIcon {
+                                                                icon: col_icon,
+                                                                color: gcolor_opt,
+                                                                size: 15,
+                                                            }
+                                                        } else {
+                                                            crate::ui::icons::ActionIcon { name: "folder", size: 15 }
+                                                        }
+                                                        span { class: "tab-group-name", "{glabel}" }
+                                                        span { class: "tab-group-count", "{gcount} open" }
+                                                        span { class: "tab-group-chevron",
+                                                            crate::ui::icons::ActionIcon {
+                                                                name: chev_name,
+                                                                size: 16,
+                                                            }
+                                                        }
+                                                        button {
+                                                            class: "tab-group-close",
+                                                            r#type: "button",
+                                                            title: "Close all tabs in group '{glabel}'",
+                                                            onclick: move |evt: MouseEvent| {
+                                                                evt.stop_propagation();
+                                                                do_close_group_tabs(gkey_close.clone());
+                                                            },
+                                                            crate::ui::icons::ActionIcon { name: "close", size: 14 }
+                                                        }
                                                     }
                                                 }
-                                            }
-                                            if !is_collapsed {
-                                                for (idx, t) in gtabs {
-                                                    {
-                                                        let tid = t.id;
-                                                        let tname = request_tab_display_name(&cols_snap, tid);
-                                                        let active = !settings_active && cur_draft_id == tid;
-                                                        let is_tab_renaming = renaming_tab_id() == Some(tid);
-                                                        let tab_draft = if active { draft() } else { t.clone() };
-                                                        let is_dirty = is_draft_dirty(&tab_draft, &cols_snap);
-                                                        let tab_style = if grouped_mode && !gkey.is_empty() {
-                                                            format!("border-top: 2px solid {gcolor};")
-                                                        } else {
-                                                            String::new()
-                                                        };
-                                                        rsx! {
+                                                if !is_collapsed {
+                                                    for (idx, t) in gtabs {
+                                                        {
+                                                            let tid = t.id;
+                                                            let tname = request_tab_display_name(&cols_snap, tid);
+                                                            let active = !settings_active && cur_draft_id == tid;
+                                                            let is_tab_renaming = renaming_tab_id() == Some(tid);
+                                                            let tab_draft = if active { draft() } else { t.clone() };
+                                                            let is_dirty = is_draft_dirty(&tab_draft, &cols_snap);
+                                                            let tab_style = String::new();
+                                                            rsx! {
                                                             div {
                                                                 key: "{tid}-{idx}",
                                                                 class: if active { "tab active" } else { "tab" },
@@ -2492,6 +2512,7 @@ pub fn Workbench() -> Element {
                                                     }
                                                 }
                                             }
+                                            }
                                         }
                                     }
                                 }
@@ -2539,7 +2560,9 @@ pub fn Workbench() -> Element {
                                 crate::ui::icons::ActionIcon { name: "add", size: 16 }
                                 span { "New" }
                             }
-                            if !open_tabs().is_empty() {
+                        }
+                        if !open_tabs().is_empty() {
+                            div { class: "tab-strip-trailing",
                                 button {
                                     class: if tab_groups_enabled() { "tab tab-more active" } else { "tab tab-more" },
                                     title: if tab_groups_enabled() { "Tab groups: On (click for flat strip)" } else { "Tab groups: Off (click to group by collection)" },
@@ -3039,9 +3062,9 @@ pub fn Workbench() -> Element {
                             let is_non_http = cur_draft_top.protocol != RequestProtocol::Http;
                             let cur_sending = st.is_request_sending(cur_draft_top.id);
                             let split_class = if is_non_http {
-                                format!("workbench-split protocol-full {}", app_settings().ui.layout.class_token())
+                                "workbench-split protocol-full layout-column"
                             } else {
-                                format!("workbench-split {}", app_settings().ui.layout.class_token())
+                                "workbench-split layout-column"
                             };
                             rsx! {
                                 div {
@@ -3060,11 +3083,13 @@ pub fn Workbench() -> Element {
                                     };
                                     rsx! {
                                         RequestBuilder {
-                                            draft: cur_draft,
+                                            draft: cur_draft.clone(),
                                             codegen_draft: Some(codegen_draft),
                                             vars: effective_vars,
                                             data_root: data_root(),
+                                            is_dirty: is_draft_dirty(&cur_draft, &collections()),
                                             ancestor_origin,
+                                            on_save: move |_| do_save(()),
                                             on_edit_parent_auth: move |origin_id: Uuid| {
                                                 col_vars_open_id.set(Some(origin_id));
                                                 col_vars_all.set(true);

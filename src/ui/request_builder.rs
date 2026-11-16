@@ -41,7 +41,9 @@ pub fn RequestBuilder(
     protocol_log: Vec<String>,
     vars: VariableContext,
     #[props(default)] data_root: String,
+    #[props(default)] is_dirty: bool,
     on_var_edit: EventHandler<VarEditEvent>,
+    #[props(default)] on_save: EventHandler<()>,
     #[props(default)] on_open_code: EventHandler<()>,
 ) -> Element {
     let default_tab = match draft.protocol {
@@ -351,6 +353,14 @@ pub fn RequestBuilder(
                     onclick: move |_| on_open_code.call(()),
                     "</>"
                 }
+            }
+            button {
+                class: if is_dirty { "btn btn-save is-dirty" } else { "btn btn-save" },
+                r#type: "button",
+                title: "Save request (⌘S)",
+                onclick: move |_| on_save.call(()),
+                super::icons::ActionIcon { name: "save", size: 15 }
+                span { "Save" }
             }
             if draft.protocol == RequestProtocol::Http || draft.protocol == RequestProtocol::Grpc {
                 button {

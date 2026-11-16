@@ -681,6 +681,6 @@ mod tests {
     #[test]
     fn fuzzy_score_handles_unicode_safely() {
         assert!(fuzzy_score("api", "İstanbul API Gateway").is_some());
-        assert!(fuzzy_score("blueprint", "Theme: Hardware Blueprint Light").is_some());
+        assert!(fuzzy_score("dracula", "Theme: Dracula").is_some());
     }
 }

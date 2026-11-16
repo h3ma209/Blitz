@@ -6,7 +6,7 @@ use crate::core::{
     import_collection_v21, import_environment_texts, import_har, import_openapi3,
     interceptor_limits_blurb, open_browser_url, push_history, routes_from_collections,
     start_capture_proxy, start_mock, upsert_collection, upsert_environments, HistoryEntry,
-    HttpMethod, RequestDraft, UiSettings, UiTheme, WorkbenchLayout, default_zoom_percent,
+    HttpMethod, RequestDraft, UiSettings, UiTheme, default_zoom_percent,
     HISTORY_MAX,
 };
 use crate::ui::env_selector::EnvSelector;
@@ -1000,6 +1000,7 @@ pub fn TopBar(st: WorkbenchState) -> Element {
                         }
                     }
                 }
+                /* Split / Stack layout toggle disabled for now
                 button {
                     class: "top-icon",
                     title: match app_settings().ui.layout {
@@ -1008,11 +1009,11 @@ pub fn TopBar(st: WorkbenchState) -> Element {
                     },
                     aria_label: "Toggle workbench layout",
                     onclick: move |_| {
-                        let mut st = st;
+                        let st = st;
                         let mut s = app_settings();
                         s.ui.layout = s.ui.layout.toggle();
                         app_settings.set(s);
-                        st.persist();
+                        st.persist_local();
                     },
                     crate::ui::icons::ActionIcon {
                         name: match app_settings().ui.layout {
@@ -1028,6 +1029,7 @@ pub fn TopBar(st: WorkbenchState) -> Element {
                         }}
                     }
                 }
+                */
                 button {
                     class: if show_settings() {
                         "top-icon top-icon-on"
