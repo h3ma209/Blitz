@@ -7,7 +7,6 @@ use crate::core::{
     compare_environments, export_diff_markdown, sync_all_missing_to_target, sync_var_to_target,
     DiffStatus, Environment,
 };
-use super::icons::ActionIcon;
 
 #[component]
 pub fn EnvDiffView(
@@ -32,13 +31,13 @@ pub fn EnvDiffView(
 
     if envs.len() < 2 {
         return rsx! {
-            div { class: "env-diff-empty-state",
-                ActionIcon { name: "branch", size: 32, style: "color: var(--text-muted); margin-bottom: 12px;".to_string() }
-                h3 { "At least 2 environments are needed to compare" }
-                p { class: "hint", "Create multiple environments (e.g. Local, Development, Production) in the 'Environments' tab to compare variables and inspect drift." }
+            super::EmptyState {
+                class: "env-diff-empty-state".to_string(),
+                icon: "branch",
+                title: "At least 2 environments are needed to compare".to_string(),
+                description: "Create multiple environments (e.g. Local, Development, Production) in the 'Environments' tab to compare variables and inspect drift.".to_string(),
                 button {
                     class: "btn btn-ghost",
-                    style: "margin-top: 12px;",
                     onclick: move |_| on_done.call(()),
                     "✕ Close"
                 }

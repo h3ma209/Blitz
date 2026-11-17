@@ -58,78 +58,86 @@ pub fn RequestBuilder(
     let proto_class = protocol_class(draft.protocol);
     let method_class = method_class_name(draft.method);
 
+    let params_n = draft.params.iter().filter(|kv| kv.enabled && !kv.key.trim().is_empty()).count()
+        + draft.path_params.iter().filter(|kv| kv.enabled && !kv.key.trim().is_empty()).count();
+    let headers_n = draft.headers.iter().filter(|kv| kv.enabled && !kv.key.trim().is_empty()).count();
+    let tests_n = draft.assertions.iter().filter(|a| a.enabled).count();
+    let has_body = draft.body_mode != BodyMode::None;
+    let has_auth = !matches!(draft.auth.auth_type, AuthType::Inherit | AuthType::NoAuth);
+    let has_scripts = !draft.pre_request_script.trim().is_empty() || !draft.test_script.trim().is_empty();
+
+    let params_lbl: String = if params_n > 0 { format!("Params ({params_n})") } else { "Params".into() };
+    let headers_lbl: String = if headers_n > 0 { format!("Headers ({headers_n})") } else { "Headers".into() };
+    let body_lbl: String = if has_body { "Body •".into() } else { "Body".into() };
+    let auth_lbl: String = if has_auth { "Auth •".into() } else { "Auth".into() };
+    let tests_lbl: String = if draft.assertions.is_empty() { "Tests".into() } else { format!("Tests ({tests_n})") };
+    let scripts_lbl: String = if has_scripts { "Scripts •".into() } else { "Scripts".into() };
+
     let tab_list: Vec<(String, BuilderTab)> = match draft.protocol {
         RequestProtocol::Http => vec![
-            ("Params".into(), BuilderTab::Params),
-            ("Headers".into(), BuilderTab::Headers),
-            ("Body".into(), BuilderTab::Body),
-            ("Auth".into(), BuilderTab::Auth),
-            (
-                if draft.assertions.is_empty() {
-                    "Tests".to_string()
-                } else {
-                    format!("Tests ({})", draft.assertions.iter().filter(|a| a.enabled).count())
-                },
-                BuilderTab::Tests,
-            ),
-            ("Scripts".into(), BuilderTab::Scripts),
+            (params_lbl.clone(), BuilderTab::Params),
+            (headers_lbl.clone(), BuilderTab::Headers),
+            (body_lbl, BuilderTab::Body),
+            (auth_lbl.clone(), BuilderTab::Auth),
+            (tests_lbl, BuilderTab::Tests),
+            (scripts_lbl.clone(), BuilderTab::Scripts),
             ("Docs".into(), BuilderTab::Docs),
-            ("Settings".into(), BuilderTab::Settings),
+            ("Options".into(), BuilderTab::Settings),
         ],
         RequestProtocol::WebSocket => vec![
             ("Message / Deck".into(), BuilderTab::Message),
-            ("Params".into(), BuilderTab::Params),
-            ("Headers".into(), BuilderTab::Headers),
-            ("Auth".into(), BuilderTab::Auth),
-            ("Scripts".into(), BuilderTab::Scripts),
+            (params_lbl, BuilderTab::Params),
+            (headers_lbl, BuilderTab::Headers),
+            (auth_lbl, BuilderTab::Auth),
+            (scripts_lbl, BuilderTab::Scripts),
             ("Docs".into(), BuilderTab::Docs),
-            ("Settings".into(), BuilderTab::Settings),
+            ("Options".into(), BuilderTab::Settings),
         ],
         RequestProtocol::Grpc => vec![
             ("Method & Payload".into(), BuilderTab::Message),
-            ("Headers (Metadata)".into(), BuilderTab::Headers),
-            ("Auth".into(), BuilderTab::Auth),
-            ("Scripts".into(), BuilderTab::Scripts),
+            (if headers_n > 0 { format!("Metadata ({headers_n})") } else { "Metadata".into() }, BuilderTab::Headers),
+            (auth_lbl, BuilderTab::Auth),
+            (scripts_lbl, BuilderTab::Scripts),
             ("Docs".into(), BuilderTab::Docs),
-            ("Settings".into(), BuilderTab::Settings),
+            ("Options".into(), BuilderTab::Settings),
         ],
         RequestProtocol::GraphqlWs => vec![
             ("Subscription".into(), BuilderTab::Message),
-            ("Params".into(), BuilderTab::Params),
-            ("Headers".into(), BuilderTab::Headers),
-            ("Auth".into(), BuilderTab::Auth),
-            ("Scripts".into(), BuilderTab::Scripts),
+            (params_lbl, BuilderTab::Params),
+            (headers_lbl, BuilderTab::Headers),
+            (auth_lbl, BuilderTab::Auth),
+            (scripts_lbl, BuilderTab::Scripts),
             ("Docs".into(), BuilderTab::Docs),
-            ("Settings".into(), BuilderTab::Settings),
+            ("Options".into(), BuilderTab::Settings),
         ],
         RequestProtocol::Sse => vec![
             ("Stream".into(), BuilderTab::Message),
-            ("Params".into(), BuilderTab::Params),
-            ("Headers".into(), BuilderTab::Headers),
-            ("Auth".into(), BuilderTab::Auth),
-            ("Scripts".into(), BuilderTab::Scripts),
+            (params_lbl, BuilderTab::Params),
+            (headers_lbl, BuilderTab::Headers),
+            (auth_lbl, BuilderTab::Auth),
+            (scripts_lbl, BuilderTab::Scripts),
             ("Docs".into(), BuilderTab::Docs),
-            ("Settings".into(), BuilderTab::Settings),
+            ("Options".into(), BuilderTab::Settings),
         ],
         RequestProtocol::Mqtt => vec![
             ("Topic & Payload".into(), BuilderTab::Message),
-            ("Auth".into(), BuilderTab::Auth),
-            ("Scripts".into(), BuilderTab::Scripts),
+            (auth_lbl, BuilderTab::Auth),
+            (scripts_lbl, BuilderTab::Scripts),
             ("Docs".into(), BuilderTab::Docs),
-            ("Settings".into(), BuilderTab::Settings),
+            ("Options".into(), BuilderTab::Settings),
         ],
         RequestProtocol::SocketIo => vec![
             ("Event & Payload".into(), BuilderTab::Message),
-            ("Headers".into(), BuilderTab::Headers),
-            ("Auth".into(), BuilderTab::Auth),
-            ("Scripts".into(), BuilderTab::Scripts),
+            (headers_lbl, BuilderTab::Headers),
+            (auth_lbl, BuilderTab::Auth),
+            (scripts_lbl, BuilderTab::Scripts),
             ("Docs".into(), BuilderTab::Docs),
-            ("Settings".into(), BuilderTab::Settings),
+            ("Options".into(), BuilderTab::Settings),
         ],
         RequestProtocol::Mcp => vec![
             ("Tool & Args".into(), BuilderTab::Message),
             ("Docs".into(), BuilderTab::Docs),
-            ("Settings".into(), BuilderTab::Settings),
+            ("Options".into(), BuilderTab::Settings),
         ],
     };
 
@@ -2207,11 +2215,10 @@ fn SseWorkbench(
                     }
                 }
             } else if err_opt.is_none() && meta_opt.is_none() && !sending {
-                div { class: "sse-empty-state",
-                    p { class: "sse-empty-title", "Ready to stream Server-Sent Events" }
-                    p { class: "sse-empty-sub",
-                        "Set URL & Headers above (e.g. Authorization: Bearer {{token}}), pick GET or POST (JSON body for AI endpoints), then click Stream / Connect & Stream."
-                    }
+                super::EmptyState {
+                    class: "sse-empty-state".to_string(),
+                    title: "Ready to stream Server-Sent Events".to_string(),
+                    description: "Set URL & Headers above (e.g. Authorization: Bearer {{token}}), pick GET or POST (JSON body for AI endpoints), then click Stream / Connect & Stream.".to_string(),
                 }
             }
         }

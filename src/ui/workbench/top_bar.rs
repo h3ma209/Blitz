@@ -47,7 +47,6 @@ pub fn TopBar(st: WorkbenchState) -> Element {
     let mut show_trash = st.show_trash;
     let mut checking_update = st.checking_update;
     let mut available_update = st.available_update;
-    let mut show_env_manager = st.show_env_manager;
     let mut show_settings = st.show_settings;
     let mut app_settings = st.app_settings;
     let mut show_vars = st.show_vars;
@@ -797,7 +796,6 @@ pub fn TopBar(st: WorkbenchState) -> Element {
                                 class: "menu-item",
                                 onclick: move |_| {
                                     cloud_menu_open.set(false);
-                                    show_env_manager.set(false);
                                     let mut settings_tab = st.settings_tab;
                                     settings_tab.set(crate::ui::settings_panel::SettingsTab::CloudSync);
                                     st.settings_tab_open.set(true);
@@ -1000,36 +998,6 @@ pub fn TopBar(st: WorkbenchState) -> Element {
                         }
                     }
                 }
-                /* Split / Stack layout toggle disabled for now
-                button {
-                    class: "top-icon",
-                    title: match app_settings().ui.layout {
-                        WorkbenchLayout::Column => "Switch to side-by-side layout (Row)",
-                        WorkbenchLayout::Row => "Switch to stacked layout (Column)",
-                    },
-                    aria_label: "Toggle workbench layout",
-                    onclick: move |_| {
-                        let st = st;
-                        let mut s = app_settings();
-                        s.ui.layout = s.ui.layout.toggle();
-                        app_settings.set(s);
-                        st.persist_local();
-                    },
-                    crate::ui::icons::ActionIcon {
-                        name: match app_settings().ui.layout {
-                            WorkbenchLayout::Column => "split-row",
-                            WorkbenchLayout::Row => "split-col",
-                        },
-                        size: 17,
-                    }
-                    span {
-                        {match app_settings().ui.layout {
-                            WorkbenchLayout::Column => "Split",
-                            WorkbenchLayout::Row => "Stack",
-                        }}
-                    }
-                }
-                */
                 button {
                     class: if show_settings() {
                         "top-icon top-icon-on"
@@ -1039,7 +1007,6 @@ pub fn TopBar(st: WorkbenchState) -> Element {
                     title: "Settings & preferences",
                     aria_label: "Settings",
                     onclick: move |_| {
-                        show_env_manager.set(false);
                         if show_settings() {
                             show_settings.set(false);
                         } else {

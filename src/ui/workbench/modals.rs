@@ -33,11 +33,6 @@ pub fn VarsPage(st: WorkbenchState) -> Element {
     let mut active_env_id = st.active_env_id;
     let mut editing_env_id = st.editing_env_id;
     let mut vars = st.vars;
-    let mut col_vars_all = st.col_vars_all;
-    let mut col_vars_open_id = st.col_vars_open_id;
-    let mut show_col_vars = st.show_col_vars;
-    let collections = st.collections;
-    let active_collection_id = st.active_collection_id;
 
     if !show_vars() {
         return rsx! {};
@@ -66,7 +61,7 @@ pub fn VarsPage(st: WorkbenchState) -> Element {
                         button {
                             class: if vars_active_tab() == 1 { "vars-tab active" } else { "vars-tab" },
                             onclick: move |_| vars_active_tab.set(1),
-                            "Variables Overview"
+                            "Globals & Vault"
                         }
                         button {
                             class: if vars_active_tab() == 2 { "vars-tab active" } else { "vars-tab" },
@@ -392,162 +387,10 @@ pub fn VarsPage(st: WorkbenchState) -> Element {
                     div { class: "vars-scope-banner",
                         div { class: "vars-scope-banner-title",
                             crate::ui::icons::ActionIcon { name: "bolt", size: 16, style: "margin-right: 6px;".to_string() }
-                            span { "Variable System & Scopes" }
+                            span { "Globals & Vault Secrets" }
                         }
                         p { class: "vars-scope-banner-text",
-                            "Variables parameterize URLs, headers, auth, and bodies via {{name}}. Scopes resolve from highest priority: Local → Environment → Collection → Global. Hardware & device secrets resolve via {{vault:key}}."
-                        }
-                    }
-
-                    div { class: "vars-section",
-                        div { class: "vars-section-head",
-                            h4 { "Environment" }
-                            button {
-                                class: "btn btn-ghost",
-                                onclick: move |_| {
-                                    vars_active_tab.set(0);
-                                    editing_env_id.set(active_env_id());
-                                },
-                                "Manage…"
-                            }
-                        }
-                        p { class: "vars-section-desc",
-                            "Target configurations (e.g. Localhost, Staging, Prod). Initial values sync to Git; current values stay local on this machine."
-                        }
-                        {
-                            let envs = environments();
-                            let eid = active_env_id();
-                            match eid.and_then(|id| envs.iter().find(|e| e.id == id).cloned()) {
-                                Some(env) => {
-                                    let env_id = env.id;
-                                    let env_name = env.name.clone();
-                                    let values_len = env.values.len();
-                                    rsx! {
-                                        p { class: "hint", "Active: {env_name}" }
-                                        table { class: "kv-table",
-                                            thead {
-                                                tr {
-                                                    th { "Variable" }
-                                                    th { "Initial" }
-                                                    th { "Current" }
-                                                }
-                                            }
-                                            tbody {
-                                                for i in 0..values_len {
-                                                    tr {
-                                                        key: "{env_id}-{i}",
-                                                        td {
-                                                            input {
-                                                                value: "{env.values.get(i).map(|r| r.key.clone()).unwrap_or_default()}",
-                                                                oninput: {
-                                                                    let idx = i;
-                                                                    move |evt: Event<FormData>| {
-                                                                        let mut envs = environments();
-                                                                        if let Some(e) = envs.iter_mut().find(|e| e.id == env_id) {
-                                                                            if let Some(r) = e.values.get_mut(idx) {
-                                                                                r.key = evt.value();
-                                                                            }
-                                                                        }
-                                                                        environments.set(envs);
-                                                                    }
-                                                                }
-                                                            }
-                                                        }
-                                                        td {
-                                                            input {
-                                                                value: "{env.values.get(i).map(|r| r.initial_value.clone()).unwrap_or_default()}",
-                                                                oninput: {
-                                                                    let idx = i;
-                                                                    move |evt: Event<FormData>| {
-                                                                        let mut envs = environments();
-                                                                        if let Some(e) = envs.iter_mut().find(|e| e.id == env_id) {
-                                                                            if let Some(r) = e.values.get_mut(idx) {
-                                                                                r.initial_value = evt.value();
-                                                                            }
-                                                                        }
-                                                                        environments.set(envs);
-                                                                    }
-                                                                }
-                                                            }
-                                                        }
-                                                        td {
-                                                            input {
-                                                                value: "{env.values.get(i).map(|r| r.current_value.clone()).unwrap_or_default()}",
-                                                                oninput: {
-                                                                    let idx = i;
-                                                                    move |evt: Event<FormData>| {
-                                                                        let mut envs = environments();
-                                                                        if let Some(e) = envs.iter_mut().find(|e| e.id == env_id) {
-                                                                            if let Some(r) = e.values.get_mut(idx) {
-                                                                                r.current_value = evt.value();
-                                                                            }
-                                                                        }
-                                                                        environments.set(envs);
-                                                                        if active_env_id() == Some(env_id) {
-                                                                            let mut v = vars();
-                                                                            sync_env_vars(&environments(), Some(env_id), &mut v);
-                                                                            vars.set(v);
-                                                                        }
-                                                                    }
-                                                                }
-                                                            }
-                                                        }
-                                                    }
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                                None => rsx! {
-                                    p { class: "hint",
-                                        "No environment selected — pick one in the top bar or Manage…"
-                                    }
-                                },
-                            }
-                        }
-                    }
-
-                    div { class: "vars-section",
-                        div { class: "vars-section-head",
-                            h4 { "Collection" }
-                            button {
-                                class: "btn btn-ghost",
-                                onclick: move |_| {
-                                    show_vars.set(false);
-                                    col_vars_all.set(true);
-                                    col_vars_open_id.set(active_collection_id());
-                                    show_col_vars.set(true);
-                                },
-                                "All collections…"
-                            }
-                        }
-                        p { class: "vars-section-desc",
-                            "Scoped to the active collection. Shared with your team and committed inside the collection file."
-                        }
-                        {
-                            let cols = collections();
-                            let active_id = active_collection_id();
-                            let col = active_id.and_then(|id| cols.iter().find(|c| c.id == id));
-                            match col {
-                                Some(c) => {
-                                    let cid = c.id;
-                                    let rows = c.variables.clone();
-                                    let name = c.name.clone();
-                                    rsx! {
-                                        p { class: "hint", "Active: {name}" }
-                                        ColVarEditor {
-                                            collection_id: cid,
-                                            rows,
-                                            sync_active: true,
-                                            collections,
-                                            vars,
-                                        }
-                                    }
-                                }
-                                None => rsx! {
-                                    p { class: "hint", "Select a collection in the sidebar first." }
-                                },
-                            }
+                            "Manage workspace-wide Global variables ({{name}}) and local-only Vault secrets ({{vault:key}}). Environment variables live in the Environments tab."
                         }
                     }
 
@@ -581,25 +424,6 @@ pub fn VarsPage(st: WorkbenchState) -> Element {
                                 }
                                 vars.set(v);
                             },
-                        }
-                    }
-
-                    div { class: "vars-section",
-                        h4 { "Local (Runtime)" }
-                        p { class: "vars-section-desc",
-                            "Ephemeral in-memory variables set during script execution via blitz.variables.set(). Discarded when request completes."
-                        }
-                        {
-                            let local = sorted_map_rows(&vars().local);
-                            if local.is_empty() {
-                                rsx! { p { class: "hint", "(empty)" } }
-                            } else {
-                                rsx! {
-                                    for (li, (k, val)) in local.iter().enumerate() {
-                                        div { key: "{k}-{li}", class: "eye-row", code { "{k}" } " = " code { "{val}" } }
-                                    }
-                                }
-                            }
                         }
                     }
 

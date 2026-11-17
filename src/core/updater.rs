@@ -33,7 +33,7 @@ pub fn check_for_updates() -> Option<UpdateInfo> {
     let url = format!("https://api.github.com/repos/{GITHUB_REPO}/releases/latest");
     let client = reqwest::blocking::Client::builder()
         .user_agent(format!("Blitz/{CURRENT_VERSION}"))
-        .timeout(Duration::from_secs(5))
+        .timeout(Duration::from_secs(10))
         .build()
         .ok()?;
 

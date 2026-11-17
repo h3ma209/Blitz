@@ -1437,9 +1437,9 @@ button.env-menu-row:hover,
 }
 
 .env-selector-wrap .btn-icon-active {
-  color: var(--spot-green-bright, #22c55e) !important;
-  background: rgba(34, 197, 94, 0.2) !important;
-  border-color: rgba(34, 197, 94, 0.5) !important;
+  color: var(--accent);
+  background: var(--accent-soft);
+  border-color: var(--focus-ring);
 }
 
 /* Environment Quick Look Popover */
@@ -1450,10 +1450,10 @@ button.env-menu-row:hover,
   width: 440px;
   max-width: 92vw;
   max-height: 480px;
-  background: var(--bg-card, #11131c) !important;
-  border: 1px solid rgba(255, 255, 255, 0.16) !important;
+  background: var(--glass-bg-strong);
+  border: 1px solid var(--border-strong);
   border-radius: var(--radius-md);
-  box-shadow: 0 20px 48px rgba(0, 0, 0, 0.85), 0 0 0 1px rgba(255, 255, 255, 0.08);
+  box-shadow: var(--shadow-modal);
   z-index: 1000;
   display: flex;
   flex-direction: column;
@@ -1466,8 +1466,8 @@ button.env-menu-row:hover,
   display: flex;
   align-items: center;
   justify-content: space-between;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-  background: rgba(0, 0, 0, 0.35);
+  border-bottom: 1px solid var(--surface-border);
+  background: var(--surface-panel);
 }
 
 .env-quicklook-title {
@@ -1510,8 +1510,8 @@ button.env-menu-row:hover,
 
 .env-quicklook-search-wrap {
   padding: 8px 14px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-  background: rgba(0, 0, 0, 0.25);
+  border-bottom: 1px solid var(--surface-border);
+  background: var(--surface-base);
 }
 
 .env-quicklook-search {
@@ -1619,8 +1619,8 @@ button.env-menu-row:hover,
 
 .env-quicklook-footer {
   padding: 10px 14px;
-  border-top: 1px solid rgba(255, 255, 255, 0.08);
-  background: rgba(0, 0, 0, 0.35);
+  border-top: 1px solid var(--surface-border);
+  background: var(--surface-panel);
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -1924,21 +1924,20 @@ button.env-menu-row:hover,
   padding: 6px 8px;
   box-sizing: border-box;
   border-radius: var(--radius-sm);
-  background: rgba(0, 0, 0, 0.35);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: var(--bg-input);
+  border: 1px solid var(--surface-border);
   font-size: var(--fs-caption);
   color: var(--text);
   transition: all var(--ease);
 }
 
 .sidebar-search:hover {
-  border-color: rgba(255, 255, 255, 0.16);
-  background: rgba(0, 0, 0, 0.45);
+  border-color: var(--border-strong);
 }
 
 .sidebar-search:focus {
   border-color: var(--accent);
-  background: rgba(0, 0, 0, 0.55);
+  background: var(--surface-editor);
   box-shadow: 0 0 0 2px var(--focus-ring);
 }
 
@@ -1957,6 +1956,25 @@ button.env-menu-row:hover,
 .empty-state p {
   margin: 0;
   color: var(--text-muted);
+}
+
+.empty-state-icon {
+  color: var(--text-muted);
+  display: inline-flex;
+  margin-bottom: var(--space-1);
+}
+
+.empty-state-title {
+  margin: 0;
+  font-size: var(--fs-title);
+  font-weight: 600;
+  color: var(--text);
+}
+
+.empty-state-desc {
+  margin: 0;
+  max-width: 420px;
+  line-height: var(--lh-body);
 }
 
 .tree-search-hint {
@@ -2205,9 +2223,9 @@ button.env-menu-row:hover,
 }
 
 .tree-row.tree-selected-multi {
-  background: rgba(29, 185, 84, 0.18) !important;
-  border-color: rgba(29, 185, 84, 0.4) !important;
-  border-left: 3px solid var(--spot-green, #1db954) !important;
+  background: var(--bg-active);
+  border-color: var(--focus-ring);
+  border-left: 3px solid var(--accent);
 }
 
 .tree-row.tree-selected-multi .tree-label {
@@ -3473,22 +3491,21 @@ textarea:focus {
   letter-spacing: var(--track-mono);
   padding: 7px 14px;
   border-radius: var(--radius-sm);
-  background: rgba(0, 0, 0, 0.45);
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  color: var(--white);
-  box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.25);
+  background: var(--bg-input);
+  border: 1px solid var(--surface-border);
+  color: var(--text);
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.14);
   transition: all var(--ease);
 }
 
 .url-input:hover {
-  border-color: rgba(255, 255, 255, 0.22);
-  background: rgba(0, 0, 0, 0.55);
+  border-color: var(--border-strong);
 }
 
 .url-input:focus {
-  border-color: var(--spot-green-bright);
-  background: rgba(0, 0, 0, 0.7);
-  box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.3), 0 0 0 2px rgba(29, 185, 84, 0.25);
+  border-color: var(--accent);
+  background: var(--surface-editor);
+  box-shadow: 0 0 0 2px var(--focus-ring);
 }
 
 .btn {

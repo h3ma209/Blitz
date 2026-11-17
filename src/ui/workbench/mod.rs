@@ -156,13 +156,28 @@ pub fn Workbench() -> Element {
             tokio::time::sleep(Duration::from_millis(320)).await;
             splash_visible.set(false);
 
-            let info = tokio::task::spawn_blocking(check_for_updates)
+            let mut info = tokio::task::spawn_blocking(check_for_updates)
                 .await
                 .ok()
                 .flatten();
+            if info.is_none() {
+                tokio::time::sleep(Duration::from_secs(3)).await;
+                info = tokio::task::spawn_blocking(check_for_updates)
+                    .await
+                    .ok()
+                    .flatten();
+            }
             if let Some(info) = info {
                 if info.has_update {
+                    let msg = format!(
+                        "New version v{} available (current v{}) — click Update in top bar",
+                        info.latest_version, info.current_version
+                    );
+                    status_msg.set(msg.clone());
+                    st.log_info(msg);
                     available_update.set(Some(info));
+                } else {
+                    st.log_info(format!("Blitz v{} is up to date", info.current_version));
                 }
             }
         });
@@ -240,6 +255,19 @@ pub fn Workbench() -> Element {
                 const factor = {factor:.2};
                 if (document.documentElement) {{
                     document.documentElement.style.zoom = factor;
+                }}
+                if (!window.__blitz_input_hygiene_installed) {{
+                    window.__blitz_input_hygiene_installed = true;
+                    const disableSmartText = (el) => {{
+                        if (!el || !el.matches) return;
+                        if (el.matches('input, textarea, [contenteditable]')) {{
+                            if (!el.hasAttribute('autocapitalize')) el.setAttribute('autocapitalize', 'off');
+                            if (!el.hasAttribute('autocorrect')) el.setAttribute('autocorrect', 'off');
+                            if (!el.hasAttribute('spellcheck')) el.setAttribute('spellcheck', 'false');
+                        }}
+                    }};
+                    document.querySelectorAll('input, textarea, [contenteditable]').forEach(disableSmartText);
+                    document.addEventListener('focusin', (e) => disableSmartText(e.target), true);
                 }}
                 if (!window.__blitz_zoom_listener_installed) {{
                     window.__blitz_zoom_listener_installed = true;
