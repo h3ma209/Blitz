@@ -1,425 +1,1750 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" class="scroll-smooth">
 
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Blitz — Native Rust API Workbench with 42-Tool MCP Server</title>
+  <title>Blitz — AI-Native API Client with Built-in MCP Server</title>
   <meta name="description"
-    content="Blitz: local-first API client in native Rust with a built-in 42-tool MCP server for Cursor & Claude. OS Keychain secrets, Git sync, 8 wire protocols, zero telemetry.">
+    content="Blitz: local-first API workbench with a built-in 42-tool MCP server for Cursor and Claude. OS keychain secrets, Git sync, Postman-compatible scripts — native Rust, zero telemetry.">
   <meta name="keywords"
-    content="api client, postman alternative, insomnia alternative, rust api client, local first api client, model context protocol, mcp server, grpc client, websocket client, graphql client, cursor mcp, claude mcp">
+    content="api client, postman alternative, insomnia alternative, rust api client, local first api client, offline first, model context protocol, mcp server, rest client, grpc client, websocket client, graphql client, api testing, load testing, developer tools, cursor mcp, claude mcp, antigravity">
   <meta name="author" content="h3ma209">
   <meta name="robots" content="index, follow">
   <link rel="canonical" href="https://h3ma209.github.io/Blitz/">
   <link rel="icon" type="image/png" href="logo-64.png">
 
+  <!-- Open Graph / Facebook -->
   <meta property="og:type" content="website">
   <meta property="og:url" content="https://h3ma209.github.io/Blitz/">
-  <meta property="og:title" content="Blitz — Native Rust API Workbench with 42-Tool MCP Server">
+  <meta property="og:title" content="Blitz — AI-Native API Client with Built-in MCP Server">
   <meta property="og:description"
-    content="Local-first Postman alternative in Rust: 42 MCP tools for AI agents, OS Keychain secrets, Git sync, and 8 protocols.">
+    content="42-tool MCP server for AI agents. Local Postman-compatible workbench in Rust — keychain secrets, Git sync, no cloud account required.">
   <meta property="og:image" content="https://raw.githubusercontent.com/h3ma209/Blitz/master/docs/app-screenshot.png">
   <meta property="og:site_name" content="Blitz API Client">
 
+  <!-- Twitter / X -->
   <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:url" content="https://h3ma209.github.io/Blitz/">
-  <meta name="twitter:title" content="Blitz — Native Rust API Workbench with 42-Tool MCP Server">
+  <meta name="twitter:title" content="Blitz — AI-Native API Client with Built-in MCP Server">
   <meta name="twitter:description"
-    content="Built-in 42-tool MCP server for Cursor & Claude. Native Rust API client — keychain secrets, Git sync, offline-first.">
+    content="Built-in 42-tool MCP server for Cursor &amp; Claude. Native API client — keychain, Git sync, offline-first.">
   <meta name="twitter:image" content="https://raw.githubusercontent.com/h3ma209/Blitz/master/docs/app-screenshot.png">
 
+  <!-- Schema.org JSON-LD Structured Data for Google Search -->
   <script type="application/ld+json">
   {
     "@context": "https://schema.org",
     "@type": "SoftwareApplication",
     "name": "Blitz",
-    "headline": "Native Rust API Workbench with 42-Tool MCP Server",
+    "headline": "AI-Native API Client with Built-in MCP Server",
     "operatingSystem": "macOS, Linux, Windows",
     "applicationCategory": "DeveloperApplication",
     "applicationSubCategory": "API Development & Testing",
     "license": "https://github.com/h3ma209/Blitz/blob/master/LICENSE",
-    "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
-    "description": "Blitz is a local-first API workbench with a built-in 42-tool Model Context Protocol (MCP) server for AI coding agents, native Rust performance, Git sync, and OS keychain secrets.",
+    "offers": {
+      "@type": "Offer",
+      "price": "0",
+      "priceCurrency": "USD"
+    },
+    "description": "Blitz is a local-first API workbench with a built-in 42-tool Model Context Protocol (MCP) server for AI coding agents, plus native Rust performance and OS keychain secrets.",
     "url": "https://h3ma209.github.io/Blitz/",
     "downloadUrl": "https://github.com/h3ma209/Blitz/releases",
     "softwareVersion": "0.2.14",
-    "author": { "@type": "Person", "name": "h3ma209", "url": "https://github.com/h3ma209" }
+    "author": {
+      "@type": "Person",
+      "name": "h3ma209",
+      "url": "https://github.com/h3ma209"
+    }
   }
   </script>
 
+  <!-- Fonts: Inter & JetBrains Mono -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link
     href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap"
     rel="stylesheet">
-  <link rel="stylesheet" href="styles.css">
+
+  <!-- Tailwind CSS Play CDN (v3) -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Inter', '-apple-system', 'BlinkMacSystemFont', 'Segoe UI', 'Roboto', 'sans-serif'],
+            mono: ['"JetBrains Mono"', 'ui-monospace', 'SFMono-Regular', 'Menlo', 'monospace'],
+          },
+          colors: {
+            spot: {
+              void: '#0b0c10',
+              black: '#12141a',
+              elevated: '#171922',
+              highlight: '#202430',
+              muted: '#9aa7bc',
+              faint: '#7b89a0',
+              green: '#22c55e',
+              bright: '#4ade80',
+              dim: '#16a34a',
+            }
+          }
+        }
+      }
+    }
+  </script>
+
+  <style type="text/tailwindcss">
+    :root {
+      --surface-base: #0b0c10;
+      --surface-panel: #12141a;
+      --surface-elevated: #171922;
+      --surface-subtle: #0e1015;
+      --surface-border: rgba(255, 255, 255, 0.085);
+      --accent: #4ade80;
+      --accent-soft: rgba(74, 222, 128, 0.14);
+      --focus-ring: rgba(74, 222, 128, 0.45);
+    }
+
+    @layer base {
+      :where(a, button, input, select, textarea, summary):focus-visible {
+        outline: none;
+        box-shadow: 0 0 0 2px var(--surface-base), 0 0 0 4px var(--focus-ring);
+        border-radius: 6px;
+      }
+      @media (prefers-reduced-motion: reduce) {
+        *, *::before, *::after {
+          animation-duration: 0.01ms !important;
+          transition-duration: 0.01ms !important;
+          scroll-behavior: auto !important;
+        }
+      }
+    }
+
+    @layer utilities {
+      .glass {
+        background: var(--surface-panel);
+        border: 1px solid var(--surface-border);
+        box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+      }
+      .glass-strong {
+        background: #0f1117;
+        border: 1px solid rgba(255, 255, 255, 0.10);
+        box-shadow: 0 12px 32px rgba(0, 0, 0, 0.32), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+      }
+      .glass-capsule {
+        background: rgba(255, 255, 255, 0.035);
+        border: 1px solid var(--surface-border);
+      }
+      .glass-hover {
+        transition: border-color 150ms ease, background-color 150ms ease, box-shadow 150ms ease;
+      }
+      .glass-hover:hover {
+        border-color: rgba(74, 222, 128, 0.38);
+        background: var(--surface-elevated);
+      }
+      .panel {
+        background: var(--surface-panel);
+        border: 1px solid var(--surface-border);
+        box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+      }
+      .panel-subtle {
+        background: var(--surface-subtle);
+        border: 1px solid rgba(255, 255, 255, 0.065);
+      }
+      .panel-hover {
+        transition: border-color 150ms ease, background-color 150ms ease;
+      }
+      .panel-hover:hover {
+        border-color: rgba(74, 222, 128, 0.38);
+        background: var(--surface-elevated);
+      }
+      .bg-grid {
+        background-image: 
+          linear-gradient(rgba(255, 255, 255, 0.02) 1px, transparent 1px),
+          linear-gradient(90deg, rgba(255, 255, 255, 0.02) 1px, transparent 1px);
+        background-size: 32px 32px;
+      }
+      .hero-glow {
+        background: radial-gradient(ellipse 70% 50% at 50% -10%, rgba(74, 222, 128, 0.12), transparent 60%);
+      }
+    }
+  </style>
 </head>
 
-<body class="site-body">
+<body
+  class="bg-spot-void text-slate-100 font-sans selection:bg-spot-bright selection:text-spot-void min-h-screen relative overflow-x-hidden antialiased">
 
-  <!-- STICKY HEADER -->
-  <header class="site-header">
-    <div class="site-container">
-      <div class="header-inner">
-        <div class="brand-group">
-          <a href="#hero" class="brand-link">
-            <img src="logo-64.png" alt="Blitz logo" width="28" height="28">
-            <span>Blitz</span>
-          </a>
-          <span class="badge">v0.2.14 · Native Rust</span>
-        </div>
+  <div class="absolute inset-0 h-[3200px] bg-grid pointer-events-none z-0"></div>
 
-        <nav class="nav-links" aria-label="Primary navigation">
-          <a href="#sandbox">Interactive Demo</a>
-          <a href="#why-switch">Why Blitz</a>
-          <a href="#features">Features</a>
-          <a href="docs.html#guideflows">Guideflows</a>
-          <a href="docs.html#mcp-tools">42 MCP Tools</a>
-          <a href="docs.html">Docs</a>
-        </nav>
-
-        <div class="header-actions">
-          <div class="theme-switcher" role="group" aria-label="Preview website and app theme">
-            <button type="button" class="theme-btn" data-theme="" aria-pressed="true" title="Spotify theme">
-              <span class="theme-swatch" style="background:#22c55e"></span>Spotify
-            </button>
-            <button type="button" class="theme-btn" data-theme="linear" aria-pressed="false" title="Linear theme">
-              <span class="theme-swatch" style="background:#6366f1"></span>Linear
-            </button>
-            <button type="button" class="theme-btn" data-theme="tokyo-night" aria-pressed="false" title="Tokyo Night theme">
-              <span class="theme-swatch" style="background:#7aa2f7"></span>Tokyo
-            </button>
-            <button type="button" class="theme-btn" data-theme="catppuccin" aria-pressed="false" title="Catppuccin Mocha theme">
-              <span class="theme-swatch" style="background:#cba6f7"></span>Mocha
-            </button>
-            <button type="button" class="theme-btn" data-theme="github-light" aria-pressed="false" title="GitHub Light theme">
-              <span class="theme-swatch" style="background:#0969da"></span>Light
-            </button>
-          </div>
-
-          <a href="https://github.com/h3ma209/Blitz" target="_blank" rel="noopener" class="btn-ghost btn-sm">GitHub</a>
-          <a href="#install" class="btn-primary btn-sm">Install</a>
-          <button type="button" id="mobile-menu-toggle" class="mobile-menu-btn" aria-expanded="false" aria-controls="mobile-drawer">Menu</button>
-        </div>
+  <!-- Top Navigation -->
+  <header class="sticky top-0 z-50 border-b border-white/5 bg-[#0b0c10]/90 backdrop-blur-md px-4 sm:px-6">
+    <nav class="w-full max-w-6xl mx-auto flex items-center justify-between h-14">
+      <div class="flex items-center gap-3">
+        <a href="#" class="flex items-center gap-2.5">
+          <img src="logo.png" alt="Blitz" class="w-7 h-7 rounded-md">
+          <span class="font-bold text-base tracking-tight text-white">Blitz</span>
+        </a>
+        <span class="text-[11px] font-mono text-spot-bright bg-spot-bright/10 border border-spot-bright/20 px-2 py-0.5 rounded">Rust 1.83+</span>
       </div>
 
-      <div id="mobile-drawer" class="mobile-drawer">
-        <a href="#sandbox">Interactive Demo</a>
-        <a href="#why-switch">Why Blitz</a>
-        <a href="#features">Features</a>
-        <a href="docs.html#guideflows">Step-by-Step Guideflows</a>
-        <a href="docs.html#mcp-tools">42 MCP Tools</a>
-        <a href="docs.html">Documentation</a>
-        <a href="#install">Download / Install</a>
+      <!-- Mobile Hamburger Button -->
+      <button onclick="toggleMobileNav()"
+        class="lg:hidden p-2 text-spot-muted hover:text-white rounded-lg focus:outline-none"
+        aria-label="Toggle Navigation">
+        <svg id="nav-open-icon" class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16M4 18h16" />
+        </svg>
+        <svg id="nav-close-icon" class="w-5 h-5 hidden" fill="none" stroke="currentColor" stroke-width="2"
+          viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+        </svg>
+      </button>
+
+      <!-- Desktop Nav Items -->
+      <div class="hidden lg:flex items-center gap-6 text-xs text-spot-muted font-medium">
+        <a href="docs.html#guideflows" class="text-spot-bright font-semibold hover:text-white transition-colors">Guideflows</a>
+        <a href="#features" class="hover:text-white transition-colors">Features</a>
+        <a href="docs.html#mcp-tools" class="hover:text-white transition-colors">42 Tools</a>
+        <a href="docs.html" class="hover:text-white transition-colors">Docs</a>
+        <a href="https://github.com/h3ma209/Blitz" target="_blank" rel="noopener"
+          class="flex items-center gap-1.5 text-slate-300 hover:text-white transition-colors">
+          <svg class="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
+            <path
+              d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z" />
+          </svg>
+          GitHub
+        </a>
+        <a href="#install"
+          class="bg-white text-spot-void hover:bg-slate-200 font-semibold text-xs px-3.5 py-1.5 rounded-md transition-all">
+          Download
+        </a>
       </div>
-    </div>
+
+      <!-- Mobile Dropdown Menu -->
+      <div id="mobile-nav"
+        class="hidden w-full lg:hidden pt-4 pb-2 border-t border-white/10 mt-3 flex flex-col gap-3 text-sm">
+        <a href="#how-it-works" onclick="toggleMobileNav()" class="text-spot-bright font-bold py-1">How it works</a>
+        <a href="docs.html" onclick="toggleMobileNav()" class="text-spot-bright py-1">Documentation</a>
+        <a href="#cli-runner" onclick="toggleMobileNav()" class="text-spot-muted hover:text-white py-1">MCP &amp; CLI</a>
+        <a href="#features" onclick="toggleMobileNav()" class="text-spot-muted hover:text-white py-1">Features</a>
+        <a href="#screenshot" onclick="toggleMobileNav()" class="text-spot-muted hover:text-white py-1">Interface</a>
+        <a href="#install" onclick="toggleMobileNav()" class="text-spot-muted hover:text-white py-1">Download</a>
+      </div>
+    </nav>
   </header>
 
-  <main>
-    <!-- 1. HERO -->
-    <section id="hero" class="site-section hero-section">
-      <div class="site-container">
-        <div class="hero-grid">
-          <div>
-            <span class="badge">Local-First API Workbench · 42-Tool Stdio MCP · MIT Open Source</span>
-            <h1 class="hero-title">Test APIs at Native Rust Speed. Let Your AI Agent Drive the Rest.</h1>
-            <p class="hero-lead">
-              Blitz stores collections as clean Git-friendly JSON on your disk, locks secrets inside your OS Keychain via
-              <code>{{vault:key}}</code>, and exposes 42 stdio MCP tools to Cursor, Claude, and Windsurf—zero cloud logins, zero Electron RAM bloat.
+  <!-- Hero -->
+  <main class="relative z-10 px-4 sm:px-6 max-w-6xl mx-auto">
+    <div class="absolute inset-x-0 top-0 h-[480px] hero-glow pointer-events-none -z-10"></div>
+
+    <section class="pt-16 pb-14 lg:pt-20">
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-10 lg:gap-14 items-center text-left">
+        <div class="space-y-6">
+          <p class="text-xs font-mono font-semibold text-spot-bright tracking-wide uppercase">
+            Desktop API client · Postman-compatible · Open source
+          </p>
+
+          <h1 class="text-3xl sm:text-4xl lg:text-[2.75rem] font-bold tracking-tight text-white leading-[1.15]">
+            Test APIs like Postman.<br class="hidden sm:block" />
+            Let Cursor drive the client for you.
+          </h1>
+
+          <p class="text-base sm:text-lg text-slate-300 leading-relaxed max-w-xl">
+            <strong class="text-white font-semibold">Blitz</strong> is a fast desktop app for building request collections,
+            environments, and tests—stored on <em>your</em> disk, not a vendor cloud. It ships a
+            <strong class="text-white font-semibold">built-in MCP server</strong> so tools like Cursor and Claude can
+            send requests, import OpenAPI, and run collections <span class="text-spot-muted">without copying your tokens into chat</span>.
+          </p>
+
+          <p class="text-sm text-spot-muted leading-relaxed max-w-xl border-l-2 border-spot-bright/40 pl-4">
+            <span class="text-slate-200 font-medium">MCP</span> (Model Context Protocol) is how AI coding apps talk to local software.
+            Blitz exposes 42 tools over a private stdio pipe—nothing is broadcast to the internet.
+          </p>
+
+          <div class="flex flex-wrap gap-3 pt-1">
+            <a href="#install"
+              class="inline-flex items-center gap-2 bg-spot-bright hover:bg-emerald-400 text-slate-950 font-semibold text-sm px-5 py-2.5 rounded-lg transition-all">
+              Download Blitz
+            </a>
+            <a href="docs.html#mcp-setup"
+              class="inline-flex items-center gap-2 border border-white/15 hover:bg-white/5 text-white font-medium text-sm px-5 py-2.5 rounded-lg transition-all">
+              Connect Cursor in 1 command
+            </a>
+          </div>
+
+          <ul class="grid sm:grid-cols-3 gap-3 pt-2 text-xs text-spot-muted">
+            <li class="panel rounded-lg p-3">
+              <span class="block text-white font-semibold mb-0.5">No cloud account</span>
+              Collections &amp; secrets stay local
+            </li>
+            <li class="panel rounded-lg p-3">
+              <span class="block text-white font-semibold mb-0.5">Import Postman</span>
+              v2.1 JSON + OpenAPI + HAR
+            </li>
+            <li class="panel rounded-lg p-3">
+              <span class="block text-white font-semibold mb-0.5">Native Rust</span>
+              ~10MB CLI, native Rust GUI
+            </li>
+          </ul>
+        </div>
+
+        <!-- Visual: app + flow diagram -->
+        <div id="screenshot" class="space-y-4 scroll-mt-24">
+          <div class="panel rounded-xl overflow-hidden border border-white/10 shadow-2xl shadow-black/40">
+            <div class="bg-[#161821] border-b border-white/5 px-3 py-2 flex items-center justify-between text-[11px] text-slate-400">
+              <div class="flex items-center gap-1.5">
+                <span class="w-2 h-2 rounded-full bg-[#ff5f56]"></span>
+                <span class="w-2 h-2 rounded-full bg-[#ffbd2e]"></span>
+                <span class="w-2 h-2 rounded-full bg-[#27c93f]"></span>
+                <span class="ml-1.5 font-mono text-slate-300">Blitz</span>
+              </div>
+              <span class="font-mono text-spot-bright">local workbench</span>
+            </div>
+            <img src="app-screenshot.png" alt="Blitz API client showing collections, request editor, and response"
+              class="w-full h-auto block" loading="eager" width="1200" height="720">
+          </div>
+
+          <div id="how-it-works" class="scroll-mt-24 rounded-xl glass-strong p-4 sm:p-5 border border-white/10">
+            <p class="text-[11px] font-mono font-bold text-spot-bright uppercase tracking-wider mb-3">How it works</p>
+            <div class="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:gap-0 text-xs font-medium">
+              <div class="flex-1 rounded-lg bg-white/[0.04] border border-white/10 px-3 py-2.5 text-center">
+                <span class="text-yellow-200 font-mono text-[10px] block mb-0.5">Step 1</span>
+                <span class="text-white">You + Cursor</span>
+                <span class="block text-spot-muted font-normal mt-0.5">Ask in natural language</span>
+              </div>
+              <span class="hidden sm:inline text-spot-faint px-2" aria-hidden="true">→</span>
+              <span class="sm:hidden text-center text-spot-faint" aria-hidden="true">↓</span>
+              <div class="flex-1 rounded-lg bg-spot-bright/10 border border-spot-bright/30 px-3 py-2.5 text-center">
+                <span class="text-spot-bright font-mono text-[10px] block mb-0.5">Step 2</span>
+                <span class="text-white">Blitz MCP</span>
+                <span class="block text-spot-muted font-normal mt-0.5">Runs requests locally</span>
+              </div>
+              <span class="hidden sm:inline text-spot-faint px-2" aria-hidden="true">→</span>
+              <span class="sm:hidden text-center text-spot-faint" aria-hidden="true">↓</span>
+              <div class="flex-1 rounded-lg bg-white/[0.04] border border-white/10 px-3 py-2.5 text-center">
+                <span class="text-blue-300 font-mono text-[10px] block mb-0.5">Step 3</span>
+                <span class="text-white">Your APIs</span>
+                <span class="block text-spot-muted font-normal mt-0.5">Staging, prod, localhost</span>
+              </div>
+            </div>
+            <p class="text-[11px] text-spot-faint mt-3 leading-relaxed">
+              Example: “Import this OpenAPI spec and hit the login endpoint with staging env.”
+              Cursor calls <code class="text-slate-300">blitz_sync_openapi</code> then <code class="text-slate-300">blitz_send_request</code>—you see the result in Blitz and in chat.
+              <a href="docs.html#mcp-tools" class="text-spot-bright hover:underline ml-1">All 42 tools →</a>
             </p>
-
-            <!-- Instant Install Switcher -->
-            <div class="install-box">
-              <div class="install-tabs" role="tablist" aria-label="Quick install command">
-                <button type="button" class="tab-pill" role="tab" aria-selected="true"
-                  data-install-cmd="curl -fsSL https://raw.githubusercontent.com/h3ma209/Blitz/master/install.sh | bash">macOS / Linux</button>
-                <button type="button" class="tab-pill" role="tab" aria-selected="false"
-                  data-install-cmd="brew tap h3ma209/blitz &amp;&amp; brew install --cask blitz">Homebrew</button>
-                <button type="button" class="tab-pill" role="tab" aria-selected="false"
-                  data-install-cmd="irm https://raw.githubusercontent.com/h3ma209/Blitz/master/install.ps1 | iex">Windows</button>
-                <button type="button" class="tab-pill" role="tab" aria-selected="false"
-                  data-install-cmd="blitz mcp setup">Wire AI Agent (MCP)</button>
-              </div>
-              <div class="code-pill">
-                <code id="hero-install-cmd">curl -fsSL https://raw.githubusercontent.com/h3ma209/Blitz/master/install.sh | bash</code>
-                <button type="button" class="copy-btn" data-copy-target="hero-install-cmd">Copy</button>
-              </div>
-            </div>
-
-            <div class="hero-ctas">
-              <a href="https://github.com/h3ma209/Blitz/releases" target="_blank" rel="noopener" class="btn-primary">Download DMG / Releases</a>
-              <a href="docs.html#guideflows" class="btn-ghost">Step-by-Step Guideflows →</a>
-            </div>
-
-            <div class="proof-strip">
-              <div class="proof-item">
-                <span class="proof-val">~32 MB RAM</span>
-                <span class="proof-lbl">vs 650+ MB Electron</span>
-              </div>
-              <div class="proof-item">
-                <span class="proof-val">8 Protocols</span>
-                <span class="proof-lbl">HTTP/2, WS, gRPC, SSE+</span>
-              </div>
-              <div class="proof-item">
-                <span class="proof-val">42 MCP Tools</span>
-                <span class="proof-lbl">Private local stdio</span>
-              </div>
-              <div class="proof-item">
-                <span class="proof-val">0 Cloud Logins</span>
-                <span class="proof-lbl">Your disk + your Git</span>
-              </div>
-            </div>
           </div>
+        </div>
+      </div>
+    </section>
+    <section id="why-switch" class="mt-20 pt-10 border-t border-white/[0.06] text-center">
+      <span class="text-xs font-mono text-spot-bright tracking-wider uppercase block mb-2">COMPARISON</span>
+      <h2 class="text-2xl sm:text-4xl font-bold tracking-tight text-white mb-3">Why switch to Blitz</h2>
+      <p class="text-spot-muted max-w-xl mx-auto text-sm sm:text-base mb-12">
+        How Blitz addresses specific constraints across Postman, Bruno, Insomnia, and Yaak.
+      </p>
 
-          <div id="screenshot">
-            <div class="window-frame">
-              <div class="window-bar">
-                <span class="window-dots" aria-hidden="true">
-                  <span class="dot dot-red"></span>
-                  <span class="dot dot-yellow"></span>
-                  <span class="dot dot-green"></span>
-                </span>
-                <span>Blitz Workbench — Local Collection</span>
-                <span>⌘K Palette</span>
-              </div>
-              <img src="app-screenshot.png" alt="Blitz desktop workbench showing collections tree, request builder, and JSON response" width="1200" height="720">
+      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 text-left">
+        <!-- Postman Switcher Card -->
+        <div class="p-5 rounded-xl panel panel-hover flex flex-col justify-between">
+          <div>
+            <div class="flex items-center justify-between mb-3">
+              <span class="text-xs font-mono font-semibold text-red-400">vs Postman</span>
+              <span class="text-[11px] font-mono text-spot-muted bg-white/5 px-2 py-0.5 rounded">No Cloud Accounts</span>
             </div>
-            <div class="caption-pills">
-              <div class="caption-pill">
-                <strong>Sidebar Tree &amp; Search</strong>
-                Filter by method, protocol, or path in 1 keystroke.
-              </div>
-              <div class="caption-pill">
-                <strong>Smart Request Tabs</strong>
-                Live active counts &amp; indicators for Params, Headers, Auth, Tests.
-              </div>
-              <div class="caption-pill">
-                <strong>Instant Inspector</strong>
-                Sub-ms JSON highlight, timing waterfall &amp; diff view.
-              </div>
+            <h3 class="text-base font-bold text-white mb-3">Offline-First &amp; Zero Accounts</h3>
+            <ul class="space-y-2.5 text-xs text-spot-muted leading-relaxed">
+              <li class="flex items-start gap-2">
+                <span class="text-red-400 font-bold shrink-0">✗</span>
+                <span>Requires cloud sign-in and syncs workspace data to external servers by default.</span>
+              </li>
+              <li class="flex items-start gap-2">
+                <span class="text-spot-bright font-bold shrink-0">✓</span>
+                <span><strong>100% offline-first.</strong> Zero telemetry, no account required, and imports Postman v2.1 collections.</span>
+              </li>
+              <li class="flex items-start gap-2">
+                <span class="text-spot-bright font-bold shrink-0">✓</span>
+                <span><strong>~10.2 MB RSS CLI runner</strong> vs 800MB–1.5GB Electron footprint.</span>
+              </li>
+            </ul>
+          </div>
+          <div class="mt-4 pt-3 border-t border-white/5 text-[11px] font-mono text-spot-bright">
+            File → Import Collection (.json)
+          </div>
+        </div>
+
+        <!-- Bruno Switcher Card -->
+        <div class="p-5 rounded-xl panel panel-hover flex flex-col justify-between">
+          <div>
+            <div class="flex items-center justify-between mb-3">
+              <span class="text-xs font-mono font-semibold text-amber-400">vs Bruno</span>
+              <span class="text-[11px] font-mono text-spot-muted bg-white/5 px-2 py-0.5 rounded">Native Binary</span>
             </div>
+            <h3 class="text-base font-bold text-white mb-3">Compiled Rust Core</h3>
+            <ul class="space-y-2.5 text-xs text-spot-muted leading-relaxed">
+              <li class="flex items-start gap-2">
+                <span class="text-amber-400 font-bold shrink-0">✗</span>
+                <span>Electron UI wrapper and proprietary .bru file specification.</span>
+              </li>
+              <li class="flex items-start gap-2">
+                <span class="text-spot-bright font-bold shrink-0">✓</span>
+                <span><strong>Pure Rust + Dioxus:</strong> Compiled to native binary without node runtime overhead.</span>
+              </li>
+              <li class="flex items-start gap-2">
+                <span class="text-spot-bright font-bold shrink-0">✓</span>
+                <span><strong>Visual Git conflict resolver</strong> built directly into the UI for branch conflicts.</span>
+              </li>
+            </ul>
+          </div>
+          <div class="mt-4 pt-3 border-t border-white/5 text-[11px] font-mono text-spot-bright">
+            Open standard formats (JSON/Postman/OpenAPI)
+          </div>
+        </div>
+
+        <!-- Insomnia Switcher Card -->
+        <div class="p-5 rounded-xl panel panel-hover flex flex-col justify-between">
+          <div>
+            <div class="flex items-center justify-between mb-3">
+              <span class="text-xs font-mono font-semibold text-purple-400">vs Insomnia</span>
+              <span class="text-[11px] font-mono text-spot-muted bg-white/5 px-2 py-0.5 rounded">No Paywalls</span>
+            </div>
+            <h3 class="text-base font-bold text-white mb-3">Free Git Team Sync</h3>
+            <ul class="space-y-2.5 text-xs text-spot-muted leading-relaxed">
+              <li class="flex items-start gap-2">
+                <span class="text-purple-400 font-bold shrink-0">✗</span>
+                <span>Restricts cloud sync and local project features behind subscription tiers.</span>
+              </li>
+              <li class="flex items-start gap-2">
+                <span class="text-spot-bright font-bold shrink-0">✓</span>
+                <span><strong>Git sync uses your own remote.</strong> Push to any GitHub, GitLab, or self-hosted Git server.</span>
+              </li>
+              <li class="flex items-start gap-2">
+                <span class="text-spot-bright font-bold shrink-0">✓</span>
+                <span>Built-in support for <strong>8 protocols</strong> including MQTT, SSE, and MCP.</span>
+              </li>
+            </ul>
+          </div>
+          <div class="mt-4 pt-3 border-t border-white/5 text-[11px] font-mono text-spot-bright">
+            Zero per-seat invoices
+          </div>
+        </div>
+
+        <!-- Yaak Switcher Card -->
+        <div class="p-5 rounded-xl panel panel-hover flex flex-col justify-between">
+          <div>
+            <div class="flex items-center justify-between mb-3">
+              <span class="text-xs font-mono font-semibold text-blue-400">vs Yaak</span>
+              <span class="text-[11px] font-mono text-spot-muted bg-white/5 px-2 py-0.5 rounded">Permissive Open Source</span>
+            </div>
+            <h3 class="text-base font-bold text-white mb-3">Zero Commercial Licensing</h3>
+            <ul class="space-y-2.5 text-xs text-spot-muted leading-relaxed">
+              <li class="flex items-start gap-2">
+                <span class="text-blue-400 font-bold shrink-0">✗</span>
+                <span>Uses web view UI (React/Tauri) with commercial Fair-Core / SSPL licensing.</span>
+              </li>
+              <li class="flex items-start gap-2">
+                <span class="text-spot-bright font-bold shrink-0">✓</span>
+                <span><strong>100% open source under MIT.</strong> Full code inspection and local compilation.</span>
+              </li>
+              <li class="flex items-start gap-2">
+                <span class="text-spot-bright font-bold shrink-0">✓</span>
+                <span>Includes built-in <strong>Traffic Proxy</strong>, <strong>Local Mock Server</strong>, and <strong>Swagger Export</strong>.</span>
+              </li>
+            </ul>
+          </div>
+          <div class="mt-4 pt-3 border-t border-white/5 text-[11px] font-mono text-spot-bright">
+            Complete local ownership
           </div>
         </div>
       </div>
     </section>
 
-    <!-- 2. INTERACTIVE 3-MODE SANDBOX -->
-    <section id="sandbox" class="site-section">
-      <div class="site-container">
-        <div class="section-head">
-          <div class="section-eyebrow">Interactive Walkthrough</div>
-          <h2 class="section-title">See how Blitz actually works—without installing first.</h2>
-          <p class="section-subtitle">
-            Switch modes below to test the AI MCP tool trace, inspect live wire protocols, and verify how Keychain secrets stay out of Git.
-          </p>
-        </div>
+    <!-- ================================================================= -->
+    <!-- SECTION: CORE WORKFLOW MODULES -->
+    <!-- ================================================================= -->
+    <section id="ui-gallery" class="mt-20 pt-10 border-t border-white/[0.06] text-center">
+      <span class="text-xs font-mono text-spot-bright tracking-wider uppercase block mb-2">INTERFACE TOUR</span>
+      <h2 class="text-2xl sm:text-4xl font-bold tracking-tight text-white mb-3">Core workflow modules</h2>
+      <p class="text-spot-muted max-w-xl mx-auto text-sm sm:text-base mb-8">
+        Select a module below to inspect its behavior and layout.
+      </p>
 
-        <div class="sandbox-shell">
-          <div class="sandbox-bar">
-            <div class="sandbox-tabs" role="tablist" aria-label="Product demo modes">
-              <button type="button" class="tab-pill" role="tab" aria-selected="true" data-sandbox-tab="mcp">1. AI Agent (42-Tool MCP)</button>
-              <button type="button" class="tab-pill" role="tab" aria-selected="false" data-sandbox-tab="protocols">2. 8-Protocol Cockpit</button>
-              <button type="button" class="tab-pill" role="tab" aria-selected="false" data-sandbox-tab="git">3. Git Sync &amp; Keychain Vault</button>
+      <!-- Module Selector Tabs -->
+      <div class="inline-flex flex-wrap items-center justify-center p-1 rounded-lg bg-black/60 border border-white/10 gap-1 mb-8 max-w-4xl mx-auto">
+        <button onclick="switchGalleryTab('vault')" id="gallery-tab-vault"
+          class="gallery-nav-btn flex items-center gap-2 px-3.5 py-2 rounded-md text-xs font-medium transition-all cursor-pointer bg-spot-bright text-spot-void font-semibold">
+          <span>Vault &amp; Keychain</span>
+        </button>
+        <button onclick="switchGalleryTab('autoassert')" id="gallery-tab-autoassert"
+          class="gallery-nav-btn flex items-center gap-2 px-3.5 py-2 rounded-md text-xs font-medium transition-all cursor-pointer text-spot-muted hover:text-white hover:bg-white/5">
+          <span>Auto-Assertions</span>
+        </button>
+        <button onclick="switchGalleryTab('conflict')" id="gallery-tab-conflict"
+          class="gallery-nav-btn flex items-center gap-2 px-3.5 py-2 rounded-md text-xs font-medium transition-all cursor-pointer text-spot-muted hover:text-white hover:bg-white/5">
+          <span>Git Conflict Resolver</span>
+        </button>
+        <button onclick="switchGalleryTab('proxy')" id="gallery-tab-proxy"
+          class="gallery-nav-btn flex items-center gap-2 px-3.5 py-2 rounded-md text-xs font-medium transition-all cursor-pointer text-spot-muted hover:text-white hover:bg-white/5">
+          <span>Proxy &amp; Mock</span>
+        </button>
+        <button onclick="switchGalleryTab('protocols')" id="gallery-tab-protocols"
+          class="gallery-nav-btn flex items-center gap-2 px-3.5 py-2 rounded-md text-xs font-medium transition-all cursor-pointer text-spot-muted hover:text-white hover:bg-white/5">
+          <span>Protocols</span>
+        </button>
+      </div>
+
+      <!-- Module Container Window -->
+      <div class="w-full max-w-5xl mx-auto rounded-2xl glass-strong border border-white/10 shadow-2xl overflow-hidden text-left font-sans">
+        
+        <!-- PANE 1: VAULT & OS KEYCHAIN -->
+        <div id="gallery-pane-vault" class="gallery-pane block">
+          <!-- Window Bar -->
+          <div class="h-10 bg-spot-black/95 border-b border-white/5 flex items-center justify-between px-4 text-xs font-mono">
+            <div class="flex items-center gap-2">
+              <span class="w-3 h-3 rounded-full bg-[#ff5f56]"></span>
+              <span class="w-3 h-3 rounded-full bg-[#ffbd2e]"></span>
+              <span class="w-3 h-3 rounded-full bg-[#27c93f]"></span>
+              <span class="text-spot-muted font-sans font-medium ml-2">Blitz Vault &amp; Environment Variables</span>
             </div>
-            <span class="badge">Live Interactive Preview</span>
+            <span class="text-spot-bright text-[11px] bg-spot-green/10 border border-spot-green/30 px-2 py-0.5 rounded font-mono">
+              AES-256 Keychain Enforced
+            </span>
           </div>
 
-          <!-- Sandbox Pane 1: AI Agent MCP -->
-          <div id="sandbox-pane-mcp" class="sandbox-pane active" role="tabpanel">
-            <div>
-              <h3 style="margin-top:0">Drive Blitz directly from Cursor, Claude, or Windsurf</h3>
-              <p style="color:var(--text-muted)">
-                Instead of pasting cURL commands and API keys into chat, ask your agent to import specs, hit staging endpoints, and generate test assertions locally.
-              </p>
-              <div class="terminal-card" style="margin-bottom:14px">
-                <div><span class="hl-accent">Prompt →</span> "Import ./openapi.yaml, test POST /v1/checkout with staging env, and suggest assertions."</div>
+          <div class="p-6 bg-[#131313] space-y-6">
+            <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 p-3.5 rounded-xl bg-white/[0.03] border border-white/10 text-xs">
+              <div class="flex items-center gap-3">
+                <span class="text-xl">🛡️</span>
+                <div>
+                  <div class="font-bold text-white">4-Tier Zero-Leak Variable Architecture</div>
+                  <div class="text-spot-muted text-[11px]">Vault keys live in native OS Keychain. Never stored in collection JSON, never committed to Git.</div>
+                </div>
               </div>
-              <button type="button" id="run-mcp-sim" class="btn-primary btn-sm">▶ Simulate Agent Tool Trace</button>
+              <div class="text-[11px] font-mono text-spot-bright bg-spot-green/10 px-2.5 py-1 rounded border border-spot-green/20">
+                Resolution: Vault &gt; Env &gt; Col &gt; Global
+              </div>
+            </div>
 
-              <div id="mcp-trace-list" class="trace-list">
-                <div class="trace-step">
-                  <span class="badge">Step 1</span>
-                  <div><code>blitz_sync_openapi</code> → Synced 18 endpoints into <strong>Payments API</strong> collection.</div>
+            <!-- Vault Table -->
+            <div class="rounded-xl border border-white/10 overflow-x-auto font-mono text-xs">
+              <div class="min-w-[620px]">
+                <div class="grid grid-cols-12 bg-black/50 p-2.5 text-spot-faint text-[10px] uppercase font-bold tracking-wider border-b border-white/5">
+                  <div class="col-span-4">Variable Name</div>
+                  <div class="col-span-4">Value (Encrypted at Rest)</div>
+                  <div class="col-span-2">Scope</div>
+                  <div class="col-span-2 text-right">Git Commit Safety</div>
                 </div>
-                <div class="trace-step">
-                  <span class="badge">Step 2</span>
-                  <div><code>blitz_send_request</code> → Resolved <code>{{vault:stripe_key}}</code> in Rust; returned <strong>201 Created</strong> (41 ms).</div>
+
+                <!-- Row 1 -->
+                <div class="grid grid-cols-12 items-center p-3 border-b border-white/5 hover:bg-white/[0.02] transition-colors">
+                  <div class="col-span-4 font-bold text-white flex items-center gap-2">
+                    <span class="text-amber-400">vault:stripe_secret</span>
+                  </div>
+                  <div class="col-span-4 flex items-center gap-2">
+                    <span id="vault-val-1" class="text-spot-muted">sk_live_••••••••••••••••39a1</span>
+                    <button onclick="toggleVaultVisibility(1, 'sk_live_51N8zK4L2m901XyZ92839a1')" class="text-spot-faint hover:text-white text-[11px] px-1.5 py-0.5 rounded bg-white/5">👁️</button>
+                  </div>
+                  <div class="col-span-2">
+                    <span class="px-2 py-0.5 rounded text-[10px] font-bold bg-purple-500/15 text-purple-300">Vault (OS)</span>
+                  </div>
+                  <div class="col-span-2 text-right">
+                    <span class="text-[10px] text-spot-bright bg-spot-green/10 px-2 py-0.5 rounded font-bold">✓ Excluded from Git</span>
+                  </div>
                 </div>
-                <div class="trace-step">
-                  <span class="badge">Step 3</span>
-                  <div><code>blitz_suggest_assertions</code> → Added status <code>201</code> &amp; <code>body.payment_intent_id</code> checks.</div>
+
+                <!-- Row 2 -->
+                <div class="grid grid-cols-12 items-center p-3 border-b border-white/5 hover:bg-white/[0.02] transition-colors">
+                  <div class="col-span-4 font-bold text-white flex items-center gap-2">
+                    <span class="text-amber-400">vault:jwt_token</span>
+                  </div>
+                  <div class="col-span-4 flex items-center gap-2">
+                    <span id="vault-val-2" class="text-spot-muted">eyJhbGciOi••••••••••••••••7F9a</span>
+                    <button onclick="toggleVaultVisibility(2, 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.e30.7F9a')" class="text-spot-faint hover:text-white text-[11px] px-1.5 py-0.5 rounded bg-white/5">👁️</button>
+                  </div>
+                  <div class="col-span-2">
+                    <span class="px-2 py-0.5 rounded text-[10px] font-bold bg-purple-500/15 text-purple-300">Vault (OS)</span>
+                  </div>
+                  <div class="col-span-2 text-right">
+                    <span class="text-[10px] text-spot-bright bg-spot-green/10 px-2 py-0.5 rounded font-bold">✓ Excluded from Git</span>
+                  </div>
+                </div>
+
+                <!-- Row 3 -->
+                <div class="grid grid-cols-12 items-center p-3 border-b border-white/5 hover:bg-white/[0.02] transition-colors">
+                  <div class="col-span-4 font-bold text-white flex items-center gap-2">
+                    <span class="text-blue-300">endpoint_user</span>
+                  </div>
+                  <div class="col-span-4 text-emerald-300">
+                    https://api.v2.internal.corp
+                  </div>
+                  <div class="col-span-2">
+                    <span class="px-2 py-0.5 rounded text-[10px] font-bold bg-blue-500/15 text-blue-300">Environment</span>
+                  </div>
+                  <div class="col-span-2 text-right">
+                    <span class="text-[10px] text-blue-400 bg-blue-500/10 px-2 py-0.5 rounded">Git Branch Synced</span>
+                  </div>
                 </div>
               </div>
             </div>
 
-            <div class="terminal-card">
-              <div style="margin-bottom:8px; color:var(--text)"><strong>MCP Tool Output (Vault Secrets Redacted)</strong></div>
-              <pre id="mcp-sim-output" style="margin:0; white-space:pre-wrap">{
-  "tool": "blitz_send_request",
-  "status": 201,
-  "elapsed_ms": 41,
-  "headers_sent": {
-    "Authorization": "Bearer [REDACTED:vault:stripe_key]"
-  },
-  "response_body": {
-    "id": "chk_91a8f2",
-    "status": "open",
-    "currency": "usd",
-    "amount_total": 4900
+            <!-- Live Usage Demonstration -->
+            <div class="p-4 rounded-xl bg-black/60 border border-white/5 font-mono text-xs">
+              <div class="text-spot-faint text-[10px] mb-2">// How to use vault secrets in Request Header or Auth Tab:</div>
+              <div class="text-white">Authorization: Bearer <span class="text-amber-400 bg-amber-400/10 px-1 rounded">{{vault:jwt_token}}</span></div>
+              <div class="text-spot-muted text-[11px] mt-2">→ Blitz resolves this variable directly from system Keychain in 0.2ms at request time. Zero plain text saved to disk.</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- PANE 2: AUTO-ASSERTION TEST ENGINE -->
+        <div id="gallery-pane-autoassert" class="gallery-pane hidden">
+          <div class="h-10 bg-spot-black/95 border-b border-white/5 flex items-center justify-between px-4 text-xs font-mono">
+            <div class="flex items-center gap-2">
+              <span class="w-3 h-3 rounded-full bg-[#ff5f56]"></span>
+              <span class="w-3 h-3 rounded-full bg-[#ffbd2e]"></span>
+              <span class="w-3 h-3 rounded-full bg-[#27c93f]"></span>
+              <span class="text-spot-muted font-sans font-medium ml-2">Blitz Auto-Assertion Test Engine</span>
+            </div>
+            <span class="text-spot-bright text-[11px] bg-spot-green/10 border border-spot-green/30 px-2 py-0.5 rounded font-mono">
+              Zero Boilerplate Tests
+            </span>
+          </div>
+
+          <div class="p-6 bg-[#131313] space-y-6">
+            <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 p-4 rounded-xl bg-white/[0.03] border border-white/10">
+              <div>
+                <h4 class="font-bold text-white text-sm">One Click Inferred Test Generation</h4>
+                <p class="text-spot-muted text-xs mt-1">Blitz inspects the response status, headers, latency SLA, and JSON keys to generate production test assertions automatically.</p>
+              </div>
+              <button onclick="runAutoAssertDemo()" id="btn-run-autoassert"
+                class="flex items-center gap-2 px-4 py-2 rounded-full bg-spot-bright hover:bg-[#22e76a] text-spot-black font-bold text-xs shadow-[0_2px_12px_rgba(30,215,96,0.35)] transition-all active:scale-95 whitespace-nowrap">
+                <span>⚡ Click to Generate Assertions</span>
+              </button>
+            </div>
+
+            <!-- Two Column Live Comparison -->
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs font-mono">
+              <!-- Left: Response Snapshot -->
+              <div class="p-4 rounded-xl bg-black/60 border border-white/5 flex flex-col">
+                <div class="flex items-center justify-between pb-2 mb-3 border-b border-white/5">
+                  <span class="text-spot-faint text-[10px]">INCOMING RESPONSE</span>
+                  <div class="flex items-center gap-2">
+                    <span class="text-spot-bright font-bold">200 OK</span>
+                    <span class="text-spot-muted">18ms</span>
+                  </div>
+                </div>
+                <pre class="text-gray-300 leading-relaxed overflow-x-auto flex-1"><code>{
+  "status": "success",
+  "data": {
+    "user_id": 4821,
+    "email": "dev@blitz.rs",
+    "roles": ["admin", "tester"],
+    "created_at": "2026-10-19T18:00:00Z"
   }
-}</pre>
+}</code></pre>
+              </div>
+
+              <!-- Right: Generated Test Assertions -->
+              <div class="p-4 rounded-xl bg-black/60 border border-white/5 flex flex-col">
+                <div class="flex items-center justify-between pb-2 mb-3 border-b border-white/5">
+                  <span class="text-spot-faint text-[10px]">GENERATED TEST SCRIPT (blitz.test)</span>
+                  <span id="autoassert-badge" class="text-spot-bright text-[10px] font-bold">✓ 4 Tests Ready</span>
+                </div>
+                <pre id="autoassert-code" class="text-emerald-300 leading-relaxed overflow-x-auto flex-1"><code>// 1. Status Code Assertion
+blitz.test("Status code is 200", () => {
+  blitz.response.to.have.status(200);
+});
+
+// 2. Latency Threshold
+blitz.test("Response time is under 150ms", () => {
+  blitz.expect(blitz.response.responseTime).to.be.below(150);
+});
+
+// 3. Schema & Type Validations
+blitz.test("Response payload contains user_id", () => {
+  const json = blitz.response.json();
+  blitz.expect(json.status).to.eql("success");
+  blitz.expect(json.data.user_id).to.be.a("number");
+  blitz.expect(json.data.roles).to.include("admin");
+});</code></pre>
+              </div>
             </div>
           </div>
+        </div>
 
-          <!-- Sandbox Pane 2: 8-Protocol Cockpit -->
-          <div id="sandbox-pane-protocols" class="sandbox-pane" role="tabpanel">
-            <div>
-              <h3 style="margin-top:0">One unified workbench for 8 wire protocols</h3>
-              <p style="color:var(--text-muted)">
-                Test REST/GraphQL alongside bidirectional WebSockets, protobuf gRPC unary calls, Server-Sent Events, MQTT topics, Socket.IO, and external MCP servers.
-              </p>
-              <div class="proto-grid" role="group" aria-label="Select wire protocol preview">
-                <button type="button" class="tab-pill" aria-selected="true" data-proto="http">HTTP/2</button>
-                <button type="button" class="tab-pill" aria-selected="false" data-proto="ws">WebSocket</button>
-                <button type="button" class="tab-pill" aria-selected="false" data-proto="grpc">gRPC</button>
-                <button type="button" class="tab-pill" aria-selected="false" data-proto="sse">SSE</button>
-                <button type="button" class="tab-pill" aria-selected="false" data-proto="mqtt">MQTT</button>
-                <button type="button" class="tab-pill" aria-selected="false" data-proto="graphql">GraphQL WS</button>
-              </div>
-              <div class="terminal-card">
-                <pre id="proto-preview-code" style="margin:0; white-space:pre-wrap">GET https://{{baseUrl}}/v1/health HTTP/2
-Authorization: Bearer {{vault:api_token}}
-
-← 200 OK · 18 ms · TLS 1.3 · 412 B
-{ "ok": true, "region": "iad", "uptime_s": 994120 }</pre>
-              </div>
+        <!-- PANE 3: GIT CONFLICT RESOLVER -->
+        <div id="gallery-pane-conflict" class="gallery-pane hidden">
+          <div class="h-10 bg-spot-black/95 border-b border-white/5 flex items-center justify-between px-4 text-xs font-mono">
+            <div class="flex items-center gap-2">
+              <span class="w-3 h-3 rounded-full bg-[#ff5f56]"></span>
+              <span class="w-3 h-3 rounded-full bg-[#ffbd2e]"></span>
+              <span class="w-3 h-3 rounded-full bg-[#27c93f]"></span>
+              <span class="text-spot-muted font-sans font-medium ml-2">Blitz Visual 3-Way Git Merge Conflict Resolver</span>
             </div>
-
-            <div class="window-frame">
-              <div class="window-bar">
-                <span>WebSocket &amp; Streaming Frame Inspector</span>
-                <span>tokio-tungstenite</span>
-              </div>
-              <img src="screenshot-websocket.png" alt="Blitz WebSocket streaming frames and payload inspector" loading="lazy">
-            </div>
+            <span class="text-amber-400 text-[11px] bg-amber-400/10 border border-amber-400/30 px-2 py-0.5 rounded font-mono font-bold">
+              ⚔️ 1 Merge Conflict
+            </span>
           </div>
 
-          <!-- Sandbox Pane 3: Git Sync & Keychain Vault -->
-          <div id="sandbox-pane-git" class="sandbox-pane" role="tabpanel">
-            <div>
-              <h3 style="margin-top:0">Clean Git diffs. Zero leaked credentials.</h3>
-              <p style="color:var(--text-muted)">
-                Collections commit as clean, split JSON files to GitHub, GitLab, or Gitea. Secrets live strictly in macOS Keychain or local <code>vault.json</code>—never staged or pushed.
-              </p>
-              <div class="terminal-card" style="margin-bottom:12px">
-                <div class="hl-ok">+ Committed to Git: collections/payments.request.json</div>
-                <pre style="margin:8px 0 0; white-space:pre-wrap">{
+          <div class="p-6 bg-[#131313] space-y-6">
+            <div class="p-3 sm:p-4 rounded-xl bg-amber-500/10 border border-amber-500/30 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+              <div>
+                <div class="font-bold text-amber-300 text-sm flex items-center gap-2">
+                  <span>⚠️</span> Simultaneous Team Edit on <code>/api/v2/orders</code>
+                </div>
+                <div class="text-spot-muted text-xs mt-1">Both you and teammate @sarah modified headers and timeouts on branch <code>env/production</code>.</div>
+              </div>
+              <div class="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+                <button onclick="resolveConflictDemo('local')" class="flex-1 sm:flex-initial px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-white font-bold text-xs transition-colors whitespace-nowrap">Accept Mine</button>
+                <button onclick="resolveConflictDemo('remote')" class="flex-1 sm:flex-initial px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-white font-bold text-xs transition-colors whitespace-nowrap">Accept Theirs</button>
+                <button onclick="resolveConflictDemo('smart')" class="w-full sm:w-auto px-3.5 py-1.5 rounded-lg bg-spot-bright hover:bg-[#22e76a] text-spot-black font-bold text-xs transition-all shadow-[0_2px_10px_rgba(30,215,96,0.3)] whitespace-nowrap">Smart 3-Way Merge</button>
+              </div>
+            </div>
+
+            <!-- Diff View -->
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs font-mono">
+              <div class="p-4 rounded-xl bg-black/60 border border-emerald-500/30">
+                <div class="flex items-center justify-between pb-2 mb-2 border-b border-white/5 text-[10px]">
+                  <span class="text-emerald-400 font-bold">YOUR LOCAL CHANGES (HEAD)</span>
+                  <span class="text-spot-faint">Saved 2m ago</span>
+                </div>
+                <pre class="text-emerald-200/90 leading-relaxed overflow-x-auto"><code>{
+  "name": "Create Order",
   "method": "POST",
-  "url": "{{baseUrl}}/v1/charges",
-  "auth": { "type": "bearer", "token": "{{vault:prod_secret}}" }
-}</pre>
+  "url": "https://api.store.com/v2/orders",
+  <span class="bg-emerald-500/20 text-emerald-300 px-1 rounded">"timeout_ms": 3000,</span>
+  "headers": [
+    { "key": "X-Client-App", "value": "ios-mobile" }
+  ]
+}</code></pre>
               </div>
-              <div class="terminal-card">
-                <div class="hl-warn">🔒 Stays on Your Device: OS Keychain / vault.json</div>
-                <div style="margin-top:6px"><code>prod_secret</code> = <code>sk_live_••••••••••••••••39a1</code> (gitignored)</div>
+
+              <div class="p-4 rounded-xl bg-black/60 border border-blue-500/30">
+                <div class="flex items-center justify-between pb-2 mb-2 border-b border-white/5 text-[10px]">
+                  <span class="text-blue-400 font-bold">INCOMING REMOTE CHANGES (@sarah)</span>
+                  <span class="text-spot-faint">commit 8bf3a1c</span>
+                </div>
+                <pre class="text-blue-200/90 leading-relaxed overflow-x-auto"><code>{
+  "name": "Create Order",
+  "method": "POST",
+  "url": "https://api.store.com/v2/orders",
+  <span class="bg-blue-500/20 text-blue-300 px-1 rounded">"timeout_ms": 5000,</span>
+  "headers": [
+    { "key": "X-Client-App", "value": "ios-mobile" },
+    <span class="bg-blue-500/20 text-blue-300 px-1 rounded">{ "key": "X-Trace-Id", "value": "{{trace_id}}" }</span>
+  ]
+}</code></pre>
               </div>
             </div>
 
-            <div class="window-frame">
-              <div class="window-bar">
-                <span>Team Collaboration &amp; Git Activity</span>
-                <span>3-Way Conflict Resolver</span>
+            <div id="conflict-resolution-toast" class="hidden p-3 rounded-xl bg-spot-green/20 border border-spot-green/40 text-spot-bright text-xs font-mono flex items-center justify-between animate-fade-in">
+              <span>✓ Conflict resolved cleanly into valid Postman v2.1 collection! Committed to local git tree.</span>
+              <span class="font-bold cursor-pointer text-white" onclick="document.getElementById('conflict-resolution-toast').classList.add('hidden')">×</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- PANE 4: TRAFFIC PROXY & MOCK SERVER -->
+        <div id="gallery-pane-proxy" class="gallery-pane hidden">
+          <div class="h-auto sm:h-10 py-2 sm:py-0 bg-spot-black/95 border-b border-white/5 flex flex-wrap items-center justify-between px-4 gap-2 text-xs font-mono">
+            <div class="flex items-center gap-2">
+              <span class="w-3 h-3 rounded-full bg-[#ff5f56]"></span>
+              <span class="w-3 h-3 rounded-full bg-[#ffbd2e]"></span>
+              <span class="w-3 h-3 rounded-full bg-[#27c93f]"></span>
+              <span class="text-spot-muted font-sans font-medium ml-2">Blitz Tools: Traffic Capture Proxy &amp; Mock Server</span>
+            </div>
+            <div class="flex flex-wrap items-center gap-2">
+              <span class="text-spot-bright text-[10px] bg-spot-green/10 border border-spot-green/30 px-2 py-0.5 rounded font-mono">Proxy :8080 Active</span>
+              <span class="text-blue-400 text-[10px] bg-blue-500/10 border border-blue-500/30 px-2 py-0.5 rounded font-mono">Mock :3001 Active</span>
+            </div>
+          </div>
+
+          <div class="p-6 bg-[#131313] space-y-6">
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <!-- Capture Proxy Feed -->
+              <div class="space-y-3">
+                <div class="flex items-center justify-between">
+                  <div class="font-bold text-white text-xs flex items-center gap-2">
+                    <span class="w-2 h-2 rounded-full bg-spot-bright animate-ping"></span>
+                    <span>Live Capture Proxy (127.0.0.1:8080)</span>
+                  </div>
+                  <span class="text-[10px] text-spot-faint font-mono">iOS / Android / curl</span>
+                </div>
+                <div class="rounded-xl border border-white/10 bg-black/60 p-3 space-y-2 font-mono text-xs max-h-56 overflow-y-auto">
+                  <div class="p-2 rounded bg-white/[0.03] border border-white/5 flex items-center justify-between">
+                    <div>
+                      <span class="text-spot-bright font-bold mr-2">POST</span>
+                      <span class="text-gray-300">/v1/charges</span>
+                    </div>
+                    <span class="text-[10px] text-spot-bright bg-spot-green/10 px-1.5 py-0.5 rounded">200 OK • 142ms</span>
+                  </div>
+                  <div class="p-2 rounded bg-white/[0.03] border border-white/5 flex items-center justify-between">
+                    <div>
+                      <span class="text-blue-400 font-bold mr-2">GET</span>
+                      <span class="text-gray-300">/v1/customer/cus_982</span>
+                    </div>
+                    <span class="text-[10px] text-spot-bright bg-spot-green/10 px-1.5 py-0.5 rounded">200 OK • 38ms</span>
+                  </div>
+                  <div class="p-2 rounded bg-white/[0.03] border border-white/5 flex items-center justify-between">
+                    <div>
+                      <span class="text-amber-400 font-bold mr-2">PUT</span>
+                      <span class="text-gray-300">/v1/subscriptions</span>
+                    </div>
+                    <span class="text-[10px] text-spot-bright bg-spot-green/10 px-1.5 py-0.5 rounded">204 No Content • 22ms</span>
+                  </div>
+                </div>
+                <div class="text-[11px] text-spot-muted">Captured calls automatically convert into replayable request items with complete headers and payloads.</div>
               </div>
-              <img src="screenshot-team-sync.png" alt="Blitz Team Collaboration and Git Cloud Sync activity view" loading="lazy">
+
+              <!-- Instant Mock Server -->
+              <div class="space-y-3">
+                <div class="flex items-center justify-between">
+                  <div class="font-bold text-white text-xs flex items-center gap-2">
+                    <span class="text-blue-400">⚡</span>
+                    <span>Instant Local Mock Server (127.0.0.1:3001)</span>
+                  </div>
+                  <span class="text-[10px] text-spot-bright font-mono">&lt; 1ms Latency</span>
+                </div>
+                <div class="rounded-xl border border-white/10 bg-black/60 p-3 space-y-2 font-mono text-xs max-h-56 overflow-y-auto">
+                  <div class="p-2 rounded bg-white/[0.03] border border-white/5">
+                    <div class="flex items-center justify-between mb-1">
+                      <span class="text-blue-400 font-bold">GET /api/v1/users/:id</span>
+                      <span class="text-spot-bright text-[10px]">Matched: "User Example"</span>
+                    </div>
+                    <div class="text-spot-faint text-[10px]">Wildcard pattern matching with pre-saved example payloads.</div>
+                  </div>
+                  <div class="p-2 rounded bg-white/[0.03] border border-white/5">
+                    <div class="flex items-center justify-between mb-1">
+                      <span class="text-spot-bright font-bold">POST /api/v1/auth/login</span>
+                      <span class="text-spot-bright text-[10px]">Matched: "200 Success"</span>
+                    </div>
+                    <div class="text-spot-faint text-[10px]">Stub responses for frontend testing before backend deployment.</div>
+                  </div>
+                </div>
+                <div class="text-[11px] text-spot-muted">Mock responses spin up locally in 10ms with zero Docker containers or external servers required.</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- PANE 5: MULTI PROTOCOL STREAMING -->
+        <div id="gallery-pane-protocols" class="gallery-pane hidden">
+          <div class="h-auto sm:h-10 py-2 sm:py-0 bg-spot-black/95 border-b border-white/5 flex flex-wrap items-center justify-between px-4 gap-2 text-xs font-mono">
+            <div class="flex items-center gap-2">
+              <span class="w-3 h-3 rounded-full bg-[#ff5f56]"></span>
+              <span class="w-3 h-3 rounded-full bg-[#ffbd2e]"></span>
+              <span class="w-3 h-3 rounded-full bg-[#27c93f]"></span>
+              <span class="text-spot-muted font-sans font-medium ml-2">Blitz Multi-Protocol Live Session (WebSocket / MCP)</span>
+            </div>
+            <span class="text-spot-bright text-[11px] bg-spot-green/10 border border-spot-green/30 px-2 py-0.5 rounded font-mono truncate">
+              ● Connected wss://echo.websocket.events
+            </span>
+          </div>
+
+          <div class="p-6 bg-[#131313] space-y-4">
+            <div class="flex items-center gap-3 p-3 bg-black/60 border border-white/10 rounded-xl font-mono text-xs">
+              <span class="text-purple-400 font-bold">WS</span>
+              <input type="text" readonly value="wss://echo.websocket.events" class="bg-transparent text-white w-full outline-none">
+              <span class="text-spot-bright text-[11px] bg-spot-green/15 px-2 py-0.5 rounded">Connected</span>
+            </div>
+
+            <!-- Terminal Stream Log -->
+            <div id="ws-stream-log" class="rounded-xl border border-white/10 bg-black/80 p-4 font-mono text-xs space-y-2 h-44 overflow-y-auto">
+              <div class="text-spot-faint text-[10px]">// Bi-directional WebSocket stream session initiated via tokio-tungstenite</div>
+              <div class="text-spot-muted"><span class="text-spot-faint">18:04:12.102</span> <span class="text-spot-bright font-bold">↑ SEND</span> {"event":"subscribe","channel":"ticker:BTC-USD"}</div>
+              <div class="text-emerald-300"><span class="text-spot-faint">18:04:12.148</span> <span class="text-blue-400 font-bold">↓ RECV</span> {"event":"subscribed","channel":"ticker:BTC-USD","status":"ok"}</div>
+              <div class="text-emerald-300"><span class="text-spot-faint">18:04:13.204</span> <span class="text-blue-400 font-bold">↓ RECV</span> {"price":98450.25,"volume":14.82,"ts":1749281023}</div>
+              <div class="text-emerald-300"><span class="text-spot-faint">18:04:14.210</span> <span class="text-blue-400 font-bold">↓ RECV</span> {"price":98455.10,"volume":2.41,"ts":1749281024}</div>
+            </div>
+
+            <!-- Interactive Send Form -->
+            <div class="flex items-center gap-2">
+              <input type="text" id="ws-input-msg" value='{"action":"ping","nonce":42}'
+                class="flex-1 bg-black/60 border border-white/10 rounded-lg px-3 py-2 font-mono text-xs text-white focus:outline-none focus:border-spot-bright">
+              <button onclick="sendWsDemoMessage()"
+                class="px-4 py-2 rounded-lg bg-spot-bright hover:bg-[#22e76a] text-spot-black font-bold text-xs font-mono transition-all">
+                Send Frame
+              </button>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- ================================================================= -->
+    <!-- SECTION: HOW BLITZ CLOUD WORKS (DEEP DIVE ON GIT REPO AS CLOUD) -->
+    <!-- ================================================================= -->
+    <section id="git-cloud" class="mt-24 pt-12 border-t border-white/[0.06] text-center">
+      <span class="text-xs font-bold text-spot-bright tracking-widest uppercase block mb-3">DECENTRALIZED TEAM
+        SYNC</span>
+      <h2 class="text-3xl sm:text-5xl font-extrabold tracking-tight mb-4">Your Cloud Is Any Git Repository</h2>
+      <p class="text-spot-muted max-w-2xl mx-auto text-base sm:text-lg mb-16">
+        No proprietary servers, no monthly per-seat subscription invoices. Blitz turns any Git repo—public, private,
+        GitHub, GitLab, or self-hosted Gitea—into a seamless team cloud backend.
+      </p>
+
+      <!-- 3-Step Git Architecture Grid -->
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-6 text-left mb-12">
+        <div class="p-8 rounded-2xl glass glass-hover">
+          <div
+            class="w-10 h-10 rounded-xl bg-spot-green/15 text-spot-bright flex items-center justify-center font-mono font-bold text-sm mb-6">
+            01</div>
+          <h3 class="text-lg font-bold mb-3 tracking-tight">Plug In Any Git Remote</h3>
+          <p class="text-spot-muted text-sm leading-relaxed mb-4">
+            Point Blitz to any repo URL (HTTPS or SSH):
+          </p>
+          <div
+            class="bg-black/50 p-2.5 rounded-lg border border-white/5 font-mono text-[11px] text-spot-bright break-all">
+            git@github.com:org/api-specs.git
+          </div>
+          <p class="text-spot-faint text-xs mt-3 leading-relaxed">
+            Blitz clones it locally under <code>{data_dir}/blitz/cloud/</code>. Works with private repos via your
+            existing SSH keys or <code>gh auth login</code>.
+          </p>
+        </div>
+
+        <div class="p-8 rounded-2xl glass glass-hover">
+          <div
+            class="w-10 h-10 rounded-xl bg-blue-500/15 text-blue-400 flex items-center justify-center font-mono font-bold text-sm mb-6">
+            02</div>
+          <h3 class="text-lg font-bold mb-3 tracking-tight">Environments = Git Branches</h3>
+          <p class="text-spot-muted text-sm leading-relaxed mb-4">
+            Each environment you create maps directly to a dedicated branch:
+          </p>
+          <div class="bg-black/50 p-2.5 rounded-lg border border-white/5 font-mono text-[11px] text-blue-300">
+            env/development<br>
+            env/production<br>
+            env/staging-us-east
+          </div>
+          <p class="text-spot-faint text-xs mt-3 leading-relaxed">
+            Switching environments in the top bar checks out the corresponding Git branch and instantly reloads the
+            workspace tree.
+          </p>
+        </div>
+
+        <div class="p-8 rounded-2xl glass glass-hover">
+          <div
+            class="w-10 h-10 rounded-xl bg-purple-500/15 text-purple-400 flex items-center justify-center font-mono font-bold text-sm mb-6">
+            03</div>
+          <h3 class="text-lg font-bold mb-3 tracking-tight">Save Local, Sync to Team</h3>
+          <p class="text-spot-muted text-sm leading-relaxed mb-4">
+            Two distinct actions give you full autonomy:
+          </p>
+          <div class="space-y-2 text-xs">
+            <div class="bg-black/50 p-2 rounded-lg border border-white/5 text-gray-300">
+              <strong class="text-spot-bright">Save (⌘S):</strong> Commits changes locally to your local git clone.
+              Never pushes automatically.
+            </div>
+            <div class="bg-black/50 p-2 rounded-lg border border-white/5 text-gray-300">
+              <strong class="text-purple-400">Sync:</strong> Pulls with rebase, integrates peer updates, and pushes
+              upstream without force-pushing.
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Real Team Collaboration Screenshot -->
+      <div class="max-w-4xl mx-auto mb-12 text-left">
+        <div class="panel rounded-xl overflow-hidden shadow-2xl border border-white/10">
+          <div class="bg-[#161821] border-b border-white/5 px-4 py-2.5 flex items-center justify-between text-xs text-slate-400">
+            <div class="flex items-center gap-2">
+              <span class="w-2.5 h-2.5 rounded-full bg-[#ff5f56]"></span>
+              <span class="w-2.5 h-2.5 rounded-full bg-[#ffbd2e]"></span>
+              <span class="w-2.5 h-2.5 rounded-full bg-[#27c93f]"></span>
+              <span class="ml-2 font-mono text-[11px] text-slate-300">Team Collaboration &amp; Workspace Activity • Git Cloud</span>
+            </div>
+            <span class="text-[11px] font-mono text-spot-bright bg-spot-bright/10 px-2 py-0.5 rounded">Git Native</span>
+          </div>
+          <img src="screenshot-team-sync.png" alt="Blitz Team Collaboration &amp; Git Cloud Sync Activity"
+            class="w-full h-auto block" loading="lazy">
+        </div>
+        <p class="text-xs text-spot-faint text-center mt-3 font-mono">
+          Native team collaboration panel showing real-time Git commit histories, masked remotes, and instant branch sync.
+        </p>
+      </div>
+
+      <!-- VISUAL FLOW DEMONSTRATION DIAGRAM -->
+      <div
+        class="rounded-2xl glass p-8 text-left max-w-4xl mx-auto mb-12 border border-white/10 relative overflow-hidden">
+        <div class="flex items-center justify-between mb-8 border-b border-white/5 pb-4">
+          <div>
+            <div class="text-xs font-mono font-bold text-spot-bright uppercase tracking-wider mb-1">Interactive
+              Architecture Flow</div>
+            <h3 class="text-lg font-bold">How Data Flows Across Machines</h3>
+          </div>
+          <span
+            class="text-[11px] font-mono text-spot-muted bg-white/5 px-2.5 py-1 rounded-full border border-white/5">Decentralized
+            &amp; Encrypted</span>
+        </div>
+
+        <!-- Visual Flow Nodes -->
+        <div class="grid grid-cols-1 md:grid-cols-11 gap-4 items-center">
+          <!-- Machine A (Developer 1) -->
+          <div class="md:col-span-3 p-4 rounded-xl bg-black/60 border border-white/10 flex flex-col justify-between">
+            <div class="flex items-center gap-2 mb-3">
+              <div class="w-2.5 h-2.5 rounded-full bg-spot-bright"></div>
+              <span class="font-bold text-xs">Engineer A (Workstation)</span>
+            </div>
+            <div class="space-y-2 font-mono text-[11px]">
+              <div class="p-2 rounded bg-white/5 text-gray-300">
+                1. Edit collection in UI
+              </div>
+              <div class="p-2 rounded bg-white/5 text-emerald-300">
+                2. ⌘S → Commit to local clone
+              </div>
+              <div class="p-2 rounded bg-spot-bright/15 text-spot-bright font-bold">
+                3. Click "Sync" → Git Push
+              </div>
+            </div>
+            <div class="mt-3 text-[10px] text-spot-faint font-mono">
+              🔒 Secrets filtered via Keychain
+            </div>
+          </div>
+
+          <!-- Arrow A to Cloud -->
+          <div class="md:col-span-1 flex md:flex-col items-center justify-center text-spot-bright py-2">
+            <svg class="w-6 h-6 hidden md:block rotate-0" fill="none" stroke="currentColor" stroke-width="2.5"
+              viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M14 5l7 7m0 0l-7 7m7-7H3" />
+            </svg>
+            <svg class="w-6 h-6 md:hidden rotate-90" fill="none" stroke="currentColor" stroke-width="2.5"
+              viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M14 5l7 7m0 0l-7 7m7-7H3" />
+            </svg>
+          </div>
+
+          <!-- Central Node: The Git Repository (Cloud) -->
+          <div
+            class="md:col-span-3 p-4 sm:p-5 rounded-xl bg-gradient-to-b from-spot-elevated to-black/90 border border-spot-bright/30 shadow-[0_0_25px_rgba(29,185,84,0.15)] text-center min-w-0">
+            <div
+              class="w-10 h-10 rounded-full bg-spot-green/20 text-spot-bright flex items-center justify-center mx-auto mb-3">
+              <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
+                <path
+                  d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z" />
+              </svg>
+            </div>
+            <div class="font-extrabold text-sm mb-1 truncate">Your Git Repository</div>
+            <div class="text-[10px] text-spot-muted font-mono mb-3 truncate">GitHub • GitLab • Gitea • Bitbucket</div>
+            <div
+              class="bg-black/60 p-2 rounded border border-white/5 text-[10px] text-left space-y-1 font-mono text-gray-300 overflow-x-auto">
+              <div class="text-blue-300">├── collections/</div>
+              <div class="text-blue-300">├── environments/</div>
+              <div class="text-amber-300">└── branches: env/*</div>
+            </div>
+          </div>
+
+          <!-- Arrow Cloud to Machine B -->
+          <div class="md:col-span-1 flex md:flex-col items-center justify-center text-blue-400 py-2">
+            <svg class="w-6 h-6 hidden md:block rotate-0" fill="none" stroke="currentColor" stroke-width="2.5"
+              viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M14 5l7 7m0 0l-7 7m7-7H3" />
+            </svg>
+            <svg class="w-6 h-6 md:hidden rotate-90" fill="none" stroke="currentColor" stroke-width="2.5"
+              viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M14 5l7 7m0 0l-7 7m7-7H3" />
+            </svg>
+          </div>
+
+          <!-- Machine B (Developer 2) -->
+          <div class="md:col-span-3 p-4 rounded-xl bg-black/60 border border-white/10 flex flex-col justify-between">
+            <div class="flex items-center gap-2 mb-3">
+              <div class="w-2.5 h-2.5 rounded-full bg-blue-400"></div>
+              <span class="font-bold text-xs">Engineer B (Teammate)</span>
+            </div>
+            <div class="space-y-2 font-mono text-[11px]">
+              <div class="p-2 rounded bg-blue-500/15 text-blue-300 font-bold">
+                1. Click "Sync" → Git Pull
+              </div>
+              <div class="p-2 rounded bg-white/5 text-gray-300">
+                2. Auto rebase without conflicts
+              </div>
+              <div class="p-2 rounded bg-white/5 text-emerald-300">
+                3. UI hot-reloads with updates
+              </div>
+            </div>
+            <div class="mt-3 text-[10px] text-spot-faint font-mono">
+              🛡 Local secrets remain untouched
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Deep Dive Details Callout -->
+      <div
+        class="rounded-2xl glass p-8 text-left max-w-4xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-8 border border-white/10">
+        <div>
+          <div class="flex items-center gap-2 mb-3">
+            <span class="w-2.5 h-2.5 rounded-full bg-spot-bright"></span>
+            <h4 class="font-bold text-base">How Private Repos &amp; Team Members Work</h4>
+          </div>
+          <p class="text-spot-muted text-sm leading-relaxed mb-3">
+            Adding team members requires zero setup inside Blitz. You manage access exactly where you already do:
+            <strong>in your Git provider</strong>.
+          </p>
+          <ul class="space-y-2 text-xs text-spot-muted">
+            <li class="flex items-start gap-2">
+              <span class="text-spot-bright">▸</span>
+              <span><strong>Invite via GitHub / GitLab / Bitbucket:</strong> Grant repository read or write access to
+                your team member or contractors.</span>
+            </li>
+            <li class="flex items-start gap-2">
+              <span class="text-spot-bright">▸</span>
+              <span><strong>Native Authentication:</strong> Blitz uses system <code>git</code> under the hood. It
+                automatically uses your existing SSH keys, Git credential helpers, or <code>gh</code> token.</span>
+            </li>
+            <li class="flex items-start gap-2">
+              <span class="text-spot-bright">▸</span>
+              <span><strong>Pull Requests &amp; Reviews:</strong> Since every collection and environment is clean JSON
+                in a Git repo, teams can open PRs, conduct peer reviews, and review diffs.</span>
+            </li>
+          </ul>
+        </div>
+
+        <div>
+          <div class="flex items-center gap-2 mb-3">
+            <span class="w-2.5 h-2.5 rounded-full bg-amber-400"></span>
+            <h4 class="font-bold text-base">Zero Secret Leaks by Design</h4>
+          </div>
+          <p class="text-spot-muted text-sm leading-relaxed mb-3">
+            Cloud platforms frequently leak bearer tokens when shared across team workspaces. Blitz enforces strict
+            isolation boundaries:
+          </p>
+          <div class="space-y-2 text-xs font-mono">
+            <div class="p-2 rounded bg-black/50 border border-white/5 text-emerald-300">
+              ✓ Synced: Collections, endpoints, scripts, schema, public variables.
+            </div>
+            <div class="p-2 rounded bg-black/50 border border-white/5 text-amber-300">
+              🔒 Redacted: Password values, private bearer tokens, secret:// refs.
+            </div>
+            <div class="p-2 rounded bg-black/50 border border-white/5 text-purple-300">
+              🛡 Machine Only: Cookies, request history, vault.json, OS Keychain keys.
             </div>
           </div>
         </div>
       </div>
     </section>
 
-    <!-- 3. WHY ENGINEERS SWITCH -->
-    <section id="why-switch" class="site-section">
-      <div class="site-container">
-        <div class="section-head">
-          <div class="section-eyebrow">Built for Speed &amp; Sovereignty</div>
-          <h2 class="section-title">Why teams leave Electron API clients behind.</h2>
-          <p class="section-subtitle">
-            Keep your payloads off third-party clouds, ditch per-seat licensing, and recover half a gigabyte of RAM.
+    <!-- ================================================================= -->
+    <!-- SECTION: DEEP DIVE - MULTI PROTOCOL SUITE -->
+    <!-- ================================================================= -->
+    <section id="protocols" class="mt-24 pt-12 border-t border-white/[0.06] text-center">
+      <span class="text-xs font-bold text-spot-bright tracking-widest uppercase block mb-3">MULTI-PROTOCOL ENGINE</span>
+      <h2 class="text-3xl sm:text-5xl font-extrabold tracking-tight mb-4">One Unified Interface. 8 Modern Protocols.
+      </h2>
+      <p class="text-spot-muted max-w-2xl mx-auto text-base sm:text-lg mb-16">
+        Stop switching between five different niche tools. Blitz supports every protocol in your distributed
+        architecture with equal speed.
+      </p>
+
+      <div class="grid grid-cols-2 md:grid-cols-4 gap-4 text-left">
+        <div class="p-5 rounded-xl glass glass-hover">
+          <div class="text-xs font-mono font-bold text-blue-400 mb-1">REST &amp; HTTP/1.1+2</div>
+          <div class="text-sm font-semibold mb-2">Automated Decompression</div>
+          <p class="text-xs text-spot-muted leading-relaxed">Brotli, Gzip, Deflate, multipart form-data, and chunked
+            transfer decoding.</p>
+        </div>
+        <div class="p-5 rounded-xl glass glass-hover">
+          <div class="text-xs font-mono font-bold text-pink-400 mb-1">GraphQL &amp; GraphQL-WS</div>
+          <div class="text-sm font-semibold mb-2">Query &amp; Subscription</div>
+          <p class="text-xs text-spot-muted leading-relaxed">Syntax highlighted query editor, variable interpolation,
+            and live subscription streams.</p>
+        </div>
+        <div class="p-5 rounded-xl glass glass-hover">
+          <div class="text-xs font-mono font-bold text-purple-400 mb-1">WebSockets</div>
+          <div class="text-sm font-semibold mb-2">tokio-tungstenite Core</div>
+          <p class="text-xs text-spot-muted leading-relaxed">Bi-directional frame stream, heartbeat handling, and
+            real-time inspector.</p>
+        </div>
+        <div class="p-5 rounded-xl glass glass-hover">
+          <div class="text-xs font-mono font-bold text-emerald-400 mb-1">Server-Sent Events</div>
+          <div class="text-sm font-semibold mb-2">Live Event Stream</div>
+          <p class="text-xs text-spot-muted leading-relaxed">Listen to text/event-stream feeds with custom ID tracking
+            and reconnect stubs.</p>
+        </div>
+        <div class="p-5 rounded-xl glass glass-hover">
+          <div class="text-xs font-mono font-bold text-amber-400 mb-1">Socket.IO v4</div>
+          <div class="text-sm font-semibold mb-2">Event Emitter &amp; Listener</div>
+          <p class="text-xs text-spot-muted leading-relaxed">Connect to modern Socket.IO clusters, send custom payloads,
+            and capture responses.</p>
+        </div>
+        <div class="p-5 rounded-xl glass glass-hover">
+          <div class="text-xs font-mono font-bold text-orange-400 mb-1">gRPC Unary</div>
+          <div class="text-sm font-semibold mb-2">JSON-to-Protobuf Stubs</div>
+          <p class="text-xs text-spot-muted leading-relaxed">Fast unary gRPC invocation with structured payloads and
+            Protobuf frame decoding.</p>
+        </div>
+        <div class="p-5 rounded-xl glass glass-hover">
+          <div class="text-xs font-mono font-bold text-teal-400 mb-1">MQTT v3.1.1 / 5.0</div>
+          <div class="text-sm font-semibold mb-2">Publish &amp; Subscribe</div>
+          <p class="text-xs text-spot-muted leading-relaxed">Powered by rumqttc for embedded IoT device testing and
+            topic debugging.</p>
+        </div>
+        <div class="p-5 rounded-xl glass glass-hover">
+          <div class="text-xs font-mono font-bold text-yellow-300 mb-1">Model Context Protocol</div>
+          <div class="text-sm font-semibold mb-2">AI Agent Tool Testing</div>
+          <p class="text-xs text-spot-muted leading-relaxed">Inspect and invoke MCP tools via STDIO JSON-RPC for Claude
+            and LLM agent tooling.</p>
+        </div>
+      </div>
+
+      <!-- Real-World WebSocket & Streaming Interface Preview -->
+      <div class="max-w-5xl mx-auto mt-12 text-left">
+        <div class="panel rounded-xl overflow-hidden shadow-2xl border border-white/10">
+          <div class="bg-[#161821] border-b border-white/5 px-4 py-2.5 flex items-center justify-between text-xs text-slate-400">
+            <div class="flex items-center gap-2">
+              <span class="w-2.5 h-2.5 rounded-full bg-[#ff5f56]"></span>
+              <span class="w-2.5 h-2.5 rounded-full bg-[#ffbd2e]"></span>
+              <span class="w-2.5 h-2.5 rounded-full bg-[#27c93f]"></span>
+              <span class="ml-2 font-mono text-[11px] text-slate-300">Blitz WebSocket &amp; Streaming Engine • Socket Deck</span>
+            </div>
+            <span class="text-[11px] font-mono text-purple-400 bg-purple-500/10 px-2 py-0.5 rounded">WebSocket / WSS</span>
+          </div>
+          <img src="screenshot-websocket.png" alt="Blitz WebSocket and streaming frame inspection interface"
+            class="w-full h-auto block" loading="lazy">
+        </div>
+        <p class="text-xs text-spot-faint text-center mt-3 font-mono">
+          Interactive WebSocket debugging with live timeline frame stream and message presets.
+        </p>
+      </div>
+    </section>
+
+    <!-- ================================================================= -->
+    <!-- SECTION: CLI & CI/CD AUTOMATION -->
+    <!-- ================================================================= -->
+    <section id="cli-runner" class="mt-24 pt-12 border-t border-white/[0.06] text-center">
+      <span class="text-xs font-bold text-spot-bright tracking-widest uppercase block mb-3">DEVSECOPS, AUTOMATION &amp; AI AGENTS</span>
+      <h2 class="text-3xl sm:text-5xl font-extrabold tracking-tight mb-4">Built-in CLI Runner &amp; MCP Agent Server.
+      </h2>
+      <p class="text-spot-muted max-w-2xl mx-auto text-base sm:text-lg mb-12">
+        Never install <code>newman</code> or heavyweight Node packages again. Blitz ships with its own single-binary CLI
+        runner for CI/CD pipelines, plus a native <strong>Model Context Protocol (MCP)</strong> server for AI agents.
+      </p>
+
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-5xl mx-auto text-left">
+        <!-- Card 1: blitz run -->
+        <div class="rounded-2xl glass p-6">
+          <div class="flex items-center justify-between mb-4 border-b border-white/5 pb-3">
+            <div class="flex items-center gap-2">
+              <span class="text-xs font-mono text-spot-bright font-bold">Terminal</span>
+              <span class="text-xs text-spot-faint">— blitz run</span>
+            </div>
+            <span class="text-xs text-spot-muted font-mono">Exit Code: 0 (PASS)</span>
+          </div>
+          <div
+            class="font-mono text-xs leading-relaxed text-gray-300 bg-black/60 p-4 rounded-xl border border-white/5 overflow-x-auto">
+            <div class="text-spot-muted mb-2"><span class="text-spot-bright">$</span> blitz run api-tests.json --env
+              staging.json</div>
+            <div class="text-spot-bright">⚡ Blitz Collection Runner v1.0</div>
+            <div class="text-spot-faint">Loaded collection: Authentication &amp; Billing API (14 requests)</div>
+            <div class="text-spot-faint">Active environment: Staging Cluster (US-East)</div>
+            <div class="my-2 border-t border-white/5"></div>
+            <div><span class="text-spot-bright font-bold">✓ PASS</span> POST /oauth/v2/token [200 OK, 12ms]</div>
+            <div><span class="text-spot-bright font-bold">✓ PASS</span> GET /user/billing [200 OK, 28ms]</div>
+            <div><span class="text-spot-bright font-bold">✓ PASS</span> POST /v1/charges [201 CREATED, 44ms]</div>
+            <div class="my-2 border-t border-white/5"></div>
+            <div class="text-spot-bright font-bold">Summary: 14/14 tests passed (0 failures) • Duration: 142ms total</div>
+          </div>
+        </div>
+
+        <!-- Card 2: blitz mcp -->
+        <div class="rounded-2xl glass p-6">
+          <div class="flex items-center justify-between mb-4 border-b border-white/5 pb-3">
+            <div class="flex items-center gap-2">
+              <span class="text-xs font-mono text-yellow-300 font-bold">AI Agent MCP</span>
+              <span class="text-xs text-spot-faint">— blitz mcp setup</span>
+            </div>
+            <span class="text-xs text-spot-bright font-mono bg-spot-green/10 border border-spot-green/30 px-2 py-0.5 rounded">Auto-Config</span>
+          </div>
+          <div
+            class="font-mono text-xs leading-relaxed text-gray-300 bg-black/60 p-4 rounded-xl border border-white/5 overflow-x-auto">
+            <div class="text-spot-muted mb-2"><span class="text-spot-bright">$</span> blitz mcp setup</div>
+            <div class="text-spot-bright">⚡ Blitz MCP Scanner &amp; Setup</div>
+            <div class="text-spot-faint">Scanning installed IDEs &amp; AI coding agents...</div>
+            <div class="my-2 border-t border-white/5"></div>
+            <div class="text-gray-300">[1] Cursor (~/.cursor/mcp.json)</div>
+            <div class="text-gray-300">[2] Claude Desktop (claude_desktop_config.json)</div>
+            <div class="text-gray-300">[3] Antigravity / Gemini (~/.gemini/antigravity/mcp_config.json)</div>
+            <div class="text-gray-300">[4] Windsurf (~/.codeium/windsurf/mcp_config.json)</div>
+            <div class="text-gray-300">[5] VS Code (Cline &amp; Roo Code)</div>
+            <div class="text-gray-300">[6] Zed (settings.json context_servers)</div>
+            <div class="my-2 border-t border-white/5"></div>
+            <div class="text-spot-bright font-bold">✓ Configured seamlessly across all selected IDEs</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================================================================= -->
+    <!-- SECTION: DETAILED POWER FEATURES -->
+    <!-- ================================================================= -->
+    <section id="features" class="mt-24 pt-12 border-t border-white/[0.06] text-center">
+      <span class="text-xs font-bold text-spot-bright tracking-widest uppercase block mb-3">ENGINEERED FOR
+        DEVELOPERS</span>
+      <h2 class="text-3xl sm:text-5xl font-extrabold tracking-tight mb-4">Real Capabilities. Zero Fluff.</h2>
+      <p class="text-spot-muted max-w-xl mx-auto text-base sm:text-lg mb-12">
+        Everything you expect from an industry-standard API workbench, built to run cleanly on your workstation.
+      </p>
+
+      <!-- Cockpit & Collection Hierarchy Screenshot -->
+      <div class="max-w-5xl mx-auto mb-16 text-left">
+        <div class="panel rounded-xl overflow-hidden shadow-2xl border border-white/10">
+          <div class="bg-[#161821] border-b border-white/5 px-4 py-2.5 flex items-center justify-between text-xs text-slate-400">
+            <div class="flex items-center gap-2">
+              <span class="w-2.5 h-2.5 rounded-full bg-[#ff5f56]"></span>
+              <span class="w-2.5 h-2.5 rounded-full bg-[#ffbd2e]"></span>
+              <span class="w-2.5 h-2.5 rounded-full bg-[#27c93f]"></span>
+              <span class="ml-2 font-mono text-[11px] text-slate-300">Blitz Cockpit • Quick Actions &amp; Collection Explorer</span>
+            </div>
+            <span class="text-[11px] font-mono text-spot-bright bg-spot-bright/10 px-2 py-0.5 rounded">Native Workspace</span>
+          </div>
+          <img src="screenshot-cockpit.png" alt="Blitz Cockpit and Collection Hierarchy"
+            class="w-full h-auto block" loading="lazy">
+        </div>
+        <p class="text-xs text-spot-faint text-center mt-3 font-mono">
+          Cockpit dashboard with instant keyboard launcher, nested collections, and type-badged endpoints.
+        </p>
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 text-left">
+        <!-- Feature 1 -->
+        <div class="p-8 rounded-2xl glass glass-hover">
+          <div class="w-12 h-12 rounded-xl bg-spot-green/15 text-spot-bright flex items-center justify-center mb-6">
+            <svg class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" />
+            </svg>
+          </div>
+          <h3 class="text-xl font-bold mb-3 tracking-tight">Pure Native Rust Core</h3>
+          <p class="text-spot-muted text-sm leading-relaxed">
+            Fast native startup and minimal CLI RAM usage. Never endure another spinning wheel just to test
+            a single endpoint.
           </p>
         </div>
 
-        <div class="compare-bars">
-          <div class="bar-card">
-            <h3>Idle Memory Footprint</h3>
-            <div class="metric-row">
-              <div class="metric-meta"><span>Blitz (Native Rust + OS WebView)</span><strong>~32 MB</strong></div>
-              <div class="metric-track"><div class="metric-fill blitz" style="width:8%"></div></div>
-            </div>
-            <div class="metric-row">
-              <div class="metric-meta"><span>Electron-Based Clients</span><strong>650+ MB</strong></div>
-              <div class="metric-track"><div class="metric-fill other" style="width:94%"></div></div>
-            </div>
+        <!-- Feature 2 -->
+        <div class="p-8 rounded-2xl glass glass-hover">
+          <div class="w-12 h-12 rounded-xl bg-purple-500/15 text-purple-400 flex items-center justify-center mb-6">
+            <svg class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+              <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+            </svg>
           </div>
-          <div class="bar-card">
-            <h3>Headless CLI Cold Start</h3>
-            <div class="metric-row">
-              <div class="metric-meta"><span><code>blitz run</code> (Static Native Binary)</span><strong>~80 ms</strong></div>
-              <div class="metric-track"><div class="metric-fill blitz" style="width:6%"></div></div>
-            </div>
-            <div class="metric-row">
-              <div class="metric-meta"><span>Node.js Collection Runners</span><strong>3.5 – 4.8 s</strong></div>
-              <div class="metric-track"><div class="metric-fill other" style="width:88%"></div></div>
-            </div>
+          <h3 class="text-xl font-bold mb-3 tracking-tight">Vault &amp; macOS Keychain</h3>
+          <p class="text-spot-muted text-sm leading-relaxed">
+            Store tokens securely with <code>{{vault:key}}</code> and <code>secret://</code> URLs. Sensitive variables
+            are automatically redacted before team sync.
+          </p>
+        </div>
+
+        <!-- Feature 3 -->
+        <div class="p-8 rounded-2xl glass glass-hover">
+          <div class="w-12 h-12 rounded-xl bg-blue-500/15 text-blue-400 flex items-center justify-center mb-6">
+            <svg class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <circle cx="18" cy="18" r="3" />
+              <circle cx="6" cy="6" r="3" />
+              <path d="M13 6h3a2 2 0 0 1 2 2v7" />
+              <line x1="6" y1="9" x2="6" y2="21" />
+            </svg>
+          </div>
+          <h3 class="text-xl font-bold mb-3 tracking-tight">Git Branch Team Sync</h3>
+          <p class="text-spot-muted text-sm leading-relaxed">
+            Sync environments and collections with your team using Git branches (<code>env/&lt;slug&gt;</code>). Full PR
+            reviews, merge histories, and conflict resolution.
+          </p>
+        </div>
+
+        <!-- Feature 4 -->
+        <div class="p-8 rounded-2xl glass glass-hover">
+          <div class="w-12 h-12 rounded-xl bg-orange-500/15 text-orange-400 flex items-center justify-center mb-6">
+            <svg class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <polyline points="4 17 10 11 4 5" />
+              <line x1="12" y1="19" x2="20" y2="19" />
+            </svg>
+          </div>
+          <h3 class="text-xl font-bold mb-3 tracking-tight">Embedded JS Sandbox</h3>
+          <p class="text-spot-muted text-sm leading-relaxed">
+            In-engine Boa JavaScript execution for pre-request scripts and post-response tests. Full support for
+            <code>blitz.test</code>, assertions, and CryptoJS signing.
+          </p>
+        </div>
+
+        <!-- Feature 5 -->
+        <div class="p-8 rounded-2xl glass glass-hover">
+          <div class="w-12 h-12 rounded-xl bg-teal-500/15 text-teal-400 flex items-center justify-center mb-6">
+            <svg class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <path
+                d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" />
+              <polyline points="3.27 6.96 12 12.01 20.73 6.96" />
+              <line x1="12" y1="22.08" x2="12" y2="12" />
+            </svg>
+          </div>
+          <h3 class="text-xl font-bold mb-3 tracking-tight">Enterprise Auth Suite</h3>
+          <p class="text-spot-muted text-sm leading-relaxed">
+            OAuth 2.0 (with loopback redirect token refresh), OAuth 1.0a, AWS SigV4, Akamai EdgeGrid, Hawk, Digest MD5,
+            and Basic/Bearer.
+          </p>
+        </div>
+
+        <!-- Feature 6: Local Mock Server with Auto-Record -->
+        <div class="p-8 rounded-2xl glass glass-hover relative overflow-hidden group">
+          <div class="absolute top-4 right-4">
+            <span
+              class="text-[10px] font-bold bg-amber-400/20 text-amber-400 px-2 py-0.5 rounded tracking-wide font-mono uppercase">UPDATED</span>
+          </div>
+          <div class="w-12 h-12 rounded-xl bg-amber-500/15 text-amber-400 flex items-center justify-center mb-6">
+            <svg class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <rect x="2" y="3" width="20" height="14" rx="2" ry="2" />
+              <line x1="8" y1="21" x2="16" y2="21" />
+              <line x1="12" y1="17" x2="12" y2="21" />
+            </svg>
+          </div>
+          <h3 class="text-xl font-bold mb-3 tracking-tight">1-Click Live Mock Recorder</h3>
+          <p class="text-spot-muted text-sm leading-relaxed">
+            Hit any live staging endpoint and click <code>⚡ Save to Mock</code> to instantly capture status, headers,
+            and body into your local <code>127.0.0.1</code> mock router. $0 cloud fees, 100% offline.
+          </p>
+        </div>
+
+        <!-- Feature 7: Multi-Language Code Generator (NEW) -->
+        <div class="p-8 rounded-2xl glass glass-hover relative overflow-hidden group">
+          <div class="absolute top-4 right-4">
+            <span
+              class="text-[10px] font-bold bg-spot-green/20 text-spot-bright px-2 py-0.5 rounded tracking-wide font-mono uppercase">NEW</span>
+          </div>
+          <div class="w-12 h-12 rounded-xl bg-spot-green/15 text-spot-bright flex items-center justify-center mb-6">
+            <svg class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <polyline points="16 18 22 12 16 6" />
+              <polyline points="8 6 2 12 8 18" />
+            </svg>
+          </div>
+          <h3 class="text-xl font-bold mb-3 tracking-tight">Multi-Language Code Drawer</h3>
+          <p class="text-spot-muted text-sm leading-relaxed">
+            Generate production-ready code with live variable substitution in <strong>Rust (reqwest)</strong>,
+            <strong>TypeScript (axios)</strong>, <strong>Python (httpx/requests)</strong>, <strong>Go</strong>, and
+            <strong>cURL</strong>.
+          </p>
+        </div>
+
+        <!-- Feature 8: Swagger UI & Static HTML Docs Exporter (NEW) -->
+        <div class="p-8 rounded-2xl glass glass-hover relative overflow-hidden group">
+          <div class="absolute top-4 right-4">
+            <span
+              class="text-[10px] font-bold bg-spot-green/20 text-spot-bright px-2 py-0.5 rounded tracking-wide font-mono uppercase">NEW</span>
+          </div>
+          <div class="w-12 h-12 rounded-xl bg-pink-500/15 text-pink-400 flex items-center justify-center mb-6">
+            <svg class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+              <polyline points="14 2 14 8 20 8" />
+              <line x1="16" y1="13" x2="8" y2="13" />
+              <line x1="16" y1="17" x2="8" y2="17" />
+              <polyline points="10 9 9 9 8 9" />
+            </svg>
+          </div>
+          <h3 class="text-xl font-bold mb-3 tracking-tight">Swagger UI &amp; Static HTML Exporter</h3>
+          <p class="text-spot-muted text-sm leading-relaxed mb-3">
+            Publish API documentation without Postman's paid cloud fees. Export any collection into a self-contained,
+            standalone <strong class="text-white">Swagger UI (OpenAPI 3.0)</strong> interactive bundle or a sleek,
+            dark-themed <strong class="text-white">HTML documentation portal</strong> with live search and multi-language snippets.
+          </p>
+          <div class="flex items-center gap-2 text-xs font-mono text-spot-bright">
+            <span class="px-2 py-0.5 rounded bg-spot-green/10 border border-spot-green/20">⚡ Swagger UI (OpenAPI 3.0)</span>
+            <span class="px-2 py-0.5 rounded bg-white/5 border border-white/10 text-spot-muted">Standalone HTML</span>
           </div>
         </div>
 
-        <div class="table-wrap">
-          <table class="compare-table">
+        <!-- Feature 9: Non-Destructive OpenAPI Reconciler (NEW) -->
+        <div class="p-8 rounded-2xl glass glass-hover relative overflow-hidden group">
+          <div class="absolute top-4 right-4">
+            <span
+              class="text-[10px] font-bold bg-spot-green/20 text-spot-bright px-2 py-0.5 rounded tracking-wide font-mono uppercase">NEW</span>
+          </div>
+          <div class="w-12 h-12 rounded-xl bg-cyan-500/15 text-cyan-400 flex items-center justify-center mb-6">
+            <svg class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67" />
+            </svg>
+          </div>
+          <h3 class="text-xl font-bold mb-3 tracking-tight">Smart OpenAPI Reconciliation</h3>
+          <p class="text-spot-muted text-sm leading-relaxed">
+            Updated backend schema? Blitz discovers new endpoints and updates definitions without ever wiping your
+            existing test assertions, pre-request scripts, or saved mock examples.
+          </p>
+        </div>
+
+        <!-- Feature 10: Git Conflict Detection & Resolution (NEW) -->
+        <div class="p-8 rounded-2xl glass glass-hover relative overflow-hidden group">
+          <div class="absolute top-4 right-4">
+            <span
+              class="text-[10px] font-bold bg-spot-green/20 text-spot-bright px-2 py-0.5 rounded tracking-wide font-mono uppercase">NEW</span>
+          </div>
+          <div class="w-12 h-12 rounded-xl bg-emerald-500/15 text-emerald-400 flex items-center justify-center mb-6">
+            <svg class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <circle cx="18" cy="18" r="3" />
+              <circle cx="6" cy="6" r="3" />
+              <path d="M6 9v12" />
+              <path d="M18 9a9 9 0 0 0-9 9" />
+            </svg>
+          </div>
+          <h3 class="text-xl font-bold mb-3 tracking-tight">Git Conflict Resolution</h3>
+          <p class="text-spot-muted text-sm leading-relaxed">
+            Eliminates merge headaches on team branches. Built-in visual conflict diff (Ours vs Theirs) flags unmerged
+            files and allows clean 1-click resolution between local changes and remote commits.
+          </p>
+        </div>
+
+        <!-- Feature 11: Hierarchical Auth Inheritance Better than Postman -->
+        <div class="p-8 rounded-2xl glass glass-hover relative overflow-hidden group">
+          <div class="absolute top-4 right-4">
+            <span
+              class="text-[10px] font-bold bg-spot-green/20 text-spot-bright px-2 py-0.5 rounded tracking-wide font-mono uppercase">NEW</span>
+          </div>
+          <div class="w-12 h-12 rounded-xl bg-amber-500/15 text-amber-400 flex items-center justify-center mb-6">
+            <svg class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+              <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+            </svg>
+          </div>
+          <h3 class="text-xl font-bold mb-3 tracking-tight">Smart Auth Inheritance &amp; Live Preview</h3>
+          <p class="text-spot-muted text-sm leading-relaxed">
+            Full hierarchical auth inheritance across nested folders and collections. Shows a live origin card (e.g.
+            <code>folder 'Auth'</code> or <code>collection 'Billing'</code>) and lets you jump directly to edit parent
+            credentials without losing request draft state.
+          </p>
+        </div>
+
+        <!-- Feature 12: Rich Syntax Coloring & Real-Time Token Mirror -->
+        <div class="p-8 rounded-2xl glass glass-hover relative overflow-hidden group">
+          <div class="absolute top-4 right-4">
+            <span
+              class="text-[10px] font-bold bg-spot-green/20 text-spot-bright px-2 py-0.5 rounded tracking-wide font-mono uppercase">NEW</span>
+          </div>
+          <div class="w-12 h-12 rounded-xl bg-violet-500/15 text-violet-400 flex items-center justify-center mb-6">
+            <svg class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <polyline points="16 18 22 12 16 6" />
+              <polyline points="8 6 2 12 8 18" />
+            </svg>
+          </div>
+          <h3 class="text-xl font-bold mb-3 tracking-tight">Real-Time Syntax Coloring &amp; Var Mirror</h3>
+          <p class="text-spot-muted text-sm leading-relaxed">
+            Vibrant syntax highlighting for JSON, Form-Data, and GraphQL request bodies. Embedded variable pills
+            <code>{{token}}</code> render directly inside code tokens with live hover inspectors and one-click
+            environment variable overrides.
+          </p>
+        </div>
+
+        <!-- Feature 13: Git-Tracked Workspace Assets & File Payloads -->
+        <div class="p-8 rounded-2xl glass glass-hover relative overflow-hidden group">
+          <div class="absolute top-4 right-4">
+            <span
+              class="text-[10px] font-bold bg-spot-green/20 text-spot-bright px-2 py-0.5 rounded tracking-wide font-mono uppercase">NEW</span>
+          </div>
+          <div class="w-12 h-12 rounded-xl bg-blue-500/15 text-blue-400 flex items-center justify-center mb-6">
+            <svg class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+              <polyline points="17 8 12 3 7 8" />
+              <line x1="12" y1="3" x2="12" y2="15" />
+            </svg>
+          </div>
+          <h3 class="text-xl font-bold mb-3 tracking-tight">Git-Tracked Workspace Assets (Uploads)</h3>
+          <p class="text-spot-muted text-sm leading-relaxed">
+            Upload binary files and multipart form data payloads directly into your workspace <code>assets/</code>
+            repository. Payloads are committed and synchronized across your team with automatic relative path resolution
+            on any machine.
+          </p>
+        </div>
+
+        <!-- Feature 14: Built-in Model Context Protocol (MCP) Server -->
+        <div class="p-8 rounded-2xl glass glass-hover relative overflow-hidden group">
+          <div class="absolute top-4 right-4">
+            <span
+              class="text-[10px] font-bold bg-yellow-400/20 text-yellow-300 px-2 py-0.5 rounded tracking-wide font-mono uppercase">NEW</span>
+          </div>
+          <div class="w-12 h-12 rounded-xl bg-yellow-500/15 text-yellow-300 flex items-center justify-center mb-6">
+            <svg class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <path d="M12 2a10 10 0 1 0 10 10H12V2z" />
+              <path d="M12 12L2.5 7.5" />
+              <path d="M12 12v10" />
+            </svg>
+          </div>
+          <h3 class="text-xl font-bold mb-3 tracking-tight">Built-in MCP Server for AI Agents</h3>
+          <p class="text-spot-muted text-sm leading-relaxed mb-3">
+            Expose collections, environments, and execution runtime to <strong>Antigravity</strong>, <strong>Gemini</strong>, <strong>Claude</strong>, and <strong>Cursor</strong> via <code>blitz mcp</code>. Autonomous agents can run requests, parse responses, generate client code, and update environment variables directly.
+          </p>
+          <div class="flex flex-wrap items-center gap-2 text-xs font-mono text-spot-bright">
+            <span class="px-2 py-0.5 rounded bg-spot-green/10 border border-spot-green/20">⚡ 42 Agent Tools</span>
+            <span class="px-2 py-0.5 rounded bg-white/5 border border-white/10 text-spot-muted">JSON-RPC 2.0 stdio</span>
+          </div>
+        </div>
+
+        <!-- Feature 15: Instant Tree Search & Inline Type Filters -->
+        <div class="p-8 rounded-2xl glass glass-hover relative overflow-hidden group">
+          <div class="absolute top-4 right-4">
+            <span
+              class="text-[10px] font-bold bg-spot-green/20 text-spot-bright px-2 py-0.5 rounded tracking-wide font-mono uppercase">NEW</span>
+          </div>
+          <div class="w-12 h-12 rounded-xl bg-sky-500/15 text-sky-400 flex items-center justify-center mb-6">
+            <svg class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <circle cx="11" cy="11" r="8" />
+              <line x1="21" y1="21" x2="16.65" y2="16.65" />
+            </svg>
+          </div>
+          <h3 class="text-xl font-bold mb-3 tracking-tight">Instant Tree Search &amp; Inline Filters</h3>
+          <p class="text-spot-muted text-sm leading-relaxed mb-3">
+            Real-time debounced sidebar tree search with 0ms keystroke lag. Filter specifically by node type using inline search syntax directly in the search bar: <code class="text-spot-bright font-mono">folder:auth</code>, <code class="text-sky-300 font-mono">req:users</code>, or <code class="text-amber-300 font-mono">col:api</code>.
+          </p>
+          <div class="flex flex-wrap items-center gap-1.5 text-[11px] font-mono text-spot-muted">
+            <span class="px-2 py-0.5 rounded bg-white/5 border border-white/10 text-spot-bright">folder:&lt;name&gt;</span>
+            <span class="px-2 py-0.5 rounded bg-white/5 border border-white/10 text-sky-300">req:&lt;name&gt;</span>
+            <span class="px-2 py-0.5 rounded bg-white/5 border border-white/10 text-amber-300">col:&lt;name&gt;</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================================================================= -->
+    <!-- SECTION: DETAILED COMPARISON TABLE -->
+    <!-- ================================================================= -->
+    <section id="benchmarks" class="mt-24 pt-12 border-t border-white/[0.06] text-center">
+      <span class="text-xs font-bold text-spot-bright tracking-widest uppercase block mb-3">TECHNICAL BREAKDOWN</span>
+      <h2 class="text-3xl sm:text-5xl font-extrabold tracking-tight mb-6">The Head-to-Head Comparison</h2>
+      <p class="text-spot-muted max-w-xl mx-auto text-base sm:text-lg mb-12">
+        See how Blitz compares against other desktop API clients across licensing, runtime, and architecture.
+      </p>
+
+      <!-- Transparency Methodology Box -->
+      <div class="max-w-4xl mx-auto mb-10 p-5 rounded-xl bg-white/[0.02] border border-white/10 text-left text-xs font-mono text-spot-muted space-y-2">
+        <div class="flex items-center gap-2 text-white font-bold font-sans text-sm">
+          <span>🔬</span> Benchmark Methodology &amp; Transparency Notice
+        </div>
+        <p class="leading-relaxed">
+          CLI memory footprint was measured on macOS (Apple M-series) using Apple's <code>/usr/bin/time -l</code> and <code>footprint</code>. Blitz was compiled in <code>--release</code> mode with binary size ~24 MB. Headless CLI cold start completed in <strong>&lt; 20ms</strong> with <strong>~10.4 MB peak RSS (~3.5 MB physical footprint)</strong>. Desktop GUI measured with 9 open request tabs: <strong>~198 MB</strong> physical footprint for the main app (<strong>~346 MB</strong> total including OS WKWebView WebContent/GPU/Networking helpers).
+        </p>
+        <p class="leading-relaxed text-spot-faint">
+          Competitor CLI tools (Newman, Bru, Inso) execute within the V8 / Node.js runtime environment. All feature and protocol specifications reflect publicly released capabilities as of October 2026.
+        </p>
+      </div>
+
+      <div class="rounded-2xl glass overflow-hidden text-left max-w-5xl mx-auto">
+        <div class="overflow-x-auto">
+          <table class="w-full text-sm">
             <thead>
-              <tr>
-                <th>Capability</th>
-                <th>Blitz (v0.2.14)</th>
-                <th>Postman</th>
-                <th>Insomnia</th>
+              <tr class="border-b border-white/10 text-spot-faint uppercase text-xs tracking-wider">
+                <th class="py-4 px-5 font-semibold">Capability</th>
+                <th class="py-4 px-5 font-bold text-spot-bright bg-spot-green/10 text-center">⚡ Blitz</th>
+                <th class="py-4 px-5 font-semibold text-center">Postman</th>
+                <th class="py-4 px-5 font-semibold text-center">Bruno</th>
+                <th class="py-4 px-5 font-semibold text-center">Insomnia</th>
+                <th class="py-4 px-5 font-semibold text-center">Yaak</th>
               </tr>
             </thead>
-            <tbody>
+            <tbody class="divide-y divide-white/5 font-medium">
               <tr>
-                <td><strong>Account / Cloud Login</strong></td>
-                <td class="col-blitz">Never required (100% local)</td>
-                <td>Mandatory cloud account</td>
-                <td>Cloud account pushed</td>
+                <td class="py-4 px-5 text-spot-muted">Runtime Architecture</td>
+                <td class="py-4 px-5 text-spot-bright font-semibold bg-spot-green/5 text-center">Pure Native Rust</td>
+                <td class="py-4 px-5 text-red-400 text-center">Electron (Node.js)</td>
+                <td class="py-4 px-5 text-amber-400 text-center">Electron (Node.js)</td>
+                <td class="py-4 px-5 text-red-400 text-center">Electron (Node.js)</td>
+                <td class="py-4 px-5 text-spot-muted text-center">Tauri (React/JS)</td>
               </tr>
               <tr>
-                <td><strong>AI Agent Integration</strong></td>
-                <td class="col-blitz">Built-in 42-tool stdio MCP server</td>
-                <td>Cloud AI add-on</td>
-                <td>None native</td>
+                <td class="py-4 px-5 text-spot-muted">License &amp; Pricing</td>
+                <td class="py-4 px-5 text-spot-bright font-semibold bg-spot-green/5 text-center">100% Free / MIT</td>
+                <td class="py-4 px-5 text-red-400 text-center">Proprietary / Paid ($$$)</td>
+                <td class="py-4 px-5 text-spot-muted text-center">Open Source / Paid Pro</td>
+                <td class="py-4 px-5 text-red-400 text-center">Proprietary / Paid ($$$)</td>
+                <td class="py-4 px-5 text-amber-400 text-center">Fair-Core / Commercial</td>
               </tr>
               <tr>
-                <td><strong>Secrets Storage</strong></td>
-                <td class="col-blitz">OS Keychain &amp; local Vault (<code>{{vault:*}}</code>)</td>
-                <td>Cloud-synced environments</td>
-                <td>Cloud-synced unless local</td>
+                <td class="py-4 px-5 text-spot-muted">App Startup Latency</td>
+                <td class="py-4 px-5 text-spot-bright font-semibold bg-spot-green/5 text-center">&lt; 20 ms (CLI) / Native WebView</td>
+                <td class="py-4 px-5 text-red-400 text-center">4,000 - 8,000 ms</td>
+                <td class="py-4 px-5 text-amber-400 text-center">1,500 - 3,000 ms</td>
+                <td class="py-4 px-5 text-red-400 text-center">3,000 - 6,000 ms</td>
+                <td class="py-4 px-5 text-spot-bright text-center">&lt; 300 ms</td>
               </tr>
               <tr>
-                <td><strong>Team Collaboration</strong></td>
-                <td class="col-blitz">Your own Git repo + 3-way conflict UI</td>
-                <td>Paid per-seat cloud sync</td>
-                <td>Paid per-seat cloud sync</td>
+                <td class="py-4 px-5 text-spot-muted">Headless CLI Runner</td>
+                <td class="py-4 px-5 text-spot-bright font-semibold bg-spot-green/5 text-center">Built-in (10.2 MB RSS)</td>
+                <td class="py-4 px-5 text-spot-muted text-center">Newman CLI (Node.js)</td>
+                <td class="py-4 px-5 text-spot-muted text-center">Bru CLI (Node.js)</td>
+                <td class="py-4 px-5 text-spot-muted text-center">Inso CLI (Node.js)</td>
+                <td class="py-4 px-5 text-spot-muted text-center">Community CLI (Node.js)</td>
               </tr>
               <tr>
-                <td><strong>Protocols</strong></td>
-                <td class="col-blitz">HTTP/2, WS, gRPC, SSE, GraphQL, MQTT, Socket.IO, MCP</td>
-                <td>HTTP, WS, gRPC, GraphQL, MQTT</td>
-                <td>HTTP, WS, gRPC, GraphQL</td>
+                <td class="py-4 px-5 text-spot-muted">Mandatory Cloud Account</td>
+                <td class="py-4 px-5 text-spot-bright font-semibold bg-spot-green/5 text-center">Never (100% Offline)
+                </td>
+                <td class="py-4 px-5 text-red-400 text-center">Yes (Forced Login)</td>
+                <td class="py-4 px-5 text-spot-bright text-center">No</td>
+                <td class="py-4 px-5 text-red-400 text-center">Yes (Forced Login)</td>
+                <td class="py-4 px-5 text-spot-bright text-center">No</td>
               </tr>
               <tr>
-                <td><strong>License &amp; Pricing</strong></td>
-                <td class="col-blitz">MIT Open Source · Free</td>
-                <td>Free tier limits + per-seat plans</td>
-                <td>Free tier limits + per-seat plans</td>
+                <td class="py-4 px-5 text-spot-muted">Team Collaboration</td>
+                <td class="py-4 px-5 text-spot-bright font-semibold bg-spot-green/5 text-center">Direct Git Branch Sync
+                </td>
+                <td class="py-4 px-5 text-red-400 text-center">Proprietary Cloud</td>
+                <td class="py-4 px-5 text-spot-bright text-center">Git Directory</td>
+                <td class="py-4 px-5 text-red-400 text-center">Proprietary Cloud</td>
+                <td class="py-4 px-5 text-amber-400 text-center">Yaak Cloud ($$$)</td>
+              </tr>
+              <tr>
+                <td class="py-4 px-5 text-spot-muted">Protocols Supported</td>
+                <td class="py-4 px-5 text-spot-bright font-semibold bg-spot-green/5 text-center">8 Protocols (incl. MQTT &amp; MCP)</td>
+                <td class="py-4 px-5 text-spot-muted text-center">HTTP, WS, gRPC, GraphQL, MQTT</td>
+                <td class="py-4 px-5 text-spot-muted text-center">HTTP, WS, gRPC, GraphQL</td>
+                <td class="py-4 px-5 text-spot-muted text-center">HTTP, WS, gRPC, GraphQL, SSE</td>
+                <td class="py-4 px-5 text-spot-muted text-center">HTTP, WS, gRPC, GraphQL</td>
+              </tr>
+              <tr>
+                <td class="py-4 px-5 text-spot-muted">Secrets Vault &amp; Keychain</td>
+                <td class="py-4 px-5 text-spot-bright font-semibold bg-spot-green/5 text-center">macOS Keychain (in-memory fallback elsewhere)</td>
+                <td class="py-4 px-5 text-red-400 text-center">Synced to Cloud</td>
+                <td class="py-4 px-5 text-spot-muted text-center">.env files</td>
+                <td class="py-4 px-5 text-red-400 text-center">Synced to Cloud</td>
+                <td class="py-4 px-5 text-spot-muted text-center">SQLite file</td>
+              </tr>
+              <tr>
+                <td class="py-4 px-5 text-spot-muted">Postman v2.1 Import</td>
+                <td class="py-4 px-5 text-spot-bright font-semibold bg-spot-green/5 text-center">Seamless 1-Click</td>
+                <td class="py-4 px-5 text-spot-muted text-center">Native</td>
+                <td class="py-4 px-5 text-spot-muted text-center">Partial Conversion</td>
+                <td class="py-4 px-5 text-spot-muted text-center">Partial Conversion</td>
+                <td class="py-4 px-5 text-spot-muted text-center">Basic Import</td>
+              </tr>
+              <tr>
+                <td class="py-4 px-5 text-spot-muted">Static Docs Publishing</td>
+                <td class="py-4 px-5 text-spot-bright font-semibold bg-spot-green/5 text-center">1-Click Swagger UI &amp; HTML
+                </td>
+                <td class="py-4 px-5 text-red-400 text-center">Paid Cloud Only ($$$)</td>
+                <td class="py-4 px-5 text-red-400 text-center">None</td>
+                <td class="py-4 px-5 text-red-400 text-center">None</td>
+                <td class="py-4 px-5 text-red-400 text-center">None</td>
+              </tr>
+              <tr>
+                <td class="py-4 px-5 text-spot-muted">Live Mock Recording &amp; Proxy</td>
+                <td class="py-4 px-5 text-spot-bright font-semibold bg-spot-green/5 text-center">⚡ 1-Click Local
+                  (Offline)</td>
+                <td class="py-4 px-5 text-red-400 text-center">Cloud Hosted Only</td>
+                <td class="py-4 px-5 text-red-400 text-center">None</td>
+                <td class="py-4 px-5 text-spot-muted text-center">Basic Mock Plugin</td>
+                <td class="py-4 px-5 text-red-400 text-center">None</td>
+              </tr>
+              <tr>
+                <td class="py-4 px-5 text-spot-muted">Code Generators</td>
+                <td class="py-4 px-5 text-spot-bright font-semibold bg-spot-green/5 text-center">Rust, TS, Python, Go,
+                  cURL</td>
+                <td class="py-4 px-5 text-spot-muted text-center">Legacy Snippets</td>
+                <td class="py-4 px-5 text-spot-muted text-center">Basic cURL / fetch</td>
+                <td class="py-4 px-5 text-spot-muted text-center">Basic Snippets</td>
+                <td class="py-4 px-5 text-spot-muted text-center">curl only</td>
+              </tr>
+              <tr>
+                <td class="py-4 px-5 text-spot-muted">AI Agent Server (MCP)</td>
+                <td class="py-4 px-5 text-spot-bright font-semibold bg-spot-green/5 text-center">⚡ Native Stdio (42 Tools)</td>
+                <td class="py-4 px-5 text-red-400 text-center">Paid Cloud AI ($$$)</td>
+                <td class="py-4 px-5 text-red-400 text-center">None</td>
+                <td class="py-4 px-5 text-red-400 text-center">None</td>
+                <td class="py-4 px-5 text-red-400 text-center">None</td>
               </tr>
             </tbody>
           </table>
@@ -427,249 +1752,857 @@ Authorization: Bearer {{vault:api_token}}
       </div>
     </section>
 
-    <!-- 4. FEATURE BENTO GRID -->
-    <section id="features" class="site-section">
-      <div class="site-container">
-        <div class="section-head">
-          <div class="section-eyebrow">Everything You Need Out of the Box</div>
-          <h2 class="section-title">A complete API studio—no plugins or subscriptions required.</h2>
+    <!-- ================================================================= -->
+    <!-- SECTION: IN-BROWSER COLLECTION INSPECTOR (100% CLIENT-SIDE) -->
+    <!-- ================================================================= -->
+    <section id="inspector" class="mt-24 pt-12 border-t border-white/[0.06] text-center">
+      <span class="text-xs font-bold text-spot-bright tracking-widest uppercase block mb-3">100% PRIVATE CLIENT-SIDE
+        DEMO</span>
+      <h2 class="text-3xl sm:text-5xl font-extrabold tracking-tight mb-4">Inspect Any Postman Collection Right Now</h2>
+      <p class="text-spot-muted max-w-2xl mx-auto text-base sm:text-lg mb-12">
+        Curious how cleanly Blitz handles nested folders, environments, and variables? Drag and drop any <code
+          class="text-spot-bright font-mono text-sm">.json</code> file below.
+        <span class="text-white block mt-1 font-semibold">Zero data leaves your browser. Parsing runs entirely on your
+          local CPU.</span>
+      </p>
+
+      <div class="max-w-4xl mx-auto text-left">
+        <!-- Dropzone Box -->
+        <div id="drop-zone"
+          class="rounded-2xl border-2 border-dashed border-white/20 hover:border-spot-bright/60 bg-white/[0.02] p-8 sm:p-12 transition-all cursor-pointer text-center relative group">
+          <input type="file" id="collection-file-input" accept=".json,application/json"
+            class="absolute inset-0 opacity-0 cursor-pointer z-10">
+          <div
+            class="w-16 h-16 rounded-2xl bg-spot-green/10 text-spot-bright flex items-center justify-center mx-auto mb-4 group-hover:scale-110 transition-transform">
+            <svg class="w-8 h-8" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round"
+                d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+            </svg>
+          </div>
+          <h3 class="text-lg font-bold text-white mb-2">Drop your Postman v2.1 Collection or Environment JSON</h3>
+          <p class="text-sm text-spot-muted max-w-md mx-auto mb-4">Click to browse your hard drive or drag files here to
+            test instant native parsing speed.</p>
+          <div class="flex items-center justify-center gap-2">
+            <span class="text-[11px] font-mono bg-white/10 text-spot-muted px-2.5 py-1 rounded-full">v2.1.0
+              schema</span>
+            <span class="text-[11px] font-mono bg-white/10 text-spot-muted px-2.5 py-1 rounded-full">Postman
+              Environment</span>
+            <span class="text-[11px] font-mono bg-spot-green/20 text-spot-bright px-2.5 py-1 rounded-full">Client-Side
+              Only</span>
+          </div>
         </div>
 
-        <div class="bento-grid">
-          <article class="bento-card">
+        <!-- Preview Container -->
+        <div id="inspector-preview" class="hidden mt-8 rounded-2xl glass p-6 sm:p-8 animate-fade-in">
+          <div class="flex flex-wrap items-center justify-between gap-4 pb-6 border-b border-white/10 mb-6">
             <div>
-              <h3>42-Tool Stdio MCP Server</h3>
-              <p>Connect Cursor, Claude, or Antigravity in one command (<code>blitz mcp setup</code>) to run requests, inspect responses, and sync OpenAPI specs.</p>
+              <div class="flex items-center gap-3">
+                <span id="parsed-type-badge"
+                  class="text-xs font-mono px-2 py-0.5 rounded font-bold uppercase bg-spot-bright/20 text-spot-bright">COLLECTION</span>
+                <h4 id="parsed-title" class="text-xl font-extrabold text-white">Parsed File</h4>
+              </div>
+              <p id="parsed-meta" class="text-xs text-spot-muted mt-1 font-mono">0 requests • 0 folders</p>
             </div>
-            <a href="docs.html#mcp-tools" class="bento-link">Browse all 42 tools →</a>
-          </article>
+            <button onclick="resetInspector()"
+              class="text-xs text-spot-muted hover:text-white px-3 py-1.5 rounded-lg border border-white/10 hover:border-white/30 transition-colors">
+              Inspect Another File
+            </button>
+          </div>
 
-          <article class="bento-card">
-            <div>
-              <h3>Postman-Compatible JS Sandbox</h3>
-              <p>Import existing collections and run pre-request &amp; test scripts with zero rewrites—supports both <code>blitz.*</code> and <code>pm.*</code> APIs via embedded Boa.</p>
-            </div>
-            <a href="docs.html#sandbox-api" class="bento-link">Sandbox &amp; assertions →</a>
-          </article>
-
-          <article class="bento-card">
-            <div>
-              <h3>Headless CI Runner &amp; JUnit</h3>
-              <p>Run entire suites in GitHub Actions or GitLab CI with <code>blitz run</code> and emit native JUnit XML reports with deterministic exit codes.</p>
-            </div>
-            <a href="docs.html#cli-runner" class="bento-link">CLI runner guide →</a>
-          </article>
-
-          <article class="bento-card">
-            <div>
-              <h3>Built-In Load &amp; Perf Testing</h3>
-              <p>Benchmark virtual-user concurrency, RPS, error rates, and p50/p95/p99 latency histograms right from Tools or via <code>blitz_perf_test</code>.</p>
-            </div>
-            <a href="docs.html#load-testing" class="bento-link">Load testing docs →</a>
-          </article>
-
-          <article class="bento-card">
-            <div>
-              <h3>5-Tier Variables &amp; Env Diff</h3>
-              <p>Resolve <code>Local → Environment → Collection → Global</code> plus <code>$faker</code> generators and compare staging vs prod drift side-by-side.</p>
-            </div>
-            <a href="docs.html#variables-scope" class="bento-link">Variable scopes →</a>
-          </article>
-
-          <article class="bento-card">
-            <div>
-              <h3>11 Themes + ⌘K Command Palette</h3>
-              <p>Switch instantly between Spotify, Linear, and 9 VS Code IDE themes (One Dark Pro, Tokyo Night, Dracula, Catppuccin, Nord, GitHub Light).</p>
-            </div>
-            <a href="docs.html#themes-shortcuts" class="bento-link">Themes &amp; shortcuts →</a>
-          </article>
+          <!-- Tree View -->
+          <div id="parsed-tree" class="space-y-2 font-mono text-xs max-h-96 overflow-y-auto pr-2">
+            <!-- Populated via JavaScript -->
+          </div>
         </div>
       </div>
     </section>
 
-    <!-- 5. INSTALL & GET STARTED -->
-    <section id="install" class="site-section">
-      <div class="site-container">
-        <div class="section-head centered">
-          <div class="section-eyebrow">Get Started in 30 Seconds</div>
-          <h2 class="section-title">Install Blitz on macOS, Linux, or Windows.</h2>
-          <p class="section-subtitle">
-            Import your Postman v2.1 JSON, OpenAPI 3.0 YAML/JSON, cURL, or HAR capture on first launch.
-          </p>
+    <!-- ================================================================= -->
+    <!-- SECTION: INSTALLATION -->
+    <!-- ================================================================= -->
+    <section id="install" class="mt-24 pt-12 border-t border-white/[0.06] text-center">
+      <span class="text-xs font-bold text-spot-bright tracking-widest uppercase block mb-3">GETTING STARTED</span>
+      <h2 class="text-3xl sm:text-5xl font-extrabold tracking-tight mb-4">Install Blitz — package managers first</h2>
+      <p class="text-spot-muted max-w-xl mx-auto text-base sm:text-lg mb-10">
+        Trusted install paths reduce OS warnings. Unsigned direct downloads are still available below.
+      </p>
+
+      <div class="max-w-4xl mx-auto mb-10 text-left">
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 font-mono text-xs">
+          <div class="p-4 rounded-xl glass border border-white/10">
+            <div class="text-spot-bright font-bold mb-2">Homebrew (macOS)</div>
+            <code class="text-slate-300 text-[11px] block">brew tap h3ma209/blitz &amp;&amp; brew install --cask blitz</code>
+          </div>
+          <div class="p-4 rounded-xl glass border border-white/10">
+            <div class="text-purple-300 font-bold mb-2">winget (Windows)</div>
+            <code class="text-slate-300 text-[11px] block">winget install --id h3ma209.Blitz -e</code>
+            <p class="text-[10px] text-spot-faint mt-2 font-sans">After manifest merges — see <code>packaging/winget/</code></p>
+          </div>
+          <div class="p-4 rounded-xl glass border border-white/10">
+            <div class="text-blue-300 font-bold mb-2">Scoop (Windows)</div>
+            <code class="text-slate-300 text-[11px] block">scoop install blitz</code>
+            <p class="text-[10px] text-spot-faint mt-2 font-sans">Manifest in <code>packaging/scoop/</code></p>
+          </div>
         </div>
+      </div>
 
-        <div class="install-grid">
-          <div class="install-card">
-            <div>
-              <h3>macOS</h3>
-              <p>Universal binary (Apple Silicon + Intel) via Homebrew or signed DMG release.</p>
+      <div class="max-w-4xl mx-auto mb-12">
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 text-left">
+          <!-- macOS Download Card -->
+          <a href="https://github.com/h3ma209/Blitz/releases" target="_blank" rel="noopener"
+            class="p-6 rounded-2xl glass glass-hover block group border border-white/10 hover:border-spot-bright/50">
+            <div
+              class="w-10 h-10 rounded-xl bg-spot-bright/15 text-spot-bright flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
+              <svg class="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
+                <path
+                  d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.81-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M15.97 3.5c.62-.75 1.04-1.8 1.01-2.85-.9.04-1.99.6-2.61 1.33-.56.64-1.05 1.71-1.02 2.76 1.01.08 2.04-.51 2.62-1.24z" />
+              </svg>
             </div>
-            <div class="code-pill">
-              <code id="cmd-mac">brew install --cask blitz</code>
-              <button type="button" class="copy-btn" data-copy-target="cmd-mac">Copy</button>
+            <div class="text-xs font-mono text-spot-bright font-bold mb-1">macOS (Apple Silicon &amp; Intel)</div>
+            <div class="font-extrabold text-base text-white mb-2">Download for Mac</div>
+            <p class="text-xs text-spot-muted leading-relaxed">Native .app bundle with Keychain &amp; Dioxus WebKit
+              integration.</p>
+          </a>
+
+          <!-- Linux Download Card -->
+          <a href="https://github.com/h3ma209/Blitz/releases" target="_blank" rel="noopener"
+            class="p-6 rounded-2xl glass glass-hover block group border border-white/10 hover:border-blue-400/50">
+            <div
+              class="w-10 h-10 rounded-xl bg-blue-500/15 text-blue-400 flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
+              <svg class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round"
+                  d="M14.25 9.75L16.5 12l-2.25 2.25m-4.5 0L7.5 12l2.25-2.25M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
             </div>
+            <div class="text-xs font-mono text-blue-400 font-bold mb-1">Linux (x86_64)</div>
+            <div class="font-extrabold text-base text-white mb-2">Download for Linux</div>
+            <p class="text-xs text-spot-muted leading-relaxed">Standalone binary &amp; tar.gz with desktop launcher
+              integration.</p>
+          </a>
+
+          <!-- Windows Download Card -->
+          <a href="https://github.com/h3ma209/Blitz/releases" target="_blank" rel="noopener"
+            class="p-6 rounded-2xl glass glass-hover block group border border-white/10 hover:border-purple-400/50">
+            <div
+              class="w-10 h-10 rounded-xl bg-purple-500/15 text-purple-400 flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
+              <svg class="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
+                <path
+                  d="M0 3.449L9.75 2.1v9.451H0m10.949-9.602L24 0v11.4H10.949M0 12.6h9.75v9.451L0 20.699M10.949 12.6H24V24l-12.901-1.799" />
+              </svg>
+            </div>
+            <div class="text-xs font-mono text-purple-400 font-bold mb-1">Windows (x64)</div>
+            <div class="font-extrabold text-base text-white mb-2">Download for Windows</div>
+            <p class="text-xs text-spot-muted leading-relaxed">Native .exe with WebView2 runtime and PowerShell
+              installer.</p>
+          </a>
+        </div>
+      </div>
+
+      <!-- 1-Line Quick Terminal Install -->
+      <div class="max-w-4xl mx-auto mb-10 text-left">
+        <div class="rounded-2xl glass p-6 border border-white/10">
+          <div class="flex items-center justify-between mb-4 pb-3 border-b border-white/5">
+            <div class="flex items-center gap-2">
+              <span class="text-xs font-mono text-spot-bright font-bold">⚡ 1-Line Quick Install</span>
+              <span class="text-xs text-spot-faint">— Automated Terminal Installers</span>
+            </div>
+            <span class="text-xs text-spot-muted font-mono">macOS • Linux • Windows</span>
           </div>
 
-          <div class="install-card">
+          <div class="space-y-4 font-mono text-xs">
             <div>
-              <h3>Linux</h3>
-              <p>One-line install script for x86_64 &amp; aarch64 AppImage / tarball builds.</p>
+              <div class="text-[11px] text-spot-faint uppercase tracking-wider mb-1.5 flex items-center gap-1.5">
+                <span class="text-spot-bright">●</span> macOS (Terminal)
+              </div>
+              <div class="bg-black/60 border border-white/5 rounded-xl p-3 text-gray-200 flex items-center justify-between group">
+                <code class="overflow-x-auto">curl -fsSL https://raw.githubusercontent.com/h3ma209/Blitz/master/install.sh | bash</code>
+                <button onclick="copySnippet(this)" class="p-1 rounded bg-white/5 hover:bg-white/10 text-spot-muted hover:text-white transition-colors shrink-0 ml-2" title="Copy">
+                  <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                </button>
+              </div>
             </div>
-            <div class="code-pill">
-              <code id="cmd-linux">curl -fsSL https://raw.githubusercontent.com/h3ma209/Blitz/master/install.sh | bash</code>
-              <button type="button" class="copy-btn" data-copy-target="cmd-linux">Copy</button>
-            </div>
-          </div>
 
-          <div class="install-card">
             <div>
-              <h3>Windows</h3>
-              <p>PowerShell installer or standalone Windows executable from GitHub Releases.</p>
+              <div class="text-[11px] text-spot-faint uppercase tracking-wider mb-1.5 flex items-center gap-1.5">
+                <span class="text-blue-400">●</span> Linux (Terminal)
+              </div>
+              <div class="bg-black/60 border border-white/5 rounded-xl p-3 text-gray-200 flex items-center justify-between group">
+                <code class="overflow-x-auto">curl -fsSL https://raw.githubusercontent.com/h3ma209/Blitz/master/install.sh | bash</code>
+                <button onclick="copySnippet(this)" class="p-1 rounded bg-white/5 hover:bg-white/10 text-spot-muted hover:text-white transition-colors shrink-0 ml-2" title="Copy">
+                  <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                </button>
+              </div>
             </div>
-            <div class="code-pill">
-              <code id="cmd-win">irm https://raw.githubusercontent.com/h3ma209/Blitz/master/install.ps1 | iex</code>
-              <button type="button" class="copy-btn" data-copy-target="cmd-win">Copy</button>
-            </div>
-          </div>
 
-          <div class="install-card">
             <div>
-              <h3>From Source</h3>
-              <p>Build directly with Cargo (Rust 1.83+) from the open-source repository.</p>
-            </div>
-            <div class="code-pill">
-              <code id="cmd-src">git clone https://github.com/h3ma209/Blitz.git &amp;&amp; cargo build --release</code>
-              <button type="button" class="copy-btn" data-copy-target="cmd-src">Copy</button>
+              <div class="text-[11px] text-spot-faint uppercase tracking-wider mb-1.5 flex items-center gap-1.5">
+                <span class="text-purple-400">●</span> Windows (PowerShell / Command Prompt)
+              </div>
+              <div class="bg-black/60 border border-white/5 rounded-xl p-3 text-gray-200 flex items-center justify-between group">
+                <code class="overflow-x-auto">irm https://raw.githubusercontent.com/h3ma209/Blitz/master/install.ps1 | iex</code>
+                <button onclick="copySnippet(this)" class="p-1 rounded bg-white/5 hover:bg-white/10 text-spot-muted hover:text-white transition-colors shrink-0 ml-2" title="Copy">
+                  <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                </button>
+              </div>
             </div>
           </div>
         </div>
       </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-12 gap-6 text-left max-w-4xl mx-auto">
+        <!-- Build Code Block -->
+        <div class="md:col-span-7 rounded-2xl glass p-6">
+          <div class="flex items-center justify-between mb-4">
+            <span class="font-bold text-sm">Build from Source</span>
+            <span class="text-[10px] bg-white/10 text-spot-muted px-2 py-0.5 rounded font-mono">Universal</span>
+          </div>
+          <div class="bg-black/60 border border-white/5 rounded-xl p-4 font-mono text-xs text-gray-200 relative group">
+            <pre class="overflow-x-auto leading-relaxed"><code><span class="text-spot-faint"># 1. Clone repository</span>
+git clone https://github.com/h3ma209/Blitz.git
+cd Blitz
+
+<span class="text-spot-faint"># 2. Build &amp; install user app</span>
+make install
+
+<span class="text-spot-faint"># 3. Or launch development build</span>
+make run</code></pre>
+            <button onclick="copySnippet(this)"
+              class="absolute top-3 right-3 p-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-spot-muted hover:text-white transition-colors"
+              title="Copy code">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+              </svg>
+            </button>
+          </div>
+        </div>
+
+        <!-- Installation Paths -->
+        <div class="md:col-span-5 rounded-2xl glass p-6 flex flex-col justify-between">
+          <div class="flex items-center justify-between mb-4">
+            <span class="font-bold text-sm">Default Install Locations</span>
+            <span class="text-[10px] bg-white/10 text-spot-muted px-2 py-0.5 rounded font-mono">Per-User</span>
+          </div>
+
+          <div class="space-y-3 font-mono text-xs">
+            <div>
+              <span class="text-spot-bright font-bold block mb-1">macOS</span>
+              <div class="bg-black/50 p-2 rounded-lg border border-white/5 text-gray-300 truncate">
+                ~/Applications/Blitz.app</div>
+            </div>
+            <div>
+              <span class="text-spot-bright font-bold block mb-1">Linux</span>
+              <div class="bg-black/50 p-2 rounded-lg border border-white/5 text-gray-300 truncate">~/.local/bin/blitz
+              </div>
+            </div>
+            <div>
+              <span class="text-spot-bright font-bold block mb-1">Windows</span>
+              <div class="bg-black/50 p-2 rounded-lg border border-white/5 text-gray-300 truncate">%LOCALAPPDATA%\Blitz\
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <details class="max-w-4xl mx-auto mt-6 text-left rounded-2xl glass border border-white/10 p-5 group">
+        <summary class="cursor-pointer text-sm font-semibold text-white list-none flex items-center gap-2">
+          <span>🛡️</span> OS security prompts (unsigned builds)
+          <span class="text-[10px] font-normal text-spot-faint ml-auto">expand if Gatekeeper / SmartScreen blocks you</span>
+        </summary>
+        <p class="text-xs text-spot-muted mt-4 mb-3 leading-relaxed">
+          Prefer Homebrew, winget, or Scoop. Disclosures and secret handling:
+          <a href="https://github.com/h3ma209/Blitz/blob/master/SECURITY.md" class="text-spot-bright hover:underline">SECURITY.md</a>.
+        </p>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs font-mono">
+          <div class="bg-black/60 border border-white/5 rounded-xl p-4">
+            <strong class="text-spot-bright">macOS</strong>
+            <div class="bg-black/50 p-2 rounded border border-white/5 text-gray-200 mt-2"><code>xattr -cr /Applications/Blitz.app</code></div>
+          </div>
+          <div class="bg-black/60 border border-white/5 rounded-xl p-4">
+            <strong class="text-purple-300">Windows</strong>
+            <div class="bg-black/50 p-2 rounded border border-white/5 text-gray-200 mt-2"><code>Unblock-File "$env:LOCALAPPDATA\Blitz\blitz.exe"</code></div>
+          </div>
+        </div>
+      </details>
     </section>
   </main>
 
-  <!-- FOOTER -->
-  <footer class="site-footer">
-    <div class="site-container">
-      <div class="footer-inner">
-        <div class="brand-group">
-          <img src="logo-64.png" alt="Blitz" width="22" height="22" style="border-radius:4px">
-          <span><strong>Blitz</strong> — Open source under the MIT License.</span>
-        </div>
-        <div class="footer-links">
-          <a href="docs.html#guideflows">Guideflows</a>
-          <a href="docs.html">Documentation</a>
-          <a href="https://github.com/h3ma209/Blitz" target="_blank" rel="noopener">GitHub</a>
-          <a href="https://github.com/h3ma209/Blitz/releases" target="_blank" rel="noopener">Releases</a>
-          <a href="https://github.com/h3ma209/Blitz/blob/master/SECURITY.md" target="_blank" rel="noopener">Security</a>
-        </div>
+  <!-- Footer -->
+  <footer class="mt-36 border-t border-white/5 bg-[#080808] py-14 px-4 text-center relative z-10">
+    <div class="max-w-md mx-auto">
+      <div class="flex items-center justify-center gap-2 mb-3">
+        <img src="logo.png" alt="Blitz" class="w-6 h-6">
+        <span class="font-bold text-base">Blitz</span>
+      </div>
+      <p class="text-xs text-spot-faint mb-6 leading-relaxed">
+        Engineered with Rust, Dioxus, and high standards for developer autonomy. Independent open-source project. Not
+        affiliated with Postman or any commercial entity.
+      </p>
+      <div class="flex items-center justify-center gap-6 text-xs text-spot-muted">
+        <a href="https://github.com/h3ma209/Blitz" target="_blank" rel="noopener"
+          class="hover:text-spot-bright transition-colors">GitHub Repository</a>
+        <span>•</span>
+        <a href="https://github.com/h3ma209/Blitz/releases" target="_blank" rel="noopener"
+          class="hover:text-spot-bright transition-colors">Releases</a>
+        <span>•</span>
+        <a href="https://github.com/h3ma209/Blitz/blob/master/SECURITY.md" class="hover:text-spot-bright transition-colors">Security</a>
+        <span>•</span>
+        <a href="#why-switch" class="hover:text-spot-bright transition-colors">Why Switch?</a>
+        <span>•</span>
+        <a href="#git-cloud" class="hover:text-spot-bright transition-colors">Git Cloud</a>
+        <span>•</span>
+        <a href="#features" class="hover:text-spot-bright transition-colors">Features</a>
       </div>
     </div>
   </footer>
 
+  <!-- Keyboard Shortcuts Modal -->
+  <div id="shortcuts-modal"
+    class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md opacity-0 pointer-events-none transition-opacity duration-200">
+    <div
+      class="w-full max-w-lg rounded-2xl glass-strong border border-white/10 p-6 shadow-2xl transform scale-95 transition-transform duration-200"
+      id="shortcuts-dialog">
+      <div class="flex items-center justify-between pb-4 border-b border-white/5 mb-6">
+        <div class="flex items-center gap-2">
+          <span class="w-2.5 h-2.5 rounded-full bg-spot-bright"></span>
+          <span class="font-bold text-sm">Keyboard Shortcuts</span>
+        </div>
+        <button onclick="toggleShortcutsModal()" class="text-spot-muted hover:text-white text-lg font-mono">×</button>
+      </div>
+
+      <div class="space-y-3 font-mono text-xs">
+        <div class="flex items-center justify-between py-1.5 border-b border-white/5">
+          <span class="text-spot-muted font-sans text-xs">Send or Cancel Request</span>
+          <div class="flex gap-1">
+            <kbd class="px-2 py-1 rounded bg-white/10 border border-white/10 text-white font-bold">⌘/Ctrl</kbd>
+            <kbd class="px-2 py-1 rounded bg-white/10 border border-white/10 text-white font-bold">↵ Enter</kbd>
+          </div>
+        </div>
+        <div class="flex items-center justify-between py-1.5 border-b border-white/5">
+          <span class="text-spot-muted font-sans text-xs">New Request Tab</span>
+          <div class="flex gap-1">
+            <kbd class="px-2 py-1 rounded bg-white/10 border border-white/10 text-white font-bold">⌘/Ctrl</kbd>
+            <kbd class="px-2 py-1 rounded bg-white/10 border border-white/10 text-white font-bold">T</kbd>
+          </div>
+        </div>
+        <div class="flex items-center justify-between py-1.5 border-b border-white/5">
+          <span class="text-spot-muted font-sans text-xs">Close Current Tab</span>
+          <div class="flex gap-1">
+            <kbd class="px-2 py-1 rounded bg-white/10 border border-white/10 text-white font-bold">⌘/Ctrl</kbd>
+            <kbd class="px-2 py-1 rounded bg-white/10 border border-white/10 text-white font-bold">W</kbd>
+          </div>
+        </div>
+        <div class="flex items-center justify-between py-1.5 border-b border-white/5">
+          <span class="text-spot-muted font-sans text-xs">Command Palette</span>
+          <div class="flex gap-1">
+            <kbd class="px-2 py-1 rounded bg-white/10 border border-white/10 text-white font-bold">⌘/Ctrl</kbd>
+            <kbd class="px-2 py-1 rounded bg-white/10 border border-white/10 text-white font-bold">⇧ Shift</kbd>
+            <kbd class="px-2 py-1 rounded bg-white/10 border border-white/10 text-white font-bold">P</kbd>
+          </div>
+        </div>
+        <div class="flex items-center justify-between py-1.5 border-b border-white/5">
+          <span class="text-spot-muted font-sans text-xs">Toggle Console Log</span>
+          <div class="flex gap-1">
+            <kbd class="px-2 py-1 rounded bg-white/10 border border-white/10 text-white font-bold">⌘/Ctrl</kbd>
+            <kbd class="px-2 py-1 rounded bg-white/10 border border-white/10 text-white font-bold">⌥ Alt</kbd>
+            <kbd class="px-2 py-1 rounded bg-white/10 border border-white/10 text-white font-bold">C</kbd>
+          </div>
+        </div>
+        <div class="flex items-center justify-between py-1.5">
+          <span class="text-spot-muted font-sans text-xs">Toggle Line Comments</span>
+          <div class="flex gap-1">
+            <kbd class="px-2 py-1 rounded bg-white/10 border border-white/10 text-white font-bold">⌘/Ctrl</kbd>
+            <kbd class="px-2 py-1 rounded bg-white/10 border border-white/10 text-white font-bold">/</kbd>
+          </div>
+        </div>
+      </div>
+
+      <div class="mt-6 text-center">
+        <span class="text-[11px] text-spot-faint">Press <kbd
+            class="px-1.5 py-0.5 rounded bg-white/10 text-white">Esc</kbd> or click outside to dismiss</span>
+      </div>
+    </div>
+  </div>
+
   <script>
-    (function () {
-      // 1. Live Theme Switcher
-      const themeBtns = document.querySelectorAll('.theme-btn[data-theme]');
-      themeBtns.forEach((btn) => {
-        btn.addEventListener('click', () => {
-          const t = btn.getAttribute('data-theme');
-          if (t) document.documentElement.setAttribute('data-site-theme', t);
-          else document.documentElement.removeAttribute('data-site-theme');
-          themeBtns.forEach((b) => b.setAttribute('aria-pressed', String(b === btn)));
-        });
-      });
+    function copySnippet(btn) {
+      const pre = btn.parentElement.querySelector('pre');
+      navigator.clipboard.writeText(pre.innerText);
+      const original = btn.innerHTML;
+      btn.innerHTML = `<svg class="w-4 h-4 text-spot-bright" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>`;
+      setTimeout(() => btn.innerHTML = original, 2000);
+    }
 
-      // 2. Mobile Drawer Toggle
-      const menuBtn = document.getElementById('mobile-menu-toggle');
-      const drawer = document.getElementById('mobile-drawer');
-      if (menuBtn && drawer) {
-        menuBtn.addEventListener('click', () => {
-          const open = drawer.classList.toggle('open');
-          menuBtn.setAttribute('aria-expanded', String(open));
-        });
-        drawer.querySelectorAll('a').forEach((a) => {
-          a.addEventListener('click', () => {
-            drawer.classList.remove('open');
-            menuBtn.setAttribute('aria-expanded', 'false');
-          });
-        });
+    function toggleShortcutsModal() {
+      const modal = document.getElementById('shortcuts-modal');
+      const dialog = document.getElementById('shortcuts-dialog');
+      const isHidden = modal.classList.contains('pointer-events-none');
+      if (isHidden) {
+        modal.classList.remove('opacity-0', 'pointer-events-none');
+        dialog.classList.remove('scale-95');
+        dialog.classList.add('scale-100');
+      } else {
+        modal.classList.add('opacity-0', 'pointer-events-none');
+        dialog.classList.remove('scale-100');
+        dialog.classList.add('scale-95');
       }
+    }
 
-      // 3. Hero Install Tabs
-      const installTabs = document.querySelectorAll('[data-install-cmd]');
-      const heroCmd = document.getElementById('hero-install-cmd');
-      installTabs.forEach((tab) => {
-        tab.addEventListener('click', () => {
-          installTabs.forEach((t) => t.setAttribute('aria-selected', String(t === tab)));
-          if (heroCmd) heroCmd.textContent = tab.getAttribute('data-install-cmd') || '';
-        });
-      });
-
-      // 4. Copy-to-Clipboard Buttons
-      document.querySelectorAll('[data-copy-target]').forEach((btn) => {
-        btn.addEventListener('click', async () => {
-          const target = document.getElementById(btn.getAttribute('data-copy-target'));
-          if (!target) return;
-          try {
-            await navigator.clipboard.writeText(target.textContent.trim());
-            const prev = btn.textContent;
-            btn.textContent = 'Copied!';
-            setTimeout(() => { btn.textContent = prev; }, 1400);
-          } catch (_) {}
-        });
-      });
-
-      // 5. Sandbox Tabs
-      const sbTabs = document.querySelectorAll('[data-sandbox-tab]');
-      sbTabs.forEach((tab) => {
-        tab.addEventListener('click', () => {
-          const key = tab.getAttribute('data-sandbox-tab');
-          sbTabs.forEach((t) => t.setAttribute('aria-selected', String(t === tab)));
-          document.querySelectorAll('.sandbox-pane').forEach((pane) => {
-            pane.classList.toggle('active', pane.id === 'sandbox-pane-' + key);
-          });
-        });
-      });
-
-      // 6. MCP Simulation Button
-      const simBtn = document.getElementById('run-mcp-sim');
-      const simOut = document.getElementById('mcp-sim-output');
-      if (simBtn && simOut) {
-        let count = 0;
-        simBtn.addEventListener('click', () => {
-          count += 1;
-          const ms = 32 + ((count * 7) % 19);
-          simOut.textContent = JSON.stringify({
-            tool: 'blitz_send_request',
-            run_id: 'sim_' + count,
-            status: 201,
-            elapsed_ms: ms,
-            headers_sent: { Authorization: 'Bearer [REDACTED:vault:stripe_key]' },
-            assertions: { passed: 2, failed: 0 },
-            response_body: { id: 'chk_91a8f' + count, status: 'open', currency: 'usd', amount_total: 4900 }
-          }, null, 2);
-        });
+    document.addEventListener('keydown', (e) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        toggleShortcutsModal();
+      } else if (e.key === 'Escape') {
+        const modal = document.getElementById('shortcuts-modal');
+        if (!modal.classList.contains('pointer-events-none')) {
+          toggleShortcutsModal();
+        }
       }
+    });
 
-      // 7. Protocol Switcher Preview
-      const protoSamples = {
-        http: 'GET https://{{baseUrl}}/v1/health HTTP/2\nAuthorization: Bearer {{vault:api_token}}\n\n← 200 OK · 18 ms · TLS 1.3 · 412 B\n{ "ok": true, "region": "iad", "uptime_s": 994120 }',
-        ws: 'WSS wss://stream.example.com/v1/ticks\n→ {"op":"subscribe","channel":"btc-usd"}\n← {"channel":"btc-usd","price":"91420.50","ts":1763380012}',
-        grpc: 'gRPC payments.v1.LedgerService/GetBalance\nmetadata: x-api-key: {{vault:grpc_key}}\nRequest:  { "account_id": "acct_01J9" }\nResponse: { "available_cents": 842100, "currency": "USD" }',
-        sse: 'POST https://api.openai.com/v1/responses (Accept: text/event-stream)\nevent: response.output_text.delta  data: {"delta":"Native "}\nevent: response.output_text.delta  data: {"delta":"Rust speed."}',
-        mqtt: 'MQTT mqtts://broker.local:8883 · Topic: sensors/rack-4/temp\nQoS: 1 · Retain: false\nPayload: {"celsius": 38.4, "fan_rpm": 2140}',
-        graphql: 'GraphQL WS wss://api.example.com/graphql\nsubscription { orderUpdated(id: "ord_77") { status total } }\n← {"data":{"orderUpdated":{"status":"SHIPPED","total":129.00}}}'
+    document.getElementById('shortcuts-modal').addEventListener('click', (e) => {
+      if (e.target.id === 'shortcuts-modal') {
+        toggleShortcutsModal();
+      }
+    });
+
+    function toggleMobileNav() {
+      const menu = document.getElementById('mobile-nav');
+      const openIcon = document.getElementById('nav-open-icon');
+      const closeIcon = document.getElementById('nav-close-icon');
+      if (menu) {
+        const isHidden = menu.classList.contains('hidden');
+        if (isHidden) {
+          menu.classList.remove('hidden');
+          openIcon.classList.add('hidden');
+          closeIcon.classList.remove('hidden');
+        } else {
+          menu.classList.add('hidden');
+          openIcon.classList.remove('hidden');
+          closeIcon.classList.add('hidden');
+        }
+      }
+    }
+
+    // In-Browser Collection Inspector Logic
+    const fileInput = document.getElementById('collection-file-input');
+    const dropZone = document.getElementById('drop-zone');
+    const previewContainer = document.getElementById('inspector-preview');
+    const parsedTypeBadge = document.getElementById('parsed-type-badge');
+    const parsedTitle = document.getElementById('parsed-title');
+    const parsedMeta = document.getElementById('parsed-meta');
+    const parsedTree = document.getElementById('parsed-tree');
+
+    if (fileInput) {
+      fileInput.addEventListener('change', (e) => {
+        if (e.target.files && e.target.files[0]) {
+          parseDroppedFile(e.target.files[0]);
+        }
+      });
+    }
+
+    function parseDroppedFile(file) {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        try {
+          const json = JSON.parse(e.target.result);
+          renderParsedCollection(json, file.name);
+        } catch (err) {
+          alert('Could not parse JSON: ' + err.message);
+        }
       };
-      const protoBtns = document.querySelectorAll('[data-proto]');
-      const protoCode = document.getElementById('proto-preview-code');
-      protoBtns.forEach((btn) => {
-        btn.addEventListener('click', () => {
-          const p = btn.getAttribute('data-proto');
-          protoBtns.forEach((b) => b.setAttribute('aria-selected', String(b === btn)));
-          if (protoCode && protoSamples[p]) protoCode.textContent = protoSamples[p];
+      reader.readAsText(file);
+    }
+
+    function resetInspector() {
+      previewContainer.classList.add('hidden');
+      dropZone.classList.remove('hidden');
+      if (fileInput) fileInput.value = '';
+    }
+
+    function renderParsedCollection(data, filename) {
+      dropZone.classList.add('hidden');
+      previewContainer.classList.remove('hidden');
+      parsedTree.innerHTML = '';
+
+      const isEnv = Array.isArray(data.values) && (data._postman_variable_scope || data.name);
+      if (isEnv) {
+        parsedTypeBadge.innerText = 'ENVIRONMENT';
+        parsedTypeBadge.className = 'text-xs font-mono px-2 py-0.5 rounded font-bold uppercase bg-blue-500/20 text-blue-400';
+        parsedTitle.innerText = data.name || filename;
+        const total = data.values.length;
+        parsedMeta.innerText = `${total} variables defined`;
+
+        data.values.forEach(v => {
+          const row = document.createElement('div');
+          row.className = 'flex items-center justify-between p-2 rounded-lg bg-black/40 border border-white/5';
+          row.innerHTML = `
+            <div class="flex items-center gap-2">
+              <span class="text-spot-bright font-bold">${escapeHtml(v.key)}</span>
+              <span class="text-[10px] text-spot-faint uppercase font-sans">${v.type || 'default'}</span>
+            </div>
+            <div class="text-spot-muted truncate max-w-xs sm:max-w-md font-mono">${escapeHtml(v.value || '')}</div>
+          `;
+          parsedTree.appendChild(row);
         });
+        return;
+      }
+
+      parsedTypeBadge.innerText = 'COLLECTION';
+      parsedTypeBadge.className = 'text-xs font-mono px-2 py-0.5 rounded font-bold uppercase bg-spot-bright/20 text-spot-bright';
+      parsedTitle.innerText = (data.info && data.info.name) || filename;
+
+      let reqCount = 0;
+      let folderCount = 0;
+
+      function renderItems(items, container, depth = 0) {
+        if (!Array.isArray(items)) return;
+        items.forEach(item => {
+          if (item.item && Array.isArray(item.item)) {
+            folderCount++;
+            const folderDiv = document.createElement('div');
+            folderDiv.className = 'space-y-1';
+            folderDiv.style.marginLeft = `${depth * 16}px`;
+
+            const folderHeader = document.createElement('div');
+            folderHeader.className = 'flex items-center gap-2 text-white font-semibold py-1 px-2 rounded hover:bg-white/5 cursor-default';
+            folderHeader.innerHTML = `
+              <svg class="w-3.5 h-3.5 text-spot-bright shrink-0" fill="currentColor" viewBox="0 0 24 24"><path d="M10 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z"/></svg>
+              <span>${escapeHtml(item.name || 'Folder')}</span>
+              <span class="text-[10px] text-spot-faint">(${item.item.length})</span>
+            `;
+            folderDiv.appendChild(folderHeader);
+
+            const subContainer = document.createElement('div');
+            subContainer.className = 'space-y-1';
+            renderItems(item.item, subContainer, depth + 1);
+            folderDiv.appendChild(subContainer);
+            container.appendChild(folderDiv);
+          } else if (item.request) {
+            reqCount++;
+            const req = item.request;
+            const method = (typeof req === 'string' ? 'GET' : req.method || 'GET').toUpperCase();
+            let url = '';
+            if (typeof req === 'string') url = req;
+            else if (typeof req.url === 'string') url = req.url;
+            else if (req.url && req.url.raw) url = req.url.raw;
+
+            const methodColors = {
+              GET: 'text-spot-bright bg-spot-green/15',
+              POST: 'text-yellow-400 bg-yellow-400/15',
+              PUT: 'text-blue-400 bg-blue-400/15',
+              DELETE: 'text-red-400 bg-red-400/15',
+              PATCH: 'text-purple-400 bg-purple-400/15'
+            };
+            const badgeCls = methodColors[method] || 'text-white bg-white/10';
+
+            const reqRow = document.createElement('div');
+            reqRow.className = 'flex items-center gap-3 p-2 rounded-lg bg-black/40 hover:bg-black/60 border border-white/5 transition-colors';
+            reqRow.style.marginLeft = `${depth * 16}px`;
+            reqRow.innerHTML = `
+              <span class="px-1.5 py-0.5 rounded text-[10px] font-bold shrink-0 ${badgeCls}">${method}</span>
+              <span class="font-bold text-gray-200 truncate shrink-0 max-w-[140px] sm:max-w-[200px]">${escapeHtml(item.name || 'Request')}</span>
+              <span class="text-spot-faint truncate text-[11px]">${escapeHtml(url)}</span>
+            `;
+            container.appendChild(reqRow);
+          }
+        });
+      }
+
+      renderItems(data.item, parsedTree, 0);
+      parsedMeta.innerText = `${reqCount} endpoints • ${folderCount} folders parsed natively`;
+    }
+
+    function escapeHtml(str) {
+      if (!str) return '';
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+    }
+
+    // Interactive Hero Workbench logic
+    const demoEndpoints = {
+      token: {
+        method: 'POST',
+        url: '/api/v2/auth/token',
+        body: '{\n  "client_id": "{{vault:oauth_id}}",\n  "client_secret": "secret://oauth_secret",\n  "grant_type": "client_credentials"\n}',
+        resStatus: '200 OK',
+        resTime: '12 ms',
+        resSize: '418 B',
+        resBody: '{\n  "access_token": "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9...",\n  "token_type": "Bearer",\n  "expires_in": 3600,\n  "scope": "api:read api:write",\n  "blitz_stats": {\n    "engine": "Native Rust",\n    "cli_footprint": "10.2 MB",\n    "cloud_telemetry": "None (0 bytes sent)"\n  }\n}'
+      },
+      profile: {
+        method: 'GET',
+        url: '/api/v2/user/profile',
+        body: '',
+        resStatus: '200 OK',
+        resTime: '9 ms',
+        resSize: '294 B',
+        resBody: '{\n  "id": "usr_9921",\n  "email": "engineer@company.local",\n  "tier": "enterprise-self-hosted",\n  "git_repo": "git@github.com:myorg/api-suite.git",\n  "branch": "env/production"\n}'
+      },
+      settings: {
+        method: 'PUT',
+        url: '/api/v2/user/settings',
+        body: '{\n  "theme": "spotify-dark",\n  "keychain_storage": true,\n  "auto_git_sync": true\n}',
+        resStatus: '204 No Content',
+        resTime: '16 ms',
+        resSize: '0 B',
+        resBody: '{\n  "updated": true,\n  "synced_to_git": true,\n  "commit_hash": "a1f89c4"\n}'
+      }
+    };
+
+    function pickDemoRequest(method, url, key) {
+      const data = demoEndpoints[key];
+      if (!data) return;
+
+      document.getElementById('demo-method-select').value = data.method;
+      document.getElementById('demo-tab-method').innerText = data.method;
+      document.getElementById('demo-tab-title').innerText = data.url;
+      document.getElementById('demo-url-input').value = data.url;
+      document.getElementById('demo-req-body').value = data.body;
+
+      ['token', 'profile', 'settings'].forEach(k => {
+        const el = document.getElementById(`demo-nav-${k}`);
+        if (el) {
+          if (k === key) {
+            el.className = 'flex items-center gap-2.5 py-1.5 pl-6 pr-2 rounded-lg bg-spot-green/15 font-mono text-white text-[11px] mb-1 w-full text-left transition-colors font-bold';
+          } else {
+            el.className = 'flex items-center gap-2.5 py-1.5 pl-6 pr-2 rounded-lg font-mono text-spot-muted hover:text-white text-[11px] w-full text-left transition-colors';
+          }
+        }
       });
+
+      triggerHeroSend(data);
+    }
+
+    function triggerHeroSend(overrideData) {
+      const btn = document.getElementById('hero-send-btn');
+      const statusEl = document.getElementById('demo-res-status');
+      const timeEl = document.getElementById('demo-res-time');
+      const sizeEl = document.getElementById('demo-res-size');
+      const bodyEl = document.getElementById('demo-res-body');
+
+      btn.disabled = true;
+      btn.innerHTML = `<span class="w-3 h-3 rounded-full border-2 border-black/40 border-t-black animate-spin mr-1"></span> Sending`;
+
+      const method = document.getElementById('demo-method-select').value;
+      const url = document.getElementById('demo-url-input').value;
+
+      setTimeout(() => {
+        btn.disabled = false;
+        btn.innerHTML = `<span>Send</span><span class="text-[10px] opacity-70">⌘↵</span>`;
+
+        const randomTime = Math.floor(Math.random() * 12) + 8;
+        timeEl.innerText = `${randomTime} ms`;
+
+        if (overrideData) {
+          statusEl.innerText = overrideData.resStatus;
+          sizeEl.innerText = overrideData.resSize;
+          bodyEl.innerHTML = `<code>${escapeHtml(overrideData.resBody)}</code>`;
+        } else {
+          statusEl.innerText = '200 OK';
+          sizeEl.innerText = '482 B';
+          const sample = {
+            method: method,
+            url: "https://api.blitz.local" + url,
+            authenticated: true,
+            storage: "OS Keychain Protected",
+            git_branch: "env/production",
+            latency: `${randomTime}ms (Native Tokio Engine)`,
+            client: "Blitz v1.0 (Dioxus Native Desktop)"
+          };
+          bodyEl.innerHTML = `<code>${escapeHtml(JSON.stringify(sample, null, 2))}</code>`;
+        }
+      }, 160);
+    }
+
+    // Toggle Hero Split Layout (Side-by-Side vs Stacked)
+    let heroLayoutIsRow = true;
+    function toggleHeroLayout() {
+      heroLayoutIsRow = !heroLayoutIsRow;
+      const container = document.getElementById('hero-split-container');
+      const reqPane = document.getElementById('hero-req-pane');
+      const iconRow = document.getElementById('hero-layout-icon-row');
+      const iconCol = document.getElementById('hero-layout-icon-col');
+      const textLabel = document.getElementById('hero-layout-text');
+
+      if (heroLayoutIsRow) {
+        container.className = 'grid grid-cols-1 md:grid-cols-2 flex-1 bg-[#151515] overflow-hidden text-xs font-mono min-h-[340px] transition-all';
+        reqPane.className = 'flex flex-col border-r border-white/5';
+        iconRow.classList.remove('hidden');
+        iconCol.classList.add('hidden');
+        textLabel.innerText = 'Side-by-Side (Row)';
+      } else {
+        container.className = 'grid grid-cols-1 flex-1 bg-[#151515] overflow-hidden text-xs font-mono min-h-[340px] transition-all';
+        reqPane.className = 'flex flex-col border-b border-white/10';
+        iconRow.classList.add('hidden');
+        iconCol.classList.remove('hidden');
+        textLabel.innerText = 'Stacked (Column)';
+      }
+    }
+
+    // Switch Request Sub-Tabs in Hero (Body, Headers, Auth, Tests)
+    function switchReqTab(tabName) {
+      const tabs = ['body', 'headers', 'auth', 'tests'];
+      tabs.forEach(t => {
+        const btn = document.getElementById(`req-subtab-${t}`);
+        const pane = document.getElementById(`req-pane-${t}`);
+        if (btn && pane) {
+          if (t === tabName) {
+            btn.className = 'text-white font-medium border-b border-spot-bright pb-1 transition-colors';
+            pane.classList.remove('hidden');
+          } else {
+            btn.className = 'hover:text-white pb-1 transition-colors text-spot-muted';
+            pane.classList.add('hidden');
+          }
+        }
+      });
+    }
+
+    // Auto-assertion generator trigger
+    function triggerAutoAssert() {
+      const toast = document.getElementById('auto-assert-toast');
+      if (toast) {
+        toast.classList.remove('hidden');
+      }
+      switchReqTab('tests');
+    }
+
+    // Live UI Gallery Module Switcher
+    function switchGalleryTab(key) {
+      const keys = ['vault', 'autoassert', 'conflict', 'proxy', 'protocols'];
+      keys.forEach(k => {
+        const btn = document.getElementById(`gallery-tab-${k}`);
+        const pane = document.getElementById(`gallery-pane-${k}`);
+        if (btn && pane) {
+          if (k === key) {
+            btn.className = 'gallery-nav-btn group flex items-center gap-2.5 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-semibold transition-all duration-200 cursor-pointer bg-spot-bright text-spot-black font-bold shadow-[0_4px_20px_rgba(30,215,96,0.4)] scale-[1.02]';
+            pane.classList.remove('hidden');
+            pane.classList.add('block');
+          } else {
+            btn.className = 'gallery-nav-btn group flex items-center gap-2.5 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-semibold transition-all duration-200 cursor-pointer text-spot-muted hover:text-white hover:bg-white/10 border border-transparent hover:border-white/10';
+            pane.classList.remove('block');
+            pane.classList.add('hidden');
+          }
+        }
+      });
+    }
+
+    // Vault visibility toggle (mask / reveal)
+    const vaultMasked = { 1: true, 2: true };
+    function toggleVaultVisibility(id, realVal) {
+      const el = document.getElementById(`vault-val-${id}`);
+      if (!el) return;
+      if (vaultMasked[id]) {
+        el.innerText = realVal;
+        el.className = 'text-amber-300 font-bold';
+        vaultMasked[id] = false;
+      } else {
+        el.innerText = realVal.substring(0, 8) + '••••••••••••••••' + realVal.slice(-4);
+        el.className = 'text-spot-muted';
+        vaultMasked[id] = true;
+      }
+    }
+
+    // Auto-Assert Demo Generator Button
+    function runAutoAssertDemo() {
+      const btn = document.getElementById('btn-run-autoassert');
+      const badge = document.getElementById('autoassert-badge');
+      const code = document.getElementById('autoassert-code');
+      btn.innerHTML = '<span>⚡ Analyzing Schema...</span>';
+      btn.disabled = true;
+
+      setTimeout(() => {
+        btn.innerHTML = '<span>✓ Assertions Generated</span>';
+        btn.disabled = false;
+        badge.innerText = '✓ 4 Tests Inferred & Passing';
+        badge.className = 'text-spot-bright text-[10px] font-bold animate-pulse';
+        code.innerHTML = `<code>// 1. Status Code Assertion
+blitz.test("Status code is 200", () => {
+  blitz.response.to.have.status(200);
+});
+
+// 2. Latency Threshold (<150ms SLA)
+blitz.test("Response time is under 150ms", () => {
+  blitz.expect(blitz.response.responseTime).to.be.below(150);
+});
+
+// 3. Schema & Key Existence
+blitz.test("Payload has valid user_id and email", () => {
+  const json = blitz.response.json();
+  blitz.expect(json.status).to.eql("success");
+  blitz.expect(json.data.user_id).to.be.a("number");
+  blitz.expect(json.data.email).to.include("@blitz.rs");
+});
+
+// 4. Role Permissions
+blitz.test("Admin role authorized", () => {
+  blitz.expect(blitz.response.json().data.roles).to.include("admin");
+});</code>`;
+      }, 350);
+    }
+
+    // Conflict Resolution Demo Action
+    function resolveConflictDemo(type) {
+      const toast = document.getElementById('conflict-resolution-toast');
+      if (toast) {
+        toast.classList.remove('hidden');
+        let msg = '';
+        if (type === 'smart') {
+          msg = 'Smart 3-Way Merge: Kept timeout 5000ms and merged both headers! Auto-committed to local Git.';
+        } else if (type === 'local') {
+          msg = 'Accepted Local HEAD changes. Remote commit overwritten locally.';
+        } else {
+          msg = 'Accepted Remote changes from @sarah. Local draft updated.';
+        }
+        toast.innerHTML = `<span>✓ ${msg}</span><span class="font-bold cursor-pointer text-white ml-2" onclick="document.getElementById('conflict-resolution-toast').classList.add('hidden')">×</span>`;
+      }
+    }
+
+    // WebSocket Demo Live Frame Sender
+    function sendWsDemoMessage() {
+      const input = document.getElementById('ws-input-msg');
+      const log = document.getElementById('ws-stream-log');
+      if (!input || !log || !input.value.trim()) return;
+
+      const now = new Date();
+      const timeStr = now.toTimeString().split(' ')[0] + '.' + String(now.getMilliseconds()).padStart(3, '0');
+      const val = escapeHtml(input.value.trim());
+
+      // Append send frame
+      const sendDiv = document.createElement('div');
+      sendDiv.className = 'text-spot-muted animate-fade-in';
+      sendDiv.innerHTML = `<span class="text-spot-faint">${timeStr}</span> <span class="text-spot-bright font-bold">↑ SEND</span> ${val}`;
+      log.appendChild(sendDiv);
+
+      // Simulate instantaneous echo from websocket server
+      setTimeout(() => {
+        const recvDiv = document.createElement('div');
+        recvDiv.className = 'text-emerald-300 animate-fade-in';
+        recvDiv.innerHTML = `<span class="text-spot-faint">${timeStr}</span> <span class="text-blue-400 font-bold">↓ RECV</span> (Echo) ${val}`;
+        log.appendChild(recvDiv);
+        log.scrollTop = log.scrollHeight;
+      }, 60);
+
+      log.scrollTop = log.scrollHeight;
+    }
+
+    (function () {
+      const video = document.getElementById('hero-demo-video');
+      if (!video) return;
+      fetch('demo.mp4', { method: 'HEAD' })
+        .then((r) => {
+          if (r.ok) {
+            video.classList.remove('hidden');
+            video.play().catch(() => {});
+          }
+        })
+        .catch(() => {});
     })();
   </script>
 </body>
+
 </html>
