@@ -331,6 +331,219 @@ pub struct TreeRow {
     pub search_text: String,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum CollectionSortMode {
+    #[default]
+    FoldersFirstAsc,
+    FoldersFirstDesc,
+    NameAsc,
+    NameDesc,
+    RequestsFirstAsc,
+    MethodOrder,
+    ItemCountDesc,
+}
+
+impl CollectionSortMode {
+    pub fn all() -> &'static [CollectionSortMode] {
+        &[
+            Self::FoldersFirstAsc,
+            Self::FoldersFirstDesc,
+            Self::NameAsc,
+            Self::NameDesc,
+            Self::RequestsFirstAsc,
+            Self::MethodOrder,
+            Self::ItemCountDesc,
+        ]
+    }
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::FoldersFirstAsc => "Folders First (A → Z)",
+            Self::FoldersFirstDesc => "Folders First (Z → A)",
+            Self::NameAsc => "Name (A → Z)",
+            Self::NameDesc => "Name (Z → A)",
+            Self::RequestsFirstAsc => "Requests First (A → Z)",
+            Self::MethodOrder => "Method / Protocol (GET → POST…)",
+            Self::ItemCountDesc => "Size (Most Items First)",
+        }
+    }
+
+    pub fn hint(self) -> &'static str {
+        match self {
+            Self::FoldersFirstAsc => "Parents & children A→Z, folders above requests",
+            Self::FoldersFirstDesc => "Parents & children Z→A, folders above requests",
+            Self::NameAsc => "Parents & children mixed alphabetically A→Z",
+            Self::NameDesc => "Parents & children mixed alphabetically Z→A",
+            Self::RequestsFirstAsc => "Collections A→Z, requests above folders",
+            Self::MethodOrder => "Collections A→Z, children ordered GET/POST/PUT/WS/gRPC",
+            Self::ItemCountDesc => "Largest collections & folders first",
+        }
+    }
+}
+
+fn item_name(item: &CollectionItem) -> &str {
+    match item {
+        CollectionItem::Folder(f) => &f.name,
+        CollectionItem::Request(r) => &r.name,
+    }
+}
+
+fn is_folder(item: &CollectionItem) -> bool {
+    matches!(item, CollectionItem::Folder(_))
+}
+
+fn count_items_recursive(items: &[CollectionItem]) -> usize {
+    let mut n = 0usize;
+    for item in items {
+        n += 1;
+        if let CollectionItem::Folder(f) = item {
+            n += count_items_recursive(&f.items);
+        }
+    }
+    n
+}
+
+fn method_rank(r: &RequestDraft) -> u8 {
+    match r.protocol {
+        RequestProtocol::Http => match r.method {
+            HttpMethod::Get => 0,
+            HttpMethod::Post => 1,
+            HttpMethod::Put => 2,
+            HttpMethod::Patch => 3,
+            HttpMethod::Delete => 4,
+            HttpMethod::Head => 5,
+            HttpMethod::Options => 6,
+        },
+        RequestProtocol::WebSocket => 10,
+        RequestProtocol::Grpc => 11,
+        RequestProtocol::Sse => 12,
+        RequestProtocol::GraphqlWs => 13,
+        RequestProtocol::Mqtt => 14,
+        RequestProtocol::SocketIo => 15,
+        RequestProtocol::Mcp => 16,
+    }
+}
+
+/// Sort all collections (parents) and recursively sort every child folder & request (`col.items` + nested folders),
+/// rekeying `sort_key` across each level so the order persists.
+pub fn sort_collections_by(collections: &mut [Collection], mode: CollectionSortMode) {
+    collections.sort_by(|a, b| {
+        b.favorite.cmp(&a.favorite).then_with(|| match mode {
+            CollectionSortMode::FoldersFirstDesc | CollectionSortMode::NameDesc => {
+                b.name.to_lowercase().cmp(&a.name.to_lowercase())
+            }
+            CollectionSortMode::ItemCountDesc => count_items_recursive(&b.items)
+                .cmp(&count_items_recursive(&a.items))
+                .then_with(|| a.name.to_lowercase().cmp(&b.name.to_lowercase())),
+            CollectionSortMode::FoldersFirstAsc
+            | CollectionSortMode::NameAsc
+            | CollectionSortMode::RequestsFirstAsc
+            | CollectionSortMode::MethodOrder => a.name.to_lowercase().cmp(&b.name.to_lowercase()),
+        })
+    });
+    for col in collections.iter_mut() {
+        sort_items_by(&mut col.items, mode);
+    }
+}
+
+/// Recursively sort a slice of `CollectionItem`s (both folders and child requests) according to `mode`,
+/// rekeying `sort_key` at each level.
+pub fn sort_items_by(items: &mut [CollectionItem], mode: CollectionSortMode) {
+    for item in items.iter_mut() {
+        if let CollectionItem::Folder(f) = item {
+            sort_items_by(&mut f.items, mode);
+        }
+    }
+    items.sort_by(|a, b| match mode {
+        CollectionSortMode::FoldersFirstAsc => {
+            is_folder(b)
+                .cmp(&is_folder(a))
+                .then_with(|| item_name(a).to_lowercase().cmp(&item_name(b).to_lowercase()))
+        }
+        CollectionSortMode::FoldersFirstDesc => {
+            is_folder(b)
+                .cmp(&is_folder(a))
+                .then_with(|| item_name(b).to_lowercase().cmp(&item_name(a).to_lowercase()))
+        }
+        CollectionSortMode::NameAsc => item_name(a)
+            .to_lowercase()
+            .cmp(&item_name(b).to_lowercase())
+            .then_with(|| is_folder(b).cmp(&is_folder(a))),
+        CollectionSortMode::NameDesc => item_name(b)
+            .to_lowercase()
+            .cmp(&item_name(a).to_lowercase())
+            .then_with(|| is_folder(b).cmp(&is_folder(a))),
+        CollectionSortMode::RequestsFirstAsc => {
+            is_folder(a)
+                .cmp(&is_folder(b))
+                .then_with(|| item_name(a).to_lowercase().cmp(&item_name(b).to_lowercase()))
+        }
+        CollectionSortMode::MethodOrder => {
+            is_folder(b).cmp(&is_folder(a)).then_with(|| match (a, b) {
+                (CollectionItem::Folder(fa), CollectionItem::Folder(fb)) => {
+                    fa.name.to_lowercase().cmp(&fb.name.to_lowercase())
+                }
+                (CollectionItem::Request(ra), CollectionItem::Request(rb)) => method_rank(ra)
+                    .cmp(&method_rank(rb))
+                    .then_with(|| ra.name.to_lowercase().cmp(&rb.name.to_lowercase())),
+                _ => std::cmp::Ordering::Equal,
+            })
+        }
+        CollectionSortMode::ItemCountDesc => {
+            is_folder(b).cmp(&is_folder(a)).then_with(|| match (a, b) {
+                (CollectionItem::Folder(fa), CollectionItem::Folder(fb)) => {
+                    count_items_recursive(&fb.items)
+                        .cmp(&count_items_recursive(&fa.items))
+                        .then_with(|| fa.name.to_lowercase().cmp(&fb.name.to_lowercase()))
+                }
+                (CollectionItem::Request(ra), CollectionItem::Request(rb)) => {
+                    ra.name.to_lowercase().cmp(&rb.name.to_lowercase())
+                }
+                _ => std::cmp::Ordering::Equal,
+            })
+        }
+    });
+    rekey_sort(items);
+}
+
+/// Sort children recursively inside a single Collection or Folder parent node.
+pub fn sort_parent_node_by(
+    collections: &mut [Collection],
+    parent_id: Uuid,
+    mode: CollectionSortMode,
+) -> bool {
+    fn sort_folder_in_items(
+        items: &mut [CollectionItem],
+        parent_id: Uuid,
+        mode: CollectionSortMode,
+    ) -> bool {
+        for item in items.iter_mut() {
+            if let CollectionItem::Folder(f) = item {
+                if f.id == parent_id {
+                    sort_items_by(&mut f.items, mode);
+                    return true;
+                }
+                if sort_folder_in_items(&mut f.items, parent_id, mode) {
+                    return true;
+                }
+            }
+        }
+        false
+    }
+
+    for col in collections.iter_mut() {
+        if col.id == parent_id {
+            sort_items_by(&mut col.items, mode);
+            return true;
+        }
+        if sort_folder_in_items(&mut col.items, parent_id, mode) {
+            return true;
+        }
+    }
+    false
+}
+
 /// Sort collections: favorites first, then name; within a level: sort_key then folders first then name.
 pub fn sort_collections(collections: &mut [Collection]) {
     collections.sort_by(|a, b| {
@@ -2224,5 +2437,88 @@ mod tests {
         let decoded: Collection = serde_json::from_str(&raw_some).unwrap();
         assert_eq!(decoded.icon.as_deref(), Some("rocket"));
         assert_eq!(decoded.color.as_deref(), Some("#f59e0b"));
+    }
+
+    #[test]
+    fn sort_collections_by_sorts_parents_and_nested_children() {
+        let mut alpha = Collection::new("Alpha");
+        let mut sub_z = Folder::new("Zebra Folder");
+        sub_z.add_request(RequestDraft {
+            name: "Create User".into(),
+            method: HttpMethod::Post,
+            ..Default::default()
+        });
+        sub_z.add_request(RequestDraft {
+            name: "Alpha Endpoint".into(),
+            method: HttpMethod::Delete,
+            ..Default::default()
+        });
+        sub_z.add_request(RequestDraft {
+            name: "Get Health".into(),
+            method: HttpMethod::Get,
+            ..Default::default()
+        });
+        let mut sub_a = Folder::new("Auth Folder");
+        sub_a.add_request(RequestDraft {
+            name: "Login".into(),
+            method: HttpMethod::Post,
+            ..Default::default()
+        });
+        alpha.items.push(CollectionItem::Request(RequestDraft {
+            name: "Middle Request".into(),
+            method: HttpMethod::Put,
+            ..Default::default()
+        }));
+        alpha.items.push(CollectionItem::Folder(sub_z));
+        alpha.items.push(CollectionItem::Folder(sub_a));
+
+        let mut beta = Collection::new("Beta");
+        beta.add_request(RequestDraft {
+            name: "Only One".into(),
+            ..Default::default()
+        });
+
+        let mut cols = vec![alpha, beta];
+
+        // 1. NameDesc sorts both parent collections (Beta before Alpha) AND folder/request children Z->A
+        sort_collections_by(&mut cols, CollectionSortMode::NameDesc);
+        assert_eq!(cols[0].name, "Beta");
+        assert_eq!(cols[1].name, "Alpha");
+        assert_eq!(item_name(&cols[1].items[0]), "Zebra Folder");
+        assert_eq!(item_name(&cols[1].items[1]), "Middle Request");
+        assert_eq!(item_name(&cols[1].items[2]), "Auth Folder");
+        if let CollectionItem::Folder(zf) = &cols[1].items[0] {
+            assert_eq!(item_name(&zf.items[0]), "Get Health");
+            assert_eq!(item_name(&zf.items[1]), "Create User");
+            assert_eq!(item_name(&zf.items[2]), "Alpha Endpoint");
+        } else {
+            panic!("expected Zebra Folder");
+        }
+
+        // 2. MethodOrder sorts collections A->Z, folders A->Z above requests, and child requests GET->POST->DELETE
+        sort_collections_by(&mut cols, CollectionSortMode::MethodOrder);
+        assert_eq!(cols[0].name, "Alpha");
+        assert_eq!(cols[1].name, "Beta");
+        if let CollectionItem::Folder(zf) = &cols[0].items[1] {
+            assert_eq!(zf.name, "Zebra Folder");
+            assert_eq!(item_name(&zf.items[0]), "Get Health");
+            assert_eq!(item_name(&zf.items[1]), "Create User");
+            assert_eq!(item_name(&zf.items[2]), "Alpha Endpoint");
+        } else {
+            panic!("expected Zebra Folder at index 1");
+        }
+
+        // 3. ItemCountDesc puts larger collection Alpha (6 nested items) before Beta (1 item), and Zebra Folder (3) before Auth Folder (1)
+        sort_collections_by(&mut cols, CollectionSortMode::ItemCountDesc);
+        assert_eq!(cols[0].name, "Alpha");
+        assert_eq!(item_name(&cols[0].items[0]), "Zebra Folder");
+        assert_eq!(item_name(&cols[0].items[1]), "Auth Folder");
+
+        // 4. RequestsFirstAsc puts requests before folders and rekeys sort_key
+        let alpha_id = cols[0].id;
+        assert!(sort_parent_node_by(&mut cols, alpha_id, CollectionSortMode::RequestsFirstAsc));
+        assert!(!is_folder(&cols[0].items[0]));
+        assert_eq!(item_sort_key(&cols[0].items[0]), 0);
+        assert_eq!(item_name(&cols[0].items[1]), "Auth Folder");
     }
 }

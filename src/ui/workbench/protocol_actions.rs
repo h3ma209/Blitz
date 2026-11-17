@@ -638,7 +638,8 @@ pub fn run_protocol_action(mut st: WorkbenchState, action: String) {
             }
         }
         "ws_send" => {
-            let msg = req.ws_message.clone();
+            let vars = st.effective_vars_for_request(&req);
+            let msg = vars.resolve_string(&req.ws_message);
             if let Ok(g) = WS_SESSION.lock() {
                 if let Some(s) = g.as_ref() {
                     if let Err(e) = s.send_text(msg.clone()) {
@@ -681,10 +682,11 @@ pub fn run_protocol_action(mut st: WorkbenchState, action: String) {
         }
         "mqtt_publish" => {
             let cancel_flag = st.start_request_send(req_id);
-            let url = req.url.clone();
-            let cid = req.mqtt_client_id.clone();
-            let topic = req.mqtt_topic.clone();
-            let body = req.body.clone();
+            let vars = st.effective_vars_for_request(&req);
+            let url = vars.resolve_string(&req.url);
+            let cid = vars.resolve_string(&req.mqtt_client_id);
+            let topic = vars.resolve_string(&req.mqtt_topic);
+            let body = vars.resolve_string(&req.body);
             st.log_network(format!("📡 [MQTT] Publish to topic '{topic}' ({url})"));
             let url_bg = url.clone();
             let cid_bg = cid.clone();
@@ -726,9 +728,10 @@ pub fn run_protocol_action(mut st: WorkbenchState, action: String) {
         }
         "mqtt_subscribe" => {
             let cancel_flag = st.start_request_send(req_id);
-            let url = req.url.clone();
-            let cid = req.mqtt_client_id.clone();
-            let topic = req.mqtt_topic.clone();
+            let vars = st.effective_vars_for_request(&req);
+            let url = vars.resolve_string(&req.url);
+            let cid = vars.resolve_string(&req.mqtt_client_id);
+            let topic = vars.resolve_string(&req.mqtt_topic);
             st.log_network(format!("📡 [MQTT] Subscribing to topic '{topic}' ({url})"));
             spawn(async move {
                 let r = tokio::task::spawn_blocking(move || {
@@ -754,8 +757,9 @@ pub fn run_protocol_action(mut st: WorkbenchState, action: String) {
         }
         "mcp_list" => {
             let cancel_flag = st.start_request_send(req_id);
-            let cmd = req.mcp_command.clone();
-            let args = split_mcp_args(&req.mcp_args);
+            let vars = st.effective_vars_for_request(&req);
+            let cmd = vars.resolve_string(&req.mcp_command);
+            let args = split_mcp_args(&vars.resolve_string(&req.mcp_args));
             st.log_network(format!("🤖 [MCP] Listing tools from '{cmd}'"));
             spawn(async move {
                 let result =
@@ -790,11 +794,12 @@ pub fn run_protocol_action(mut st: WorkbenchState, action: String) {
         }
         "mcp_call" => {
             let cancel_flag = st.start_request_send(req_id);
-            let cmd = req.mcp_command.clone();
-            let args = split_mcp_args(&req.mcp_args);
-            let tool = req.mcp_tool_name.clone();
+            let vars = st.effective_vars_for_request(&req);
+            let cmd = vars.resolve_string(&req.mcp_command);
+            let args = split_mcp_args(&vars.resolve_string(&req.mcp_args));
+            let tool = vars.resolve_string(&req.mcp_tool_name);
             let tool_bg = tool.clone();
-            let args_json = req.mcp_tool_args_json.clone();
+            let args_json = vars.resolve_string(&req.mcp_tool_args_json);
             let args_json_bg = args_json.clone();
             st.log_network(format!("🤖 [MCP] Calling tool '{tool}'"));
             spawn(async move {
@@ -834,9 +839,10 @@ pub fn run_protocol_action(mut st: WorkbenchState, action: String) {
         }
         "socketio_session" => {
             let cancel_flag = st.start_request_send(req_id);
-            let url = req.url.clone();
-            let ev = req.socketio_event.clone();
-            let body = req.body.clone();
+            let vars = st.effective_vars_for_request(&req);
+            let url = vars.resolve_string(&req.url);
+            let ev = vars.resolve_string(&req.socketio_event);
+            let body = vars.resolve_string(&req.body);
             let url_bg = url.clone();
             let ev_bg = ev.clone();
             let body_bg = body.clone();

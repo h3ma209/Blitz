@@ -9,7 +9,7 @@ use crate::core::{
     ancestor_ids_for_request, ancestor_ids_for_tree_node, collapsed_except_expanded,
     collection_spec_drift, filter_tree_rows, flatten_collections_filtered,
     flatten_collections_searchable, paste_target_parent_id, search_highlight_term, Collection,
-    HistoryEntry, HttpMethod, RequestProtocol, TreeRowKind,
+    CollectionSortMode, HistoryEntry, HttpMethod, RequestProtocol, TreeRowKind,
 };
 
 use super::sidebar_shortcuts::{
@@ -58,6 +58,8 @@ pub struct SidebarEvent {
     pub target_id: Option<Uuid>,
     /// New name for [`SidebarAction::Rename`] (set on Enter confirm).
     pub name: Option<String>,
+    /// Sorting variation for [`SidebarAction::Sort`].
+    pub sort_mode: Option<CollectionSortMode>,
 }
 
 impl SidebarEvent {
@@ -69,6 +71,23 @@ impl SidebarEvent {
             collection_id,
             target_id: None,
             name: None,
+            sort_mode: None,
+        }
+    }
+
+    pub fn sort(
+        mode: CollectionSortMode,
+        target_parent_id: Option<Uuid>,
+        collection_id: Option<Uuid>,
+    ) -> Self {
+        Self {
+            action: SidebarAction::Sort,
+            id: target_parent_id,
+            ids: target_parent_id.map(|i| vec![i]).unwrap_or_default(),
+            collection_id,
+            target_id: None,
+            name: None,
+            sort_mode: Some(mode),
         }
     }
 
@@ -80,6 +99,7 @@ impl SidebarEvent {
             collection_id: None,
             target_id,
             name: None,
+            sort_mode: None,
         }
     }
 
@@ -91,6 +111,7 @@ impl SidebarEvent {
             collection_id: Some(collection_id),
             target_id: None,
             name: Some(name),
+            sort_mode: None,
         }
     }
 }
@@ -133,6 +154,8 @@ pub fn Sidebar(
     let mut last_selected_id = use_signal(|| None::<Uuid>);
     let mut last_scrolled_req = use_signal(|| None::<Uuid>);
     let mut tree_scroll_row = use_signal(|| 0usize);
+    let mut sort_menu_open = use_signal(|| false);
+    let mut active_sort_mode = use_signal(CollectionSortMode::default);
 
     let rows_memo = use_memo(move || {
         let cols = collections.read();
@@ -294,17 +317,58 @@ pub fn Sidebar(
                         super::icons::ActionIcon { name: "export", size: 17 }
                         span { "Export" }
                     }
-                    button {
-                        class: "btn-icon sidebar-action-pill",
-                        title: "Sort favorites + folders first",
-                        aria_label: "Sort favorites and folders first",
-                        onclick: move |_| on_event.call(SidebarEvent::new(
-                            SidebarAction::Sort,
-                            None,
-                            active_collection_id,
-                        )),
-                        super::icons::ActionIcon { name: "sort", size: 17 }
-                        span { "Sort" }
+                    div { class: "sidebar-sort-wrap",
+                        button {
+                            class: if sort_menu_open() {
+                                "btn-icon sidebar-action-pill is-active"
+                            } else {
+                                "btn-icon sidebar-action-pill"
+                            },
+                            title: format!("Sort parents & children ({})", active_sort_mode().label()),
+                            aria_label: "Sort options",
+                            onclick: move |evt| {
+                                evt.stop_propagation();
+                                sort_menu_open.set(!sort_menu_open());
+                            },
+                            super::icons::ActionIcon { name: "sort", size: 17 }
+                            span { "Sort ▾" }
+                        }
+                        if sort_menu_open() {
+                            DismissBackdrop {
+                                z_index: 890,
+                                on_dismiss: move |_| sort_menu_open.set(false),
+                            }
+                            div {
+                                class: "sidebar-sort-popover",
+                                onclick: move |evt| evt.stop_propagation(),
+                                div { class: "sidebar-sort-header", "Sort Collections & Children" }
+                                for mode in CollectionSortMode::all().iter().copied() {
+                                    {
+                                        let is_cur = active_sort_mode() == mode;
+                                        rsx! {
+                                            button {
+                                                key: "{mode.label()}",
+                                                class: if is_cur { "sidebar-sort-item active" } else { "sidebar-sort-item" },
+                                                onclick: move |_| {
+                                                    active_sort_mode.set(mode);
+                                                    sort_menu_open.set(false);
+                                                    on_event.call(SidebarEvent::sort(
+                                                        mode,
+                                                        None,
+                                                        active_collection_id,
+                                                    ));
+                                                },
+                                                div { class: "sidebar-sort-item-top",
+                                                    span { class: "sidebar-sort-check", if is_cur { "✓" } else { "" } }
+                                                    span { class: "sidebar-sort-item-label", "{mode.label()}" }
+                                                }
+                                                span { class: "sidebar-sort-item-hint", "{mode.hint()}" }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
                     }
                     button {
                         class: "btn-icon sidebar-action-pill",
@@ -884,6 +948,7 @@ pub fn Sidebar(
                                                         collection_id: Some(col_id),
                                                         target_id: Some(row_id),
                                                         name: None,
+                                                        sort_mode: None,
                                                     });
                                                 }
                                             }
@@ -1619,6 +1684,50 @@ pub fn Sidebar(
                                                 },
                                             }
                                             CtxMenuItem {
+                                                label: "Sort Contents: Folders First (A → Z)",
+                                                onclick: move |_| {
+                                                    ctx_menu.set(None);
+                                                    on_event.call(SidebarEvent::sort(
+                                                        CollectionSortMode::FoldersFirstAsc,
+                                                        Some(mid),
+                                                        Some(mcol),
+                                                    ));
+                                                },
+                                            }
+                                            CtxMenuItem {
+                                                label: "Sort Contents: Name (A → Z)",
+                                                onclick: move |_| {
+                                                    ctx_menu.set(None);
+                                                    on_event.call(SidebarEvent::sort(
+                                                        CollectionSortMode::NameAsc,
+                                                        Some(mid),
+                                                        Some(mcol),
+                                                    ));
+                                                },
+                                            }
+                                            CtxMenuItem {
+                                                label: "Sort Contents: Name (Z → A)",
+                                                onclick: move |_| {
+                                                    ctx_menu.set(None);
+                                                    on_event.call(SidebarEvent::sort(
+                                                        CollectionSortMode::NameDesc,
+                                                        Some(mid),
+                                                        Some(mcol),
+                                                    ));
+                                                },
+                                            }
+                                            CtxMenuItem {
+                                                label: "Sort Contents: By Method",
+                                                onclick: move |_| {
+                                                    ctx_menu.set(None);
+                                                    on_event.call(SidebarEvent::sort(
+                                                        CollectionSortMode::MethodOrder,
+                                                        Some(mid),
+                                                        Some(mcol),
+                                                    ));
+                                                },
+                                            }
+                                            CtxMenuItem {
                                                 label: "Export",
                                                 onclick: move |_| {
                                                     ctx_menu.set(None);
@@ -1750,6 +1859,50 @@ pub fn Sidebar(
                                                             Some(mcol),
                                                         ));
                                                     }
+                                                },
+                                            }
+                                            CtxMenuItem {
+                                                label: "Sort Folder: Folders First (A → Z)",
+                                                onclick: move |_| {
+                                                    ctx_menu.set(None);
+                                                    on_event.call(SidebarEvent::sort(
+                                                        CollectionSortMode::FoldersFirstAsc,
+                                                        Some(mid),
+                                                        Some(mcol),
+                                                    ));
+                                                },
+                                            }
+                                            CtxMenuItem {
+                                                label: "Sort Folder: Name (A → Z)",
+                                                onclick: move |_| {
+                                                    ctx_menu.set(None);
+                                                    on_event.call(SidebarEvent::sort(
+                                                        CollectionSortMode::NameAsc,
+                                                        Some(mid),
+                                                        Some(mcol),
+                                                    ));
+                                                },
+                                            }
+                                            CtxMenuItem {
+                                                label: "Sort Folder: Name (Z → A)",
+                                                onclick: move |_| {
+                                                    ctx_menu.set(None);
+                                                    on_event.call(SidebarEvent::sort(
+                                                        CollectionSortMode::NameDesc,
+                                                        Some(mid),
+                                                        Some(mcol),
+                                                    ));
+                                                },
+                                            }
+                                            CtxMenuItem {
+                                                label: "Sort Folder: By Method",
+                                                onclick: move |_| {
+                                                    ctx_menu.set(None);
+                                                    on_event.call(SidebarEvent::sort(
+                                                        CollectionSortMode::MethodOrder,
+                                                        Some(mid),
+                                                        Some(mcol),
+                                                    ));
                                                 },
                                             }
                                             CtxMenuItem {

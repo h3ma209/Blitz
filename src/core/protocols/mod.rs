@@ -15,7 +15,7 @@ pub use grpc::{
     GrpcUnaryResult,
 };
 pub use mcp::{mcp_call_tool, mcp_list_tools, split_mcp_args, McpToolInfo};
-pub use mqtt::{mqtt_publish, mqtt_subscribe_once, MqttActionResult};
+pub use mqtt::{mqtt_publish, mqtt_publish_opts, mqtt_subscribe_once, MqttActionResult};
 pub use socketio::socketio_session;
 pub use sse::{
     sse_listen, sse_stream_with_options, sse_stream_with_progress, SseEvent, SseStreamEvent,

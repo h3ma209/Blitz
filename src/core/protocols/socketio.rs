@@ -21,7 +21,7 @@ pub fn socketio_session(
     let listen = listen_event.to_string();
 
     let socket = ClientBuilder::new(url.to_string())
-        .transport_type(TransportType::Websocket)
+        .transport_type(TransportType::Any)
         .on("error", {
             let log = log.clone();
             move |err, _| {
@@ -59,11 +59,14 @@ pub fn socketio_session(
         g.push("socket.io: connected".into());
     }
 
+    // Give Engine.IO/Socket.IO namespace CONNECT (40) handshake a brief beat to settle.
+    std::thread::sleep(Duration::from_millis(80));
+
     if !emit_event.is_empty() {
         let payload = if emit_payload_json.trim().is_empty() {
-            Payload::from("{}")
+            Payload::Text(vec![serde_json::json!({})])
         } else if let Ok(v) = serde_json::from_str::<Value>(emit_payload_json) {
-            Payload::from(v.to_string())
+            Payload::Text(vec![v])
         } else {
             Payload::from(emit_payload_json.to_string())
         };

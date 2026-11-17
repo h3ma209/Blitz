@@ -6,16 +6,16 @@
 
 <p align="center">
   <strong>Let Cursor, Claude, and other agents call your APIs from a local Rust workbench.</strong><br/>
-  37-tool MCP server, OS keychain secrets, Git-native sync, zero cloud accounts — plus sub-150ms startup when you need a fast Postman alternative.
+  42-tool MCP server, macOS Keychain secrets, Git-native sync, zero cloud accounts — native Rust speed (~10MB CLI/MCP, ~200MB GUI + OS WebView).
 </p>
 
 <p align="center">
   <a href="https://github.com/h3ma209/Blitz/releases"><img src="https://img.shields.io/github/v/release/h3ma209/Blitz?include_prereleases&label=release&color=22c55e" alt="Release"></a>
   <a href="https://github.com/h3ma209/Blitz/actions/workflows/build.yml"><img src="https://img.shields.io/github/actions/workflow/status/h3ma209/Blitz/build.yml?branch=master&label=build" alt="CI Build"></a>
   <img src="https://img.shields.io/badge/rust-1.83%2B-orange.svg?logo=rust" alt="Rust 1.83+">
-  <img src="https://img.shields.io/badge/memory-~40MB%20RAM-blueviolet" alt="40MB RAM">
-  <img src="https://img.shields.io/badge/MCP-37%20AI%20Tools-brightgreen" alt="Model Context Protocol">
-  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT%20%2F%20Apache--2.0-blue" alt="License"></a>
+  <img src="https://img.shields.io/badge/CLI%2FMCP-~10MB%20RAM-blueviolet" alt="~10MB CLI/MCP RAM">
+  <img src="https://img.shields.io/badge/MCP-42%20AI%20Tools-brightgreen" alt="Model Context Protocol">
+  <a href="Cargo.toml"><img src="https://img.shields.io/badge/license-MIT-blue" alt="License: MIT"></a>
 </p>
 
 <p align="center">
@@ -35,10 +35,10 @@
 
 Blitz is a **lightweight, open-source API development and testing client** written in pure Rust (Dioxus). It replaces heavy Electron-based tools with a native desktop application that respects your hardware and privacy:
 
-- **🤖 Built-in MCP server (37 tools):** Cursor, Claude, Antigravity, and Windsurf can list collections, send requests, sync OpenAPI, run perf tests, and diff responses — locally, over stdio.
+- **🤖 Built-in MCP server (42 tools):** Cursor, Claude, Antigravity, and Windsurf can list collections, send requests, sync OpenAPI, run perf tests, and diff responses — locally, over stdio.
 - **🔒 100% Offline & Local-First:** No accounts, no logins, no cloud tracking. Your collections, tokens, and environments stay on your machine.
 - **🐙 Git-Native Collaboration:** No $19/user/month cloud workspace paywalls. Save collections right inside your Git repo and sync via `git pull` / `git push`.
-- **🚀 Native speed:** Starts in &lt;150ms and sits at ~40MB RAM (CLI runner ~10MB). No bundled Chromium or multi-process Electron overhead.
+- **🚀 Native speed:** Instant CLI/MCP startup (&lt;20ms, ~8–10MB RSS) and a lightweight native desktop GUI (~200MB main app / ~350MB total w/ OS WebView across 9 open tabs, ~24MB binary). No bundled Chromium or multi-process Electron overhead.
 - **🌐 All Major Protocols:** REST, GraphQL, WebSocket, gRPC (Protobuf), SSE, Socket.IO, and MQTT in a unified, modern interface.
 
 ---
@@ -56,15 +56,15 @@ Blitz is a **lightweight, open-source API development and testing client** writt
 | Feature | Postman | Bruno | Yaak | ⚡ Blitz |
 |---|:---:|:---:|:---:|:---:|
 | **Language & Engine** | Electron + Node.js | Electron + Node.js | Tauri + React | **Pure Rust + Dioxus** |
-| **Startup Time** | ~3,500 ms | ~1,200 ms | ~450 ms | **< 150 ms** |
-| **Memory Footprint** | 800 MB – 1.5 GB | 150 MB – 300 MB | ~120 MB | **~40 MB (GUI) / ~10 MB (CLI)** |
+| **Startup Time** | ~3,500 ms | ~1,200 ms | ~450 ms | **< 20 ms (CLI) / Native WebView (GUI)** |
+| **Memory Footprint** | 800 MB – 1.5 GB | 150 MB – 300 MB | ~120 MB | **~200 MB app (~350 MB w/ WebView) / ~10 MB CLI** |
 | **Account Required** | **Mandatory Cloud** | No | No | **Never (100% Offline)** |
 | **Team Sync** | Paid Cloud ($19+/mo) | Git (.bru files) | Git / Cloud | **Git-Native (standard JSON)** |
-| **AI Agent Bridge** | Proprietary AI add-on | None | None | **Built-in MCP Server (37 tools)** |
-| **Protocols** | REST / WS / gRPC | REST / GraphQL | REST / WS / gRPC | **REST / WS / gRPC / MQTT / SSE** |
-| **Secret Storage** | Cloud or Plaintext | Plaintext `.env` | SQLite | **OS Encrypted Keychain** |
+| **AI Agent Bridge** | Proprietary AI add-on | None | None | **Built-in MCP Server (42 tools)** |
+| **Protocols** | REST / WS / gRPC | REST / GraphQL | REST / WS / gRPC | **REST / WS / gRPC (Unary) / MQTT / SSE** |
+| **Secret Storage** | Cloud or Plaintext | Plaintext `.env` | SQLite | **macOS Keychain (in-memory fallback elsewhere)** |
 | **Mock Server** | Cloud-only | No | No | **Localhost 127.0.0.1** |
-| **License** | Proprietary | MIT | Commercial / Fair-Core | **MIT / Apache-2.0** |
+| **License** | Proprietary | MIT | Commercial / Fair-Core | **MIT** |
 
 ---
 
@@ -171,7 +171,7 @@ chmod +x ~/.local/bin/blitz
 Interact with any modern API standard in one place:
 - **REST / HTTP:** Query parameters, headers, GraphQL, form-data, multipart uploads.
 - **WebSockets:** Interactive bidirectional streaming, frame inspection, Socket Deck, and message presets.
-- **gRPC:** Unary calls and streaming with Protobuf schema reflection and decoding.
+- **gRPC:** HTTP/2 unary calls with JSON (`google.protobuf.Struct`) and Protobuf frame decoding.
 - **MQTT:** Real-time publish and subscribe to IoT brokers.
 - **SSE (Server-Sent Events):** Live streaming event reader.
 - **Socket.IO:** Native engine handshake and event listener.
@@ -208,7 +208,7 @@ Write familiar assertions and workflows locally without remote runtime limits:
 
 ### 🔐 Secure Credential Storage
 Protect sensitive environment secrets and tokens:
-- Native OS Keychain integration (macOS Keychain, Linux Secret Service, Windows Credential Manager).
+- Native macOS Keychain integration (`Security.framework`), with an in-memory session fallback on Linux and Windows.
 - Secrets stay encrypted locally and are automatically stripped before committing to Git remotes.
 
 ### 🔄 Seamless Migration & Local Mocks
@@ -323,7 +323,7 @@ If you prefer manual setup, add Blitz to your IDE's `mcpServers` configuration:
 - **`blitz_list_history`**: Query past request executions with status, latency, and timestamps.
 - **`blitz_run_collection`**: Run a complete collection test suite (supports `folder` scoping) and return assertion results.
 - **`blitz_suggest_assertions`**: Automatically generate test scripts & assertions (status, JSON path, headers, latency ceiling) from an HTTP response or request, with optional auto-attachment.
-- **`blitz_perf_test`**: Run concurrent load/benchmark testing against any request or collection (concurrency VUs, duration) and get RPS throughput, error rate, and p50/min/max latencies.
+- **`blitz_perf_test`**: Run concurrent load/benchmark testing against any request or collection (concurrency VUs, duration) and get RPS throughput, error rate, and avg/min/max latencies.
 - **`blitz_sync_openapi`**: Sync or import an OpenAPI 3.0 specification (JSON/YAML or file path) non-destructively, preserving custom tests, scripts, and auth.
 - **`blitz_get_collection`**: Retrieve the full collection configuration tree (folders, requests, scripts, variables, auth) in a single call.
 - **`blitz_create_environment`**: Create a new named environment with initial key-value variables and optional instant activation.
@@ -347,6 +347,11 @@ If you prefer manual setup, add Blitz to your IDE's `mcpServers` configuration:
 - **`blitz_mqtt_subscribe`**: Subscribe to an MQTT topic on a broker and wait for incoming message with timeout.
 - **`blitz_graphql_ws_subscribe`**: Execute GraphQL subscription over WebSocket (`graphql-transport-ws`) and collect streaming payloads.
 - **`blitz_socketio_emit`**: Connect to Socket.IO server, emit event with payload, and capture inbound events.
+- **`blitz_lint_collection`**: Run collection health checks (unresolved variables, duplicate names, weak auth) on a collection or workspace.
+- **`blitz_diff_environments`**: Compare variable drift/matching/missing keys between two environments with structured & markdown output.
+- **`blitz_set_collection_var`**: Create, update, or delete collection-scoped variables.
+- **`blitz_import_collection`**: Import Postman v2.1, OpenAPI 3.0, or Blitz collection JSON from raw payload or file path.
+- **`blitz_mcp_call`**: Connect to an external STDIO MCP server to list its tools or invoke a tool with arguments.
 
 #### Exposed MCP Resources:
 - `blitz://collections`: Hierarchy of all collections, folders, and requests.
@@ -360,7 +365,7 @@ If you prefer manual setup, add Blitz to your IDE's `mcpServers` configuration:
 
 Sync team workspaces directly through Git without cloud intermediaries:
 
-1. **Link Git Remote:** In the top toolbar, select **Team → Link Git Remote…**
+1. **Link Git Remote:** In the top toolbar, select **Cloud ▾ → Cloud Sync Settings…** (or open **Settings → Cloud Sync**).
 2. **Work Locally:** Add endpoints, edit environments, and write tests.
 3. **Sync:** Click **Sync** — Blitz pulls changes, handles merges, and pushes through standard Git (SSH or `gh` CLI).
 4. **Leak Prevention:** Passwords, tokens, and local secret variables are kept local and excluded from commits.
@@ -373,4 +378,4 @@ Sync team workspaces directly through Git without cloud intermediaries:
 
 ## License
 
-Distributed under the MIT / Apache 2.0 open-source licenses. Not affiliated with or endorsed by Postman Inc.
+Distributed under the MIT open-source license. Not affiliated with or endorsed by Postman Inc.

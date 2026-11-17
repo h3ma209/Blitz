@@ -370,6 +370,7 @@ mod tests {
                 iterations: 1,
                 delay_ms: 0,
                 data_file: String::new(),
+                ..Default::default()
             },
         );
 
@@ -618,6 +619,7 @@ mod tests {
                 iterations: 1,
                 delay_ms: 0,
                 data_file: String::new(),
+                ..Default::default()
             },
         );
         assert_eq!(report.results.len(), 2);

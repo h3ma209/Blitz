@@ -70,12 +70,18 @@ fn walk_items(items: &[super::collection::CollectionItem], out: &mut Vec<MockRou
     }
 }
 
-fn path_only(url: &str) -> String {
-    // Strip scheme/host and query; keep path.
-    let rest = url.split("://").nth(1).unwrap_or(url);
+pub fn path_only(url: &str) -> String {
+    // Strip scheme/host (or leading {{var}} base URL) and query; keep path.
+    let (has_scheme, rest) = match url.split_once("://") {
+        Some((_, r)) => (true, r),
+        None => (false, url),
+    };
     let path = if rest.contains('/') {
-        let p = rest.split_once('/').map(|(_, p)| format!("/{p}")).unwrap_or_else(|| "/".into());
-        p
+        rest.split_once('/')
+            .map(|(_, p)| format!("/{p}"))
+            .unwrap_or_else(|| "/".into())
+    } else if has_scheme {
+        "/".into()
     } else if url.starts_with('/') {
         url.to_string()
     } else {

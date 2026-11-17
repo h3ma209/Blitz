@@ -11,6 +11,7 @@ use tokio_tungstenite::{
 };
 
 /// Subscribe and collect up to `max_events` payload messages (or until timeout).
+#[allow(dead_code)]
 pub fn graphql_ws_subscribe(
     ws_url: &str,
     query: &str,
@@ -56,31 +57,45 @@ async fn subscribe_async(
     timeout_ms: u64,
 ) -> Result<Vec<String>, String> {
     let mut log = vec![format!("graphql-ws: connect {ws_url} ({} headers)", headers.len())];
-    let connect_res = if headers.is_empty() {
-        connect_async(ws_url).await
-    } else {
-        match ws_url.into_client_request() {
-            Ok(mut req) => {
-                for (k, v) in headers {
-                    let v_trimmed = v.trim();
-                    if v_trimmed.is_empty()
-                        || v_trimmed.eq_ignore_ascii_case("<calculated at runtime>")
-                    {
-                        continue;
-                    }
-                    if let (Ok(hk), Ok(hv)) = (
-                        tokio_tungstenite::tungstenite::http::header::HeaderName::from_bytes(k.as_bytes()),
-                        tokio_tungstenite::tungstenite::http::header::HeaderValue::from_str(v_trimmed),
-                    ) {
-                        req.headers_mut().insert(hk, hv);
-                    }
-                }
-                connect_async(req).await
-            }
-            Err(e) => return Err(format!("request build: {e}")),
+    let mut req = ws_url
+        .into_client_request()
+        .map_err(|e| format!("request build: {e}"))?;
+    let mut has_subprotocol = false;
+    for (k, v) in headers {
+        let v_trimmed = v.trim();
+        if v_trimmed.is_empty()
+            || v_trimmed.eq_ignore_ascii_case("<calculated at runtime>")
+        {
+            continue;
         }
-    };
-    let (mut ws, _) = connect_res.map_err(|e| format!("connect: {e}"))?;
+        if k.eq_ignore_ascii_case("sec-websocket-protocol") {
+            has_subprotocol = true;
+        }
+        if let (Ok(hk), Ok(hv)) = (
+            tokio_tungstenite::tungstenite::http::header::HeaderName::from_bytes(k.as_bytes()),
+            tokio_tungstenite::tungstenite::http::header::HeaderValue::from_str(v_trimmed),
+        ) {
+            req.headers_mut().insert(hk, hv);
+        }
+    }
+    if !has_subprotocol {
+        if let Ok(hv) = tokio_tungstenite::tungstenite::http::header::HeaderValue::from_str(
+            "graphql-transport-ws, graphql-ws",
+        ) {
+            req.headers_mut().insert(
+                tokio_tungstenite::tungstenite::http::header::SEC_WEBSOCKET_PROTOCOL,
+                hv,
+            );
+        }
+    }
+    let (mut ws, upgrade_resp) = connect_async(req)
+        .await
+        .map_err(|e| format!("connect: {e}"))?;
+    let negotiated_legacy = upgrade_resp
+        .headers()
+        .get("sec-websocket-protocol")
+        .and_then(|v| v.to_str().ok())
+        .is_some_and(|p| p.eq_ignore_ascii_case("graphql-ws"));
 
     // graphql-transport-ws connection_init
     let init = json!({"type": "connection_init", "payload": {}});
@@ -163,12 +178,21 @@ async fn subscribe_async(
 
         match ty {
             "connection_ack" if !started => {
-                let _ = ws.send(Message::Text(subscribe.to_string().into())).await;
-                let _ = ws
-                    .send(Message::Text(legacy_start.to_string().into()))
-                    .await;
+                let sub_msg = if negotiated_legacy {
+                    &legacy_start
+                } else {
+                    &subscribe
+                };
+                let _ = ws.send(Message::Text(sub_msg.to_string().into())).await;
                 started = true;
-                log.push("graphql-ws: subscribe sent".into());
+                log.push(format!(
+                    "graphql-ws: subscribe sent ({})",
+                    if negotiated_legacy {
+                        "graphql-ws/start"
+                    } else {
+                        "graphql-transport-ws/subscribe"
+                    }
+                ));
             }
             "connection_ack" => {}
             "next" | "data" | "error" | "complete" => {

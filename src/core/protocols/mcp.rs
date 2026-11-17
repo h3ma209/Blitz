@@ -26,53 +26,83 @@ fn spawn_mcp_reader(stdout: std::process::ChildStdout) -> mpsc::Receiver<Result<
     std::thread::spawn(move || {
         let mut reader = BufReader::new(stdout);
         loop {
-            let mut headers = String::new();
-            loop {
-                let mut line = String::new();
-                match reader.read_line(&mut line) {
-                    Ok(0) => {
-                        let _ = tx.send(Err("mcp stdout eof".into()));
-                        return;
+            let mut line = String::new();
+            match reader.read_line(&mut line) {
+                Ok(0) => {
+                    let _ = tx.send(Err("mcp stdout eof".into()));
+                    return;
+                }
+                Ok(_) => {
+                    let trimmed = line.trim();
+                    if trimmed.is_empty() {
+                        continue;
                     }
-                    Ok(_) => {
-                        if line == "\r\n" || line == "\n" {
-                            break;
+                    // Support newline-delimited JSON-RPC (standard MCP stdio transport)
+                    if trimmed.starts_with('{') {
+                        if let Ok(v) = serde_json::from_str::<JsonValue>(trimmed) {
+                            if tx.send(Ok(v)).is_err() {
+                                return;
+                            }
                         }
-                        headers.push_str(&line);
+                        continue;
                     }
-                    Err(e) => {
-                        let _ = tx.send(Err(format!("read: {e}")));
+                    // Support LSP-style Content-Length framing
+                    let mut content_len = if let Some(v) =
+                        trimmed.to_ascii_lowercase().strip_prefix("content-length:")
+                    {
+                        v.trim().parse().unwrap_or(0)
+                    } else {
+                        // Skip non-JSON diagnostic text lines on stdout
+                        continue;
+                    };
+                    loop {
+                        let mut hdr = String::new();
+                        match reader.read_line(&mut hdr) {
+                            Ok(0) => {
+                                let _ = tx.send(Err("mcp stdout eof".into()));
+                                return;
+                            }
+                            Ok(_) => {
+                                if hdr == "\r\n" || hdr == "\n" {
+                                    break;
+                                }
+                                if let Some(v) = hdr.trim().to_ascii_lowercase().strip_prefix("content-length:") {
+                                    content_len = v.trim().parse().unwrap_or(content_len);
+                                }
+                            }
+                            Err(e) => {
+                                let _ = tx.send(Err(format!("read: {e}")));
+                                return;
+                            }
+                        }
+                    }
+                    if content_len == 0 {
+                        continue;
+                    }
+                    const MAX_MCP_MESSAGE_BYTES: usize = 32 * 1024 * 1024;
+                    if content_len > MAX_MCP_MESSAGE_BYTES {
+                        let _ = tx.send(Err(format!("mcp message too large: {content_len} bytes")));
                         return;
                     }
-                }
-            }
-            let mut content_len = 0usize;
-            for line in headers.lines() {
-                if let Some(v) = line.to_ascii_lowercase().strip_prefix("content-length:") {
-                    content_len = v.trim().parse().unwrap_or(0);
-                }
-            }
-            if content_len == 0 {
-                continue;
-            }
-            const MAX_MCP_MESSAGE_BYTES: usize = 32 * 1024 * 1024;
-            if content_len > MAX_MCP_MESSAGE_BYTES {
-                let _ = tx.send(Err(format!("mcp message too large: {content_len} bytes")));
-                return;
-            }
-            let mut buf = vec![0u8; content_len];
-            if let Err(e) = reader.read_exact(&mut buf) {
-                let _ = tx.send(Err(format!("body: {e}")));
-                return;
-            }
-            match serde_json::from_slice::<JsonValue>(&buf) {
-                Ok(v) => {
-                    if tx.send(Ok(v)).is_err() {
+                    let mut buf = vec![0u8; content_len];
+                    if let Err(e) = reader.read_exact(&mut buf) {
+                        let _ = tx.send(Err(format!("body: {e}")));
                         return;
+                    }
+                    match serde_json::from_slice::<JsonValue>(&buf) {
+                        Ok(v) => {
+                            if tx.send(Ok(v)).is_err() {
+                                return;
+                            }
+                        }
+                        Err(e) => {
+                            let _ = tx.send(Err(format!("json: {e}")));
+                            return;
+                        }
                     }
                 }
                 Err(e) => {
-                    let _ = tx.send(Err(format!("json: {e}")));
+                    let _ = tx.send(Err(format!("read: {e}")));
                     return;
                 }
             }
@@ -187,11 +217,10 @@ impl McpSession {
 
     fn write_message(&mut self, msg: &JsonValue) -> Result<(), String> {
         let body = serde_json::to_vec(msg).map_err(|e| e.to_string())?;
-        // Content-Length framing (MCP STDIO)
-        let header = format!("Content-Length: {}\r\n\r\n", body.len());
+        // Newline-delimited JSON-RPC (standard MCP STDIO transport)
         self.stdin
-            .write_all(header.as_bytes())
-            .and_then(|_| self.stdin.write_all(&body))
+            .write_all(&body)
+            .and_then(|_| self.stdin.write_all(b"\n"))
             .and_then(|_| self.stdin.flush())
             .map_err(|e| format!("write: {e}"))
     }

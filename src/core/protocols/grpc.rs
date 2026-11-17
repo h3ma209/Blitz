@@ -57,7 +57,7 @@ pub fn grpc_unary_with_headers(
         (res, worker_log)
     };
 
-    let (res, worker_log) = if tokio::runtime::Handle::try_current().is_ok() {
+    let (res, mut worker_log) = if tokio::runtime::Handle::try_current().is_ok() {
         match std::thread::spawn(run).join() {
             Ok(pair) => pair,
             Err(_) => {
@@ -80,18 +80,28 @@ pub fn grpc_unary_with_headers(
     match res {
         Ok(mut r) => {
             r.elapsed_ms = started.elapsed().as_millis();
+            worker_log.push(format!("grpc: {} ({} ms)", r.status, r.elapsed_ms));
+            if !r.grpc_message.is_empty() {
+                worker_log.push(format!("grpc-message: {}", r.grpc_message));
+            }
+            if !r.body_json.is_empty() {
+                worker_log.push(format!("response:\n{}", r.body_json));
+            }
             r.log = worker_log;
             r
         }
-        Err(e) => GrpcUnaryResult {
-            status: "ERROR".into(),
-            grpc_status: -1,
-            grpc_message: String::new(),
-            body_json: String::new(),
-            elapsed_ms: started.elapsed().as_millis(),
-            error: Some(e),
-            log: worker_log,
-        },
+        Err(e) => {
+            worker_log.push(format!("grpc error: {e}"));
+            GrpcUnaryResult {
+                status: "ERROR".into(),
+                grpc_status: -1,
+                grpc_message: String::new(),
+                body_json: String::new(),
+                elapsed_ms: started.elapsed().as_millis(),
+                error: Some(e),
+                log: worker_log,
+            }
+        }
     }
 }
 
@@ -121,8 +131,9 @@ async fn unary_async(
 
     let mut connector = HttpConnector::new();
     connector.enforce_http(false);
-    let client: Client<_, Full<Bytes>> =
-        Client::builder(TokioExecutor::new()).build(connector);
+    let client: Client<_, Full<Bytes>> = Client::builder(TokioExecutor::new())
+        .http2_only(true)
+        .build(connector);
 
     let mut req_builder = Request::builder()
         .method(hyper::Method::POST)
@@ -148,21 +159,21 @@ async fn unary_async(
 
     let res = client.request(req).await.map_err(|e| format!("http2: {e}"))?;
     let (parts, body) = res.into_parts();
-    let collected = body
-        .collect()
-        .await
-        .map_err(|e| format!("body: {e}"))?
-        .to_bytes();
+    let collected_frame = body.collect().await.map_err(|e| format!("body: {e}"))?;
+    let trailers = collected_frame.trailers().cloned();
+    let collected = collected_frame.to_bytes();
 
-    let grpc_status = parts
-        .headers
-        .get("grpc-status")
+    let grpc_status = trailers
+        .as_ref()
+        .and_then(|t| t.get("grpc-status"))
+        .or_else(|| parts.headers.get("grpc-status"))
         .and_then(|v| v.to_str().ok())
         .and_then(|s| s.parse().ok())
         .unwrap_or(0);
-    let grpc_message = parts
-        .headers
-        .get("grpc-message")
+    let grpc_message = trailers
+        .as_ref()
+        .and_then(|t| t.get("grpc-message"))
+        .or_else(|| parts.headers.get("grpc-message"))
         .and_then(|v| v.to_str().ok())
         .unwrap_or("")
         .to_string();

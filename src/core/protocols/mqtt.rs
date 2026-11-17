@@ -20,21 +20,42 @@ pub fn mqtt_publish(
     topic: &str,
     payload: &str,
 ) -> MqttActionResult {
+    mqtt_publish_opts(broker_url, client_id, topic, payload, false)
+}
+
+/// Publish one message with explicit retain flag then disconnect.
+pub fn mqtt_publish_opts(
+    broker_url: &str,
+    client_id: &str,
+    topic: &str,
+    payload: &str,
+    retain: bool,
+) -> MqttActionResult {
     let started = Instant::now();
     match with_client(broker_url, client_id, |client, connection| {
         client
-            .publish(topic, QoS::AtLeastOnce, false, payload.as_bytes())
+            .publish(topic, QoS::AtLeastOnce, retain, payload.as_bytes())
             .map_err(|e| e.to_string())?;
-        // Drain a few events so publish is flushed.
+        // Wait for PubAck (up to 2s) so publish flushes cleanly.
+        let mut acked = false;
         for _ in 0..20 {
             match connection.recv_timeout(Duration::from_millis(100)) {
-                Ok(Ok(Event::Incoming(Incoming::PubAck(_)))) => break,
+                Ok(Ok(Event::Incoming(Incoming::PubAck(_)))) => {
+                    acked = true;
+                    break;
+                }
                 Ok(Ok(_)) => {}
                 Ok(Err(e)) => return Err(e.to_string()),
-                Err(_) => break,
+                Err(_) => {}
             }
         }
-        Ok(vec![format!("published → {topic}: {payload}")])
+        if !acked {
+            return Err(format!("MQTT publish to '{topic}' timed out waiting for PubAck"));
+        }
+        Ok(vec![format!(
+            "published → {topic}{}: {payload}",
+            if retain { " [retained]" } else { "" }
+        )])
     }) {
         Ok(messages) => MqttActionResult {
             ok: true,
@@ -78,8 +99,7 @@ pub fn mqtt_subscribe_once(
                 Err(_) => {}
             }
         }
-        out.push("timeout waiting for message".into());
-        Ok(out)
+        Err(format!("Timeout waiting for MQTT message on '{topic}'"))
     }) {
         Ok(messages) => MqttActionResult {
             ok: true,

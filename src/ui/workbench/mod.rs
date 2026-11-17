@@ -21,7 +21,8 @@ use crate::core::{
     is_draft_dirty, move_item_to, push_console, push_history, remint_pasted_item, remove_across,
     rename_across, reorder_before, request_tab_display_name, resolve_ancestor_auth,
     save_example_to_request, save_request_to_collections, snapshot_tree_item, sort_collections,
-    Collection, CollectionItem, ConsoleLine, Folder, HistoryEntry, HttpMethod, RequestDraft,
+    sort_collections_by, sort_parent_node_by, Collection, CollectionItem, ConsoleLine, Folder,
+    HistoryEntry, HttpMethod, RequestDraft,
     RequestProtocol, ResponseView, SavedExample, UiSettings, VarResolveScope, HISTORY_MAX,
     default_zoom_percent,
 };
@@ -916,9 +917,34 @@ pub fn Workbench() -> Element {
             return;
         }
 
-        if req.protocol != RequestProtocol::Http {
-            status_msg.set("use protocol buttons for WS/MQTT/MCP".into());
-            return;
+        match req.protocol {
+            RequestProtocol::WebSocket => {
+                let action = if ws_connected() { "ws_send" } else { "ws_connect" };
+                run_protocol_action(st, action.into());
+                return;
+            }
+            RequestProtocol::Mqtt => {
+                run_protocol_action(st, "mqtt_publish".into());
+                return;
+            }
+            RequestProtocol::Mcp => {
+                let action = if req.mcp_tool_name.trim().is_empty() {
+                    "mcp_list"
+                } else {
+                    "mcp_call"
+                };
+                run_protocol_action(st, action.into());
+                return;
+            }
+            RequestProtocol::SocketIo => {
+                run_protocol_action(st, "socketio_session".into());
+                return;
+            }
+            RequestProtocol::GraphqlWs => {
+                run_protocol_action(st, "graphql_ws_subscribe".into());
+                return;
+            }
+            RequestProtocol::Grpc | RequestProtocol::Sse | RequestProtocol::Http => {}
         }
 
         let sent_req_id = req.id;
@@ -1547,8 +1573,16 @@ pub fn Workbench() -> Element {
                 }
             }
             SidebarAction::Sort => {
+                let mode = evt.sort_mode.unwrap_or_default();
                 let mut cols = collections();
-                sort_collections(&mut cols);
+                if let Some(parent_id) = evt.id {
+                    if sort_parent_node_by(&mut cols, parent_id, mode) {
+                        status_msg.set(format!("sorted: {}", mode.label()));
+                    }
+                } else {
+                    sort_collections_by(&mut cols, mode);
+                    status_msg.set(format!("sorted all collections & children: {}", mode.label()));
+                }
                 collections.set(cols);
                 st.persist();
             }
@@ -3092,7 +3126,10 @@ pub fn Workbench() -> Element {
                     } else {
                         {
                             let cur_draft_top = draft();
-                            let is_non_http = cur_draft_top.protocol != RequestProtocol::Http;
+                            let is_non_http = !matches!(
+                                cur_draft_top.protocol,
+                                RequestProtocol::Http | RequestProtocol::Grpc
+                            );
                             let cur_sending = st.is_request_sending(cur_draft_top.id);
                             let split_class = if is_non_http {
                                 "workbench-split protocol-full layout-column"

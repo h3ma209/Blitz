@@ -98,6 +98,7 @@ impl WsSession {
 }
 
 /// Connect in a background thread with its own Tokio runtime.
+#[allow(dead_code)]
 pub fn ws_connect_session(url: &str) -> Result<WsSession, String> {
     ws_connect_session_with_headers(url, &[])
 }

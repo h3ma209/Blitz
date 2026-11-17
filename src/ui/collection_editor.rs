@@ -37,6 +37,7 @@ pub fn CollectionEditor(
     let mut runner_iterations = use_signal(|| 1usize);
     let mut runner_delay = use_signal(|| 0u64);
     let mut runner_data_file = use_signal(String::new);
+    let mut runner_stop_on_error = use_signal(|| false);
     let mut runner_running = use_signal(|| false);
     let mut runner_report = use_signal(|| None::<RunnerReport>);
     let mut status_toast = use_signal(String::new);
@@ -525,14 +526,40 @@ pub fn CollectionEditor(
                                 }
                                 div { class: "runner-config-item flex-1",
                                     label { class: "hint", "Data File (CSV or JSON optional)" }
-                                    input {
-                                        r#type: "text",
-                                        placeholder: "/path/to/data.json",
-                                        value: "{runner_data_file()}",
-                                        oninput: move |evt: Event<FormData>| {
-                                            runner_data_file.set(evt.value());
+                                    div { class: "runner-datafile-row",
+                                        input {
+                                            r#type: "text",
+                                            placeholder: "/path/to/data.json",
+                                            value: "{runner_data_file()}",
+                                            oninput: move |evt: Event<FormData>| {
+                                                runner_data_file.set(evt.value());
+                                            }
+                                        }
+                                        button {
+                                            class: "btn btn-sm btn-ghost",
+                                            r#type: "button",
+                                            onclick: move |_| {
+                                                spawn(async move {
+                                                    if let Some(path) = rfd::FileDialog::new()
+                                                        .set_title("Select Iteration Data File")
+                                                        .add_filter("Data Files", &["csv", "json"])
+                                                        .pick_file()
+                                                    {
+                                                        runner_data_file.set(path.to_string_lossy().into_owned());
+                                                    }
+                                                });
+                                            },
+                                            "Browse…"
                                         }
                                     }
+                                }
+                                label { class: "runner-check-row", style: "align-self: flex-end; margin-bottom: 6px;",
+                                    input {
+                                        r#type: "checkbox",
+                                        checked: runner_stop_on_error(),
+                                        onchange: move |evt| runner_stop_on_error.set(evt.checked()),
+                                    }
+                                    span { "Stop on error" }
                                 }
                                 button {
                                     class: if runner_running() { "btn btn-send disabled" } else { "btn btn-send" },
@@ -541,6 +568,7 @@ pub fn CollectionEditor(
                                     onclick: {
                                         let col = collection.clone();
                                         let vars = vars.clone();
+                                        let envs = environments.clone();
                                         move |_| {
                                             if runner_running() {
                                                 return;
@@ -550,10 +578,17 @@ pub fn CollectionEditor(
                                             let col = col.clone();
                                             let mut ctx = vars.clone();
                                             ctx.collection = col.variables_map();
+                                            if let Some(eid) = active_env_id {
+                                                if let Some(env) = envs.iter().find(|e| e.id == eid) {
+                                                    ctx.environment = env.to_map();
+                                                }
+                                            }
                                             let cfg = RunnerConfig {
                                                 iterations: runner_iterations(),
                                                 delay_ms: runner_delay(),
                                                 data_file: runner_data_file(),
+                                                stop_on_error: runner_stop_on_error(),
+                                                ..Default::default()
                                             };
                                             spawn(async move {
                                                 let rep = tokio::task::spawn_blocking(move || {
@@ -578,7 +613,7 @@ pub fn CollectionEditor(
                                         Spinner { class: "spinner-sm".to_string() }
                                         span { style: "margin-left: 6px;", "Running…" }
                                     } else {
-                                        "Run Collection"
+                                        "▶ Run Collection"
                                     }
                                 }
                             }
@@ -593,76 +628,9 @@ pub fn CollectionEditor(
 
                             if let Some(rep) = runner_report() {
                                 div { class: "runner-results-card",
-                                    div { class: "runner-results-summary",
-                                        span { class: "runner-stat-pill stat-pass", "✓ {rep.passed_count()} Passed" }
-                                        span { class: "runner-stat-pill stat-fail", "✗ {rep.failed_count()} Failed" }
-                                        span { class: "runner-stat-pill stat-total", "Total: {rep.results.len()} Tests" }
-                                    }
-                                    table { class: "kv-table runner-table",
-                                        thead {
-                                            tr {
-                                                th { "Iter" }
-                                                th { "Result" }
-                                                th { "Method" }
-                                                th { "Name" }
-                                                th { "Status" }
-                                                th { "Time" }
-                                            }
-                                        }
-                                        tbody {
-                                            for (i, r) in rep.results.iter().enumerate() {
-                                                tr {
-                                                    key: "{i}-{r.iteration}",
-                                                    td { "{r.iteration}" }
-                                                    td {
-                                                        span {
-                                                            class: if r.passed { "status-chip status-ok" } else { "status-chip status-err" },
-                                                            if r.passed { "PASS" } else { "FAIL" }
-                                                        }
-                                                    }
-                                                    td {
-                                                        {
-                                                            let meth_cls = match r.method.to_uppercase().as_str() {
-                                                                "GET" => "get",
-                                                                "POST" => "post",
-                                                                "PUT" => "put",
-                                                                "PATCH" => "patch",
-                                                                "DELETE" => "delete",
-                                                                "HEAD" => "head",
-                                                                "OPTIONS" => "options",
-                                                                _ => "get",
-                                                            };
-                                                            rsx! {
-                                                                span { class: "method-badge method-{meth_cls}", "{r.method}" }
-                                                            }
-                                                        }
-                                                    }
-                                                    td { "{r.name}" }
-                                                    td {
-                                                        if let Some(s) = r.status {
-                                                            "{s}"
-                                                        } else if let Some(e) = &r.error {
-                                                            span { class: "status-err", "{e}" }
-                                                        } else {
-                                                            "—"
-                                                        }
-                                                    }
-                                                    td {
-                                                        if let Some(ms) = r.elapsed_ms {
-                                                            "{ms} ms"
-                                                        } else {
-                                                            "—"
-                                                        }
-                                                    }
-                                                }
-                                            }
-                                        }
-                                    }
-                                    if !rep.console.is_empty() {
-                                        details { class: "runner-console-details",
-                                            summary { "Console Output ({rep.console.len()} lines)" }
-                                            pre { class: "response-body", "{rep.console.join(\"\\n\")}" }
-                                        }
+                                    super::runner_panel::RunnerResultsView {
+                                        collection_name: collection.name.clone(),
+                                        report: rep,
                                     }
                                 }
                             }

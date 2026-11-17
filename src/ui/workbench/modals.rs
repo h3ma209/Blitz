@@ -1,4 +1,8 @@
 use std::collections::HashMap;
+use std::sync::{
+    atomic::{AtomicBool, Ordering},
+    Arc,
+};
 use std::time::Duration;
 use uuid::Uuid;
 
@@ -6,11 +10,12 @@ use dioxus::prelude::*;
 
 use crate::core::{
     apply_collection_map, apply_environment_map, batch_move_items, detect_git_conflicts,
-    find_environment, generate_snippet_resolved, get_team_activity, import_collection_v21,
-    import_curl, import_har, import_openapi3, limitations_blurb, pull_workspace, purge_from_trash,
-    push_console, push_workspace, restore_from_trash, run_performance, save_request_to_collections,
-    snippet_languages, upsert_collection, valid_move_destinations, Collection, ConsoleLine,
-    Cookie, EnvVar, Environment, KeyValue, RequestDraft, VariableContext,
+    find_environment, find_request_across, generate_snippet_resolved, get_team_activity,
+    import_collection_v21, import_curl, import_har, import_openapi3, limitations_blurb,
+    pull_workspace, purge_from_trash, push_console, push_workspace, restore_from_trash,
+    run_performance, save_request_to_collections, snippet_languages, upsert_collection,
+    valid_move_destinations, Collection, ConsoleLine, Cookie, EnvVar, Environment, KeyValue,
+    RequestDraft, VariableContext,
 };
 use crate::runtime::{run_collection_with_config, RunnerConfig};
 use crate::storage::JsonStore;
@@ -474,6 +479,7 @@ pub fn WorkbenchModals(
     let mut show_runner = st.show_runner;
     let mut runner_running = st.runner_running;
     let mut runner_report = st.runner_report;
+    let mut runner_cancel = use_signal(|| None::<Arc<AtomicBool>>);
     let mut show_perf = st.show_perf;
     let mut perf_running = st.perf_running;
     let mut perf_report = st.perf_report;
@@ -923,36 +929,76 @@ pub fn WorkbenchModals(
         if show_runner() {
             RunnerPanel {
                 collections: collections(),
+                environments: environments(),
+                active_env_id: active_env_id(),
                 selected_id: active_collection_id(),
                 running: runner_running(),
                 report: runner_report(),
                 on_event: move |evt| match evt {
                     RunnerEvent::Close => show_runner.set(false),
+                    RunnerEvent::Cancel => {
+                        if let Some(flag) = runner_cancel() {
+                            flag.store(true, Ordering::SeqCst);
+                            status_msg.set("stopping collection run…".into());
+                        }
+                    }
+                    RunnerEvent::OpenRequest {
+                        collection_id,
+                        request_id,
+                    } => {
+                        let cols = collections();
+                        if let Some((col_id, req)) = find_request_across(&cols, request_id) {
+                            active_collection_id.set(Some(col_id));
+                            active_request_id.set(Some(req.id));
+                            editing_collection_id.set(None);
+                            draft.set(req.clone());
+                            let mut tabs = (st.open_tabs)();
+                            if !tabs.iter().any(|t| t.id == req.id) {
+                                tabs.push(req.clone());
+                                st.open_tabs.set(tabs);
+                            }
+                            let cached = (st.responses)().get(&req.id).cloned();
+                            let mut resp_sig = st.response;
+                            resp_sig.set(cached);
+                            show_runner.set(false);
+                        } else {
+                            active_collection_id.set(Some(collection_id));
+                            show_runner.set(false);
+                        }
+                    }
                     RunnerEvent::Run {
                         collection_id,
+                        folder_filter,
+                        selected_request_ids,
+                        environment_id,
                         iterations,
                         delay_ms,
                         data_file,
+                        stop_on_error,
+                        persist_vars,
                     } => {
                         if runner_running() {
                             return;
                         }
+                        let cancel_flag = Arc::new(AtomicBool::new(false));
+                        runner_cancel.set(Some(cancel_flag.clone()));
                         runner_running.set(true);
                         runner_report.set(None);
                         let cols = collections();
                         let Some(col) = cols.into_iter().find(|c| c.id == collection_id) else {
                             runner_running.set(false);
+                            runner_cancel.set(None);
                             status_msg.set("collection not found".into());
                             return;
                         };
                         let mut ctx = vars();
                         ctx.collection = col.variables_map();
-                        if let Some(env) = find_environment(&environments(), active_env_id()) {
+                        if let Some(env) = find_environment(&environments(), environment_id) {
                             ctx.environment = env.to_map();
                         } else {
                             ctx.environment.clear();
                         }
-                        let env_id = active_env_id();
+                        let env_id = environment_id;
                         let col_id = col.id;
                         let mut jar = cookies();
                         let settings = app_settings();
@@ -960,6 +1006,10 @@ pub fn WorkbenchModals(
                             iterations,
                             delay_ms,
                             data_file,
+                            folder_filter,
+                            selected_request_ids,
+                            stop_on_error,
+                            cancel: Some(cancel_flag),
                         };
                         let mut st = st;
                         spawn(async move {
@@ -977,30 +1027,32 @@ pub fn WorkbenchModals(
                             .await;
                             match report {
                                 Ok((rep, jar, mut ctx)) => {
-                                    cookies.set(jar);
-                                    if let Some(id) = env_id {
-                                        let mut envs = environments();
-                                        if let Some(env) =
-                                            envs.iter_mut().find(|e| e.id == id)
-                                        {
-                                            apply_environment_map(env, &ctx.environment);
+                                    if persist_vars {
+                                        cookies.set(jar);
+                                        if let Some(id) = env_id {
+                                            let mut envs = environments();
+                                            if let Some(env) =
+                                                envs.iter_mut().find(|e| e.id == id)
+                                            {
+                                                apply_environment_map(env, &ctx.environment);
+                                            }
+                                            environments.set(envs);
+                                        } else if !ctx.environment.is_empty() {
+                                            status_msg.set(
+                                                "no active environment — blitz.environment.set ignored"
+                                                    .into(),
+                                            );
+                                            ctx.environment.clear();
                                         }
-                                        environments.set(envs);
-                                    } else if !ctx.environment.is_empty() {
-                                        status_msg.set(
-                                            "no active environment — blitz.environment.set ignored"
-                                                .into(),
-                                        );
-                                        ctx.environment.clear();
+                                        let mut cols = collections();
+                                        if let Some(c) = cols.iter_mut().find(|c| c.id == col_id) {
+                                            apply_collection_map(c, &ctx.collection);
+                                        }
+                                        collections.set(cols);
+                                        let vault = vars().vault.clone();
+                                        ctx.vault = vault;
+                                        vars.set(ctx);
                                     }
-                                    let mut cols = collections();
-                                    if let Some(c) = cols.iter_mut().find(|c| c.id == col_id) {
-                                        apply_collection_map(c, &ctx.collection);
-                                    }
-                                    collections.set(cols);
-                                    let vault = vars().vault.clone();
-                                    ctx.vault = vault;
-                                    vars.set(ctx);
                                     let mut lines = console_lines();
                                     for m in &rep.console {
                                         push_console(&mut lines, ConsoleLine::info(m.clone()));
@@ -1019,7 +1071,10 @@ pub fn WorkbenchModals(
                                 }
                             }
                             runner_running.set(false);
-                            st.persist();
+                            runner_cancel.set(None);
+                            if persist_vars {
+                                st.persist();
+                            }
                         });
                     }
                 },

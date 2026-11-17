@@ -220,6 +220,9 @@ fn run_collection_cli(args: &[String]) -> i32 {
                         passed: ok,
                         error: view.error.clone(),
                         test_results: view.test_results.clone(),
+                        folder_path: String::new(),
+                        response_headers: vec![],
+                        response_preview: String::new(),
                         iteration: 1,
                     },
                 )
@@ -241,6 +244,9 @@ fn run_collection_cli(args: &[String]) -> i32 {
                         passed: false,
                         error: Some(e.to_string()),
                         test_results: Vec::new(),
+                        folder_path: String::new(),
+                        response_headers: vec![],
+                        response_preview: String::new(),
                         iteration: 1,
                     },
                 )

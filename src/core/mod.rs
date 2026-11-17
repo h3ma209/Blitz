@@ -60,8 +60,9 @@ pub use collection::{
     folder_path_to_request, insert_item_under, is_draft_dirty, item_contains_id, move_item_to, paste_target_parent_id,
     remint_pasted_item, request_tab_display_name, resolve_ancestor_auth, snapshot_tree_item,
     purge_from_trash, remove_across, rename_across, reorder_before, restore_from_trash,
-    save_request_to_collections, search_highlight_term, sort_collections, trash_collection, valid_move_destinations,
-    AncestorAuthOrigin, Collection, CollectionItem, Folder, MoveDestination,
+    save_request_to_collections, search_highlight_term, sort_collections, sort_collections_by,
+    sort_items_by, sort_parent_node_by, trash_collection, valid_move_destinations,
+    AncestorAuthOrigin, Collection, CollectionItem, CollectionSortMode, Folder, MoveDestination,
     ParsedTreeQuery, SearchKindFilter, TreeRow, TreeRowKind,
 };
 pub use console::{push_console, ConsoleLevel, ConsoleLine, CONSOLE_MAX};
@@ -97,7 +98,7 @@ pub use perf_runner::{run_performance, PerfReport};
 pub use protocols::{
     graphql_ws_subscribe, graphql_ws_subscribe_with_headers, grpc_reflection_list,
     grpc_server_stream_stub, grpc_unary, grpc_unary_with_headers, mcp_call_tool, mcp_list_tools,
-    mqtt_publish, mqtt_subscribe_once, socketio_session, split_mcp_args, sse_listen,
+    mqtt_publish, mqtt_publish_opts, mqtt_subscribe_once, socketio_session, split_mcp_args, sse_listen,
     sse_stream_with_options, sse_stream_with_progress, ws_connect_session,
     ws_connect_session_with_headers, GrpcUnaryResult, McpToolInfo, MqttActionResult, SseEvent,
     SseStreamEvent, SseStreamProgress, SseStreamResult, WsDirection, WsFrameItem, WsSession,

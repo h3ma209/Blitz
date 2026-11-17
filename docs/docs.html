@@ -6,7 +6,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Blitz Docs — MCP Tools, Scripting API &amp; CLI Reference</title>
   <meta name="description"
-    content="Reference for Blitz: 37 MCP tools for Cursor/Claude, blitz.* / pm.* sandbox API, headless CLI, Git sync, protocols, and OS keychain vault.">
+    content="Reference for Blitz: 42 MCP tools for Cursor/Claude, blitz.* / pm.* sandbox API, headless CLI, Git sync, protocols, and OS keychain vault.">
   <meta name="keywords"
     content="blitz docs, blitz documentation, postman alternative docs, mcp tools reference, api testing documentation, rust api client guide">
   <meta name="author" content="h3ma209">
@@ -19,7 +19,7 @@
   <meta property="og:url" content="https://h3ma209.github.io/Blitz/docs.html">
   <meta property="og:title" content="Blitz Documentation — Complete Reference Guide">
   <meta property="og:description"
-    content="Complete documentation for Blitz: architecture, 8 protocols, scripting sandbox, 37 MCP tools, Git sync, and CLI runner.">
+    content="Complete documentation for Blitz: architecture, 8 protocols, scripting sandbox, 42 MCP tools, Git sync, and CLI runner.">
   <meta property="og:image" content="https://raw.githubusercontent.com/h3ma209/Blitz/master/docs/app-screenshot.png">
 
   <!-- Fonts: Inter & JetBrains Mono -->
@@ -99,7 +99,7 @@
           <img src="logo-64.png" alt="Blitz Logo" class="w-8 h-8 rounded group-hover:scale-105 transition-transform" />
           <span class="font-extrabold text-lg tracking-tight bg-gradient-to-r from-white via-slate-100 to-spot-bright bg-clip-text text-transparent">Blitz</span>
         </a>
-        <span class="text-xs px-2 py-0.5 rounded bg-spot-green/10 text-spot-bright border border-spot-green/20 font-mono font-semibold">Docs v0.2.0</span>
+        <span class="text-xs px-2 py-0.5 rounded bg-spot-green/10 text-spot-bright border border-spot-green/20 font-mono font-semibold">Docs v0.2.14</span>
       </div>
 
       <!-- Quick Search Bar -->
@@ -140,11 +140,19 @@
       class="w-64 shrink-0 hidden lg:block sticky top-24 self-start max-h-[calc(100vh-7rem)] overflow-y-auto pr-3 text-xs space-y-6">
       
       <div>
+        <div class="font-bold uppercase tracking-wider text-emerald-300 text-[11px] mb-2 font-mono">0. Quick Start &amp; Guideflows</div>
+        <ul class="space-y-1 text-spot-muted">
+          <li><a href="#guideflows" class="block py-1 hover:text-white transition-colors font-medium text-white/90">Step-by-Step Guideflows</a></li>
+          <li><a href="#themes-shortcuts" class="block py-1 hover:text-white transition-colors">VS Code Themes &amp; Shortcuts</a></li>
+        </ul>
+      </div>
+
+      <div>
         <div class="font-bold uppercase tracking-wider text-yellow-300 text-[11px] mb-2 font-mono">1. AI Agent (MCP)</div>
         <ul class="space-y-1 text-spot-muted">
           <li><a href="#mcp-overview" class="block py-1 hover:text-white transition-colors font-medium text-white/90">Model Context Protocol (Stdio)</a></li>
           <li><a href="#mcp-setup" class="block py-1 hover:text-white transition-colors">blitz mcp setup (Auto-Config)</a></li>
-          <li><a href="#mcp-tools" class="block py-1 hover:text-white transition-colors">All 37 Tools Reference</a></li>
+          <li><a href="#mcp-tools" class="block py-1 hover:text-white transition-colors">All 42 Tools Reference</a></li>
           <li><a href="#mcp-resources" class="block py-1 hover:text-white transition-colors">MCP Resources URI Scheme</a></li>
         </ul>
       </div>
@@ -230,7 +238,7 @@
           Blitz — MCP, Scripting &amp; API Reference
         </h1>
         <p class="text-slate-300 text-base leading-relaxed">
-          <strong>Blitz</strong> ships a <strong>37-tool MCP server</strong> so agents can drive your collections locally, plus a Postman-compatible <strong><code>blitz.*</code></strong> sandbox and headless <strong><code>blitz run</code></strong> for CI. Under the hood: Rust + Dioxus, OS keychain secrets, Git sync, and eight wire protocols.
+          <strong>Blitz</strong> ships a <strong>42-tool MCP server</strong> so agents can drive your collections locally, plus a Postman-compatible <strong><code>blitz.*</code></strong> sandbox and headless <strong><code>blitz run</code></strong> for CI. Under the hood: Rust + Dioxus, macOS Keychain secrets, Git sync, and eight wire protocols.
         </p>
 
         <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2">
@@ -261,6 +269,148 @@
         </div>
       </section>
 
+      <!-- SECTION: STEP-BY-STEP GUIDEFLOWS -->
+      <section id="guideflows" class="scroll-mt-24 space-y-5">
+        <div class="flex items-center justify-between border-b border-white/10 pb-2">
+          <h2 class="text-2xl font-bold tracking-tight text-white">
+            Step-by-Step Guideflows
+          </h2>
+          <span class="text-[11px] font-mono text-spot-bright bg-spot-bright/10 px-2.5 py-0.5 rounded-full">4 Core Workflows</span>
+        </div>
+        <p class="text-slate-300 text-sm leading-relaxed">
+          New to Blitz? Follow these four visual walkthroughs to go from zero to automated API testing, safe team secrets, and AI-assisted workflows in minutes.
+        </p>
+
+        <!-- Main App Overview Screenshot -->
+        <div class="panel rounded-xl overflow-hidden shadow-2xl border border-white/10">
+          <div class="bg-[#161821] border-b border-white/5 px-4 py-2 flex items-center justify-between text-xs text-slate-400">
+            <span class="font-mono text-[11px] text-slate-300">Blitz Workbench — Sidebar Tree, Request Builder &amp; Live Response Inspector</span>
+            <span class="text-[10px] font-mono text-spot-bright bg-spot-bright/10 px-2 py-0.5 rounded">Native Rust GUI</span>
+          </div>
+          <img src="app-screenshot.png" alt="Blitz API client showing collections, request editor, and response" class="w-full h-auto block" loading="lazy">
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <!-- Guideflow 1 -->
+          <div class="p-5 rounded-xl glass border border-white/10 space-y-3">
+            <div class="flex items-center justify-between">
+              <span class="text-[11px] font-mono uppercase tracking-wider text-spot-bright font-bold">Guideflow 1</span>
+              <span class="text-[11px] font-mono text-slate-400">~60 sec</span>
+            </div>
+            <h3 class="text-base font-bold text-white">First API Request &amp; Test</h3>
+            <ol class="space-y-2 text-xs text-slate-300 leading-relaxed list-decimal pl-4">
+              <li><strong class="text-white">Create or Import:</strong> Press <kbd class="px-1.5 py-0.5 rounded bg-white/10 font-mono text-[11px]">⌘T</kbd> for a new tab, or <strong class="text-white">File → Import</strong> for Postman / OpenAPI / cURL.</li>
+              <li><strong class="text-white">Pick an Environment:</strong> Use the top-bar Environment selector to set <code class="text-spot-bright">{{baseUrl}}</code> once across all requests.</li>
+              <li><strong class="text-white">Send &amp; Inspect:</strong> Hit <kbd class="px-1.5 py-0.5 rounded bg-white/10 font-mono text-[11px]">⌘↵</kbd> to send. Check Pretty JSON, Headers, Cookies, and Timing breakdown.</li>
+              <li><strong class="text-white">Add Assertion:</strong> Open the <strong class="text-white">Tests</strong> tab (live badge shows active count) and assert status 200 or JSON fields.</li>
+            </ol>
+          </div>
+
+          <!-- Guideflow 2 -->
+          <div class="p-5 rounded-xl glass border border-white/10 space-y-3">
+            <div class="flex items-center justify-between">
+              <span class="text-[11px] font-mono uppercase tracking-wider text-emerald-300 font-bold">Guideflow 2</span>
+              <span class="text-[11px] font-mono text-slate-400">Zero Leaks</span>
+            </div>
+            <h3 class="text-base font-bold text-white">Safe Team Secrets &amp; Git Sync</h3>
+            <ol class="space-y-2 text-xs text-slate-300 leading-relaxed list-decimal pl-4">
+              <li><strong class="text-white">Store Secrets Locally:</strong> Open <strong class="text-white">Vars → Globals &amp; Vault</strong> and add API keys to <strong class="text-white">Vault</strong> (stored in OS Keychain / <code class="text-spot-bright">vault.json</code>, never pushed to Git).</li>
+              <li><strong class="text-white">Reference Anywhere:</strong> Use <code class="text-spot-bright">{{vault:api_token}}</code> in Headers, Auth, or URLs.</li>
+              <li><strong class="text-white">Connect Git Remote:</strong> Open <strong class="text-white">Settings → Git Cloud Sync</strong> and point to your GitHub/GitLab/Gitea repo.</li>
+              <li><strong class="text-white">Sync &amp; Resolve:</strong> Pull/Push from the <strong class="text-white">Cloud</strong> menu; any merge conflicts open a visual side-by-side resolver.</li>
+            </ol>
+          </div>
+
+          <!-- Guideflow 3 -->
+          <div class="p-5 rounded-xl glass border border-white/10 space-y-3">
+            <div class="flex items-center justify-between">
+              <span class="text-[11px] font-mono uppercase tracking-wider text-yellow-300 font-bold">Guideflow 3</span>
+              <span class="text-[11px] font-mono text-slate-400">42 MCP Tools</span>
+            </div>
+            <h3 class="text-base font-bold text-white">Connect Your AI Coding Agent</h3>
+            <ol class="space-y-2 text-xs text-slate-300 leading-relaxed list-decimal pl-4">
+              <li><strong class="text-white">One-Command Setup:</strong> Run <code class="text-spot-bright">blitz mcp setup</code> in your terminal to wire Cursor, Claude Desktop, Windsurf, or Antigravity.</li>
+              <li><strong class="text-white">Verify Connection:</strong> Restart your IDE and check that the <code class="text-spot-bright">blitz</code> MCP server lists 42 tools.</li>
+              <li><strong class="text-white">Drive Collections:</strong> Ask your agent: <em>"Import our OpenAPI spec, run the Auth folder, and add assertions for 401 cases."</em></li>
+              <li><strong class="text-white">Vault Safety:</strong> Agents never receive raw <code class="text-spot-bright">{{vault:*}}</code> secrets in tool responses.</li>
+            </ol>
+          </div>
+
+          <!-- Guideflow 4 -->
+          <div class="p-5 rounded-xl glass border border-white/10 space-y-3">
+            <div class="flex items-center justify-between">
+              <span class="text-[11px] font-mono uppercase tracking-wider text-sky-300 font-bold">Guideflow 4</span>
+              <span class="text-[11px] font-mono text-slate-400">CI &amp; Perf</span>
+            </div>
+            <h3 class="text-base font-bold text-white">CI Pipelines &amp; Load Testing</h3>
+            <ol class="space-y-2 text-xs text-slate-300 leading-relaxed list-decimal pl-4">
+              <li><strong class="text-white">Run Headlessly:</strong> Execute <code class="text-spot-bright">blitz run ./collections/api.json --env ./environments/staging.json</code> in GitHub Actions or GitLab CI.</li>
+              <li><strong class="text-white">Export JUnit XML:</strong> Pass <code class="text-spot-bright">--reporter junit --out report.xml</code> for native CI test annotations.</li>
+              <li><strong class="text-white">Stress Test Endpoints:</strong> Open <strong class="text-white">Tools → Performance Test</strong> (or call <code class="text-spot-bright">blitz_perf_test</code>) to measure p50/p95/p99 latency.</li>
+              <li><strong class="text-white">Local Mock Server:</strong> Spin up a mock from saved examples via <strong class="text-white">Tools → Mock Server</strong> for offline frontend dev.</li>
+            </ol>
+          </div>
+        </div>
+      </section>
+
+      <!-- SECTION: THEMES & SHORTCUTS -->
+      <section id="themes-shortcuts" class="scroll-mt-24 space-y-4">
+        <h2 class="text-2xl font-bold tracking-tight text-white border-b border-white/10 pb-2">
+          VS Code Themes &amp; Keyboard Shortcuts
+        </h2>
+        <p class="text-slate-300 text-sm leading-relaxed">
+          Blitz pairs two studio originals (<strong class="text-white">Spotify</strong> and <strong class="text-white">Linear</strong>) with <strong class="text-white">9 popular VS Code IDE themes</strong> across two structural layouts: crisp 1px IDE grids and floating tactile islands. Switch anytime from the top-bar <strong class="text-white">Theme</strong> menu or <kbd class="px-1.5 py-0.5 rounded bg-white/10 font-mono text-[11px]">⌘K</kbd>.
+        </p>
+
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
+          <div class="p-4 rounded-xl glass border border-white/10 space-y-1.5">
+            <div class="font-bold text-white">Crisp IDE Grid</div>
+            <p class="text-slate-400">One Dark Pro, Tokyo Night, Dracula, GitHub Light, GitHub Dark HC (WCAG AAA).</p>
+          </div>
+          <div class="p-4 rounded-xl glass border border-white/10 space-y-1.5">
+            <div class="font-bold text-white">Cozy Tactile Islands</div>
+            <p class="text-slate-400">Catppuccin Mocha, Nord, Gruvbox Dark, Solarized Light.</p>
+          </div>
+          <div class="p-4 rounded-xl glass border border-white/10 space-y-1.5">
+            <div class="font-bold text-white">Signature Studio</div>
+            <p class="text-slate-400">Spotify (Dark Glass &amp; Green) and Linear (Midnight Zinc &amp; Electric Iris).</p>
+          </div>
+        </div>
+
+        <div class="overflow-x-auto rounded-xl border border-white/10">
+          <table class="w-full text-left border-collapse text-xs">
+            <thead class="bg-white/5 text-slate-300 font-mono">
+              <tr>
+                <th class="p-3 border-b border-white/10">Shortcut</th>
+                <th class="p-3 border-b border-white/10">Action</th>
+                <th class="p-3 border-b border-white/10">Shortcut</th>
+                <th class="p-3 border-b border-white/10">Action</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-white/5 text-slate-300">
+              <tr>
+                <td class="p-3 font-mono text-spot-bright">⌘K / Ctrl+K</td>
+                <td class="p-3">Open Command Palette (requests, envs, themes)</td>
+                <td class="p-3 font-mono text-spot-bright">⌘↵ / Ctrl+↵</td>
+                <td class="p-3">Send active request (or Cancel in-flight)</td>
+              </tr>
+              <tr>
+                <td class="p-3 font-mono text-spot-bright">⌘S / Ctrl+S</td>
+                <td class="p-3">Save request draft to collection</td>
+                <td class="p-3 font-mono text-spot-bright">⌘T / Ctrl+T</td>
+                <td class="p-3">Open new request tab</td>
+              </tr>
+              <tr>
+                <td class="p-3 font-mono text-spot-bright">⌘+ / ⌘-</td>
+                <td class="p-3">Zoom UI scale in / out</td>
+                <td class="p-3 font-mono text-spot-bright">/</td>
+                <td class="p-3">Focus sidebar / docs search</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
       <!-- SECTION: ARCHITECTURE -->
       <section id="architecture" class="scroll-mt-24 space-y-4">
         <h2 class="text-2xl font-bold tracking-tight text-white border-b border-white/10 pb-2">
@@ -273,7 +423,7 @@
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs font-mono">
           <div class="p-4 rounded-xl glass space-y-2">
             <div class="text-spot-bright font-bold">Frontend / GUI</div>
-            <p class="text-slate-400 font-sans">Dioxus Native 0.6 with cross-platform renderer. Renders at 60+ FPS with minimal GPU/CPU load.</p>
+            <p class="text-slate-400 font-sans">Dioxus Desktop 0.7 with native OS WebView renderer.</p>
           </div>
           <div class="p-4 rounded-xl glass space-y-2">
             <div class="text-spot-bright font-bold">Execution Engine</div>
@@ -287,6 +437,36 @@
             <div class="text-spot-bright font-bold">Protocols &amp; MCP</div>
             <p class="text-slate-400 font-sans">tokio-tungstenite (WS), hyper/prost (gRPC), rumqttc (MQTT), JSON-RPC 2.0 stdio (MCP).</p>
           </div>
+        </div>
+
+        <h3 id="benchmarks" class="text-lg font-bold text-white pt-2">Performance Footprint</h3>
+        <div class="overflow-x-auto rounded-xl border border-white/10">
+          <table class="w-full text-left border-collapse text-xs">
+            <thead class="bg-white/5 text-slate-300 font-mono">
+              <tr>
+                <th class="p-3 border-b border-white/10">Metric</th>
+                <th class="p-3 border-b border-white/10">Electron-Based Clients</th>
+                <th class="p-3 border-b border-white/10">Blitz (Rust + Native WebView)</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-white/5 text-slate-300">
+              <tr>
+                <td class="p-3 font-semibold text-white">Runtime Architecture</td>
+                <td class="p-3">Bundled Chromium + Node.js</td>
+                <td class="p-3 text-spot-bright">Single native Rust binary + OS WebView</td>
+              </tr>
+              <tr>
+                <td class="p-3 font-semibold text-white">Headless CI Overhead</td>
+                <td class="p-3">Separate Node CLI runtime</td>
+                <td class="p-3 text-spot-bright">Zero GUI overhead via <code>blitz run</code></td>
+              </tr>
+              <tr>
+                <td class="p-3 font-semibold text-white">Storage Format</td>
+                <td class="p-3">Proprietary cloud sync / opaque DB</td>
+                <td class="p-3 text-spot-bright">Clean Git-diffable JSON files on disk</td>
+              </tr>
+            </tbody>
+          </table>
         </div>
       </section>
 
@@ -456,6 +636,11 @@
             </tbody>
           </table>
         </div>
+
+        <h3 id="cookies" class="text-lg font-bold text-white pt-2">Cookie Jar Management</h3>
+        <p class="text-slate-300 text-xs leading-relaxed">
+          Blitz maintains a local domain-scoped cookie jar across requests. <code class="text-spot-bright">Set-Cookie</code> headers from responses are automatically parsed, stored with expiration/path rules, and sent on matching follow-up requests. Inspect or clear cookies anytime via the <strong class="text-white">Cookies</strong> panel or <code class="text-spot-bright">blitz_manage_cookies</code> MCP tool.
+        </p>
       </section>
 
       <!-- SECTION: MULTI-PROTOCOL ENGINE -->
@@ -483,7 +668,7 @@
 
           <div id="proto-grpc" class="p-4 rounded-xl glass space-y-2">
             <div class="text-spot-bright font-bold flex items-center justify-between">
-              <span>gRPC (HTTP/2 Unary &amp; Streaming)</span>
+              <span>gRPC (HTTP/2 Unary)</span>
               <span class="text-slate-400 font-normal">hyper + prost-types</span>
             </div>
             <p class="text-slate-300 font-sans leading-relaxed">
@@ -641,7 +826,7 @@
 
         <h3 id="vault-secrets" class="text-lg font-bold text-white pt-2">OS Keychain Secrets / Vault ({{vault:key}})</h3>
         <p class="text-slate-300 text-xs leading-relaxed">
-          Sensitive tokens or passwords can be kept out of Git collection repositories entirely by prefixing them with <code>{{vault:key}}</code>. Blitz encrypts and resolves these directly from macOS Keychain, Linux Secret Service (libsecret), or Windows Credential Manager.
+          Sensitive tokens or passwords can be kept out of Git collection repositories entirely by prefixing them with <code>{{vault:key}}</code>. Blitz stores and resolves these via macOS Keychain (with an in-memory session fallback on Linux and Windows).
         </p>
       </section>
 
@@ -670,6 +855,25 @@
         </div>
 
         <h3 id="assertions" class="text-lg font-bold text-white pt-2">Available blitz.* Sandbox Objects</h3>
+        <p class="text-slate-300 text-xs leading-relaxed">
+          Every Postman <code class="text-spot-bright">pm.*</code> call works seamlessly alongside <code class="text-spot-bright">blitz.*</code> (including <code class="text-spot-bright">blitz.test()</code>, <code class="text-spot-bright">blitz.expect()</code>, <code class="text-spot-bright">blitz.environment</code>, <code class="text-spot-bright">blitz.variables</code>, and <code class="text-spot-bright">blitz.vault.get()</code>).
+        </p>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2">
+          <div id="visualizer" class="p-4 rounded-xl glass border border-white/10 space-y-2">
+            <h4 class="text-sm font-bold text-white">Visualizer (<code>blitz.visualizer</code>)</h4>
+            <p class="text-xs text-slate-300 leading-relaxed">
+              Render custom HTML/table/chart views directly in the Response <strong class="text-white">Visualize</strong> tab using <code class="text-spot-bright">blitz.visualizer.set(template, data)</code> inside your post-response test script.
+            </p>
+          </div>
+          <div id="workflows" class="p-4 rounded-xl glass border border-white/10 space-y-2">
+            <h4 class="text-sm font-bold text-white">Workflow Control (<code>setNextRequest</code>)</h4>
+            <p class="text-xs text-slate-300 leading-relaxed">
+              Chain or branch collection runner execution dynamically with <code class="text-spot-bright">blitz.execution.setNextRequest("Request Name")</code> or pass <code class="text-spot-bright">null</code> to stop the run early.
+            </p>
+          </div>
+        </div>
+      </section>
         <p class="text-slate-400 text-xs leading-relaxed">
           All objects below are available under <code>blitz.*</code> (and aliased as <code>pm.*</code>):
         </p>
@@ -713,9 +917,9 @@
           <div>blitz mcp setup --all</div>
         </div>
 
-        <h3 id="mcp-tools" class="text-lg font-bold text-white pt-4">Complete MCP Tools Reference (37 Tools)</h3>
+        <h3 id="mcp-tools" class="text-lg font-bold text-white pt-4">Complete MCP Tools Reference (42 Tools)</h3>
         <p class="text-slate-300 text-xs leading-relaxed">
-          The Blitz MCP server exposes 37 atomic tools via JSON-RPC 2.0 stdio:
+          The Blitz MCP server exposes 42 atomic tools via JSON-RPC 2.0 stdio:
         </p>
 
         <div class="overflow-x-auto">
@@ -886,12 +1090,12 @@
               </tr>
               <tr>
                 <td class="p-3 text-spot-bright font-bold">blitz_perf_test</td>
-                <td class="p-3">url, method, request_id, vus, duration_seconds</td>
-                <td class="p-3 font-sans">Runs local load benchmark with concurrent virtual users, RPS, and latency p50/p95/p99.</td>
+                <td class="p-3">request_id, collection, vus, duration_seconds, environment</td>
+                <td class="p-3 font-sans">Runs local load benchmark with concurrent virtual users, RPS, error rate, and avg/min/max latency.</td>
               </tr>
               <tr>
                 <td class="p-3 text-spot-bright font-bold">blitz_diff_responses</td>
-                <td class="p-3">body_a, body_b, request_id, env_a, env_b</td>
+                <td class="p-3">body_a, body_b, request_id, environment_a, environment_b</td>
                 <td class="p-3 font-sans">Calculates line-by-line diff and semantic comparison between two response payloads.</td>
               </tr>
               <tr>
@@ -926,8 +1130,44 @@
                 <td class="p-3">language, url, method, headers, body</td>
                 <td class="p-3 font-sans">Generates production snippets in Python, TypeScript, Rust, Go, Java, or C#.</td>
               </tr>
+              <tr>
+                <td class="p-3 text-spot-bright font-bold">blitz_lint_collection</td>
+                <td class="p-3">collection, environment</td>
+                <td class="p-3 font-sans">Checks unresolved variables, duplicate request names, and auth warnings across a collection.</td>
+              </tr>
+              <tr>
+                <td class="p-3 text-spot-bright font-bold">blitz_diff_environments</td>
+                <td class="p-3">environment_a, environment_b</td>
+                <td class="p-3 font-sans">Compares matching, drifted, missing, and extra variable keys between two environments.</td>
+              </tr>
+              <tr>
+                <td class="p-3 text-spot-bright font-bold">blitz_set_collection_var</td>
+                <td class="p-3">collection, key, value, enabled, delete</td>
+                <td class="p-3 font-sans">Sets, updates, or deletes collection-scoped variables.</td>
+              </tr>
+              <tr>
+                <td class="p-3 text-spot-bright font-bold">blitz_import_collection</td>
+                <td class="p-3">data, collection</td>
+                <td class="p-3 font-sans">Imports Postman v2.1, OpenAPI 3.0, or Blitz JSON collections from payload or file path.</td>
+              </tr>
+              <tr>
+                <td class="p-3 text-spot-bright font-bold">blitz_mcp_call</td>
+                <td class="p-3">command, args, tool, arguments</td>
+                <td class="p-3 font-sans">Connects to an external STDIO MCP server to list tools or invoke a tool call.</td>
+              </tr>
             </tbody>
           </table>
+        </div>
+
+        <h3 id="mcp-resources" class="text-lg font-bold text-white pt-4">MCP Resources URI Scheme</h3>
+        <p class="text-slate-300 text-xs leading-relaxed">
+          In addition to the 42 tools, Blitz exposes read-only MCP resources so AI clients can attach workspace context directly:
+        </p>
+        <div class="p-3.5 rounded-xl bg-black/80 font-mono text-xs text-spot-bright border border-white/10 space-y-1">
+          <div><span class="text-spot-faint"># Workspace collections &amp; environments:</span></div>
+          <div>blitz://collections</div>
+          <div>blitz://environments</div>
+          <div>blitz://history/recent</div>
         </div>
       </section>
 
@@ -956,8 +1196,8 @@
           <div><span class="text-spot-faint"># Run collection with staging environment:</span></div>
           <div>blitz run ./collections/api.json --env ./environments/staging.json</div>
           <br/>
-          <div><span class="text-spot-faint"># Run with 10 iterations, data CSV, and JUnit report output:</span></div>
-          <div>blitz run ./collections/api.json -d ./test_data.csv -n 10 --reporters cli,junit --reporter-junit-export ./report.xml</div>
+          <div><span class="text-spot-faint"># Run with JUnit report output:</span></div>
+          <div>blitz run ./collections/api.json --env ./environments/staging.json --reporter junit --out ./report.xml</div>
         </div>
 
         <h3 class="text-lg font-bold text-white pt-2">Exit Codes</h3>
@@ -965,12 +1205,27 @@
           <li><code>0</code>: All requests and assertions passed.</li>
           <li><code>1</code>: One or more assertions failed or request network error occurred.</li>
         </ul>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-3">
+          <div id="load-testing" class="p-4 rounded-xl glass border border-white/10 space-y-2">
+            <h4 class="text-sm font-bold text-white">Performance &amp; Load Testing</h4>
+            <p class="text-xs text-slate-300 leading-relaxed">
+              Launch concurrent virtual-user benchmarks from <strong class="text-white">Tools → Performance Test</strong> or <code class="text-spot-bright">blitz_perf_test</code> to inspect RPS, error rate, and p50/p95/p99 latency histograms locally.
+            </p>
+          </div>
+          <div id="impex" class="p-4 rounded-xl glass border border-white/10 space-y-2">
+            <h4 class="text-sm font-bold text-white">Import &amp; Export</h4>
+            <p class="text-xs text-slate-300 leading-relaxed">
+              Import <strong class="text-white">Postman v2.1</strong>, <strong class="text-white">OpenAPI 3.0</strong>, <strong class="text-white">cURL</strong>, or <strong class="text-white">HAR</strong> captures via <strong class="text-white">File → Import</strong>. Export clean Git-friendly JSON collections or interactive Swagger HTML docs anytime.
+            </p>
+          </div>
+        </div>
       </section>
 
       <!-- FOOTER -->
       <footer class="pt-10 border-t border-white/10 text-xs text-spot-muted flex flex-col sm:flex-row items-center justify-between gap-4">
         <div>
-          Blitz — Open source under MIT / Apache-2.0 License.
+          Blitz — Open source under MIT License.
         </div>
         <div class="flex items-center gap-4">
           <a href="index.html" class="hover:text-white">Home</a>
@@ -982,9 +1237,11 @@
     </main>
 
     <!-- RIGHT TABLE OF CONTENTS (ON THIS PAGE) -->
-    <aside class="w-48 shrink-0 hidden xl:block sticky top-24 self-start text-[11px] space-y-3 font-mono text-slate-400 border-l border-white/5 pl-4">
+    <aside id="doc-toc" class="w-48 shrink-0 hidden xl:block sticky top-24 self-start text-[11px] space-y-2.5 font-mono text-slate-400 border-l border-white/5 pl-4">
       <div class="font-bold uppercase tracking-wider text-white text-xs mb-2">On this page</div>
       <a href="#intro" class="block hover:text-spot-bright transition-colors">Overview</a>
+      <a href="#guideflows" class="block hover:text-emerald-300 transition-colors">Guideflows</a>
+      <a href="#themes-shortcuts" class="block hover:text-spot-bright transition-colors">Themes &amp; Keys</a>
       <a href="#architecture" class="block hover:text-spot-bright transition-colors">Architecture</a>
       <a href="#installation" class="block hover:text-spot-bright transition-colors">Installation</a>
       <a href="#collections" class="block hover:text-spot-bright transition-colors">Collections</a>
@@ -994,20 +1251,24 @@
       <a href="#faker-variables" class="block hover:text-spot-bright transition-colors">Dynamic ($faker)</a>
       <a href="#sandbox-api" class="block hover:text-spot-bright transition-colors">blitz.* Sandbox</a>
       <a href="#mcp-overview" class="block hover:text-yellow-300 transition-colors">AI MCP Server</a>
-      <a href="#mcp-tools" class="block hover:text-yellow-300 transition-colors">37 Tools Reference</a>
+      <a href="#mcp-tools" class="block hover:text-yellow-300 transition-colors">42 Tools Reference</a>
       <a href="#git-sync" class="block hover:text-spot-bright transition-colors">Git Sync</a>
       <a href="#cli-runner" class="block hover:text-spot-bright transition-colors">CLI Runner</a>
     </aside>
 
   </div>
 
-  <!-- SEARCH SCRIPT -->
+  <!-- SEARCH, COPY BUTTONS & SCROLLSPY SCRIPT -->
   <script>
     const searchInput = document.getElementById('doc-search');
     window.addEventListener('keydown', (e) => {
       if (e.key === '/' && document.activeElement !== searchInput) {
         e.preventDefault();
         searchInput.focus();
+      } else if (e.key === 'Escape' && document.activeElement === searchInput) {
+        searchInput.value = '';
+        searchInput.dispatchEvent(new Event('input'));
+        searchInput.blur();
       }
     });
 
@@ -1020,13 +1281,53 @@
       }
       rows.forEach(r => {
         const text = r.textContent.toLowerCase();
-        if (text.includes(q)) {
-          r.style.opacity = '1';
-        } else {
-          r.style.opacity = '0.25';
-        }
+        r.style.opacity = text.includes(q) ? '1' : '0.22';
       });
     });
+
+    // Add Copy buttons to terminal/code blocks
+    document.querySelectorAll('main .bg-black\\/80').forEach((block) => {
+      if (block.querySelector('.copy-doc-btn')) return;
+      block.classList.add('relative', 'group');
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.textContent = 'Copy';
+      btn.className = 'copy-doc-btn absolute top-2.5 right-2.5 px-2 py-1 rounded text-[10px] font-mono bg-white/10 hover:bg-white/20 text-slate-200 border border-white/10 opacity-0 group-hover:opacity-100 transition-opacity';
+      btn.addEventListener('click', async () => {
+        const lines = Array.from(block.childNodes)
+          .filter(n => n !== btn)
+          .map(n => n.textContent || '')
+          .join('\n')
+          .split('\n')
+          .map(l => l.trim())
+          .filter(l => l && !l.startsWith('#'))
+          .join('\n');
+        try {
+          await navigator.clipboard.writeText(lines || block.innerText.replace('Copy', '').trim());
+          btn.textContent = 'Copied!';
+          setTimeout(() => btn.textContent = 'Copy', 1400);
+        } catch (_) {}
+      });
+      block.appendChild(btn);
+    });
+
+    // Right TOC active section highlight
+    const tocLinks = Array.from(document.querySelectorAll('#doc-toc a'));
+    const sections = tocLinks
+      .map(a => document.querySelector(a.getAttribute('href')))
+      .filter(Boolean);
+    const observer = new IntersectionObserver((entries) => {
+      entries.forEach((entry) => {
+        if (!entry.isIntersecting) return;
+        const id = '#' + entry.target.id;
+        tocLinks.forEach((a) => {
+          const active = a.getAttribute('href') === id;
+          a.classList.toggle('text-white', active);
+          a.classList.toggle('font-bold', active);
+        });
+      });
+    }, { rootMargin: '-20% 0px -70% 0px' });
+    sections.forEach(s => observer.observe(s));
   </script>
 
 </body>

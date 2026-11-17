@@ -5,7 +5,7 @@
 //! over standard I/O using JSON-RPC 2.0.
 
 use std::collections::HashMap;
-use std::io::{self, BufRead, Write};
+use std::io::{self, BufRead, Read, Write};
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 use serde_json::{json, Value as JsonValue};
@@ -16,21 +16,26 @@ use crate::core::codegen::{generate_snippet_resolved, snippet_languages};
 use crate::core::collection::{
     find_request_across, flatten_collections, remove_across, Collection, CollectionItem, Folder,
 };
+use crate::core::collection_lint::{lint_collections, lint_error_count, LintSeverity};
+use crate::core::cookies::Cookie;
 use crate::core::doc_gen::{generate_static_doc_html, generate_swagger_ui_html};
+use crate::core::env_diff::{compare_environments, export_diff_markdown};
 use crate::core::environment::{EnvVar, Environment};
 use crate::core::history::{push_history, HistoryEntry, HISTORY_MAX};
 use crate::core::impex::{
-    export_collection_v21, export_openapi3, import_curl, import_har, import_openapi3,
-    reconcile_openapi3_collection,
+    export_collection_v21, export_openapi3, import_collection_v21, import_curl, import_har,
+    import_openapi3, reconcile_openapi3_collection,
 };
 use crate::core::mock_server::{routes_from_collections, start_mock, MockHandle, MockRoute};
 use crate::core::perf_runner::run_performance;
 use crate::core::protocols::{
-    graphql_ws_subscribe, grpc_unary, mqtt_publish, mqtt_subscribe_once, socketio_session,
-    sse_listen, ws_connect_session, WsSessionEvent,
+    graphql_ws_subscribe_with_headers, grpc_unary_with_headers, mcp_call_tool, mcp_list_tools,
+    mqtt_publish_opts, mqtt_subscribe_once, socketio_session, split_mcp_args, sse_listen,
+    ws_connect_session_with_headers, WsSessionEvent,
 };
 use crate::core::request::{
-    compact_response_for_disk, BodyMode, HttpMethod, KeyValue, RequestDraft, SavedExample,
+    compact_response_for_disk, AuthConfig, AuthType, BodyMode, HttpMethod, KeyValue,
+    RequestDraft, RequestProtocol, SavedExample,
 };
 use crate::core::response_diff::{diff_bodies, DiffLine};
 use crate::runtime::pipeline::{send_request_with_options, SendOptions};
@@ -61,8 +66,51 @@ pub fn run_stdio_server() -> i32 {
                     continue;
                 }
 
-                // Handle optional Content-Length header prefix if client sends HTTP-like MCP frames
-                let json_str = if trimmed.starts_with('{') {
+                // Support both standard newline-delimited JSON-RPC and Content-Length LSP framing
+                let owned_body: Option<String> = if let Some(len_str) =
+                    trimmed.to_ascii_lowercase().strip_prefix("content-length:")
+                {
+                    let mut content_len: usize = len_str.trim().parse().unwrap_or(0);
+                    loop {
+                        let mut hdr = String::new();
+                        match reader.read_line(&mut hdr) {
+                            Ok(0) => {
+                                content_len = 0;
+                                break;
+                            }
+                            Ok(_) => {
+                                if hdr == "\r\n" || hdr == "\n" {
+                                    break;
+                                }
+                                if let Some(v) = hdr
+                                    .trim()
+                                    .to_ascii_lowercase()
+                                    .strip_prefix("content-length:")
+                                {
+                                    content_len = v.trim().parse().unwrap_or(content_len);
+                                }
+                            }
+                            Err(_) => {
+                                content_len = 0;
+                                break;
+                            }
+                        }
+                    }
+                    if content_len == 0 || content_len > 32 * 1024 * 1024 {
+                        continue;
+                    }
+                    let mut buf = vec![0u8; content_len];
+                    if reader.read_exact(&mut buf).is_err() {
+                        break;
+                    }
+                    Some(String::from_utf8_lossy(&buf).into_owned())
+                } else {
+                    None
+                };
+
+                let json_str = if let Some(ref b) = owned_body {
+                    b.trim()
+                } else if trimmed.starts_with('{') {
                     trimmed
                 } else if let Some(idx) = trimmed.find('{') {
                     &trimmed[idx..]
@@ -285,6 +333,10 @@ fn list_mcp_tools() -> Vec<JsonValue> {
                         "type": "string",
                         "description": "UUID or name of the request to send."
                     },
+                    "collection": {
+                        "type": "string",
+                        "description": "Optional collection name or UUID to disambiguate identical request names."
+                    },
                     "environment": {
                         "type": "string",
                         "description": "Optional name or UUID of the environment to apply (e.g. 'Development', 'Production')."
@@ -323,6 +375,18 @@ fn list_mcp_tools() -> Vec<JsonValue> {
                     "body": {
                         "type": "string",
                         "description": "Optional raw request body (e.g. JSON string)."
+                    },
+                    "body_mode": {
+                        "type": "string",
+                        "description": "Optional body mode: none, raw, urlencoded, form-data, graphql, binary."
+                    },
+                    "graphql_query": {
+                        "type": "string",
+                        "description": "Optional GraphQL query string (automatically uses GraphQL body mode if supplied)."
+                    },
+                    "graphql_variables": {
+                        "type": "string",
+                        "description": "Optional JSON variables string for GraphQL requests."
                     },
                     "environment": {
                         "type": "string",
@@ -432,6 +496,46 @@ fn list_mcp_tools() -> Vec<JsonValue> {
                         "type": "string",
                         "description": "Optional body mode: none, raw, urlencoded, form-data, graphql, binary. Defaults to 'raw' when non-empty body is supplied."
                     },
+                    "protocol": {
+                        "type": "string",
+                        "description": "Optional protocol: http (default), websocket, grpc, sse, mqtt, socketio, graphql_ws, mcp."
+                    },
+                    "auth": {
+                        "type": "object",
+                        "description": "Optional auth configuration (e.g. {\"type\":\"bearer\",\"token\":\"...\"}, {\"type\":\"basic\",\"username\":\"...\",\"password\":\"...\"}, {\"type\":\"api_key\",\"header\":\"X-API-Key\",\"token\":\"...\" or \"type\":\"no_auth\"})."
+                    },
+                    "pre_request_script": {
+                        "type": "string",
+                        "description": "Optional JS pre-request script (blitz sandbox)."
+                    },
+                    "test_script": {
+                        "type": "string",
+                        "description": "Optional JS test/assertion script (blitz.test / blitz.expect)."
+                    },
+                    "graphql_query": {
+                        "type": "string",
+                        "description": "Optional GraphQL HTTP query string."
+                    },
+                    "graphql_ws_query": {
+                        "type": "string",
+                        "description": "Optional GraphQL-WS subscription query string."
+                    },
+                    "graphql_variables": {
+                        "type": "string",
+                        "description": "Optional GraphQL variables JSON string."
+                    },
+                    "grpc_method": {
+                        "type": "string",
+                        "description": "Optional gRPC method (package.Service/Method)."
+                    },
+                    "mqtt_topic": {
+                        "type": "string",
+                        "description": "Optional MQTT topic."
+                    },
+                    "socketio_event": {
+                        "type": "string",
+                        "description": "Optional Socket.IO event name."
+                    },
                     "description": {
                         "type": "string",
                         "description": "Optional documentation / description for the request."
@@ -534,6 +638,14 @@ fn list_mcp_tools() -> Vec<JsonValue> {
                     "environment": {
                         "type": "string",
                         "description": "Optional environment name or UUID to use for variables."
+                    },
+                    "iterations": {
+                        "type": "integer",
+                        "description": "Optional iteration count (1..=50, default 1)."
+                    },
+                    "delay_ms": {
+                        "type": "integer",
+                        "description": "Optional delay between requests in milliseconds (0..=5000, default 0)."
                     }
                 },
                 "required": ["collection"]
@@ -878,18 +990,30 @@ fn list_mcp_tools() -> Vec<JsonValue> {
         }),
         json!({
             "name": "blitz_manage_cookies",
-            "description": "Inspects or clears session cookies stored in Blitz's global cookie jar.",
+            "description": "Inspects, sets, or clears session cookies stored in Blitz's global cookie jar.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
                     "action": {
                         "type": "string",
-                        "enum": ["list", "clear"],
-                        "description": "Action to perform: 'list' (default) to inspect stored cookies, or 'clear' to wipe all cookies."
+                        "enum": ["list", "set", "clear"],
+                        "description": "Action to perform: 'list' (default) to inspect cookies, 'set' to add/update a cookie, or 'clear' to wipe cookies (optionally scoped by domain)."
                     },
                     "domain": {
                         "type": "string",
-                        "description": "Optional domain filter (e.g. 'api.example.com') when listing cookies."
+                        "description": "Domain name for 'set' (e.g. '127.0.0.1' or 'api.example.com') or optional domain filter for 'list'/'clear'."
+                    },
+                    "name": {
+                        "type": "string",
+                        "description": "Cookie name (required when action is 'set')."
+                    },
+                    "value": {
+                        "type": "string",
+                        "description": "Cookie value (required when action is 'set')."
+                    },
+                    "path": {
+                        "type": "string",
+                        "description": "Cookie path (defaults to '/' when action is 'set')."
                     }
                 }
             }
@@ -907,6 +1031,10 @@ fn list_mcp_tools() -> Vec<JsonValue> {
                     "message": {
                         "type": "string",
                         "description": "Optional text or JSON message string to transmit after connection handshake."
+                    },
+                    "headers": {
+                        "type": "object",
+                        "description": "Optional handshake HTTP headers dictionary."
                     },
                     "timeout_ms": {
                         "type": "integer",
@@ -937,6 +1065,10 @@ fn list_mcp_tools() -> Vec<JsonValue> {
                     "body": {
                         "type": "string",
                         "description": "JSON string payload for the gRPC request message."
+                    },
+                    "headers": {
+                        "type": "object",
+                        "description": "Optional gRPC metadata headers dictionary."
                     }
                 },
                 "required": ["endpoint", "method", "body"]
@@ -989,6 +1121,10 @@ fn list_mcp_tools() -> Vec<JsonValue> {
                     "client_id": {
                         "type": "string",
                         "description": "Optional MQTT client identifier. Defaults to random 'blitz-mcp-<uuid>'."
+                    },
+                    "retain": {
+                        "type": "boolean",
+                        "description": "Optional retain flag for published message (default false)."
                     }
                 },
                 "required": ["broker_url", "topic", "payload"]
@@ -1038,6 +1174,10 @@ fn list_mcp_tools() -> Vec<JsonValue> {
                         "type": "string",
                         "description": "Optional JSON string or object for subscription variables."
                     },
+                    "headers": {
+                        "type": "object",
+                        "description": "Optional WebSocket handshake headers dictionary."
+                    },
                     "max_events": {
                         "type": "integer",
                         "description": "Maximum subscription frames to capture. Defaults to 3 (max 20)."
@@ -1078,6 +1218,115 @@ fn list_mcp_tools() -> Vec<JsonValue> {
                     }
                 },
                 "required": ["url"]
+            }
+        }),
+        json!({
+            "name": "blitz_lint_collection",
+            "description": "Runs Blitz collection linter checks (unresolved variables, duplicate request names, weak auth) on a specified collection or all collections.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "collection": {
+                        "type": "string",
+                        "description": "Optional collection name or UUID to lint. If omitted, lints all collections."
+                    },
+                    "environment": {
+                        "type": "string",
+                        "description": "Optional environment name or UUID to resolve variables against during lint."
+                    }
+                }
+            }
+        }),
+        json!({
+            "name": "blitz_diff_environments",
+            "description": "Compares variable keys and values between two environments (matching, drift, missing, extra) and returns structured diff plus markdown summary.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "environment_a": {
+                        "type": "string",
+                        "description": "Baseline environment name or UUID."
+                    },
+                    "environment_b": {
+                        "type": "string",
+                        "description": "Target environment name or UUID."
+                    }
+                },
+                "required": ["environment_a", "environment_b"]
+            }
+        }),
+        json!({
+            "name": "blitz_set_collection_var",
+            "description": "Sets, updates, or deletes a variable inside a collection's variables scope.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "collection": {
+                        "type": "string",
+                        "description": "Collection name or UUID."
+                    },
+                    "key": {
+                        "type": "string",
+                        "description": "Variable name."
+                    },
+                    "value": {
+                        "type": "string",
+                        "description": "Variable value (omit with delete=true to remove)."
+                    },
+                    "enabled": {
+                        "type": "boolean",
+                        "description": "Whether the variable is enabled (default true)."
+                    },
+                    "delete": {
+                        "type": "boolean",
+                        "description": "If true, deletes the collection variable key."
+                    }
+                },
+                "required": ["collection", "key"]
+            }
+        }),
+        json!({
+            "name": "blitz_import_collection",
+            "description": "Imports a Postman v2.1 collection JSON, OpenAPI 3.0 spec (JSON/YAML), or Blitz collection JSON from raw content or a local file path.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "data": {
+                        "type": "string",
+                        "description": "Raw collection JSON/YAML string or local file path."
+                    },
+                    "collection": {
+                        "type": "string",
+                        "description": "Optional custom name override for the imported collection."
+                    }
+                },
+                "required": ["data"]
+            }
+        }),
+        json!({
+            "name": "blitz_mcp_call",
+            "description": "Connects to an external STDIO Model Context Protocol (MCP) server, lists its available tools (when 'tool' is omitted) or invokes a specific MCP tool with arguments.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "command": {
+                        "type": "string",
+                        "description": "Executable command (e.g. 'node', 'npx', 'python3')."
+                    },
+                    "args": {
+                        "type": "string",
+                        "description": "Optional space-separated command arguments (or array of strings)."
+                    },
+                    "tool": {
+                        "type": "string",
+                        "description": "Optional MCP tool name to invoke. If omitted, returns list of discovered tools."
+                    },
+                    "arguments": {
+                        "type": "object",
+                        "description": "Optional JSON arguments object passed to the target MCP tool."
+                    }
+                },
+                "required": ["command"]
             }
         })
     ]
@@ -1150,13 +1399,23 @@ fn execute_mcp_tool_with_store(
                 "request": {
                     "id": found_req.id.to_string(),
                     "name": found_req.name,
+                    "protocol": format!("{:?}", found_req.protocol).to_lowercase(),
                     "method": found_req.method.as_str(),
                     "url": found_req.url,
                     "headers": found_req.headers.iter().filter(|h| h.enabled && !h.key.is_empty()).map(|h| (&h.key, &h.value)).collect::<HashMap<_, _>>(),
                     "params": found_req.params.iter().filter(|p| p.enabled && !p.key.is_empty()).map(|p| (&p.key, &p.value)).collect::<HashMap<_, _>>(),
                     "body_mode": format!("{:?}", found_req.body_mode),
                     "body": found_req.body,
+                    "graphql_query": found_req.graphql_query,
+                    "graphql_variables": found_req.graphql_variables,
+                    "graphql_ws_query": found_req.graphql_ws_query,
+                    "grpc_method": found_req.grpc_method,
+                    "mqtt_topic": found_req.mqtt_topic,
+                    "socketio_event": found_req.socketio_event,
+                    "auth_type": format!("{:?}", found_req.auth.auth_type).to_lowercase(),
                     "description": found_req.description,
+                    "pre_request_script": found_req.pre_request_script,
+                    "test_script": found_req.test_script,
                     "has_pre_request_script": !found_req.pre_request_script.is_empty(),
                     "has_test_script": !found_req.test_script.is_empty()
                 }
@@ -1168,26 +1427,21 @@ fn execute_mcp_tool_with_store(
                 .get("request_id")
                 .and_then(|r| r.as_str())
                 .ok_or_else(|| "Missing required parameter 'request_id'".to_string())?;
+            let col_name_opt = args.get("collection").and_then(|c| c.as_str());
 
-            let (col, req) = find_request_by_id_or_name(&snapshot.collections, req_id_str, None)?;
+            let (col, req) = find_request_by_id_or_name(&snapshot.collections, req_id_str, col_name_opt)?;
 
             let mut ctx = snapshot.variables.clone();
             ctx.collection = col.variables_map();
 
-            // Apply environment if specified
-            if let Some(env_name) = args.get("environment").and_then(|e| e.as_str()) {
-                if let Some(env) = find_env_by_name_or_id(&snapshot.environments, env_name) {
-                    ctx.environment = env.to_map();
-                } else {
-                    return Err(format!("Environment '{env_name}' not found"));
-                }
-            }
+            // Apply explicit or active environment
+            ctx.environment = resolve_env_map(&snapshot, args.get("environment").and_then(|e| e.as_str()))?;
 
             // Apply override vars
             if let Some(overrides) = args.get("override_vars").and_then(|o| o.as_object()) {
                 for (k, v) in overrides {
-                    if let Some(val_str) = v.as_str() {
-                        ctx.collection.insert(k.clone(), val_str.to_string());
+                    if let Some(val_str) = json_val_to_string(v) {
+                        ctx.collection.insert(k.clone(), val_str);
                     }
                 }
             }
@@ -1215,8 +1469,9 @@ fn execute_mcp_tool_with_store(
 
             let parsed_json: Option<JsonValue> = serde_json::from_str(&view.body).ok();
 
-            // Record to history & response cache so Blitz desktop UI reflects this run
+            // Record to history, cookies, & response cache so Blitz desktop UI reflects this run
             let mut snap_for_save = snapshot;
+            snap_for_save.cookies = jar;
             push_history(
                 &mut snap_for_save.history,
                 HistoryEntry::from_send(
@@ -1283,10 +1538,18 @@ fn execute_mcp_tool_with_store(
                 .and_then(|u| u.as_str())
                 .ok_or_else(|| "Missing required parameter 'url'".to_string())?;
 
-            let method_str = args
-                .get("method")
-                .and_then(|m| m.as_str())
-                .unwrap_or("GET");
+            let gql_query = args
+                .get("graphql_query")
+                .and_then(|q| q.as_str())
+                .unwrap_or("")
+                .to_string();
+            let gql_vars = match args.get("graphql_variables") {
+                Some(JsonValue::String(s)) => s.clone(),
+                Some(other) => other.to_string(),
+                None => String::new(),
+            };
+            let explicit_method = args.get("method").and_then(|m| m.as_str());
+            let method_str = explicit_method.unwrap_or(if gql_query.is_empty() { "GET" } else { "POST" });
             let method = parse_http_method(method_str);
 
             let mut headers_vec = Vec::new();
@@ -1303,10 +1566,14 @@ fn execute_mcp_tool_with_store(
                 .and_then(|b| b.as_str())
                 .unwrap_or("")
                 .to_string();
-            let body_mode = parse_body_mode_arg(
-                args.get("body_mode").and_then(|m| m.as_str()),
-                &body_str,
-            );
+            let body_mode = if !gql_query.is_empty() {
+                BodyMode::Graphql
+            } else {
+                parse_body_mode_arg(
+                    args.get("body_mode").and_then(|m| m.as_str()),
+                    &body_str,
+                )
+            };
 
             let draft = RequestDraft {
                 name: "Ad-hoc Request".into(),
@@ -1315,17 +1582,13 @@ fn execute_mcp_tool_with_store(
                 headers: headers_vec,
                 body_mode,
                 body: body_str,
+                graphql_query: gql_query,
+                graphql_variables: gql_vars,
                 ..Default::default()
             };
 
             let mut ctx = snapshot.variables.clone();
-            if let Some(env_name) = args.get("environment").and_then(|e| e.as_str()) {
-                if let Some(env) = find_env_by_name_or_id(&snapshot.environments, env_name) {
-                    ctx.environment = env.to_map();
-                } else {
-                    return Err(format!("Environment '{env_name}' not found"));
-                }
-            }
+            ctx.environment = resolve_env_map(&snapshot, args.get("environment").and_then(|e| e.as_str()))?;
 
             let mut jar = snapshot.cookies.clone();
             let send_opts = SendOptions {
@@ -1338,8 +1601,9 @@ fn execute_mcp_tool_with_store(
 
             let parsed_json: Option<JsonValue> = serde_json::from_str(&view.body).ok();
 
-            // Record to history
+            // Record to history & persist updated cookie jar
             let mut snap_for_save = snapshot;
+            snap_for_save.cookies = jar;
             push_history(
                 &mut snap_for_save.history,
                 HistoryEntry::from_send(
@@ -1597,6 +1861,44 @@ fn execute_mcp_tool_with_store(
                 .and_then(|b| b.as_str())
                 .map(str::to_string);
             let body_mode_opt = args.get("body_mode").and_then(|m| m.as_str());
+            let proto_opt = args
+                .get("protocol")
+                .and_then(|p| p.as_str())
+                .map(parse_protocol_arg);
+            let auth_opt = args.get("auth").and_then(parse_auth_arg);
+            let pre_script_opt = args
+                .get("pre_request_script")
+                .and_then(|s| s.as_str())
+                .map(str::to_string);
+            let test_script_opt = args
+                .get("test_script")
+                .and_then(|s| s.as_str())
+                .map(str::to_string);
+            let gql_query_opt = args
+                .get("graphql_query")
+                .and_then(|s| s.as_str())
+                .map(str::to_string);
+            let gql_ws_query_opt = args
+                .get("graphql_ws_query")
+                .and_then(|s| s.as_str())
+                .map(str::to_string);
+            let gql_vars_opt = args.get("graphql_variables").and_then(|v| match v {
+                JsonValue::String(s) => Some(s.clone()),
+                other if !other.is_null() => Some(other.to_string()),
+                _ => None,
+            });
+            let grpc_method_opt = args
+                .get("grpc_method")
+                .and_then(|s| s.as_str())
+                .map(str::to_string);
+            let mqtt_topic_opt = args
+                .get("mqtt_topic")
+                .and_then(|s| s.as_str())
+                .map(str::to_string);
+            let socketio_event_opt = args
+                .get("socketio_event")
+                .and_then(|s| s.as_str())
+                .map(str::to_string);
             let description_opt = args
                 .get("description")
                 .and_then(|d| d.as_str())
@@ -1648,6 +1950,9 @@ fn execute_mcp_tool_with_store(
                 let (draft_snapshot, updated) = if let Some(existing) = existing_opt {
                     existing.name = req_name.to_string();
                     existing.url = url.to_string();
+                    if let Some(proto) = proto_opt {
+                        existing.protocol = proto;
+                    }
                     if has_method {
                         existing.method = method;
                     }
@@ -1657,11 +1962,43 @@ fn execute_mcp_tool_with_store(
                     if let Some(p) = params_opt {
                         existing.params = p;
                     }
+                    if let Some(gq) = gql_query_opt {
+                        existing.graphql_query = gq;
+                        if body_mode_opt.is_none() && !existing.graphql_query.is_empty() {
+                            existing.body_mode = BodyMode::Graphql;
+                        }
+                    }
                     if let Some(b) = body_opt {
                         existing.body = b;
-                        existing.body_mode = parse_body_mode_arg(body_mode_opt, &existing.body);
+                        if body_mode_opt.is_some() || existing.body_mode != BodyMode::Graphql {
+                            existing.body_mode = parse_body_mode_arg(body_mode_opt, &existing.body);
+                        }
                     } else if let Some(bm) = body_mode_opt {
                         existing.body_mode = parse_body_mode_arg(Some(bm), &existing.body);
+                    }
+                    if let Some(gv) = gql_vars_opt {
+                        existing.graphql_variables = gv;
+                    }
+                    if let Some(gwq) = gql_ws_query_opt {
+                        existing.graphql_ws_query = gwq;
+                    }
+                    if let Some(gm) = grpc_method_opt {
+                        existing.grpc_method = gm;
+                    }
+                    if let Some(mt) = mqtt_topic_opt {
+                        existing.mqtt_topic = mt;
+                    }
+                    if let Some(se) = socketio_event_opt {
+                        existing.socketio_event = se;
+                    }
+                    if let Some(auth) = auth_opt {
+                        existing.auth = auth;
+                    }
+                    if let Some(pre) = pre_script_opt {
+                        existing.pre_request_script = pre;
+                    }
+                    if let Some(ts) = test_script_opt {
+                        existing.test_script = ts;
                     }
                     if let Some(desc) = description_opt {
                         existing.description = desc;
@@ -1669,16 +2006,36 @@ fn execute_mcp_tool_with_store(
                     (existing.clone(), true)
                 } else {
                     let body = body_opt.unwrap_or_default();
-                    let body_mode = parse_body_mode_arg(body_mode_opt, &body);
+                    let graphql_query = gql_query_opt.unwrap_or_default();
+                    let body_mode = if body_mode_opt.is_none() && !graphql_query.is_empty() {
+                        BodyMode::Graphql
+                    } else {
+                        parse_body_mode_arg(body_mode_opt, &body)
+                    };
+                    let method_final = if !has_method && !graphql_query.is_empty() {
+                        HttpMethod::Post
+                    } else {
+                        method
+                    };
                     let draft = RequestDraft {
                         id: req_id_opt.unwrap_or_else(Uuid::new_v4),
                         name: req_name.to_string(),
-                        method,
+                        protocol: proto_opt.unwrap_or_default(),
+                        method: method_final,
                         url: url.to_string(),
                         headers: headers_opt.unwrap_or_default(),
                         params: params_opt.unwrap_or_default(),
                         body_mode,
                         body,
+                        graphql_query,
+                        graphql_variables: gql_vars_opt.unwrap_or_default(),
+                        graphql_ws_query: gql_ws_query_opt.unwrap_or_default(),
+                        grpc_method: grpc_method_opt.unwrap_or_default(),
+                        mqtt_topic: mqtt_topic_opt.unwrap_or_default(),
+                        socketio_event: socketio_event_opt.unwrap_or_default(),
+                        auth: auth_opt.unwrap_or_default(),
+                        pre_request_script: pre_script_opt.unwrap_or_default(),
+                        test_script: test_script_opt.unwrap_or_default(),
                         description: description_opt.unwrap_or_default(),
                         ..Default::default()
                     };
@@ -1914,17 +2271,24 @@ fn execute_mcp_tool_with_store(
 
             let mut ctx = snapshot.variables.clone();
             ctx.collection = run_col.variables_map();
+            ctx.environment = resolve_env_map(&snapshot, args.get("environment").and_then(|e| e.as_str()))?;
 
-            if let Some(env_name) = args.get("environment").and_then(|e| e.as_str()) {
-                if let Some(env) = find_env_by_name_or_id(&snapshot.environments, env_name) {
-                    ctx.environment = env.to_map();
-                }
-            }
+            let iterations = args
+                .get("iterations")
+                .and_then(|i| i.as_u64())
+                .unwrap_or(1)
+                .clamp(1, 50) as usize;
+            let delay_ms = args
+                .get("delay_ms")
+                .and_then(|d| d.as_u64())
+                .unwrap_or(0)
+                .clamp(0, 5_000);
 
             let cfg = RunnerConfig {
-                iterations: 1,
-                delay_ms: 0,
+                iterations,
+                delay_ms,
                 data_file: String::new(),
+                ..Default::default()
             };
             let mut jar = snapshot.cookies.clone();
 
@@ -2247,12 +2611,14 @@ fn execute_mcp_tool_with_store(
 
             let env_id = new_env.id;
             let env_name_str = new_env.name.clone();
+            let env_map = new_env.to_map();
             let var_count = new_env.values.len();
             snapshot.environments.push(new_env);
 
             if set_active {
                 snapshot.active_environment_id = Some(env_id);
                 snapshot.active_environment = env_name_str.clone();
+                snapshot.variables.environment = env_map;
             }
 
             store.save(&snapshot).map_err(|e| format!("Save snapshot: {e}"))?;
@@ -2314,14 +2680,7 @@ fn execute_mcp_tool_with_store(
                 for col in &cols {
                     for item in flatten_collections(std::slice::from_ref(col)) {
                         if let Some((_, req)) = find_request_across(&cols, item.id) {
-                            let path_str = if let Some((_, p)) = req.url.split_once("://") {
-                                p.split_once('/').map(|(_, rest)| format!("/{rest}")).unwrap_or_else(|| "/".into())
-                            } else if req.url.starts_with('/') {
-                                req.url.clone()
-                            } else {
-                                format!("/{}", req.url)
-                            };
-                            let clean_path = path_str.split('?').next().unwrap_or(&path_str).to_string();
+                            let clean_path = crate::core::mock_server::path_only(&req.url);
                             routes.push(MockRoute {
                                 method: req.method,
                                 path: clean_path,
@@ -2750,12 +3109,51 @@ fn execute_mcp_tool_with_store(
             let mut snapshot = snapshot;
             let res = match action.as_str() {
                 "clear" => {
-                    let count = snapshot.cookies.cookies.len();
-                    snapshot.cookies.clear();
+                    let before = snapshot.cookies.cookies.len();
+                    if let Some(ref d) = domain_filter {
+                        snapshot.cookies.cookies.retain(|c| !c.domain.to_lowercase().contains(d));
+                    } else {
+                        snapshot.cookies.clear();
+                    }
+                    let cleared_count = before.saturating_sub(snapshot.cookies.cookies.len());
                     store.save(&snapshot).map_err(|e| format!("Save snapshot: {e}"))?;
                     json!({
                         "status": "cleared",
-                        "cleared_count": count
+                        "cleared_count": cleared_count,
+                        "remaining_count": snapshot.cookies.cookies.len()
+                    })
+                }
+                "set" => {
+                    let domain = args
+                        .get("domain")
+                        .and_then(|d| d.as_str())
+                        .ok_or_else(|| "Missing required parameter 'domain' for cookie set".to_string())?
+                        .trim()
+                        .to_lowercase();
+                    let name = args
+                        .get("name")
+                        .and_then(|n| n.as_str())
+                        .ok_or_else(|| "Missing required parameter 'name' for cookie set".to_string())?;
+                    let value = args
+                        .get("value")
+                        .and_then(|v| v.as_str())
+                        .ok_or_else(|| "Missing required parameter 'value' for cookie set".to_string())?;
+                    let path = args
+                        .get("path")
+                        .and_then(|p| p.as_str())
+                        .unwrap_or("/")
+                        .to_string();
+                    snapshot.cookies.upsert(Cookie {
+                        domain: domain.clone(),
+                        name: name.to_string(),
+                        value: value.to_string(),
+                        path: path.clone(),
+                    });
+                    store.save(&snapshot).map_err(|e| format!("Save snapshot: {e}"))?;
+                    json!({
+                        "status": "ok",
+                        "cookie": { "domain": domain, "name": name, "value": value, "path": path },
+                        "total_count": snapshot.cookies.cookies.len()
                     })
                 }
                 _ => {
@@ -2793,6 +3191,7 @@ fn execute_mcp_tool_with_store(
                 .and_then(|u| u.as_str())
                 .ok_or_else(|| "Missing required parameter 'url'".to_string())?;
             let msg_opt = args.get("message").and_then(|m| m.as_str());
+            let headers_vec = parse_headers_arg(args.get("headers"));
             let timeout_ms = args
                 .get("timeout_ms")
                 .and_then(|t| t.as_u64())
@@ -2804,7 +3203,8 @@ fn execute_mcp_tool_with_store(
                 .unwrap_or(5)
                 .min(50) as usize;
 
-            let sess = ws_connect_session(url).map_err(|e| format!("Connect: {e}"))?;
+            let sess = ws_connect_session_with_headers(url, &headers_vec)
+                .map_err(|e| format!("Connect: {e}"))?;
             let start = Instant::now();
             let mut opened = false;
             let handshake_limit = Duration::from_millis(timeout_ms.min(2000));
@@ -2888,8 +3288,9 @@ fn execute_mcp_tool_with_store(
                 JsonValue::String(s) => s.clone(),
                 other => other.to_string(),
             };
+            let headers_vec = parse_headers_arg(args.get("headers"));
 
-            let res = grpc_unary(endpoint, method, &body_str);
+            let res = grpc_unary_with_headers(endpoint, method, &body_str, &headers_vec);
             let parsed_body: JsonValue = serde_json::from_str(&res.body_json)
                 .unwrap_or(JsonValue::String(res.body_json));
 
@@ -2970,8 +3371,9 @@ fn execute_mcp_tool_with_store(
                 .get("client_id")
                 .and_then(|c| c.as_str())
                 .unwrap_or(&default_client_id);
+            let retain = args.get("retain").and_then(|r| r.as_bool()).unwrap_or(false);
 
-            let res = mqtt_publish(broker_url, client_id, topic, payload);
+            let res = mqtt_publish_opts(broker_url, client_id, topic, payload, retain);
             let out = json!({
                 "ok": res.ok,
                 "topic": topic,
@@ -3030,6 +3432,7 @@ fn execute_mcp_tool_with_store(
                 Some(other) => other.to_string(),
                 None => "{}".to_string(),
             };
+            let headers_vec = parse_headers_arg(args.get("headers"));
             let max_events = args
                 .get("max_events")
                 .and_then(|m| m.as_u64())
@@ -3041,8 +3444,15 @@ fn execute_mcp_tool_with_store(
                 .unwrap_or(3000)
                 .min(10_000);
 
-            let events = graphql_ws_subscribe(ws_url, query, &vars_str, max_events, timeout_ms)
-                .map_err(|e| format!("GraphQL WS error: {e}"))?;
+            let events = graphql_ws_subscribe_with_headers(
+                ws_url,
+                query,
+                &vars_str,
+                &headers_vec,
+                max_events,
+                timeout_ms,
+            )
+            .map_err(|e| format!("GraphQL WS error: {e}"))?;
 
             let out = json!({
                 "status": "ok",
@@ -3093,8 +3503,320 @@ fn execute_mcp_tool_with_store(
             });
             serde_json::to_string_pretty(&out).map_err(|e| e.to_string())
         }
+        "blitz_lint_collection" => {
+            let col_opt = args.get("collection").and_then(|c| c.as_str());
+            let target_cols: Vec<Collection> = if let Some(col_query) = col_opt {
+                let col = snapshot
+                    .collections
+                    .iter()
+                    .find(|c| c.name.eq_ignore_ascii_case(col_query) || c.id.to_string() == col_query)
+                    .ok_or_else(|| format!("Collection '{col_query}' not found"))?;
+                vec![col.clone()]
+            } else {
+                snapshot.collections.clone()
+            };
+
+            let mut ctx = snapshot.variables.clone();
+            ctx.environment = resolve_env_map(&snapshot, args.get("environment").and_then(|e| e.as_str()))?;
+            let issues = lint_collections(&target_cols, &ctx);
+            let error_count = lint_error_count(&issues);
+            let issue_list: Vec<JsonValue> = issues
+                .iter()
+                .map(|i| {
+                    json!({
+                        "collection": i.collection_name,
+                        "request": i.request_name,
+                        "field": i.field,
+                        "severity": match i.severity {
+                            LintSeverity::Error => "error",
+                            LintSeverity::Warning => "warning",
+                        },
+                        "message": i.message,
+                    })
+                })
+                .collect();
+            let out = json!({
+                "collections_checked": target_cols.len(),
+                "error_count": error_count,
+                "warning_count": issue_list.len().saturating_sub(error_count),
+                "total_issues": issue_list.len(),
+                "issues": issue_list,
+            });
+            serde_json::to_string_pretty(&out).map_err(|e| e.to_string())
+        }
+        "blitz_diff_environments" => {
+            let env_a_q = args
+                .get("environment_a")
+                .and_then(|e| e.as_str())
+                .ok_or_else(|| "Missing required parameter 'environment_a'".to_string())?;
+            let env_b_q = args
+                .get("environment_b")
+                .and_then(|e| e.as_str())
+                .ok_or_else(|| "Missing required parameter 'environment_b'".to_string())?;
+
+            let env_a = find_env_by_name_or_id(&snapshot.environments, env_a_q)
+                .ok_or_else(|| format!("Environment '{env_a_q}' not found"))?;
+            let env_b = find_env_by_name_or_id(&snapshot.environments, env_b_q)
+                .ok_or_else(|| format!("Environment '{env_b_q}' not found"))?;
+
+            let report = compare_environments(env_a, env_b);
+            let markdown = export_diff_markdown(&report);
+            let rows: Vec<JsonValue> = report
+                .rows
+                .iter()
+                .map(|r| {
+                    json!({
+                        "key": r.key,
+                        "status": r.status.label(),
+                        "baseline": r.baseline_var.as_ref().map(|v| v.effective()),
+                        "target": r.target_var.as_ref().map(|v| v.effective()),
+                    })
+                })
+                .collect();
+            let out = json!({
+                "baseline": report.baseline_name,
+                "target": report.target_name,
+                "total_keys": report.total_keys,
+                "matching": report.matching_count,
+                "drift": report.drift_count,
+                "missing_in_target": report.missing_in_target_count,
+                "extra_in_target": report.extra_in_target_count,
+                "rows": rows,
+                "markdown": markdown,
+            });
+            serde_json::to_string_pretty(&out).map_err(|e| e.to_string())
+        }
+        "blitz_set_collection_var" => {
+            let col_query = args
+                .get("collection")
+                .and_then(|c| c.as_str())
+                .ok_or_else(|| "Missing required parameter 'collection'".to_string())?;
+            let key = args
+                .get("key")
+                .and_then(|k| k.as_str())
+                .ok_or_else(|| "Missing required parameter 'key'".to_string())?;
+            let delete = args.get("delete").and_then(|d| d.as_bool()).unwrap_or(false);
+            let enabled = args.get("enabled").and_then(|e| e.as_bool()).unwrap_or(true);
+
+            let mut snapshot = snapshot;
+            let col = snapshot
+                .collections
+                .iter_mut()
+                .find(|c| c.name.eq_ignore_ascii_case(col_query) || c.id.to_string() == col_query)
+                .ok_or_else(|| format!("Collection '{col_query}' not found"))?;
+
+            let action_taken = if delete {
+                col.variables.retain(|v| v.key != key);
+                "deleted"
+            } else {
+                let value = args
+                    .get("value")
+                    .and_then(json_val_to_string)
+                    .ok_or_else(|| "Missing required parameter 'value'".to_string())?;
+                if let Some(existing) = col.variables.iter_mut().find(|v| v.key == key) {
+                    existing.value = value;
+                    existing.enabled = enabled;
+                    "updated"
+                } else {
+                    col.variables.push(KeyValue {
+                        key: key.to_string(),
+                        value,
+                        enabled,
+                    });
+                    "created"
+                }
+            };
+            let col_name = col.name.clone();
+            let var_count = col.variables.len();
+            store.save(&snapshot).map_err(|e| format!("Save snapshot: {e}"))?;
+
+            let out = json!({
+                "status": "ok",
+                "action": action_taken,
+                "collection": col_name,
+                "key": key,
+                "variable_count": var_count,
+            });
+            serde_json::to_string_pretty(&out).map_err(|e| e.to_string())
+        }
+        "blitz_import_collection" => {
+            let data_arg = args
+                .get("data")
+                .and_then(|d| d.as_str())
+                .ok_or_else(|| "Missing required parameter 'data'".to_string())?;
+            let custom_name = args.get("collection").and_then(|c| c.as_str());
+
+            let content = if std::path::Path::new(data_arg).exists() {
+                std::fs::read_to_string(data_arg)
+                    .map_err(|e| format!("Failed to read file '{data_arg}': {e}"))?
+            } else {
+                data_arg.to_string()
+            };
+
+            let (mut col, detected_format) = if let Ok(c) = import_collection_v21(&content) {
+                (c, "postman_v2.1")
+            } else if let Ok(c) = import_openapi3(&content) {
+                (c, "openapi_3")
+            } else if let Ok(c) = serde_json::from_str::<Collection>(&content) {
+                (c, "blitz_json")
+            } else {
+                return Err("Unsupported collection format (expected Postman v2.1, OpenAPI 3.0, or Blitz JSON)".to_string());
+            };
+
+            if let Some(name_override) = custom_name {
+                col.name = name_override.to_string();
+            }
+            let col_name = col.name.clone();
+            let col_id = col.id.to_string();
+            let req_count = count_requests_in_items(&col.items);
+            let mut snapshot = snapshot;
+            let stats = crate::core::upsert_collection(&mut snapshot.collections, col);
+            store.save(&snapshot).map_err(|e| format!("Save snapshot: {e}"))?;
+
+            let out = json!({
+                "status": "ok",
+                "format": detected_format,
+                "collection_id": col_id,
+                "collection": col_name,
+                "created_new": stats.created_new,
+                "added_requests": stats.added_requests,
+                "updated_requests": stats.updated_requests,
+                "request_count": req_count,
+            });
+            serde_json::to_string_pretty(&out).map_err(|e| e.to_string())
+        }
+        "blitz_mcp_call" => {
+            let cmd = args
+                .get("command")
+                .and_then(|c| c.as_str())
+                .ok_or_else(|| "Missing required parameter 'command'".to_string())?;
+            let argv: Vec<String> = match args.get("args") {
+                Some(JsonValue::Array(arr)) => arr
+                    .iter()
+                    .filter_map(|v| v.as_str().map(str::to_string))
+                    .collect(),
+                Some(JsonValue::String(s)) => split_mcp_args(s),
+                _ => Vec::new(),
+            };
+            if let Some(tool_name) = args.get("tool").and_then(|t| t.as_str()) {
+                let tool_args = args.get("arguments").cloned().unwrap_or_else(|| json!({}));
+                let result = mcp_call_tool(cmd, &argv, tool_name, tool_args)
+                    .map_err(|e| format!("MCP call failed: {e}"))?;
+                let parsed: JsonValue =
+                    serde_json::from_str(&result).unwrap_or(JsonValue::String(result));
+                let out = json!({
+                    "status": "ok",
+                    "command": cmd,
+                    "tool": tool_name,
+                    "result": parsed,
+                });
+                serde_json::to_string_pretty(&out).map_err(|e| e.to_string())
+            } else {
+                let tools = mcp_list_tools(cmd, &argv)
+                    .map_err(|e| format!("MCP list_tools failed: {e}"))?;
+                let list: Vec<JsonValue> = tools
+                    .iter()
+                    .map(|t| json!({ "name": t.name, "description": t.description }))
+                    .collect();
+                let out = json!({
+                    "status": "ok",
+                    "command": cmd,
+                    "tool_count": list.len(),
+                    "tools": list,
+                });
+                serde_json::to_string_pretty(&out).map_err(|e| e.to_string())
+            }
+        }
         _ => Err(format!("Unknown tool: {name}")),
     }
+}
+
+fn resolve_env_map(
+    snapshot: &AppSnapshot,
+    explicit_env: Option<&str>,
+) -> Result<HashMap<String, String>, String> {
+    if let Some(env_name) = explicit_env {
+        let env = find_env_by_name_or_id(&snapshot.environments, env_name)
+            .ok_or_else(|| format!("Environment '{env_name}' not found"))?;
+        return Ok(env.to_map());
+    }
+    if let Some(active_id) = snapshot.active_environment_id {
+        if let Some(env) = snapshot.environments.iter().find(|e| e.id == active_id) {
+            return Ok(env.to_map());
+        }
+    }
+    if !snapshot.active_environment.is_empty()
+        && !snapshot.active_environment.eq_ignore_ascii_case("no environment")
+    {
+        if let Some(env) = snapshot
+            .environments
+            .iter()
+            .find(|e| e.name.eq_ignore_ascii_case(&snapshot.active_environment))
+        {
+            return Ok(env.to_map());
+        }
+    }
+    Ok(snapshot.variables.environment.clone())
+}
+
+fn parse_headers_arg(val: Option<&JsonValue>) -> Vec<(String, String)> {
+    let mut out = Vec::new();
+    if let Some(map) = val.and_then(|h| h.as_object()) {
+        for (k, v) in map {
+            if let Some(s) = v.as_str() {
+                out.push((k.clone(), s.to_string()));
+            }
+        }
+    }
+    out
+}
+
+fn parse_protocol_arg(raw: &str) -> RequestProtocol {
+    match raw.trim().to_ascii_lowercase().as_str() {
+        "ws" | "websocket" => RequestProtocol::WebSocket,
+        "grpc" => RequestProtocol::Grpc,
+        "sse" => RequestProtocol::Sse,
+        "mqtt" => RequestProtocol::Mqtt,
+        "mcp" => RequestProtocol::Mcp,
+        "socketio" | "socket.io" | "socket_io" => RequestProtocol::SocketIo,
+        "graphql_ws" | "graphql-ws" | "gql_ws" => RequestProtocol::GraphqlWs,
+        _ => RequestProtocol::Http,
+    }
+}
+
+fn parse_auth_arg(val: &JsonValue) -> Option<AuthConfig> {
+    let obj = val.as_object()?;
+    let ty = obj.get("type").and_then(|t| t.as_str())?.trim().to_ascii_lowercase();
+    let mut cfg = AuthConfig::default();
+    match ty.as_str() {
+        "inherit" => cfg.auth_type = AuthType::Inherit,
+        "no_auth" | "none" => cfg.auth_type = AuthType::NoAuth,
+        "bearer" => {
+            cfg.auth_type = AuthType::Bearer;
+            cfg.token = obj.get("token").and_then(|v| v.as_str()).unwrap_or("").to_string();
+        }
+        "basic" => {
+            cfg.auth_type = AuthType::Basic;
+            cfg.username = obj.get("username").and_then(|v| v.as_str()).unwrap_or("").to_string();
+            cfg.password = obj.get("password").and_then(|v| v.as_str()).unwrap_or("").to_string();
+        }
+        "api_key" | "apikey" => {
+            cfg.auth_type = AuthType::ApiKey;
+            cfg.api_key_header = obj
+                .get("header")
+                .and_then(|v| v.as_str())
+                .unwrap_or("X-API-Key")
+                .to_string();
+            cfg.token = obj
+                .get("token")
+                .or_else(|| obj.get("value"))
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
+        }
+        _ => return None,
+    }
+    Some(cfg)
 }
 
 fn parse_body_mode_arg(mode_opt: Option<&str>, body: &str) -> BodyMode {
@@ -3667,7 +4389,12 @@ mod tests {
         assert!(tools.iter().any(|t| t["name"] == "blitz_mqtt_subscribe"));
         assert!(tools.iter().any(|t| t["name"] == "blitz_graphql_ws_subscribe"));
         assert!(tools.iter().any(|t| t["name"] == "blitz_socketio_emit"));
-        assert_eq!(tools.len(), 37);
+        assert!(tools.iter().any(|t| t["name"] == "blitz_lint_collection"));
+        assert!(tools.iter().any(|t| t["name"] == "blitz_diff_environments"));
+        assert!(tools.iter().any(|t| t["name"] == "blitz_set_collection_var"));
+        assert!(tools.iter().any(|t| t["name"] == "blitz_import_collection"));
+        assert!(tools.iter().any(|t| t["name"] == "blitz_mcp_call"));
+        assert_eq!(tools.len(), 42);
     }
 
     #[test]
@@ -4187,5 +4914,501 @@ mod tests {
         assert_eq!(created.body, "{\"ping\":true}");
 
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_new_mcp_tools_and_bugfixes() {
+        let temp = TempMcpStore::new("mcp_new_tools");
+
+        // 1. blitz_create_environment with set_active populates snapshot.variables.environment
+        let env_a_raw = execute_mcp_tool_with_store(
+            &temp.store,
+            "blitz_create_environment",
+            &json!({
+                "name": "StageA",
+                "variables": { "baseUrl": "http://127.0.0.1:18080", "shared": "same", "diff": "a" },
+                "set_active": true
+            }),
+        )
+        .expect("create StageA");
+        let env_a: JsonValue = serde_json::from_str(&env_a_raw).unwrap();
+        assert_eq!(env_a["is_active"], true);
+        let reloaded = temp.store.load().unwrap();
+        assert_eq!(
+            reloaded.variables.environment.get("baseUrl").map(String::as_str),
+            Some("http://127.0.0.1:18080")
+        );
+
+        execute_mcp_tool_with_store(
+            &temp.store,
+            "blitz_create_environment",
+            &json!({
+                "name": "StageB",
+                "variables": { "shared": "same", "diff": "b", "onlyB": "extra" }
+            }),
+        )
+        .expect("create StageB");
+
+        // 2. blitz_diff_environments
+        let diff_raw = execute_mcp_tool_with_store(
+            &temp.store,
+            "blitz_diff_environments",
+            &json!({ "environment_a": "StageA", "environment_b": "StageB" }),
+        )
+        .expect("diff envs");
+        let diff: JsonValue = serde_json::from_str(&diff_raw).unwrap();
+        assert_eq!(diff["matching"], 1);
+        assert_eq!(diff["drift"], 1);
+        assert_eq!(diff["missing_in_target"], 1);
+        assert_eq!(diff["extra_in_target"], 1);
+
+        // 3. blitz_upsert_request w/ protocol, auth, test_script, graphql_query + blitz_get_request
+        let up_raw = execute_mcp_tool_with_store(
+            &temp.store,
+            "blitz_upsert_request",
+            &json!({
+                "collection": "TestCol",
+                "name": "GqlOp",
+                "url": "{{baseUrl}}/graphql",
+                "graphql_query": "{ hello }",
+                "auth": { "type": "bearer", "token": "tok123" },
+                "test_script": "blitz.test('ok', () => blitz.expect(200).to.equal(200));"
+            }),
+        )
+        .expect("upsert graphql");
+        let up: JsonValue = serde_json::from_str(&up_raw).unwrap();
+        assert_eq!(up["method"], "POST");
+        assert_eq!(up["body_mode"], "graphql");
+
+        let get_raw = execute_mcp_tool_with_store(
+            &temp.store,
+            "blitz_get_request",
+            &json!({ "request_id": up["request_id"], "collection": "TestCol" }),
+        )
+        .expect("get request");
+        let got: JsonValue = serde_json::from_str(&get_raw).unwrap();
+        assert_eq!(got["request"]["auth_type"], "bearer");
+        assert_eq!(got["request"]["graphql_query"], "{ hello }");
+
+        // 4. blitz_set_collection_var + blitz_lint_collection
+        execute_mcp_tool_with_store(
+            &temp.store,
+            "blitz_set_collection_var",
+            &json!({ "collection": "TestCol", "key": "colKey", "value": "colVal" }),
+        )
+        .expect("set col var");
+        execute_mcp_tool_with_store(
+            &temp.store,
+            "blitz_upsert_request",
+            &json!({ "collection": "TestCol", "name": "UnresolvedReq", "url": "{{missingVar}}/x" }),
+        )
+        .expect("upsert unresolved");
+        let lint_raw = execute_mcp_tool_with_store(
+            &temp.store,
+            "blitz_lint_collection",
+            &json!({ "collection": "TestCol", "environment": "StageA" }),
+        )
+        .expect("lint collection");
+        let lint: JsonValue = serde_json::from_str(&lint_raw).unwrap();
+        assert!(lint["total_issues"].as_u64().unwrap() >= 1);
+
+        // 5. blitz_manage_cookies (set + domain-scoped clear)
+        execute_mcp_tool_with_store(
+            &temp.store,
+            "blitz_manage_cookies",
+            &json!({ "action": "set", "domain": "a.test", "name": "sid", "value": "111" }),
+        )
+        .expect("set cookie a");
+        execute_mcp_tool_with_store(
+            &temp.store,
+            "blitz_manage_cookies",
+            &json!({ "action": "set", "domain": "b.test", "name": "sid", "value": "222" }),
+        )
+        .expect("set cookie b");
+        let clr_raw = execute_mcp_tool_with_store(
+            &temp.store,
+            "blitz_manage_cookies",
+            &json!({ "action": "clear", "domain": "a.test" }),
+        )
+        .expect("clear cookie a only");
+        let clr: JsonValue = serde_json::from_str(&clr_raw).unwrap();
+        assert_eq!(clr["cleared_count"], 1);
+        assert_eq!(clr["remaining_count"], 1);
+
+        // 6. blitz_import_collection (Postman v2.1)
+        let pm = json!({
+            "info": { "name": "ImportedPM", "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json" },
+            "item": [{ "name": "Ping", "request": { "method": "GET", "url": { "raw": "http://127.0.0.1:18080/health" } } }]
+        });
+        let imp_raw = execute_mcp_tool_with_store(
+            &temp.store,
+            "blitz_import_collection",
+            &json!({ "data": pm.to_string() }),
+        )
+        .expect("import postman v2.1");
+        let imp: JsonValue = serde_json::from_str(&imp_raw).unwrap();
+        assert_eq!(imp["format"], "postman_v2.1");
+        assert_eq!(imp["request_count"], 1);
+    }
+
+    #[test]
+    #[ignore = "requires docker test-servers on localhost:18080..18085"]
+    fn live_all_protocols_and_42_mcp_tools() {
+        let _guard = MCP_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let temp = TempMcpStore::new("live_42_tools");
+        let col_name = "__blitz_mcp_test_suite__";
+
+        // Environments + vars + diff
+        execute_mcp_tool_with_store(
+            &temp.store,
+            "blitz_create_environment",
+            &json!({
+                "name": "__test_env_a__",
+                "variables": { "baseUrl": "http://127.0.0.1:18080", "envTag": "alpha" },
+                "set_active": true
+            }),
+        )
+        .unwrap();
+        execute_mcp_tool_with_store(
+            &temp.store,
+            "blitz_create_environment",
+            &json!({
+                "name": "__test_env_b__",
+                "variables": { "baseUrl": "http://127.0.0.1:18080", "envTag": "beta" }
+            }),
+        )
+        .unwrap();
+        execute_mcp_tool_with_store(
+            &temp.store,
+            "blitz_set_env_var",
+            &json!({ "key": "dynamicCheck", "value": "ok", "environment": "__test_env_a__" }),
+        )
+        .unwrap();
+        let diff_env: JsonValue = serde_json::from_str(
+            &execute_mcp_tool_with_store(
+                &temp.store,
+                "blitz_diff_environments",
+                &json!({ "environment_a": "__test_env_a__", "environment_b": "__test_env_b__" }),
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(diff_env["drift"], 1);
+
+        // Login -> stores Set-Cookie in jar & saves token to env
+        let login: JsonValue = serde_json::from_str(
+            &execute_mcp_tool_with_store(
+                &temp.store,
+                "blitz_execute_http",
+                &json!({
+                    "method": "POST",
+                    "url": "{{baseUrl}}/login",
+                    "body": "{\"username\":\"LiveTester\"}",
+                    "save_to_env": { "authToken": "token" }
+                }),
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(login["status"], 200);
+        assert_eq!(login["saved_to_env"]["authToken"], "bearer_xyz_123");
+
+        // Protected endpoint uses persisted cookie
+        let prot: JsonValue = serde_json::from_str(
+            &execute_mcp_tool_with_store(
+                &temp.store,
+                "blitz_execute_http",
+                &json!({ "method": "GET", "url": "{{baseUrl}}/protected" }),
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(prot["status"], 200);
+        assert_eq!(prot["json"]["authorized"], true);
+
+        // GraphQL over HTTP
+        let gql_http: JsonValue = serde_json::from_str(
+            &execute_mcp_tool_with_store(
+                &temp.store,
+                "blitz_execute_http",
+                &json!({
+                    "url": "{{baseUrl}}/graphql",
+                    "graphql_query": "query($id: ID) { hello user(id: $id) { id name } }",
+                    "graphql_variables": "{\"id\":\"42\",\"name\":\"Blitz\"}"
+                }),
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(gql_http["status"], 200);
+        assert_eq!(gql_http["json"]["data"]["user"]["name"], "TestUser");
+
+        // Upsert saved HTTP request with test script, send, diff across envs, perf test, run collection
+        let up: JsonValue = serde_json::from_str(
+            &execute_mcp_tool_with_store(
+                &temp.store,
+                "blitz_upsert_request",
+                &json!({
+                    "collection": col_name,
+                    "folder": "HTTP",
+                    "name": "EchoEnv",
+                    "method": "GET",
+                    "url": "{{baseUrl}}/echo?env={{envTag}}",
+                    "test_script": "blitz.test('status 200', () => blitz.expect(blitz.response.code).to.equal(200));"
+                }),
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        let req_id = up["request_id"].as_str().unwrap().to_string();
+
+        let send_saved: JsonValue = serde_json::from_str(
+            &execute_mcp_tool_with_store(
+                &temp.store,
+                "blitz_send_request",
+                &json!({ "request_id": &req_id, "collection": col_name }),
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(send_saved["status"], 200);
+        assert_eq!(send_saved["tests"][0]["passed"], true);
+
+        let diff_resp: JsonValue = serde_json::from_str(
+            &execute_mcp_tool_with_store(
+                &temp.store,
+                "blitz_diff_responses",
+                &json!({
+                    "request_id": &req_id,
+                    "environment_a": "__test_env_a__",
+                    "environment_b": "__test_env_b__"
+                }),
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(diff_resp["status_comparison"]["status_match"], true);
+        assert_eq!(diff_resp["stats"]["identical"], false);
+
+        let run_col: JsonValue = serde_json::from_str(
+            &execute_mcp_tool_with_store(
+                &temp.store,
+                "blitz_run_collection",
+                &json!({ "collection": col_name, "folder": "HTTP", "iterations": 2 }),
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(run_col["total_requests"], 2);
+        assert_eq!(run_col["passed"], 2);
+
+        let perf: JsonValue = serde_json::from_str(
+            &execute_mcp_tool_with_store(
+                &temp.store,
+                "blitz_perf_test",
+                &json!({ "request_id": &req_id, "vus": 3, "duration_seconds": 1 }),
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        assert!(perf["total_requests"].as_u64().unwrap() > 0);
+        assert_eq!(perf["errors"], 0);
+
+        // Local mock server start -> hit -> stop
+        let mock: JsonValue = serde_json::from_str(
+            &execute_mcp_tool_with_store(
+                &temp.store,
+                "blitz_start_mock",
+                &json!({ "collection": col_name }),
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        let mock_url = mock["mock_url"].as_str().unwrap();
+        let mock_hit: JsonValue = serde_json::from_str(
+            &execute_mcp_tool_with_store(
+                &temp.store,
+                "blitz_execute_http",
+                &json!({ "url": format!("{mock_url}/echo") }),
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(mock_hit["status"], 200);
+        execute_mcp_tool_with_store(&temp.store, "blitz_stop_mock", &json!({})).unwrap();
+
+        // SSE
+        let sse: JsonValue = serde_json::from_str(
+            &execute_mcp_tool_with_store(
+                &temp.store,
+                "blitz_sse_listen",
+                &json!({ "url": "http://127.0.0.1:18080/sse", "max_events": 3, "timeout_ms": 3000 }),
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(sse["count"], 3);
+
+        // WebSocket
+        let ws: JsonValue = serde_json::from_str(
+            &execute_mcp_tool_with_store(
+                &temp.store,
+                "blitz_websocket_send",
+                &json!({
+                    "url": "ws://127.0.0.1:18082/ws",
+                    "message": "ping-from-blitz",
+                    "max_messages": 2,
+                    "timeout_ms": 3000
+                }),
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(ws["count"], 2);
+        assert!(ws["messages"][1].as_str().unwrap().contains("ping-from-blitz"));
+
+        // GraphQL-WS
+        let gql_ws: JsonValue = serde_json::from_str(
+            &execute_mcp_tool_with_store(
+                &temp.store,
+                "blitz_graphql_ws_subscribe",
+                &json!({
+                    "ws_url": "ws://127.0.0.1:18082/graphql",
+                    "query": "subscription { tick }",
+                    "max_events": 3,
+                    "timeout_ms": 3000
+                }),
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        let gql_events = gql_ws["events"].as_array().unwrap();
+        assert!(gql_events.iter().any(|e| e.as_str().unwrap().contains("next")));
+        assert!(!gql_events.iter().any(|e| e.as_str().unwrap().contains("4400")));
+
+        // gRPC OK + gRPC Error trailers
+        let grpc_ok: JsonValue = serde_json::from_str(
+            &execute_mcp_tool_with_store(
+                &temp.store,
+                "blitz_grpc_unary",
+                &json!({
+                    "endpoint": "http://127.0.0.1:18083",
+                    "method": "test.EchoService/Echo",
+                    "body": "{\"msg\":\"hello-grpc\",\"n\":7}",
+                    "headers": { "authorization": "Bearer grpc-tok" }
+                }),
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(grpc_ok["grpc_status"], 0, "grpc_ok: {grpc_ok}");
+        assert_eq!(grpc_ok["response"]["ok"], true);
+        assert_eq!(grpc_ok["response"]["echo"]["msg"], "hello-grpc");
+        assert_eq!(grpc_ok["response"]["metadata_auth"], "Bearer grpc-tok");
+
+        let grpc_err: JsonValue = serde_json::from_str(
+            &execute_mcp_tool_with_store(
+                &temp.store,
+                "blitz_grpc_unary",
+                &json!({
+                    "endpoint": "http://127.0.0.1:18083",
+                    "method": "test.EchoService/Fail",
+                    "body": "{}"
+                }),
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(grpc_err["grpc_status"], 3, "grpc_err: {grpc_err}");
+        assert_eq!(grpc_err["grpc_message"], "invalid_argument_test");
+
+        // Socket.IO
+        let sio: JsonValue = serde_json::from_str(
+            &execute_mcp_tool_with_store(
+                &temp.store,
+                "blitz_socketio_emit",
+                &json!({
+                    "url": "http://127.0.0.1:18084",
+                    "emit_event": "chat",
+                    "emit_payload": "{\"text\":\"hello-sio\"}",
+                    "listen_event": "chat",
+                    "listen_ms": 1200
+                }),
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        let sio_evs = sio["events"].as_array().unwrap();
+        assert!(
+            sio_evs.iter().any(|e| e.as_str().unwrap().contains("hello-sio")),
+            "sio_evs: {sio_evs:?}"
+        );
+
+        // MQTT publish (retain=true) + subscribe
+        let mq_pub: JsonValue = serde_json::from_str(
+            &execute_mcp_tool_with_store(
+                &temp.store,
+                "blitz_mqtt_publish",
+                &json!({
+                    "broker_url": "mqtt://127.0.0.1:18085",
+                    "topic": "blitz/test/topic",
+                    "payload": "{\"temp\":22.5}",
+                    "retain": true
+                }),
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(mq_pub["ok"], true, "mq_pub: {mq_pub}");
+
+        let mq_sub: JsonValue = serde_json::from_str(
+            &execute_mcp_tool_with_store(
+                &temp.store,
+                "blitz_mqtt_subscribe",
+                &json!({
+                    "broker_url": "mqtt://127.0.0.1:18085",
+                    "topic": "blitz/test/topic",
+                    "timeout_seconds": 3
+                }),
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(mq_sub["ok"], true, "mq_sub: {mq_sub}");
+        assert!(mq_sub["messages"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|m| m.as_str().unwrap().contains("temp")));
+
+        // External STDIO MCP server via blitz_mcp_call
+        let manifest_dir = env!("CARGO_MANIFEST_DIR");
+        let mcp_script = format!("{manifest_dir}/test-servers/mcp_stdio_server.js");
+        let mcp_list: JsonValue = serde_json::from_str(
+            &execute_mcp_tool_with_store(
+                &temp.store,
+                "blitz_mcp_call",
+                &json!({ "command": "node", "args": [&mcp_script] }),
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(mcp_list["tool_count"], 2);
+
+        let mcp_call: JsonValue = serde_json::from_str(
+            &execute_mcp_tool_with_store(
+                &temp.store,
+                "blitz_mcp_call",
+                &json!({
+                    "command": "node",
+                    "args": [&mcp_script],
+                    "tool": "add_numbers",
+                    "arguments": { "a": 19, "b": 23 }
+                }),
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        assert!(mcp_call["result"].to_string().contains("42"), "mcp_call: {mcp_call}");
     }
 }
