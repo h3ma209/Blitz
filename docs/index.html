@@ -66,110 +66,10 @@
     href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap"
     rel="stylesheet">
 
-  <!-- Tailwind CSS Play CDN (v3) -->
+  <!-- Tailwind CSS Play CDN (v3) + Shared Tokens/Styles -->
   <script src="https://cdn.tailwindcss.com"></script>
-  <script>
-    tailwind.config = {
-      theme: {
-        extend: {
-          fontFamily: {
-            sans: ['Inter', '-apple-system', 'BlinkMacSystemFont', 'Segoe UI', 'Roboto', 'sans-serif'],
-            mono: ['"JetBrains Mono"', 'ui-monospace', 'SFMono-Regular', 'Menlo', 'monospace'],
-          },
-          colors: {
-            spot: {
-              void: '#0b0c10',
-              black: '#12141a',
-              elevated: '#171922',
-              highlight: '#202430',
-              muted: '#9aa7bc',
-              faint: '#7b89a0',
-              green: '#22c55e',
-              bright: '#4ade80',
-              dim: '#16a34a',
-            }
-          }
-        }
-      }
-    }
-  </script>
-
-  <style type="text/tailwindcss">
-    :root {
-      --surface-base: #0b0c10;
-      --surface-panel: #12141a;
-      --surface-elevated: #171922;
-      --surface-subtle: #0e1015;
-      --surface-border: rgba(255, 255, 255, 0.085);
-      --accent: #4ade80;
-      --accent-soft: rgba(74, 222, 128, 0.14);
-      --focus-ring: rgba(74, 222, 128, 0.45);
-    }
-
-    @layer base {
-      :where(a, button, input, select, textarea, summary):focus-visible {
-        outline: none;
-        box-shadow: 0 0 0 2px var(--surface-base), 0 0 0 4px var(--focus-ring);
-        border-radius: 6px;
-      }
-      @media (prefers-reduced-motion: reduce) {
-        *, *::before, *::after {
-          animation-duration: 0.01ms !important;
-          transition-duration: 0.01ms !important;
-          scroll-behavior: auto !important;
-        }
-      }
-    }
-
-    @layer utilities {
-      .glass {
-        background: var(--surface-panel);
-        border: 1px solid var(--surface-border);
-        box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
-      }
-      .glass-strong {
-        background: #0f1117;
-        border: 1px solid rgba(255, 255, 255, 0.10);
-        box-shadow: 0 12px 32px rgba(0, 0, 0, 0.32), inset 0 1px 0 rgba(255, 255, 255, 0.05);
-      }
-      .glass-capsule {
-        background: rgba(255, 255, 255, 0.035);
-        border: 1px solid var(--surface-border);
-      }
-      .glass-hover {
-        transition: border-color 150ms ease, background-color 150ms ease, box-shadow 150ms ease;
-      }
-      .glass-hover:hover {
-        border-color: rgba(74, 222, 128, 0.38);
-        background: var(--surface-elevated);
-      }
-      .panel {
-        background: var(--surface-panel);
-        border: 1px solid var(--surface-border);
-        box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
-      }
-      .panel-subtle {
-        background: var(--surface-subtle);
-        border: 1px solid rgba(255, 255, 255, 0.065);
-      }
-      .panel-hover {
-        transition: border-color 150ms ease, background-color 150ms ease;
-      }
-      .panel-hover:hover {
-        border-color: rgba(74, 222, 128, 0.38);
-        background: var(--surface-elevated);
-      }
-      .bg-grid {
-        background-image: 
-          linear-gradient(rgba(255, 255, 255, 0.02) 1px, transparent 1px),
-          linear-gradient(90deg, rgba(255, 255, 255, 0.02) 1px, transparent 1px);
-        background-size: 32px 32px;
-      }
-      .hero-glow {
-        background: radial-gradient(ellipse 70% 50% at 50% -10%, rgba(74, 222, 128, 0.12), transparent 60%);
-      }
-    }
-  </style>
+  <script src="shared.js"></script>
+  <link rel="stylesheet" href="styles.css">
 </head>
 
 <body
@@ -178,7 +78,7 @@
   <div class="absolute inset-0 h-[3200px] bg-grid pointer-events-none z-0"></div>
 
   <!-- Top Navigation -->
-  <header class="sticky top-0 z-50 border-b border-white/5 bg-[#0b0c10]/90 backdrop-blur-md px-4 sm:px-6">
+  <header class="sticky top-0 z-50 border-b border-white/5 bg-spot-void/90 backdrop-blur-md px-4 sm:px-6">
     <nav class="w-full max-w-6xl mx-auto flex items-center justify-between h-14">
       <div class="flex items-center gap-3">
         <a href="#" class="flex items-center gap-2.5">
@@ -292,7 +192,7 @@
         <!-- Visual: app + flow diagram -->
         <div id="screenshot" class="space-y-4 scroll-mt-24">
           <div class="panel rounded-xl overflow-hidden border border-white/10 shadow-2xl shadow-black/40">
-            <div class="bg-[#161821] border-b border-white/5 px-3 py-2 flex items-center justify-between text-[11px] text-slate-400">
+            <div class="bg-spot-elevated border-b border-white/5 px-3 py-2 flex items-center justify-between text-[11px] text-slate-400">
               <div class="flex items-center gap-1.5">
                 <span class="w-2 h-2 rounded-full bg-[#ff5f56]"></span>
                 <span class="w-2 h-2 rounded-full bg-[#ffbd2e]"></span>
@@ -617,7 +517,7 @@
                 <p class="text-spot-muted text-xs mt-1">Blitz inspects the response status, headers, latency SLA, and JSON keys to generate production test assertions automatically.</p>
               </div>
               <button onclick="runAutoAssertDemo()" id="btn-run-autoassert"
-                class="flex items-center gap-2 px-4 py-2 rounded-full bg-spot-bright hover:bg-[#22e76a] text-spot-black font-bold text-xs shadow-[0_2px_12px_rgba(30,215,96,0.35)] transition-all active:scale-95 whitespace-nowrap">
+                class="flex items-center gap-2 px-4 py-2 rounded-full bg-spot-bright hover:bg-emerald-400 text-spot-black font-bold text-xs shadow-[0_2px_12px_rgba(30,215,96,0.35)] transition-all active:scale-95 whitespace-nowrap">
                 <span>⚡ Click to Generate Assertions</span>
               </button>
             </div>
@@ -697,7 +597,7 @@ blitz.test("Response payload contains user_id", () => {
               <div class="flex flex-wrap items-center gap-2 w-full sm:w-auto">
                 <button onclick="resolveConflictDemo('local')" class="flex-1 sm:flex-initial px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-white font-bold text-xs transition-colors whitespace-nowrap">Accept Mine</button>
                 <button onclick="resolveConflictDemo('remote')" class="flex-1 sm:flex-initial px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-white font-bold text-xs transition-colors whitespace-nowrap">Accept Theirs</button>
-                <button onclick="resolveConflictDemo('smart')" class="w-full sm:w-auto px-3.5 py-1.5 rounded-lg bg-spot-bright hover:bg-[#22e76a] text-spot-black font-bold text-xs transition-all shadow-[0_2px_10px_rgba(30,215,96,0.3)] whitespace-nowrap">Smart 3-Way Merge</button>
+                <button onclick="resolveConflictDemo('smart')" class="w-full sm:w-auto px-3.5 py-1.5 rounded-lg bg-spot-bright hover:bg-emerald-400 text-spot-black font-bold text-xs transition-all shadow-[0_2px_10px_rgba(30,215,96,0.3)] whitespace-nowrap">Smart 3-Way Merge</button>
               </div>
             </div>
 
@@ -739,7 +639,7 @@ blitz.test("Response payload contains user_id", () => {
 
             <div id="conflict-resolution-toast" class="hidden p-3 rounded-xl bg-spot-green/20 border border-spot-green/40 text-spot-bright text-xs font-mono flex items-center justify-between animate-fade-in">
               <span>✓ Conflict resolved cleanly into valid Postman v2.1 collection! Committed to local git tree.</span>
-              <span class="font-bold cursor-pointer text-white" onclick="document.getElementById('conflict-resolution-toast').classList.add('hidden')">×</span>
+              <button type="button" aria-label="Dismiss notification" class="font-bold cursor-pointer text-white ml-2" onclick="document.getElementById('conflict-resolution-toast').classList.add('hidden')">×</button>
             </div>
           </div>
         </div>
@@ -862,7 +762,7 @@ blitz.test("Response payload contains user_id", () => {
               <input type="text" id="ws-input-msg" value='{"action":"ping","nonce":42}'
                 class="flex-1 bg-black/60 border border-white/10 rounded-lg px-3 py-2 font-mono text-xs text-white focus:outline-none focus:border-spot-bright">
               <button onclick="sendWsDemoMessage()"
-                class="px-4 py-2 rounded-lg bg-spot-bright hover:bg-[#22e76a] text-spot-black font-bold text-xs font-mono transition-all">
+                class="px-4 py-2 rounded-lg bg-spot-bright hover:bg-emerald-400 text-spot-black font-bold text-xs font-mono transition-all">
                 Send Frame
               </button>
             </div>
@@ -947,7 +847,7 @@ blitz.test("Response payload contains user_id", () => {
       <!-- Real Team Collaboration Screenshot -->
       <div class="max-w-4xl mx-auto mb-12 text-left">
         <div class="panel rounded-xl overflow-hidden shadow-2xl border border-white/10">
-          <div class="bg-[#161821] border-b border-white/5 px-4 py-2.5 flex items-center justify-between text-xs text-slate-400">
+          <div class="bg-spot-elevated border-b border-white/5 px-4 py-2.5 flex items-center justify-between text-xs text-slate-400">
             <div class="flex items-center gap-2">
               <span class="w-2.5 h-2.5 rounded-full bg-[#ff5f56]"></span>
               <span class="w-2.5 h-2.5 rounded-full bg-[#ffbd2e]"></span>
@@ -1191,7 +1091,7 @@ blitz.test("Response payload contains user_id", () => {
       <!-- Real-World WebSocket & Streaming Interface Preview -->
       <div class="max-w-5xl mx-auto mt-12 text-left">
         <div class="panel rounded-xl overflow-hidden shadow-2xl border border-white/10">
-          <div class="bg-[#161821] border-b border-white/5 px-4 py-2.5 flex items-center justify-between text-xs text-slate-400">
+          <div class="bg-spot-elevated border-b border-white/5 px-4 py-2.5 flex items-center justify-between text-xs text-slate-400">
             <div class="flex items-center gap-2">
               <span class="w-2.5 h-2.5 rounded-full bg-[#ff5f56]"></span>
               <span class="w-2.5 h-2.5 rounded-full bg-[#ffbd2e]"></span>
@@ -1289,7 +1189,7 @@ blitz.test("Response payload contains user_id", () => {
       <!-- Cockpit & Collection Hierarchy Screenshot -->
       <div class="max-w-5xl mx-auto mb-16 text-left">
         <div class="panel rounded-xl overflow-hidden shadow-2xl border border-white/10">
-          <div class="bg-[#161821] border-b border-white/5 px-4 py-2.5 flex items-center justify-between text-xs text-slate-400">
+          <div class="bg-spot-elevated border-b border-white/5 px-4 py-2.5 flex items-center justify-between text-xs text-slate-400">
             <div class="flex items-center gap-2">
               <span class="w-2.5 h-2.5 rounded-full bg-[#ff5f56]"></span>
               <span class="w-2.5 h-2.5 rounded-full bg-[#ffbd2e]"></span>
@@ -2028,7 +1928,7 @@ make run</code></pre>
   </main>
 
   <!-- Footer -->
-  <footer class="mt-36 border-t border-white/5 bg-[#080808] py-14 px-4 text-center relative z-10">
+  <footer class="mt-24 border-t border-white/5 bg-spot-void py-14 px-4 text-center relative z-10">
     <div class="max-w-md mx-auto">
       <div class="flex items-center justify-center gap-2 mb-3">
         <img src="logo.png" alt="Blitz" class="w-6 h-6">
@@ -2558,7 +2458,7 @@ blitz.test("Admin role authorized", () => {
         } else {
           msg = 'Accepted Remote changes from @sarah. Local draft updated.';
         }
-        toast.innerHTML = `<span>✓ ${msg}</span><span class="font-bold cursor-pointer text-white ml-2" onclick="document.getElementById('conflict-resolution-toast').classList.add('hidden')">×</span>`;
+        toast.innerHTML = `<span>✓ ${msg}</span><button type="button" aria-label="Dismiss notification" class="font-bold cursor-pointer text-white ml-2" onclick="document.getElementById('conflict-resolution-toast').classList.add('hidden')">×</button>`;
       }
     }
 
@@ -2589,19 +2489,6 @@ blitz.test("Admin role authorized", () => {
 
       log.scrollTop = log.scrollHeight;
     }
-
-    (function () {
-      const video = document.getElementById('hero-demo-video');
-      if (!video) return;
-      fetch('demo.mp4', { method: 'HEAD' })
-        .then((r) => {
-          if (r.ok) {
-            video.classList.remove('hidden');
-            video.play().catch(() => {});
-          }
-        })
-        .catch(() => {});
-    })();
   </script>
 </body>
 

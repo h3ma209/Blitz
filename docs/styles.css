@@ -1,0 +1,109 @@
+/* Shared design tokens, surfaces & accessibility defaults for Blitz web pages */
+:root {
+  --surface-void: #0b0c10;
+  --surface-panel: #12141a;
+  --surface-elevated: #171922;
+  --surface-subtle: #0e1015;
+  --surface-border: rgba(255, 255, 255, 0.085);
+  --accent: #4ade80;
+  --accent-soft: rgba(74, 222, 128, 0.14);
+  --focus-ring: rgba(74, 222, 128, 0.45);
+}
+
+:where(a, button, input, select, textarea, summary):focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--surface-void), 0 0 0 4px var(--focus-ring);
+  border-radius: 6px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+.glass {
+  background: var(--surface-panel);
+  border: 1px solid var(--surface-border);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+.glass-strong {
+  background: #0f1117;
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.32), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+.glass-elevated {
+  background: var(--surface-elevated);
+  border: 1px solid rgba(255, 255, 255, 0.10);
+}
+
+.glass-capsule {
+  background: rgba(255, 255, 255, 0.035);
+  border: 1px solid var(--surface-border);
+}
+
+.glass-hover {
+  transition: border-color 150ms ease, background-color 150ms ease, box-shadow 150ms ease;
+}
+
+.glass-hover:hover {
+  border-color: rgba(74, 222, 128, 0.38);
+  background: var(--surface-elevated);
+}
+
+.panel {
+  background: var(--surface-panel);
+  border: 1px solid var(--surface-border);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+.panel-subtle {
+  background: var(--surface-subtle);
+  border: 1px solid rgba(255, 255, 255, 0.065);
+}
+
+.panel-hover {
+  transition: border-color 150ms ease, background-color 150ms ease;
+}
+
+.panel-hover:hover {
+  border-color: rgba(74, 222, 128, 0.38);
+  background: var(--surface-elevated);
+}
+
+.table-border {
+  border: 1px solid var(--surface-border);
+}
+
+.bg-grid {
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.02) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.02) 1px, transparent 1px);
+  background-size: 32px 32px;
+}
+
+.hero-glow {
+  background: radial-gradient(ellipse 70% 50% at 50% -10%, rgba(74, 222, 128, 0.12), transparent 60%);
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--surface-void);
+}
+
+::-webkit-scrollbar-thumb {
+  background: #202430;
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #334155;
+}

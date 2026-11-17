@@ -13,6 +13,7 @@
   <meta name="robots" content="index, follow">
   <link rel="canonical" href="https://h3ma209.github.io/Blitz/docs.html">
   <link rel="icon" type="image/png" href="logo-64.png">
+  <link rel="stylesheet" href="styles.css">
 
   <!-- Open Graph -->
   <meta property="og:type" content="article">
@@ -29,64 +30,9 @@
     href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap"
     rel="stylesheet">
 
-  <!-- Tailwind CSS Play CDN -->
+  <!-- Tailwind CSS Play CDN + Shared Config -->
   <script src="https://cdn.tailwindcss.com"></script>
-  <script>
-    tailwind.config = {
-      theme: {
-        extend: {
-          fontFamily: {
-            sans: ['Inter', '-apple-system', 'BlinkMacSystemFont', 'Segoe UI', 'Roboto', 'sans-serif'],
-            mono: ['"JetBrains Mono"', 'ui-monospace', 'SFMono-Regular', 'Menlo', 'monospace'],
-          },
-          colors: {
-            spot: {
-              void: '#0b0c10',
-              black: '#12141a',
-              elevated: '#171922',
-              highlight: '#202430',
-              muted: '#94a3b8',
-              faint: '#475569',
-              green: '#22c55e',
-              bright: '#4ade80',
-              dim: '#16a34a',
-            }
-          }
-        }
-      }
-    }
-  </script>
-
-  <style type="text/tailwindcss">
-    @layer utilities {
-      .glass {
-        background: #12141a;
-        border: 1px solid rgba(255, 255, 255, 0.08);
-      }
-      .glass-elevated {
-        background: #171922;
-        border: 1px solid rgba(255, 255, 255, 0.1);
-      }
-      .table-border {
-        border: 1px solid rgba(255, 255, 255, 0.08);
-      }
-    }
-    /* Custom scrollbars */
-    ::-webkit-scrollbar {
-      width: 6px;
-      height: 6px;
-    }
-    ::-webkit-scrollbar-track {
-      background: #0b0c10;
-    }
-    ::-webkit-scrollbar-thumb {
-      background: #202430;
-      border-radius: 3px;
-    }
-    ::-webkit-scrollbar-thumb:hover {
-      background: #334155;
-    }
-  </style>
+  <script src="shared.js"></script>
 </head>
 
 <body class="bg-spot-void text-gray-100 font-sans antialiased selection:bg-spot-green selection:text-black">
@@ -283,7 +229,7 @@
 
         <!-- Main App Overview Screenshot -->
         <div class="panel rounded-xl overflow-hidden shadow-2xl border border-white/10">
-          <div class="bg-[#161821] border-b border-white/5 px-4 py-2 flex items-center justify-between text-xs text-slate-400">
+          <div class="bg-spot-elevated border-b border-white/5 px-4 py-2 flex items-center justify-between text-xs text-slate-400">
             <span class="font-mono text-[11px] text-slate-300">Blitz Workbench — Sidebar Tree, Request Builder &amp; Live Response Inspector</span>
             <span class="text-[10px] font-mono text-spot-bright bg-spot-bright/10 px-2 py-0.5 rounded">Native Rust GUI</span>
           </div>
@@ -516,7 +462,7 @@
 
         <!-- Cockpit & Collection Hierarchy Screenshot -->
         <div class="panel rounded-xl overflow-hidden shadow-2xl border border-white/10 my-4">
-          <div class="bg-[#161821] border-b border-white/5 px-4 py-2 flex items-center justify-between text-xs text-slate-400">
+          <div class="bg-spot-elevated border-b border-white/5 px-4 py-2 flex items-center justify-between text-xs text-slate-400">
             <span class="font-mono text-[11px] text-slate-300">Blitz Cockpit • Quick Actions &amp; Nested Collections</span>
             <span class="text-[10px] font-mono text-spot-bright bg-spot-bright/10 px-2 py-0.5 rounded">Desktop UI</span>
           </div>
@@ -1181,7 +1127,7 @@
         </p>
 
         <div class="panel rounded-xl overflow-hidden shadow-2xl border border-white/10 my-4">
-          <div class="bg-[#161821] border-b border-white/5 px-4 py-2 flex items-center justify-between text-xs text-slate-400">
+          <div class="bg-spot-elevated border-b border-white/5 px-4 py-2 flex items-center justify-between text-xs text-slate-400">
             <span class="font-mono text-[11px] text-slate-300">Team Collaboration &amp; Git Cloud Sync Activity</span>
             <span class="text-[10px] font-mono text-spot-bright bg-spot-bright/10 px-2 py-0.5 rounded">Git Cloud</span>
           </div>
