@@ -1,0 +1,27 @@
+# yaml-language-server: $schema=https://aka.ms/winget-manifest.defaultLocale.1.12.0.schema.json
+
+PackageIdentifier: h3ma209.Blitz
+PackageVersion: 0.2.6
+PackageLocale: en-US
+Publisher: h3ma209
+PublisherUrl: https://github.com/h3ma209
+PublisherSupportUrl: https://github.com/h3ma209/Blitz/issues
+PrivacyUrl: https://github.com/h3ma209/Blitz/blob/master/SECURITY.md
+Author: h3ma209
+PackageName: Blitz
+PackageUrl: https://h3ma209.github.io/Blitz/
+License: MIT
+LicenseUrl: https://github.com/h3ma209/Blitz/blob/master/LICENSE
+Copyright: Copyright (c) h3ma209
+ShortDescription: AI-native local-first API client with built-in 37-tool MCP server
+Description: |-
+  Blitz is a native Rust API workbench with OS keychain secrets, Git-native sync,
+  and a built-in Model Context Protocol (MCP) server for Cursor, Claude Desktop, and other agents.
+Moniker: blitz
+Tags:
+  - api
+  - rest
+  - postman
+  - mcp
+  - developer-tools
+ReleaseNotesUrl: https://github.com/h3ma209/Blitz/releases/tag/v0.2.6

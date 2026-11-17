@@ -4,10 +4,11 @@ Blitz is not yet in the public `winget` catalog until a manifest PR merges. Use 
 
 ## Submit
 
-1. Update `h3ma209.Blitz.yaml`: `PackageVersion`, `InstallerUrl`, `InstallerSha256` (from GitHub release).
+1. Copy `packaging/winget/<version>/` (three YAML files). Bump version, `InstallerUrl`, `InstallerSha256` from the GitHub release.
 2. Fork [microsoft/winget-pkgs](https://github.com/microsoft/winget-pkgs).
-3. Add manifests under `manifests/h/h3ma209/Blitz/<version>/` (singleton or multi-file set per winget schema).
-4. Open PR; after merge users can run:
+3. Add those files under `manifests/h/h3ma209/Blitz/<version>/` — **multi-file only** (`version` + `locale` + `installer`), `ManifestVersion: 1.12.0`, schema headers included. Do not use singleton manifests.
+4. On the PR, comment once (personal account): `@microsoft-github-policy-service agree` unless your employer owns the contribution (then use `agree company="..."` per the bot message).
+5. Open or update PR; after merge users can run:
 
 ```powershell
 winget install --id h3ma209.Blitz -e
@@ -16,7 +17,7 @@ winget install --id h3ma209.Blitz -e
 ## Local validation
 
 ```powershell
-winget validate .\packaging\winget\h3ma209.Blitz.yaml
+winget validate --manifest .\packaging\winget\0.2.6\
 ```
 
 ## SmartScreen
