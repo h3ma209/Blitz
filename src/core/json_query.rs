@@ -10,6 +10,16 @@ pub fn root_keys(value: &Value, limit: usize) -> Vec<String> {
     }
 }
 
+/// Convert a JSON value into a clean string suitable for variable binding or clipboard copy
+/// (unquoted for strings, compact JSON for numbers/bools/containers).
+pub fn scalar_or_compact_json(value: &Value) -> String {
+    match value {
+        Value::String(s) => s.clone(),
+        Value::Null => String::new(),
+        other => other.to_string(),
+    }
+}
+
 /// Evaluates a lightweight JSONPath / dot-expression against a `Value`.
 ///
 /// Supported syntax:
@@ -109,6 +119,20 @@ fn eval_tokens(val: &Value, tokens: &[Token]) -> Result<Value, String> {
     let tail = &tokens[1..];
 
     match head {
+        Token::Key(k) if k == "*" => eval_tokens(val, &[&[Token::Wildcard], tail].concat()),
+        Token::Key(k) if (k == "length" || k == "len" || k == "#") && tail.is_empty() => {
+            match val {
+                Value::Object(map) => {
+                    if let Some(child) = map.get(k) {
+                        return Ok(child.clone());
+                    }
+                    Ok(Value::Number(map.len().into()))
+                }
+                Value::Array(arr) => Ok(Value::Number(arr.len().into())),
+                Value::String(s) => Ok(Value::Number(s.chars().count().into())),
+                _ => Err(format!("Cannot read '{k}' of scalar value")),
+            }
+        }
         Token::Key(k) => match val {
             Value::Object(map) => {
                 if let Some(child) = map.get(k) {
@@ -118,6 +142,9 @@ fn eval_tokens(val: &Value, tokens: &[Token]) -> Result<Value, String> {
                 }
             }
             Value::Array(arr) => {
+                if let Ok(idx) = k.parse::<isize>() {
+                    return eval_tokens(val, &[&[Token::Index(idx)], tail].concat());
+                }
                 if arr.is_empty() {
                     return Ok(Value::Array(Vec::new()));
                 }
@@ -212,9 +239,16 @@ mod tests {
         });
 
         assert_eq!(query_json(&v, "data.users[0].name").unwrap(), json!("Alice"));
+        assert_eq!(query_json(&v, "data.users.0.name").unwrap(), json!("Alice"));
+        assert_eq!(query_json(&v, "data.users.-1.name").unwrap(), json!("Bob"));
         assert_eq!(query_json(&v, "$.data.users[1].id").unwrap(), json!(20));
         assert_eq!(query_json(&v, "data.users[*].name").unwrap(), json!(["Alice", "Bob"]));
+        assert_eq!(query_json(&v, "data.users.*.name").unwrap(), json!(["Alice", "Bob"]));
         assert_eq!(query_json(&v, "data.users.id").unwrap(), json!([10, 20]));
+        assert_eq!(query_json(&v, "data.users.length").unwrap(), json!(2));
+        assert_eq!(query_json(&v, "data.users.#").unwrap(), json!(2));
+        assert_eq!(scalar_or_compact_json(&json!("Alice")), "Alice");
+        assert_eq!(scalar_or_compact_json(&json!(20)), "20");
     }
 
     #[test]

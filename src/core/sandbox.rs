@@ -199,8 +199,12 @@ function __np_dynamicVar(key) {{
       }});
     case "$timestamp":
       return String(Math.floor(Date.now() / 1000));
+    case "$timestampms":
+      return String(Date.now());
     case "$isotimestamp":
       return new Date().toISOString();
+    case "$date":
+      return new Date().toISOString().slice(0, 10);
     case "$randomint":
       return String(Math.floor(Math.random() * 1000) + 1);
     case "$randomemail":
@@ -233,8 +237,15 @@ function __np_dynamicVar(key) {{
       return words[Math.floor(Math.random() * words.length)];
     case "$randomphonenumber":
       return "+1-555-" + Math.floor(1000 + Math.random() * 9000);
+    case "$randomdomain":
+      return "svc-" + Math.random().toString(36).substring(2, 8) + ".example.com";
+    case "$randomuseragent":
+      return "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_5) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36";
+    case "$randomslug":
+      return __np_dynamicVar("$randomword") + "-" + __np_dynamicVar("$randomword") + "-" + Math.floor(100 + Math.random() * 900);
     case "$randomcolor":
-      return '#' + Math.floor(Math.random() * 16777215).toString(16);
+    case "$randomhexcolor":
+      return '#' + ("000000" + Math.floor(Math.random() * 16777215).toString(16)).slice(-6);
     default:
       return undefined;
   }}

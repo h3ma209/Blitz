@@ -47,12 +47,15 @@ pub fn ResponseViewer(
     #[props(default)] default_tab: DefaultResponseTab,
     on_save_example: EventHandler<()>,
     #[props(default)] on_auto_assert: EventHandler<()>,
+    #[props(default)] on_set_variable: EventHandler<(String, String)>,
 ) -> Element {
     let mut tab = use_signal(|| resp_tab_from_default(default_tab));
     let mut search_query = use_signal(String::new);
     let mut current_match_idx = use_signal(|| 0usize);
     let mut search_open = use_signal(|| false);
     let mut copied_body = use_signal(|| false);
+    let mut copied_extract = use_signal(|| false);
+    let mut bound_feedback = use_signal(|| None::<String>);
     let render_mode = use_signal(|| true);
     let mut diff_baseline = use_signal(|| DiffBaseline::PreviousRun);
     let mut json_filter = use_signal(String::new);
@@ -328,15 +331,31 @@ pub fn ResponseViewer(
                         };
 
                         let root_pills = parsed_json.as_ref().map(|v| crate::core::root_keys(v, 6)).unwrap_or_default();
+                        let scalar_root_pairs: Vec<(String, String)> = match parsed_json.as_ref() {
+                            Some(serde_json::Value::Object(map)) => map
+                                .iter()
+                                .filter(|(_, v)| v.is_string() || v.is_number() || v.is_boolean())
+                                .take(5)
+                                .map(|(k, v)| (k.clone(), crate::core::scalar_or_compact_json(v)))
+                                .collect(),
+                            _ => Vec::new(),
+                        };
 
                         rsx! {
+                            if let Some(msg) = bound_feedback() {
+                                div {
+                                    class: "jsonpath-status status-ok",
+                                    style: "display: flex; align-items: center; justify-content: space-between; padding: 4px 10px;",
+                                    span { "✓ Bound {{{{{msg}}}}} to variables" }
+                                }
+                            }
                             if is_json && (filter_open() || !json_filter().is_empty()) {
                                 div { class: "response-jsonpath-bar",
-                                    span { class: "jsonpath-label", "Filter" }
+                                    span { class: "jsonpath-label", "Path" }
                                     div { class: "jsonpath-input-wrap",
                                         input {
                                             class: "jsonpath-input",
-                                            placeholder: "JSONPath (e.g. $.data.users[0], items[*].id, status)…",
+                                            placeholder: "Dot-path / JSONPath (e.g. data.users.0.id, items.length, users.*.email)…",
                                             value: "{json_filter()}",
                                             oninput: move |evt: Event<FormData>| json_filter.set(evt.value()),
                                         }
@@ -358,10 +377,41 @@ pub fn ResponseViewer(
                                                         button {
                                                             key: "{k}-{pi}",
                                                             class: "jsonpath-pill",
-                                                            title: "Filter by .{k}",
+                                                            title: "Extract .{k}",
                                                             onclick: move |_| json_filter.set(k.clone()),
                                                             ".{k}"
                                                         }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            } else if is_json && !scalar_root_pairs.is_empty() {
+                                div {
+                                    class: "response-jsonpath-bar",
+                                    style: "padding: 4px 10px; gap: 6px; flex-wrap: wrap;",
+                                    span { class: "jsonpath-label", "Quick → {{var}}" }
+                                    div { class: "jsonpath-pills",
+                                        for (si, (k, v)) in scalar_root_pairs.into_iter().enumerate() {
+                                            {
+                                                let key_for_bind = k.clone();
+                                                let val_for_bind = v.clone();
+                                                let preview_v: String = v.chars().take(24).collect();
+                                                rsx! {
+                                                    button {
+                                                        key: "bind-{key_for_bind}-{si}",
+                                                        class: "jsonpath-pill",
+                                                        title: "Bind {{{{{key_for_bind}}}}} = {val_for_bind}",
+                                                        onclick: move |_| {
+                                                            on_set_variable.call((key_for_bind.clone(), val_for_bind.clone()));
+                                                            bound_feedback.set(Some(key_for_bind.clone()));
+                                                            spawn(async move {
+                                                                tokio::time::sleep(std::time::Duration::from_millis(1800)).await;
+                                                                bound_feedback.set(None);
+                                                            });
+                                                        },
+                                                        "+ {{{{{k}}}}} ({preview_v})"
                                                     }
                                                 }
                                             }
@@ -378,11 +428,61 @@ pub fn ResponseViewer(
                                             serde_json::Value::Object(m) => format!("{} keys", m.len()),
                                             _ => "1 value".to_string(),
                                         };
+                                        let extracted_raw = crate::core::scalar_or_compact_json(val);
+                                        let suggested_var: String = filter_text
+                                            .rsplit(['.', '['])
+                                            .map(|s| s.trim_matches(|c: char| !c.is_ascii_alphanumeric() && c != '_'))
+                                            .find(|s| !s.is_empty() && s.chars().any(|c| c.is_ascii_alphabetic()))
+                                            .unwrap_or("extracted")
+                                            .to_string();
                                         let pretty_val = serde_json::to_string_pretty(val).unwrap_or_default();
                                         let html = render_json_highlight_html_with_fold(&pretty_val, enable_folding());
+                                        let copy_val = extracted_raw.clone();
+                                        let bind_val = extracted_raw;
+                                        let bind_var = suggested_var.clone();
                                         rsx! {
-                                            div { class: "jsonpath-status status-ok",
+                                            div {
+                                                class: "jsonpath-status status-ok",
+                                                style: "display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap;",
                                                 span { "✓ Matched '{filter_text}' ({item_count})" }
+                                                div { style: "display: flex; align-items: center; gap: 6px;",
+                                                    button {
+                                                        class: "btn btn-sm btn-ghost",
+                                                        r#type: "button",
+                                                        title: "Copy extracted value to clipboard",
+                                                        onclick: move |_| {
+                                                            let script = format!(
+                                                                "navigator.clipboard.writeText({});",
+                                                                serde_json::to_string(&copy_val).unwrap_or_else(|_| "\"\"".into())
+                                                            );
+                                                            spawn(async move {
+                                                                let _ = document::eval(&script).await;
+                                                                tokio::time::sleep(std::time::Duration::from_millis(1600)).await;
+                                                                copied_extract.set(false);
+                                                            });
+                                                            copied_extract.set(true);
+                                                        },
+                                                        if copied_extract() {
+                                                            "✓ Copied"
+                                                        } else {
+                                                            "📋 Copy Value"
+                                                        }
+                                                    }
+                                                    button {
+                                                        class: "btn btn-sm btn-ghost",
+                                                        r#type: "button",
+                                                        title: "Save extracted value to {{{{{suggested_var}}}}} in active Environment / Variables",
+                                                        onclick: move |_| {
+                                                            on_set_variable.call((bind_var.clone(), bind_val.clone()));
+                                                            bound_feedback.set(Some(bind_var.clone()));
+                                                            spawn(async move {
+                                                                tokio::time::sleep(std::time::Duration::from_millis(1800)).await;
+                                                                bound_feedback.set(None);
+                                                            });
+                                                        },
+                                                        "→ {{{{{suggested_var}}}}}"
+                                                    }
+                                                }
                                             }
                                             pre {
                                                 class: "response-body response-body-json",
@@ -510,18 +610,78 @@ pub fn ResponseViewer(
                         }
                     },
                     RespTab::Headers => rsx! {
-                        pre { class: "response-body",
+                        div { class: "response-body",
+                            if let Some(msg) = bound_feedback() {
+                                div {
+                                    class: "jsonpath-status status-ok",
+                                    style: "margin-bottom: 8px; padding: 4px 10px;",
+                                    "✓ Bound {{{{{msg}}}}} to variables"
+                                }
+                            }
                             if resp.headers.is_empty() {
                                 "(no headers)"
                             } else {
-                                {
-                                    let text = resp
-                                        .headers
-                                        .iter()
-                                        .map(|(k, v)| format!("{k}: {v}"))
-                                        .collect::<Vec<_>>()
-                                        .join("\n");
-                                    rsx! { "{text}" }
+                                div {
+                                    style: "display: flex; flex-direction: column; gap: 4px;",
+                                    for (hi, (k, v)) in resp.headers.iter().enumerate() {
+                                        {
+                                            let hk = k.clone();
+                                            let hv = v.clone();
+                                            let var_key: String = k
+                                                .chars()
+                                                .map(|c| if c.is_ascii_alphanumeric() { c.to_ascii_lowercase() } else { '_' })
+                                                .collect::<String>()
+                                                .trim_matches('_')
+                                                .to_string();
+                                            let var_key = if var_key.is_empty() { "header_val".to_string() } else { var_key };
+                                            let bind_k = var_key.clone();
+                                            let bind_v = hv.clone();
+                                            let copy_v = hv.clone();
+                                            rsx! {
+                                                div {
+                                                    key: "resp-hdr-{hi}-{hk}",
+                                                    style: "display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 4px 8px; border-radius: 4px; background: rgba(255,255,255,0.025); border: 1px solid rgba(255,255,255,0.05);",
+                                                    div {
+                                                        style: "min-width: 0; flex: 1; font-family: var(--mono); font-size: 11.5px; word-break: break-all;",
+                                                        span { style: "color: #93c5fd; font-weight: 600;", "{hk}: " }
+                                                        span { style: "color: var(--text);", "{hv}" }
+                                                    }
+                                                    div {
+                                                        style: "display: flex; align-items: center; gap: 4px; flex-shrink: 0;",
+                                                        button {
+                                                            class: "btn btn-sm btn-ghost",
+                                                            r#type: "button",
+                                                            title: "Copy header value",
+                                                            onclick: move |_| {
+                                                                let script = format!(
+                                                                    "navigator.clipboard.writeText({});",
+                                                                    serde_json::to_string(&copy_v).unwrap_or_else(|_| "\"\"".into())
+                                                                );
+                                                                spawn(async move {
+                                                                    let _ = document::eval(&script).await;
+                                                                });
+                                                            },
+                                                            "Copy"
+                                                        }
+                                                        button {
+                                                            class: "btn btn-sm btn-ghost",
+                                                            r#type: "button",
+                                                            title: "Bind header value to {{{{{var_key}}}}}",
+                                                            onclick: move |_| {
+                                                                on_set_variable.call((bind_k.clone(), bind_v.clone()));
+                                                                bound_feedback.set(Some(bind_k.clone()));
+                                                                spawn(async move {
+                                                                    tokio::time::sleep(std::time::Duration::from_millis(1800)).await;
+                                                                    bound_feedback.set(None);
+                                                                });
+                                                            },
+                                                            "→ {{{{{var_key}}}}}"
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
                                 }
                             }
                         }

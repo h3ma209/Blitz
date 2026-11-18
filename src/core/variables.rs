@@ -343,8 +343,11 @@ impl VariableContext {
 
         let dynamic_names = [
             "$guid",
+            "$randomUUID",
             "$timestamp",
+            "$timestampMs",
             "$isoTimestamp",
+            "$date",
             "$randomInt",
             "$randomEmail",
             "$randomFullName",
@@ -353,12 +356,16 @@ impl VariableContext {
             "$randomCity",
             "$randomCountry",
             "$randomIP",
+            "$randomDomain",
+            "$randomUserAgent",
+            "$randomSlug",
             "$randomBoolean",
             "$randomPrice",
             "$randomAlphaNumeric",
             "$randomPhoneNumber",
             "$randomWord",
             "$randomColor",
+            "$randomHexColor",
         ];
         for d in dynamic_names {
             if needle.is_empty() || d.to_lowercase().starts_with(&needle) {
@@ -636,7 +643,9 @@ pub fn resolve_dynamic_var(name: &str) -> Option<String> {
     match key.as_str() {
         "$guid" | "$randomuuid" => Some(Uuid::new_v4().to_string()),
         "$timestamp" => Some(chrono::Utc::now().timestamp().to_string()),
+        "$timestampms" => Some(chrono::Utc::now().timestamp_millis().to_string()),
         "$isotimestamp" => Some(chrono::Utc::now().to_rfc3339()),
+        "$date" => Some(chrono::Utc::now().format("%Y-%m-%d").to_string()),
         "$randomint" => {
             let n = (Uuid::new_v4().as_u128() % 1000) + 1;
             Some(n.to_string())
@@ -695,7 +704,27 @@ pub fn resolve_dynamic_var(name: &str) -> Option<String> {
             let idx = (Uuid::new_v4().as_u128() as usize) % list.len();
             Some(list[idx].to_string())
         }
-        "$randomcolor" => {
+        "$randomdomain" => {
+            let s = Uuid::new_v4().to_string();
+            Some(format!("svc-{}.example.com", &s[..6]))
+        }
+        "$randomuseragent" => {
+            let list = [
+                "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_5) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Safari/605.1.15",
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
+                "Mozilla/5.0 (X11; Linux x86_64; rv:128.0) Gecko/20100101 Firefox/128.0",
+                "Blitz-Client/0.2 (+https://github.com/h3ma209/Blitz)",
+            ];
+            let idx = (Uuid::new_v4().as_u128() as usize) % list.len();
+            Some(list[idx].to_string())
+        }
+        "$randomslug" => {
+            let w1 = resolve_dynamic_var("$randomword")?;
+            let w2 = resolve_dynamic_var("$randomword")?;
+            let n = (Uuid::new_v4().as_u128() % 900) + 100;
+            Some(format!("{w1}-{w2}-{n}"))
+        }
+        "$randomcolor" | "$randomhexcolor" => {
             let u = Uuid::new_v4().as_u128();
             Some(format!("#{:06x}", u & 0xffffff))
         }
@@ -1006,10 +1035,20 @@ mod tests {
         let em = ctx.resolve_string("{{$randomEmail}}");
         assert!(em.contains("@example.com"));
 
-        // 5. Autocomplete suggestions include dynamic variables
+        // 5. New dynamic variables ($date, $timestampMs, $randomDomain, $randomSlug, $randomUserAgent, $randomHexColor)
+        let dt = ctx.resolve_string("{{$date}}");
+        assert_eq!(dt.len(), 10);
+        assert!(ctx.resolve_string("{{$timestampMs}}").parse::<u64>().is_ok());
+        assert!(ctx.resolve_string("{{$randomDomain}}").ends_with(".example.com"));
+        assert!(ctx.resolve_string("{{$randomSlug}}").contains('-'));
+        assert!(ctx.resolve_string("{{$randomUserAgent}}").contains("Mozilla/") || ctx.resolve_string("{{$randomUserAgent}}").contains("Blitz-Client/"));
+        assert_eq!(ctx.resolve_string("{{$randomHexColor}}").len(), 7);
+
+        // 6. Autocomplete suggestions include dynamic variables
         let suggs = ctx.insert_suggestions("$");
         assert!(suggs.iter().any(|s| s.label == "$guid" && s.scope == VarResolveScope::Dynamic));
         assert!(suggs.iter().any(|s| s.label == "$randomEmail" && s.scope == VarResolveScope::Dynamic));
+        assert!(suggs.iter().any(|s| s.label == "$date" && s.scope == VarResolveScope::Dynamic));
     }
 
     #[test]

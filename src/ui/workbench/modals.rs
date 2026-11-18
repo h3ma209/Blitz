@@ -13,11 +13,13 @@ use crate::core::{
     find_environment, find_request_across, generate_snippet_resolved, get_team_activity,
     import_collection_v21, import_curl, import_har, import_openapi3, limitations_blurb,
     pull_workspace, purge_from_trash, push_console, push_workspace, restore_from_trash,
-    run_performance, save_request_to_collections, snippet_languages, upsert_collection,
+    run_performance_with_cancel, save_request_to_collections, snippet_languages, upsert_collection,
     valid_move_destinations, Collection, ConsoleLine, Cookie, EnvVar, Environment, KeyValue,
     RequestDraft, VariableContext,
 };
-use crate::runtime::{run_collection_with_config, RunnerConfig};
+use crate::runtime::{
+    run_collection_with_config, RunnerConfig, RunnerProgress, RunnerProgressSnapshot,
+};
 use crate::storage::JsonStore;
 use crate::ui::runner_panel::{RunnerEvent, RunnerPanel};
 use crate::ui::var_hover::VarHoverInput;
@@ -480,11 +482,13 @@ pub fn WorkbenchModals(
     let mut runner_running = st.runner_running;
     let mut runner_report = st.runner_report;
     let mut runner_cancel = use_signal(|| None::<Arc<AtomicBool>>);
+    let mut runner_progress = use_signal(|| None::<RunnerProgressSnapshot>);
     let mut show_perf = st.show_perf;
     let mut perf_running = st.perf_running;
     let mut perf_report = st.perf_report;
     let mut perf_vus = st.perf_vus;
     let mut perf_secs = st.perf_secs;
+    let mut perf_cancel = use_signal(|| None::<Arc<AtomicBool>>);
     let mut show_cookies = st.show_cookies;
     let mut show_team = st.show_team;
     let mut team_syncing = st.team_syncing;
@@ -933,6 +937,7 @@ pub fn WorkbenchModals(
                 active_env_id: active_env_id(),
                 selected_id: active_collection_id(),
                 running: runner_running(),
+                progress: runner_progress(),
                 report: runner_report(),
                 on_event: move |evt| match evt {
                     RunnerEvent::Close => show_runner.set(false),
@@ -981,13 +986,16 @@ pub fn WorkbenchModals(
                             return;
                         }
                         let cancel_flag = Arc::new(AtomicBool::new(false));
+                        let progress_tracker = Arc::new(RunnerProgress::default());
                         runner_cancel.set(Some(cancel_flag.clone()));
+                        runner_progress.set(Some(RunnerProgressSnapshot::default()));
                         runner_running.set(true);
                         runner_report.set(None);
                         let cols = collections();
                         let Some(col) = cols.into_iter().find(|c| c.id == collection_id) else {
                             runner_running.set(false);
                             runner_cancel.set(None);
+                            runner_progress.set(None);
                             status_msg.set("collection not found".into());
                             return;
                         };
@@ -1010,8 +1018,15 @@ pub fn WorkbenchModals(
                             selected_request_ids,
                             stop_on_error,
                             cancel: Some(cancel_flag),
+                            progress: Some(progress_tracker.clone()),
                         };
                         let mut st = st;
+                        spawn(async move {
+                            while runner_running() {
+                                runner_progress.set(Some(progress_tracker.snapshot()));
+                                tokio::time::sleep(Duration::from_millis(75)).await;
+                            }
+                        });
                         spawn(async move {
                             let report = tokio::task::spawn_blocking(move || {
                                 let rep = run_collection_with_config(
@@ -1072,6 +1087,7 @@ pub fn WorkbenchModals(
                             }
                             runner_running.set(false);
                             runner_cancel.set(None);
+                            runner_progress.set(None);
                             if persist_vars {
                                 st.persist();
                             }
@@ -1099,10 +1115,18 @@ pub fn WorkbenchModals(
                 initial_vus: perf_vus(),
                 initial_secs: perf_secs(),
                 on_close: move |_| show_perf.set(false),
+                on_cancel: move |_| {
+                    if let Some(flag) = perf_cancel() {
+                        flag.store(true, Ordering::SeqCst);
+                        status_msg.set("stopping benchmark…".into());
+                    }
+                },
                 on_run: move |(col_id, req_id, vus, secs)| {
                     if perf_running() {
                         return;
                     }
+                    let cancel_flag = Arc::new(AtomicBool::new(false));
+                    perf_cancel.set(Some(cancel_flag.clone()));
                     perf_vus.set(vus);
                     perf_secs.set(secs);
                     perf_running.set(true);
@@ -1111,6 +1135,7 @@ pub fn WorkbenchModals(
                     let cols = collections();
                     let Some(col) = cols.into_iter().find(|c| c.id == col_id) else {
                         perf_running.set(false);
+                        perf_cancel.set(None);
                         status_msg.set("collection not found".into());
                         return;
                     };
@@ -1142,23 +1167,26 @@ pub fn WorkbenchModals(
 
                     spawn(async move {
                         let report = tokio::task::spawn_blocking(move || {
-                            run_performance(
+                            run_performance_with_cancel(
                                 &target_col,
                                 &ctx,
                                 vus,
                                 Duration::from_secs(secs),
+                                Some(cancel_flag),
                             )
                         })
                         .await;
 
                         perf_running.set(false);
+                        perf_cancel.set(None);
                         match report {
                             Ok(r) => {
                                 status_msg.set(format!(
-                                    "perf completed: {} reqs, {} errs, avg {:.1}ms, {:.1} rps",
+                                    "perf completed: {} reqs, {} errs, avg {:.1}ms (p95 {}ms), {:.1} rps",
                                     r.total_requests,
                                     r.errors,
                                     r.avg_latency_ms(),
+                                    r.p95_latency_ms,
                                     r.rps(),
                                 ));
                                 perf_report.set(Some(r));

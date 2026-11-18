@@ -3307,6 +3307,40 @@ pub fn Workbench() -> Element {
                                             default_tab: app_settings().ui.default_response_tab,
                                             on_save_example: on_save_example,
                                             on_auto_assert: on_auto_assert,
+                                            on_set_variable: move |(name, value): (String, String)| {
+                                                let mut st = st;
+                                                if let Some(id) = active_env_id() {
+                                                    let mut envs = environments();
+                                                    let mut env_name = String::new();
+                                                    if let Some(env) = envs.iter_mut().find(|e| e.id == id) {
+                                                        env_name = env.name.clone();
+                                                        apply_env_var_edit(env, &name, &value);
+                                                    }
+                                                    environments.set(envs.clone());
+                                                    let mut v = vars();
+                                                    sync_env_vars(&envs, Some(id), &mut v);
+                                                    vars.set(v);
+                                                    st.persist();
+                                                    status_msg.set(format!("bound {{{{{name}}}}} in env «{env_name}»"));
+                                                } else if let Some(id) = active_collection_id() {
+                                                    let mut cols = collections();
+                                                    if let Some(col) = cols.iter_mut().find(|c| c.id == id) {
+                                                        apply_collection_var_edit(col, &name, &value);
+                                                        let mut v = vars();
+                                                        v.collection = col.variables_map();
+                                                        vars.set(v);
+                                                    }
+                                                    collections.set(cols);
+                                                    st.persist();
+                                                    status_msg.set(format!("bound {{{{{name}}}}} in collection vars"));
+                                                } else {
+                                                    let mut v = vars();
+                                                    v.apply_edit(VarResolveScope::Global, &name, &value);
+                                                    vars.set(v);
+                                                    st.persist_local();
+                                                    status_msg.set(format!("bound {{{{{name}}}}} in global vars"));
+                                                }
+                                            },
                                         }
                                     }
                                 }

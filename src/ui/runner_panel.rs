@@ -6,7 +6,7 @@ use uuid::Uuid;
 use crate::core::{Collection, CollectionItem, Environment, HttpMethod, RequestDraft, RequestProtocol};
 use crate::runtime::{
     load_data_rows, ordered_requests_with_folders, to_html, to_junit_xml, RunnerItemResult,
-    RunnerReport,
+    RunnerProgressSnapshot, RunnerReport,
 };
 use crate::ui::loading::{SkeletonBars, Spinner};
 use crate::ui::{EmptyState, ModalShell};
@@ -130,6 +130,7 @@ pub fn RunnerPanel(
     active_env_id: Option<Uuid>,
     selected_id: Option<Uuid>,
     running: bool,
+    #[props(default)] progress: Option<RunnerProgressSnapshot>,
     report: Option<RunnerReport>,
     on_event: EventHandler<RunnerEvent>,
 ) -> Element {
@@ -788,11 +789,51 @@ pub fn RunnerPanel(
                     div { class: "runner-output-pane",
                         if running && report.is_none() {
                             div { class: "runner-running-state",
-                                div { class: "loading-row",
-                                    Spinner {}
-                                    span { class: "loading-text", "Executing {selected_ids.len()} request(s) × {iterations()} iteration(s)…" }
+                                {
+                                    let snap = progress.clone().unwrap_or_default();
+                                    let tot = if snap.total > 0 {
+                                        snap.total
+                                    } else {
+                                        selected_ids.len().saturating_mul(iterations())
+                                    };
+                                    let done = snap.completed.min(tot);
+                                    let pct = if tot > 0 {
+                                        (done as f64 / tot as f64) * 100.0
+                                    } else {
+                                        0.0
+                                    };
+                                    let cur = if snap.current_label.is_empty() {
+                                        format!(
+                                            "Executing {} request(s) × {} iteration(s)…",
+                                            selected_ids.len(),
+                                            iterations()
+                                        )
+                                    } else {
+                                        snap.current_label
+                                    };
+                                    rsx! {
+                                        div { class: "loading-row",
+                                            Spinner {}
+                                            span { class: "loading-text",
+                                                "Executing {done} / {tot} ({pct:.0}%)"
+                                            }
+                                            if snap.passed > 0 || snap.failed > 0 {
+                                                span { class: "runner-assert-pill ok", "✓ {snap.passed}" }
+                                                if snap.failed > 0 {
+                                                    span { class: "runner-assert-pill fail", "✕ {snap.failed}" }
+                                                }
+                                            }
+                                        }
+                                        div { class: "runner-detail-url", "{cur}" }
+                                        div { class: "runner-progress-track", style: "max-width: 480px;",
+                                            div {
+                                                class: "runner-progress-pass",
+                                                style: "width: {pct:.1}%;",
+                                            }
+                                        }
+                                    }
                                 }
-                                SkeletonBars { n: 6 }
+                                SkeletonBars { n: 5 }
                             }
                         } else if let Some(rep) = report.as_ref() {
                             {

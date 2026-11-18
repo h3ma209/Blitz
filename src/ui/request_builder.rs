@@ -52,6 +52,7 @@ pub fn RequestBuilder(
     };
     let mut tab = use_signal(move || default_tab);
     let mut copied_curl = use_signal(|| false);
+    let mut pasted_curl = use_signal(|| false);
     let mut proto_menu_open = use_signal(|| false);
     let mut method_menu_open = use_signal(|| false);
 
@@ -272,16 +273,37 @@ pub fn RequestBuilder(
                 on_input: {
                     let draft = draft.clone();
                     move |url: String| {
-                        let trimmed = url.trim();
-                        // Smart cURL Paste detection
-                        if trimmed.starts_with("curl ")
-                            || trimmed.starts_with("curl\n")
-                            || trimmed.starts_with("curl\r\n")
+                        let trimmed = url.trim_start_matches(|c: char| c.is_whitespace() || c == '#');
+                        let lower_head: String = trimmed.chars().take(12).collect::<String>().to_ascii_lowercase();
+                        // Smart cURL Paste detection (case-insensitive, supports curl / curl.exe / multiline)
+                        if lower_head.starts_with("curl ")
+                            || lower_head.starts_with("curl\t")
+                            || lower_head.starts_with("curl\n")
+                            || lower_head.starts_with("curl\r")
+                            || lower_head.starts_with("curl.exe ")
                         {
                             if let Ok(mut imported) = crate::core::impex::import_curl(trimmed) {
                                 imported.id = draft.id;
-                                imported.name = draft.name.clone();
+                                if !draft.name.trim().is_empty()
+                                    && draft.name != "New Request"
+                                    && draft.name != "Untitled"
+                                {
+                                    imported.name = draft.name.clone();
+                                }
+                                if imported.url.contains('?') && imported.params.is_empty() {
+                                    let (_, params) = crate::core::extract_url_query_params(&imported.url);
+                                    imported.params = params;
+                                }
+                                imported.path_params = crate::core::sync_path_params(
+                                    &imported.url,
+                                    &imported.path_params,
+                                );
                                 on_change.call(imported);
+                                pasted_curl.set(true);
+                                spawn(async move {
+                                    tokio::time::sleep(std::time::Duration::from_millis(2000)).await;
+                                    pasted_curl.set(false);
+                                });
                                 return;
                             }
                         }
@@ -315,6 +337,13 @@ pub fn RequestBuilder(
                     }
                 },
                 on_var_edit,
+            }
+            if pasted_curl() {
+                span {
+                    class: "status-chip status-2xx",
+                    style: "font-size: 10.5px; padding: 3px 8px; flex-shrink: 0;",
+                    "✓ cURL Imported"
+                }
             }
             if draft.protocol == RequestProtocol::Http || draft.protocol == RequestProtocol::Sse {
                 button {
@@ -446,10 +475,58 @@ pub fn RequestBuilder(
                     } else {
                         draft.path_params.clone()
                     };
+                    let url_has_query = draft.url.contains('?');
                     rsx! {
                         div { class: "params-section",
-                            if !path_vars.is_empty() {
-                                div { class: "section-subtitle", "Query Params" }
+                            div {
+                                style: "display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 6px;",
+                                div { class: "section-subtitle", style: "margin: 0;", "Query Params" }
+                                div { style: "display: flex; align-items: center; gap: 6px;",
+                                    button {
+                                        class: "btn btn-sm btn-ghost",
+                                        r#type: "button",
+                                        title: "Synchronize URL query string (?a=1&b=2) and Query Params table",
+                                        onclick: {
+                                            let draft = draft.clone();
+                                            move |_| {
+                                                let mut d = draft.clone();
+                                                if d.url.contains('?') {
+                                                    let (_, url_params) = crate::core::extract_url_query_params(&d.url);
+                                                    for up in url_params {
+                                                        if !d.params.iter().any(|p| p.key == up.key && p.value == up.value) {
+                                                            d.params.push(up);
+                                                        }
+                                                    }
+                                                }
+                                                d.url = crate::core::build_url_with_params(&d.url, &d.params);
+                                                on_change.call(d);
+                                            }
+                                        },
+                                        "⇄ Sync URL ↔ Params"
+                                    }
+                                    if url_has_query {
+                                        button {
+                                            class: "btn btn-sm btn-ghost",
+                                            r#type: "button",
+                                            title: "Extract ?query from URL into Params table and keep base URL clean",
+                                            onclick: {
+                                                let draft = draft.clone();
+                                                move |_| {
+                                                    let mut d = draft.clone();
+                                                    let (base_url, url_params) = crate::core::extract_url_query_params(&d.url);
+                                                    for up in url_params {
+                                                        if !d.params.iter().any(|p| p.key == up.key && p.value == up.value) {
+                                                            d.params.push(up);
+                                                        }
+                                                    }
+                                                    d.url = base_url;
+                                                    on_change.call(d);
+                                                }
+                                            },
+                                            "✂ Clean ?query to Params"
+                                        }
+                                    }
+                                }
                             }
                             KvEditor {
                                 rows: draft.params.clone(),

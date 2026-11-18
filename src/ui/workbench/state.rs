@@ -368,12 +368,12 @@ impl WorkbenchState {
                 .iter()
                 .map(|(id, view)| (*id, compact_response_for_disk(view)))
                 .collect(),
-            show_vars: (self.show_vars)(),
+            show_vars: false,
             show_settings: (self.show_settings)(),
-            show_runner: (self.show_runner)(),
-            show_perf: (self.show_perf)(),
-            show_env_manager: (self.show_env_manager)(),
-            show_col_vars: (self.show_col_vars)(),
+            show_runner: false,
+            show_perf: false,
+            show_env_manager: false,
+            show_col_vars: false,
         }
     }
 
@@ -682,13 +682,13 @@ impl WorkbenchState {
                 .map(|(id, view)| (id, Arc::new(compact_response_for_disk(&view))))
                 .collect(),
         );
-        self.show_vars.set(snap.show_vars);
+        self.show_vars.set(false);
         self.show_settings.set(snap.show_settings);
         self.settings_tab_open.set(snap.show_settings);
-        self.show_runner.set(snap.show_runner);
-        self.show_perf.set(snap.show_perf);
-        self.show_env_manager.set(snap.show_env_manager);
-        self.show_col_vars.set(snap.show_col_vars);
+        self.show_runner.set(false);
+        self.show_perf.set(false);
+        self.show_env_manager.set(false);
+        self.show_col_vars.set(false);
         self.active_collection_id.set(active_col_id);
         self.active_request_id.set(snap.active_request_id);
 

@@ -87,14 +87,14 @@ pub use impex::{
     limitations_blurb, upsert_collection, ImpexError, UpsertCollectionResult,
 };
 pub use json_lint::{beautify_json_body, lint_json_body};
-pub use json_query::{query_json, root_keys};
+pub use json_query::{query_json, root_keys, scalar_or_compact_json};
 pub use impex::reconcile_openapi3_collection;
 pub use mock_server::{
     routes_from_collections, save_example_to_request, start_mock, MockHandle,
     MockRoute,
 };
 pub use oauth::{fetch_oauth2_token, OAuthError};
-pub use perf_runner::{run_performance, PerfReport};
+pub use perf_runner::{run_performance, run_performance_with_cancel, PerfReport};
 pub use protocols::{
     graphql_ws_subscribe, graphql_ws_subscribe_with_headers, grpc_reflection_list,
     grpc_server_stream_stub, grpc_unary, grpc_unary_with_headers, mcp_call_tool, mcp_list_tools,

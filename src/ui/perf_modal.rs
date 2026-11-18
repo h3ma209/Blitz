@@ -15,6 +15,7 @@ pub fn PerformanceModal(
     initial_vus: u32,
     initial_secs: u64,
     on_close: EventHandler<()>,
+    #[props(default)] on_cancel: EventHandler<()>,
     on_run: EventHandler<(Uuid, Option<Uuid>, u32, u64)>,
 ) -> Element {
     let mut selected_col_id = use_signal(|| {
@@ -191,7 +192,7 @@ pub fn PerformanceModal(
                                     }
                                 }
 
-                                // 4-Metric Grid
+                                // 5-Metric Grid (with P50 / P95 / P99)
                                 div { class: "perf-metrics-grid",
                                     div { class: "perf-metric-card",
                                         span { class: "perf-metric-label", "Throughput" }
@@ -199,19 +200,21 @@ pub fn PerformanceModal(
                                         span { class: "perf-metric-unit", "requests / sec" }
                                     }
                                     div { class: "perf-metric-card",
-                                        span { class: "perf-metric-label", "Average Latency" }
-                                        span { class: "perf-metric-val", "{avg_ms:.1} ms" }
-                                        span { class: "perf-metric-unit", "response time" }
+                                        span { class: "perf-metric-label", "Avg / P50" }
+                                        span { class: "perf-metric-val", "{avg_ms:.1} / {rep.p50_latency_ms} ms" }
+                                        span { class: "perf-metric-unit", "mean · median" }
                                     }
                                     div { class: "perf-metric-card",
-                                        span { class: "perf-metric-label", "Latency Range" }
-                                        span { class: "perf-metric-val val-mono", "{min_ms}–{max_ms} ms" }
-                                        span { class: "perf-metric-unit", "min … max" }
+                                        span { class: "perf-metric-label", "P95 / P99" }
+                                        span { class: "perf-metric-val val-mono", "{rep.p95_latency_ms} / {rep.p99_latency_ms} ms" }
+                                        span { class: "perf-metric-unit", "tail latency ({min_ms}–{max_ms} ms)" }
                                     }
                                     div { class: "perf-metric-card",
                                         span { class: "perf-metric-label", "Total Volume" }
                                         span { class: "perf-metric-val", "{total}" }
-                                        span { class: "perf-metric-unit", "{errors} errors" }
+                                        span { class: "perf-metric-unit",
+                                            "2xx: {rep.status_2xx} · 4xx: {rep.status_4xx} · 5xx: {rep.status_5xx} · err: {errors}"
+                                        }
                                     }
                                 }
 
@@ -283,23 +286,28 @@ pub fn PerformanceModal(
                         onclick: move |_| on_close.call(()),
                         "Close"
                     }
-                    button {
-                        class: "btn btn-send perf-run-btn",
-                        disabled: running || selected_col_id().is_none(),
-                        onclick: move |_| {
-                            if let Some(col_id) = selected_col_id() {
-                                on_run.call((col_id, selected_req_id(), vus(), duration_secs()));
+                    if running {
+                        button {
+                            class: "btn btn-ghost btn-cancel",
+                            r#type: "button",
+                            onclick: move |_| on_cancel.call(()),
+                            span { class: "loading-spinner-cancel" }
+                            span { "⏹ Stop Benchmark" }
+                        }
+                    } else {
+                        button {
+                            class: "btn btn-send perf-run-btn",
+                            disabled: selected_col_id().is_none(),
+                            onclick: move |_| {
+                                if let Some(col_id) = selected_col_id() {
+                                    on_run.call((col_id, selected_req_id(), vus(), duration_secs()));
+                                }
+                            },
+                            if report.is_some() {
+                                span { "⚡ Rerun Benchmark" }
+                            } else {
+                                span { "⚡ Start Benchmark" }
                             }
-                        },
-                        if running {
-                            div { class: "loading-row",
-                                Spinner { }
-                                span { class: "loading-text", "Benchmarking…" }
-                            }
-                        } else if report.is_some() {
-                            span { "⚡ Rerun Benchmark" }
-                        } else {
-                            span { "⚡ Start Benchmark" }
                         }
                     }
                 }

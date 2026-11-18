@@ -17,6 +17,6 @@ pub use pipeline::{
 pub use pipeline::send_request;
 pub use runner::{
     load_data_rows, ordered_requests, ordered_requests_with_folders, run_collection_with_config,
-    RunnerConfig, RunnerItemResult, RunnerReport,
+    RunnerConfig, RunnerItemResult, RunnerProgress, RunnerProgressSnapshot, RunnerReport,
 };
 pub use runner_export::{to_html, to_junit_xml};

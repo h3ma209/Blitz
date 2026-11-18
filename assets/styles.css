@@ -2164,9 +2164,9 @@ button.env-menu-row:hover,
   top: 84px;
   left: 16px;
   z-index: 901;
-  width: 268px;
+  width: 276px;
   max-width: calc(100vw - 24px);
-  padding: 6px;
+  padding: 8px;
   background: var(--glass-bg-strong);
   backdrop-filter: var(--glass-blur);
   -webkit-backdrop-filter: var(--glass-blur);
@@ -2175,7 +2175,7 @@ button.env-menu-row:hover,
   box-shadow: var(--shadow-modal);
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 4px;
   animation: pop-in 120ms var(--ease) both;
 }
 
@@ -2185,7 +2185,7 @@ button.env-menu-row:hover,
   text-transform: uppercase;
   letter-spacing: 0.06em;
   color: var(--text-muted);
-  padding: 4px 8px 6px;
+  padding: 4px 10px 7px;
   border-bottom: var(--glass-border);
   margin-bottom: 2px;
 }
@@ -2194,10 +2194,10 @@ button.env-menu-row:hover,
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  gap: 2px;
+  gap: 3px;
   width: 100%;
   text-align: left;
-  padding: 6px 8px;
+  padding: 8px 10px;
   border: none;
   border-radius: var(--radius-sm);
   background: transparent;
@@ -2529,11 +2529,11 @@ button.env-menu-row:hover,
   font-size: 10px;
   font-weight: 700;
   letter-spacing: 0.05em;
-  min-width: 42px;
+  min-width: 46px;
   flex-shrink: 0;
   text-align: center;
   text-transform: uppercase;
-  padding: 2px 6px;
+  padding: 3px 8px;
   border: 1px solid transparent;
   border-radius: var(--radius-sm);
   display: inline-flex;
@@ -2935,8 +2935,9 @@ button.env-menu-row:hover,
 }
 
 .protocol-select {
-  width: 110px;
-  height: 32px;
+  min-width: 116px;
+  height: 34px;
+  padding: 5px 12px;
   font-weight: 700;
   text-transform: none;
   font-size: var(--fs-caption);
@@ -2944,8 +2945,9 @@ button.env-menu-row:hover,
 }
 
 .method-select {
-  width: 104px;
-  height: 32px;
+  min-width: 110px;
+  height: 34px;
+  padding: 5px 12px;
   font-family: var(--mono);
   font-weight: 700;
   font-size: var(--fs-caption);
@@ -3469,9 +3471,9 @@ button.env-menu-row:hover,
   font-size: 9px;
   font-weight: 800;
   letter-spacing: 0.05em;
-  padding: 1px 5px;
+  padding: 2px 6px;
   border-radius: 4px;
-  line-height: 1.15;
+  line-height: 1.2;
   flex-shrink: 0;
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
 }
@@ -5812,13 +5814,13 @@ details.json-fold:not([open]) > summary .json-fold-close-comma {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 4px;
+  gap: 6px;
 }
 
 .runner-preset-chip {
-  font-size: 10px;
+  font-size: 10.5px;
   font-weight: 600;
-  padding: 2px 7px;
+  padding: 4px 10px;
   border-radius: 999px;
   border: var(--glass-border);
   background: rgba(255, 255, 255, 0.04);
@@ -6021,8 +6023,9 @@ details.json-fold:not([open]) > summary .json-fold-close-comma {
 }
 
 /* Performance Benchmark & Load Tester Modal */
-.perf-runner-modal {
-  width: min(720px, 94vw);
+.modal.perf-runner-modal {
+  width: min(860px, 94vw);
+  max-width: 94vw;
 }
 
 .perf-modal-body {
@@ -7443,9 +7446,9 @@ details.json-fold:not([open]) > summary .json-fold-close-comma {
   appearance: none;
   display: inline-flex;
   align-items: center;
-  gap: 7px;
+  gap: 8px;
   height: 36px;
-  padding: 0 12px;
+  padding: 6px 14px;
   border-radius: var(--radius-sm);
   border: 1px solid var(--border);
   background: var(--bg-surface);
@@ -7474,6 +7477,7 @@ details.json-fold:not([open]) > summary .json-fold-close-comma {
 .picker-caret {
   font-size: 10px;
   opacity: 0.7;
+  margin-left: 2px;
 }
 
 .picker-menu {
@@ -7481,19 +7485,19 @@ details.json-fold:not([open]) > summary .json-fold-close-comma {
   top: calc(100% + 6px);
   left: 0;
   z-index: 960;
-  min-width: 245px;
-  padding: 6px;
+  min-width: 268px;
+  padding: 8px;
   border-radius: var(--radius-md);
   border: 1px solid var(--border-strong);
   background: var(--bg-surface-elevated, var(--bg-panel));
   box-shadow: 0 16px 38px rgba(0, 0, 0, 0.48);
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 4px;
 }
 
 .method-menu {
-  min-width: 220px;
+  min-width: 240px;
 }
 
 .picker-menu-head {
@@ -7502,16 +7506,16 @@ details.json-fold:not([open]) > summary .json-fold-close-comma {
   text-transform: uppercase;
   letter-spacing: 0.06em;
   color: var(--text-muted);
-  padding: 4px 8px 6px;
+  padding: 4px 10px 6px;
 }
 
 .picker-row {
   appearance: none;
   display: flex;
   align-items: center;
-  gap: 9px;
+  gap: 10px;
   width: 100%;
-  padding: 7px 8px;
+  padding: 8px 10px;
   border: 1px solid transparent;
   border-radius: var(--radius-sm);
   background: transparent;
@@ -7534,9 +7538,9 @@ details.json-fold:not([open]) > summary .json-fold-close-comma {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-width: 56px;
-  padding: 2px 7px;
-  border-radius: 4px;
+  min-width: 62px;
+  padding: 4px 9px;
+  border-radius: 5px;
   font-family: var(--mono);
   font-size: 11px;
   font-weight: 700;
@@ -10326,7 +10330,7 @@ html:has(.app-shell.theme-github-dark-hc) body {
   border-radius: 4px;
   font-size: 10px;
   font-weight: 700;
-  padding: 1px 5px;
+  padding: 3px 7px;
   letter-spacing: 0.04em;
 }
 
@@ -10379,7 +10383,8 @@ html:has(.app-shell.theme-github-dark-hc) body {
 /* 5. Request Omnibar Capsule */
 .app-shell.chassis-linear .request-row {
   margin: 10px 14px 6px 14px;
-  padding: 3px;
+  padding: 6px 8px;
+  gap: 8px;
   background: var(--surface-editor);
   border: 1px solid var(--line);
   border-radius: var(--linear-radius-panel);
@@ -10393,12 +10398,12 @@ html:has(.app-shell.theme-github-dark-hc) body {
 }
 
 .app-shell.chassis-linear .request-row .method-select {
-  height: 32px;
+  height: 34px;
   border-radius: var(--linear-radius-control) 0 0 var(--linear-radius-control);
   border: none;
   background: var(--bg-hover);
   font-weight: 700;
-  padding: 0 10px;
+  padding: 4px 12px;
 }
 
 .app-shell.chassis-linear .request-row .url-input {

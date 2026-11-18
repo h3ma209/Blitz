@@ -1,6 +1,6 @@
 //! Minimal performance runner: N concurrent VUs hitting a collection for a duration.
 
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -16,6 +16,28 @@ pub struct PerfReport {
     pub latency_sum_ms: u64,
     pub latency_max_ms: u64,
     pub latency_min_ms: u64,
+    #[serde(default)]
+    pub p50_latency_ms: u64,
+    #[serde(default)]
+    pub p95_latency_ms: u64,
+    #[serde(default)]
+    pub p99_latency_ms: u64,
+    #[serde(default)]
+    pub status_2xx: u64,
+    #[serde(default)]
+    pub status_3xx: u64,
+    #[serde(default)]
+    pub status_4xx: u64,
+    #[serde(default)]
+    pub status_5xx: u64,
+}
+
+fn percentile_sorted(sorted: &[u64], pct: usize) -> u64 {
+    if sorted.is_empty() {
+        return 0;
+    }
+    let idx = ((sorted.len() * pct).saturating_sub(1) / 100).min(sorted.len() - 1);
+    sorted[idx]
 }
 
 impl PerfReport {
@@ -48,6 +70,17 @@ pub fn run_performance(
     vus: u32,
     duration: Duration,
 ) -> PerfReport {
+    run_performance_with_cancel(collection, ctx, vus, duration, None)
+}
+
+/// Run collection requests concurrently for `duration` with optional cancellation flag. Blocking.
+pub fn run_performance_with_cancel(
+    collection: &Collection,
+    ctx: &VariableContext,
+    vus: u32,
+    duration: Duration,
+    cancel: Option<Arc<AtomicBool>>,
+) -> PerfReport {
     let reqs: Vec<RequestDraft> = ordered_requests(collection);
     if reqs.is_empty() || vus == 0 {
         return PerfReport {
@@ -57,12 +90,17 @@ pub fn run_performance(
         };
     }
 
+    let started_run = Instant::now();
     let total = Arc::new(AtomicU64::new(0));
     let errors = Arc::new(AtomicU64::new(0));
     let lat_sum = Arc::new(AtomicU64::new(0));
     let lat_max = Arc::new(AtomicU64::new(0));
     let lat_min = Arc::new(AtomicU64::new(u64::MAX));
-    let stop_at = Instant::now() + duration;
+    let s2xx = Arc::new(AtomicU64::new(0));
+    let s3xx = Arc::new(AtomicU64::new(0));
+    let s4xx = Arc::new(AtomicU64::new(0));
+    let s5xx = Arc::new(AtomicU64::new(0));
+    let stop_at = started_run + duration;
     let reqs = Arc::new(reqs);
     let ctx = Arc::new(ctx.clone());
     let col_auth = Arc::new(collection.auth.clone());
@@ -74,13 +112,22 @@ pub fn run_performance(
         let lat_sum = Arc::clone(&lat_sum);
         let lat_max = Arc::clone(&lat_max);
         let lat_min = Arc::clone(&lat_min);
+        let s2xx = Arc::clone(&s2xx);
+        let s3xx = Arc::clone(&s3xx);
+        let s4xx = Arc::clone(&s4xx);
+        let s5xx = Arc::clone(&s5xx);
         let reqs = Arc::clone(&reqs);
         let ctx = Arc::clone(&ctx);
         let col_auth = Arc::clone(&col_auth);
+        let cancel = cancel.clone();
         handles.push(std::thread::spawn(move || {
             let mut i = 0usize;
             let mut jar = CookieJar::default();
+            let mut samples = Vec::with_capacity(256);
             while Instant::now() < stop_at {
+                if cancel.as_ref().is_some_and(|c| c.load(Ordering::Relaxed)) {
+                    break;
+                }
                 let draft = &reqs[i % reqs.len()];
                 i += 1;
                 let started = Instant::now();
@@ -91,36 +138,75 @@ pub fn run_performance(
                     SendOptions {
                         collection_auth: Some(&col_auth),
                         cookie_jar: Some(&mut jar),
+                        cancel: cancel.clone(),
                         ..Default::default()
                     },
                 );
+                if cancel.as_ref().is_some_and(|c| c.load(Ordering::Relaxed)) {
+                    break;
+                }
                 let ms = started.elapsed().as_millis() as u64;
                 total.fetch_add(1, Ordering::Relaxed);
                 lat_sum.fetch_add(ms, Ordering::Relaxed);
                 lat_max.fetch_max(ms, Ordering::Relaxed);
                 lat_min.fetch_min(ms, Ordering::Relaxed);
+                if samples.len() < 50_000 {
+                    samples.push(ms);
+                }
                 match view {
-                    Ok(v) if v.error.is_none() && v.status < 400 => {}
-                    _ => {
+                    Ok(v) => {
+                        match v.status {
+                            200..=299 => {
+                                s2xx.fetch_add(1, Ordering::Relaxed);
+                            }
+                            300..=399 => {
+                                s3xx.fetch_add(1, Ordering::Relaxed);
+                            }
+                            400..=499 => {
+                                s4xx.fetch_add(1, Ordering::Relaxed);
+                            }
+                            500..=599 => {
+                                s5xx.fetch_add(1, Ordering::Relaxed);
+                            }
+                            _ => {}
+                        }
+                        if v.error.is_some() || v.status == 0 || v.status >= 400 {
+                            errors.fetch_add(1, Ordering::Relaxed);
+                        }
+                    }
+                    Err(_) => {
                         errors.fetch_add(1, Ordering::Relaxed);
                     }
                 }
             }
+            samples
         }));
     }
+    let mut all_samples: Vec<u64> = Vec::new();
     for h in handles {
-        let _ = h.join();
+        if let Ok(mut s) = h.join() {
+            all_samples.append(&mut s);
+        }
     }
+    all_samples.sort_unstable();
 
     let min = lat_min.load(Ordering::Relaxed);
+    let actual_secs = started_run.elapsed().as_secs().max(1).min(duration.as_secs().max(1));
     PerfReport {
         vus,
-        duration_secs: duration.as_secs(),
+        duration_secs: actual_secs,
         total_requests: total.load(Ordering::Relaxed),
         errors: errors.load(Ordering::Relaxed),
         latency_sum_ms: lat_sum.load(Ordering::Relaxed),
         latency_max_ms: lat_max.load(Ordering::Relaxed),
         latency_min_ms: if min == u64::MAX { 0 } else { min },
+        p50_latency_ms: percentile_sorted(&all_samples, 50),
+        p95_latency_ms: percentile_sorted(&all_samples, 95),
+        p99_latency_ms: percentile_sorted(&all_samples, 99),
+        status_2xx: s2xx.load(Ordering::Relaxed),
+        status_3xx: s3xx.load(Ordering::Relaxed),
+        status_4xx: s4xx.load(Ordering::Relaxed),
+        status_5xx: s5xx.load(Ordering::Relaxed),
     }
 }
 

@@ -3,8 +3,8 @@
 use std::collections::HashMap;
 use std::fs;
 use std::sync::{
-    atomic::{AtomicBool, Ordering},
-    Arc,
+    atomic::{AtomicBool, AtomicUsize, Ordering},
+    Arc, Mutex,
 };
 use std::thread;
 use std::time::Duration;
@@ -104,6 +104,40 @@ impl RunnerReport {
     }
 }
 
+#[derive(Debug, Default)]
+pub struct RunnerProgress {
+    pub completed: AtomicUsize,
+    pub total: AtomicUsize,
+    pub passed: AtomicUsize,
+    pub failed: AtomicUsize,
+    pub current_label: Mutex<String>,
+}
+
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct RunnerProgressSnapshot {
+    pub completed: usize,
+    pub total: usize,
+    pub passed: usize,
+    pub failed: usize,
+    pub current_label: String,
+}
+
+impl RunnerProgress {
+    pub fn snapshot(&self) -> RunnerProgressSnapshot {
+        RunnerProgressSnapshot {
+            completed: self.completed.load(Ordering::Relaxed),
+            total: self.total.load(Ordering::Relaxed),
+            passed: self.passed.load(Ordering::Relaxed),
+            failed: self.failed.load(Ordering::Relaxed),
+            current_label: self
+                .current_label
+                .lock()
+                .map(|s| s.clone())
+                .unwrap_or_default(),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct RunnerConfig {
     pub iterations: usize,
@@ -118,6 +152,8 @@ pub struct RunnerConfig {
     pub stop_on_error: bool,
     /// Optional cancellation flag checked between requests and passed to HTTP sends.
     pub cancel: Option<Arc<AtomicBool>>,
+    /// Optional live progress tracker polled by the UI during execution.
+    pub progress: Option<Arc<RunnerProgress>>,
 }
 
 fn item_passed(view: &ResponseView) -> bool {
@@ -315,6 +351,14 @@ pub fn run_collection_with_config(
         col.name
     ));
 
+    if let Some(p) = &config.progress {
+        p.total
+            .store(scoped_requests.len().saturating_mul(iterations), Ordering::Relaxed);
+        p.completed.store(0, Ordering::Relaxed);
+        p.passed.store(0, Ordering::Relaxed);
+        p.failed.store(0, Ordering::Relaxed);
+    }
+
     // Seed collection variables into the shared context (Postman: collection scope).
     ctx.collection = col.variables_map();
 
@@ -407,13 +451,25 @@ pub fn run_collection_with_config(
             }
 
             let mut hints = ExecutionHints::default();
+            let req_badge = if req.protocol == RequestProtocol::Http {
+                req.method.as_str()
+            } else {
+                req.protocol.badge_label()
+            };
+            if let Some(p) = &config.progress {
+                if let Ok(mut guard) = p.current_label.lock() {
+                    *guard = format!(
+                        "[Iter {}/{}] {} {}",
+                        iter + 1,
+                        iterations,
+                        req_badge,
+                        req.name
+                    );
+                }
+            }
             report.console.push(format!(
                 "runner: → {} {}{}",
-                if req.protocol == RequestProtocol::Http {
-                    req.method.as_str()
-                } else {
-                    req.protocol.badge_label()
-                },
+                req_badge,
                 if folder_path.is_empty() {
                     String::new()
                 } else {
@@ -594,6 +650,15 @@ pub fn run_collection_with_config(
                             iteration: iter + 1,
                         });
                     }
+                }
+            }
+
+            if let Some(p) = &config.progress {
+                p.completed.fetch_add(1, Ordering::Relaxed);
+                if item_passed_flag {
+                    p.passed.fetch_add(1, Ordering::Relaxed);
+                } else {
+                    p.failed.fetch_add(1, Ordering::Relaxed);
                 }
             }
 
