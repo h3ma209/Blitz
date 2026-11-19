@@ -101,10 +101,10 @@
 
       <!-- Desktop Nav Items -->
       <div class="hidden lg:flex items-center gap-6 text-xs text-spot-muted font-medium">
-        <a href="#how-it-works" class="text-spot-bright font-semibold hover:text-white transition-colors">MCP Workflow</a>
-        <a href="#features" class="hover:text-white transition-colors">Capabilities</a>
+        <a href="#features" class="text-spot-bright font-semibold hover:text-white transition-colors">Capabilities</a>
+        <a href="#cli-runner" class="hover:text-white transition-colors">CLI &amp; MCP</a>
         <a href="#benchmarks" class="hover:text-white transition-colors">Comparison</a>
-        <a href="#limitations" class="hover:text-white transition-colors">Limitations</a>
+        <a href="#limitations" class="hover:text-white transition-colors">Roadmap</a>
         <a href="docs.html" class="hover:text-white transition-colors">Docs</a>
         <a href="https://github.com/h3ma209/Blitz" target="_blank" rel="noopener"
           class="flex items-center gap-1.5 text-slate-300 hover:text-white transition-colors">
@@ -123,10 +123,10 @@
       <!-- Mobile Dropdown Menu -->
       <div id="mobile-nav"
         class="hidden w-full lg:hidden pt-4 pb-2 border-t border-white/10 mt-3 flex flex-col gap-3 text-sm">
-        <a href="#how-it-works" onclick="toggleMobileNav()" class="text-spot-bright font-semibold py-1">MCP Workflow</a>
-        <a href="#features" onclick="toggleMobileNav()" class="text-spot-muted hover:text-white py-1">Capabilities</a>
+        <a href="#features" onclick="toggleMobileNav()" class="text-spot-bright font-semibold py-1">Capabilities</a>
+        <a href="#cli-runner" onclick="toggleMobileNav()" class="text-spot-muted hover:text-white py-1">CLI &amp; MCP</a>
         <a href="#benchmarks" onclick="toggleMobileNav()" class="text-spot-muted hover:text-white py-1">Comparison</a>
-        <a href="#limitations" onclick="toggleMobileNav()" class="text-spot-muted hover:text-white py-1">Limitations</a>
+        <a href="#limitations" onclick="toggleMobileNav()" class="text-spot-muted hover:text-white py-1">Roadmap</a>
         <a href="docs.html" onclick="toggleMobileNav()" class="text-spot-muted hover:text-white py-1">Docs</a>
         <a href="https://github.com/h3ma209/Blitz" target="_blank" rel="noopener" onclick="toggleMobileNav()" class="text-spot-muted hover:text-white py-1">GitHub</a>
         <a href="#install" onclick="toggleMobileNav()" class="text-spot-muted hover:text-white py-1">Install</a>
@@ -146,15 +146,15 @@
           </p>
 
           <h1 class="text-3xl sm:text-4xl lg:text-[2.75rem] font-bold tracking-tight text-white leading-[1.15]">
-            Let Cursor and Claude drive a local API client via MCP.
+            Your API client shouldn't need a login screen.
           </h1>
 
           <p class="text-base sm:text-lg text-slate-300 leading-relaxed max-w-xl">
-            <strong class="text-white font-semibold">Blitz</strong> is a local-first desktop API client and CLI written in Rust (using Dioxus and your OS web view). It embeds a <strong class="text-white font-semibold">42-tool stdio MCP server</strong> so coding assistants can import OpenAPI specs, run collections, and inspect responses without copying request payloads or credentials into chat prompts.
+            Blitz opens straight to your requests—fast, offline, and stored as plain JSON you actually own. Debug APIs and live streams in one window, sync with your team over Git, and let Cursor or Claude run tests without pasting tokens into chat.
           </p>
 
           <p class="text-sm text-spot-muted leading-relaxed max-w-xl border-l-2 border-spot-bright/40 pl-4">
-            <span class="text-slate-200 font-medium">Early beta notice:</span> Blitz is roughly a month old and maintained by one developer. Expect occasional rough edges, unsigned installers, and macOS-first keychain persistence.
+            <span class="text-slate-200 font-medium">Beta status (v0.2.15):</span> Actively developed open-source release. Core API workbench, Git sync, CLI, and MCP workflows are ready to use; installers are currently unsigned and native Keychain persistence targets macOS first.
           </p>
 
           <div class="flex flex-wrap gap-3 pt-1">
@@ -162,24 +162,24 @@
               class="inline-flex items-center gap-2 bg-spot-bright hover:bg-emerald-400 text-slate-950 font-semibold text-sm px-5 py-2.5 rounded-lg transition-all">
               Download v0.2.15-beta
             </a>
-            <a href="docs.html#mcp-setup"
+            <a href="#features"
               class="inline-flex items-center gap-2 border border-white/15 hover:bg-white/5 text-white font-medium text-sm px-5 py-2.5 rounded-lg transition-all">
-              Connect Cursor / Claude (`blitz mcp setup`)
+              Explore API Capabilities
             </a>
           </div>
 
           <ul class="grid sm:grid-cols-3 gap-3 pt-2 text-xs text-spot-muted">
             <li class="panel rounded-lg p-3">
-              <span class="block text-white font-semibold mb-0.5">42-Tool Stdio MCP</span>
-              Drives local collections over JSON-RPC stdio
+              <span class="block text-white font-semibold mb-0.5">8 Wire Protocols</span>
+              HTTP/2, WS, gRPC, SSE, GraphQL, MQTT, Socket.IO, MCP
             </li>
             <li class="panel rounded-lg p-3">
               <span class="block text-white font-semibold mb-0.5">Git-Backed JSON</span>
-              Collections stored on disk; sync via your Git remote
+              No cloud account; branch-per-environment sync
             </li>
             <li class="panel rounded-lg p-3">
-              <span class="block text-white font-semibold mb-0.5">Measured Footprint</span>
-              ~24 MB binary · ~10.4 MB CLI peak RSS · ~198–346 MB GUI
+              <span class="block text-white font-semibold mb-0.5">Built-In CLI &amp; MCP</span>
+              ~24 MB binary · ~10.4 MB CLI RSS · 42 MCP tools
             </li>
           </ul>
         </div>
@@ -201,31 +201,31 @@
           </div>
 
           <div id="how-it-works" class="scroll-mt-24 rounded-xl glass-strong p-4 sm:p-5 border border-white/10">
-            <p class="text-[11px] font-mono font-bold text-spot-bright uppercase tracking-wider mb-3">How Cursor / Claude Drives Blitz</p>
+            <p class="text-[11px] font-mono font-bold text-spot-bright uppercase tracking-wider mb-3">How Blitz Fits Your Workflow</p>
             <div class="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:gap-0 text-xs font-medium">
               <div class="flex-1 rounded-lg bg-white/[0.04] border border-white/10 px-3 py-2.5 text-center">
-                <span class="text-yellow-200 font-mono text-[10px] block mb-0.5">Step 1</span>
-                <span class="text-white">IDE / Agent</span>
-                <span class="block text-spot-muted font-normal mt-0.5">Ask in Cursor or Claude</span>
+                <span class="text-yellow-200 font-mono text-[10px] block mb-0.5">1 · Build</span>
+                <span class="text-white">Desktop Workbench</span>
+                <span class="block text-spot-muted font-normal mt-0.5">Requests, scripts, mocks</span>
               </div>
               <span class="hidden sm:inline text-spot-faint px-2" aria-hidden="true">→</span>
               <span class="sm:hidden text-center text-spot-faint" aria-hidden="true">↓</span>
               <div class="flex-1 rounded-lg bg-spot-bright/10 border border-spot-bright/30 px-3 py-2.5 text-center">
-                <span class="text-spot-bright font-mono text-[10px] block mb-0.5">Step 2</span>
-                <span class="text-white">Blitz MCP (stdio)</span>
-                <span class="block text-spot-muted font-normal mt-0.5">Runs locally with local vars</span>
+                <span class="text-spot-bright font-mono text-[10px] block mb-0.5">2 · Sync</span>
+                <span class="text-white">Your Git Repo</span>
+                <span class="block text-spot-muted font-normal mt-0.5">Env branches &amp; PR diffs</span>
               </div>
               <span class="hidden sm:inline text-spot-faint px-2" aria-hidden="true">→</span>
               <span class="sm:hidden text-center text-spot-faint" aria-hidden="true">↓</span>
               <div class="flex-1 rounded-lg bg-white/[0.04] border border-white/10 px-3 py-2.5 text-center">
-                <span class="text-blue-300 font-mono text-[10px] block mb-0.5">Step 3</span>
-                <span class="text-white">Target API</span>
-                <span class="block text-spot-muted font-normal mt-0.5">Localhost, staging, prod</span>
+                <span class="text-blue-300 font-mono text-[10px] block mb-0.5">3 · Automate</span>
+                <span class="text-white">CI &amp; AI Agents</span>
+                <span class="block text-spot-muted font-normal mt-0.5"><code>blitz run</code> or stdio MCP</span>
               </div>
             </div>
             <p class="text-xs text-spot-faint mt-3 leading-relaxed">
-              Example: “Import this OpenAPI spec and test the login endpoint against staging.” Your IDE calls <code class="text-slate-300">blitz_sync_openapi</code> then <code class="text-slate-300">blitz_send_request</code> locally over JSON-RPC stdio.
-              <a href="docs.html#mcp-tools" class="text-spot-bright hover:underline ml-1">View all 42 tools →</a>
+              Import Postman v2.1, OpenAPI 3.0, cURL, or HAR in one click—then run the same collections in the GUI, headless CI, or Cursor/Claude.
+              <a href="docs.html" class="text-spot-bright hover:underline ml-1">Read full docs →</a>
             </p>
           </div>
         </div>
@@ -236,10 +236,10 @@
     <!-- SECTION: MCP SETUP & CLI RUNNER -->
     <!-- ================================================================= -->
     <section id="cli-runner" class="mt-20 pt-10 border-t border-white/[0.06] text-center">
-      <span class="text-xs font-bold text-spot-bright tracking-widest uppercase block mb-3">MCP SERVER &amp; HEADLESS CLI</span>
-      <h2 class="text-3xl sm:text-4xl font-bold tracking-tight mb-4">Configure Your IDE in One Command</h2>
+      <span class="text-xs font-bold text-spot-bright tracking-widest uppercase block mb-3">AUTOMATION &amp; AGENT TOOLING</span>
+      <h2 class="text-3xl sm:text-4xl font-bold tracking-tight mb-4">Headless CI Runner &amp; Optional MCP Server</h2>
       <p class="text-spot-muted max-w-2xl mx-auto text-base leading-relaxed mb-10">
-        One compiled Rust binary handles three roles: the desktop workbench GUI, the local stdio MCP server (<code>blitz mcp</code>) for AI coding assistants, and the headless collection runner (<code>blitz run</code>) for CI pipelines. Setup takes a single command and leaves no background daemon or open network port running when you close your IDE.
+        Skip <code>newman</code> and Node.js dependencies. Use the same <code>~24 MB</code> binary to run test suites in CI or wire Cursor and Claude to hit your local and staging endpoints.
       </p>
 
       <div class="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-5xl mx-auto text-left">
@@ -314,13 +314,13 @@
 
       <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-12">
         <div class="p-6 rounded-2xl glass glass-hover space-y-3">
-          <div class="text-xs font-mono text-yellow-300 font-bold">01 · AI AGENT INTEGRATION</div>
-          <h3 class="text-lg font-bold text-white">42-Tool Stdio MCP Server</h3>
+          <div class="text-xs font-mono text-emerald-400 font-bold">01 · PROTOCOLS &amp; REQUEST BUILDER</div>
+          <h3 class="text-lg font-bold text-white">8 Protocols, Boa JS &amp; Local Utilities</h3>
           <p class="text-spot-muted text-sm leading-relaxed">
-            When you run <code>blitz mcp</code>, Blitz starts a local JSON-RPC server over standard input/output. Cursor, Claude, Antigravity, or Windsurf can import OpenAPI specs (<code>blitz_sync_openapi</code>), send requests against your local environments (<code>blitz_send_request</code>), compare staging vs. production payloads (<code>blitz_diff_responses</code>), and generate client code.
+            Test HTTP/1.1+2 (reqwest), GraphQL &amp; GraphQL-WS, WebSockets (tokio-tungstenite), Server-Sent Events, Socket.IO v4, gRPC unary (JSON-to-Protobuf), MQTT (rumqttc), and external MCP servers in one window. Imports Postman v2.1, OpenAPI 3.0 (preserving existing scripts and assertions), cURL, and HAR.
           </p>
           <p class="text-spot-faint text-xs leading-relaxed">
-            Because requests execute inside Blitz on your machine, you never have to paste bearer tokens or raw production responses into chat prompts.
+            Includes an embedded Boa JS sandbox (<code>blitz.test</code> / <code>pm.*</code>), local capture proxy, <code>127.0.0.1</code> mock router, multi-language codegen, and standalone Swagger UI / HTML export.
           </p>
         </div>
 
@@ -347,13 +347,13 @@
         </div>
 
         <div class="p-6 rounded-2xl glass glass-hover space-y-3">
-          <div class="text-xs font-mono text-emerald-400 font-bold">04 · PROTOCOLS &amp; TESTING</div>
-          <h3 class="text-lg font-bold text-white">8 Protocols, Boa JS &amp; Local Utilities</h3>
+          <div class="text-xs font-mono text-yellow-300 font-bold">04 · AI AGENT INTEGRATION (OPTIONAL)</div>
+          <h3 class="text-lg font-bold text-white">42-Tool Stdio MCP Server</h3>
           <p class="text-spot-muted text-sm leading-relaxed">
-            Test HTTP/1.1+2 (reqwest), GraphQL &amp; GraphQL-WS, WebSockets (tokio-tungstenite), Server-Sent Events, Socket.IO v4, gRPC unary (JSON-to-Protobuf), MQTT (rumqttc), and external MCP servers in one window. Imports Postman v2.1, OpenAPI 3.0 (preserving existing scripts and assertions), cURL, and HAR.
+            When you run <code>blitz mcp</code>, Blitz starts a local JSON-RPC server over standard input/output. Cursor, Claude, Antigravity, or Windsurf can import OpenAPI specs (<code>blitz_sync_openapi</code>), send requests against your local environments (<code>blitz_send_request</code>), compare staging vs. production payloads (<code>blitz_diff_responses</code>), and generate client code.
           </p>
           <p class="text-spot-faint text-xs leading-relaxed">
-            Includes an embedded Boa JS sandbox (<code>blitz.test</code> / <code>pm.*</code>), local capture proxy, <code>127.0.0.1</code> mock router, multi-language codegen, and standalone Swagger UI / HTML export.
+            Because requests execute inside Blitz on your machine, you never have to paste bearer tokens or raw production responses into chat prompts.
           </p>
         </div>
       </div>
@@ -389,9 +389,7 @@
         </div>
       </div>
 
-      <div class="mt-6 p-4 rounded-xl bg-white/[0.02] border border-dashed border-white/15 text-xs font-mono text-spot-muted">
-        [PLACEHOLDER: Add a short screen recording or annotated screenshots of the Cursor-to-Blitz MCP workflow, and replace <code>docs/screenshot-cockpit.png</code> (currently identical to <code>docs/app-screenshot.png</code>) with a distinct cockpit view.]
-      </div>
+      <!-- Optional: add a Cursor-to-Blitz MCP screen recording and replace docs/screenshot-cockpit.png with a distinct cockpit view -->
     </section>
 
     <!-- ================================================================= -->
@@ -442,20 +440,28 @@
                 <td class="py-4 px-5 text-spot-muted text-center">Rust + Tauri (OS WebView + React)</td>
               </tr>
               <tr>
-                <td class="py-4 px-5 text-spot-muted">Measured Memory (GUI vs CLI)</td>
-                <td class="py-4 px-5 text-slate-200 bg-spot-green/5 text-center">GUI: ~198 MB main / ~346 MB total (9 tabs)<br>CLI: ~10.4 MB peak RSS</td>
-                <td class="py-4 px-5 text-spot-muted text-center">Not benchmarked here</td>
-                <td class="py-4 px-5 text-spot-muted text-center">Not benchmarked here</td>
-                <td class="py-4 px-5 text-spot-muted text-center">Not benchmarked here</td>
-                <td class="py-4 px-5 text-spot-muted text-center">Not benchmarked here</td>
+                <td class="py-4 px-5 text-spot-muted">Installer / Binary Size</td>
+                <td class="py-4 px-5 text-slate-200 bg-spot-green/5 text-center">~24 MB release binary</td>
+                <td class="py-4 px-5 text-spot-muted text-center">~200–210 MB (Electron)</td>
+                <td class="py-4 px-5 text-spot-muted text-center">~160–300 MB (Electron)</td>
+                <td class="py-4 px-5 text-spot-muted text-center">~500–590 MB (Electron)</td>
+                <td class="py-4 px-5 text-spot-bright text-center">~30–60 MB (Tauri)</td>
               </tr>
               <tr>
-                <td class="py-4 px-5 text-spot-muted">Cold-Start Latency</td>
-                <td class="py-4 px-5 text-slate-200 bg-spot-green/5 text-center">CLI: &lt; 20 ms<br>GUI: [VERIFY: GUI cold start]</td>
-                <td class="py-4 px-5 text-spot-muted text-center">Not benchmarked here</td>
-                <td class="py-4 px-5 text-spot-muted text-center">Not benchmarked here</td>
-                <td class="py-4 px-5 text-spot-muted text-center">Not benchmarked here</td>
-                <td class="py-4 px-5 text-spot-muted text-center">Not benchmarked here</td>
+                <td class="py-4 px-5 text-spot-muted">Desktop GUI Memory</td>
+                <td class="py-4 px-5 text-slate-200 bg-spot-green/5 text-center">~198 MB main / ~346 MB total (9 open tabs)</td>
+                <td class="py-4 px-5 text-spot-muted text-center">~500 MB – 2+ GB (Electron)</td>
+                <td class="py-4 px-5 text-spot-muted text-center">Electron (Chromium + Node.js)</td>
+                <td class="py-4 px-5 text-spot-muted text-center">~500 MB – 2+ GB (Electron)</td>
+                <td class="py-4 px-5 text-spot-bright text-center">~50–100 MB typical idle (Tauri)</td>
+              </tr>
+              <tr>
+                <td class="py-4 px-5 text-spot-muted">CLI Runner &amp; Memory</td>
+                <td class="py-4 px-5 text-spot-bright font-semibold bg-spot-green/5 text-center"><code>blitz run</code> (Rust, ~10.4 MB peak RSS, &lt; 20 ms start)</td>
+                <td class="py-4 px-5 text-spot-muted text-center">Newman (Node.js, ~50–150 MB RAM)</td>
+                <td class="py-4 px-5 text-spot-muted text-center">Bru CLI (Node.js, ~50–150 MB RAM)</td>
+                <td class="py-4 px-5 text-spot-muted text-center">Inso CLI (Node.js, ~50–150 MB RAM)</td>
+                <td class="py-4 px-5 text-slate-200 text-center">Yaak CLI (Rust, ~10–30 MB RAM)</td>
               </tr>
               <tr>
                 <td class="py-4 px-5 text-spot-muted">License &amp; Pricing</td>
@@ -492,7 +498,7 @@
               <!-- Honest rows where Blitz is behind or equal -->
               <tr>
                 <td class="py-4 px-5 text-spot-muted">Maturity &amp; Community Size</td>
-                <td class="py-4 px-5 text-amber-300 bg-spot-green/5 text-center">Beta (~1 month old, solo maintainer, small early community)</td>
+                <td class="py-4 px-5 text-amber-300 bg-spot-green/5 text-center">Early beta (solo-maintained, growing community)</td>
                 <td class="py-4 px-5 text-spot-bright text-center">10+ years, large enterprise &amp; community</td>
                 <td class="py-4 px-5 text-spot-bright text-center">Established OSS community</td>
                 <td class="py-4 px-5 text-spot-bright text-center">Mature, widely deployed</td>
@@ -529,41 +535,45 @@
     </section>
 
     <!-- ================================================================= -->
-    <!-- SECTION: KNOWN LIMITATIONS & ROADMAP -->
+    <!-- SECTION: ROADMAP & CURRENT SCOPE -->
     <!-- ================================================================= -->
     <section id="limitations" class="mt-20 pt-10 border-t border-white/[0.06] text-center">
-      <span class="text-xs font-bold text-amber-300 tracking-widest uppercase block mb-3">TRANSPARENCY</span>
-      <h2 class="text-3xl sm:text-4xl font-bold tracking-tight mb-4">Known Limitations &amp; Roadmap</h2>
+      <span class="text-xs font-bold text-spot-bright tracking-widest uppercase block mb-3">ROADMAP &amp; SCOPE</span>
+      <h2 class="text-3xl sm:text-4xl font-bold tracking-tight mb-4">What's Shipping Next</h2>
       <p class="text-spot-muted max-w-2xl mx-auto text-base leading-relaxed mb-10">
-        Blitz is roughly a month old and maintained by one developer. Before adopting it for daily work or storing sensitive credentials, review the current platform gaps—especially unsigned installers, macOS-only keychain persistence, and single-architecture macOS releases.
+        Blitz is in active beta. Here is what is currently scoped, what works per platform today, and what is queued next.
       </p>
 
       <div class="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-5xl mx-auto text-left">
-        <div class="p-6 rounded-2xl glass">
-          <h3 class="text-base font-bold text-white mb-2">1. Unsigned Desktop Builds</h3>
+        <div class="p-6 rounded-2xl glass space-y-2">
+          <div class="text-xs font-mono text-amber-300 font-bold">IN PROGRESS · PACKAGING</div>
+          <h3 class="text-base font-bold text-white">Signed Releases &amp; Package Managers</h3>
           <p class="text-sm text-spot-muted leading-relaxed">
-            macOS and Windows installers are not yet signed with paid Apple Developer ID or Windows EV certificates. Both operating systems will show security prompts until signing or upstream package-manager curation is in place.
+            Prebuilt binaries are currently unsigned (<code>SHA256SUMS</code> provided for verification), and macOS builds target Apple Silicon (<code>arm64</code>). Code signing, Intel macOS builds, and upstream <code>winget</code> / <code>scoop</code> / Homebrew publishing are next.
           </p>
         </div>
 
-        <div class="p-6 rounded-2xl glass">
-          <h3 class="text-base font-bold text-white mb-2">2. Keychain Persistence Is macOS-Only Today</h3>
+        <div class="p-6 rounded-2xl glass space-y-2">
+          <div class="text-xs font-mono text-purple-300 font-bold">ROADMAP · SECURITY</div>
+          <h3 class="text-base font-bold text-white">Cross-Platform Credential Store</h3>
           <p class="text-sm text-spot-muted leading-relaxed">
-            <code>secret://</code> references bind to macOS Keychain via <code>keyring</code>. On Windows and Linux, <code>secret://</code> currently uses an in-memory fallback (not persisted across restarts), and <code>{{vault:key}}</code> stores values in local unencrypted <code>vault.json</code>. Cross-platform credential-store support is on the roadmap.
+            <code>secret://</code> integrates with macOS Keychain today and falls back to in-memory storage on Windows and Linux; <code>{{vault:key}}</code> uses local <code>vault.json</code> (excluded from Git). Native Windows Credential Manager and Linux Secret Service backends are planned.
           </p>
         </div>
 
-        <div class="p-6 rounded-2xl glass">
-          <h3 class="text-base font-bold text-white mb-2">3. Pre-Built macOS Release Architecture</h3>
+        <div class="p-6 rounded-2xl glass space-y-2">
+          <div class="text-xs font-mono text-blue-300 font-bold">ROADMAP · PROTOCOLS</div>
+          <h3 class="text-base font-bold text-white">Full gRPC Streaming &amp; Reflection</h3>
           <p class="text-sm text-spot-muted leading-relaxed">
-            Published macOS release artifacts (<code>Blitz-macos-arm64.dmg</code> / <code>.tar.gz</code>) target Apple Silicon (<code>arm64</code>) only. Intel (<code>x86_64</code>) Macs currently need to build from source with Cargo.
+            gRPC currently supports unary JSON-to-Protobuf calls. Server reflection and client/bidirectional streaming are planned for upcoming releases.
           </p>
         </div>
 
-        <div class="p-6 rounded-2xl glass">
-          <h3 class="text-base font-bold text-white mb-2">4. Solo-Maintained Early Beta</h3>
+        <div class="p-6 rounded-2xl glass space-y-2">
+          <div class="text-xs font-mono text-emerald-300 font-bold">OPEN SOURCE · MIT</div>
+          <h3 class="text-base font-bold text-white">Built in the Open</h3>
           <p class="text-sm text-spot-muted leading-relaxed">
-            Blitz has roughly one month of development history by one maintainer. Package-manager manifests (<code>winget</code>, <code>scoop</code>, Homebrew tap) are not yet published/merged, and gRPC currently supports unary calls only (server reflection and client/bidirectional streaming are unimplemented).
+            Maintained independently under the MIT license. Follow progress, request features, or contribute PRs on <a href="https://github.com/h3ma209/Blitz" target="_blank" rel="noopener" class="text-spot-bright hover:underline">GitHub</a>.
           </p>
         </div>
       </div>
@@ -742,7 +752,7 @@ make run</code></pre>
         <a href="https://github.com/h3ma209/Blitz/commits/master" target="_blank" rel="noopener" class="p-5 rounded-xl glass glass-hover block">
           <div class="font-mono text-spot-bright font-bold mb-1">GitHub Activity</div>
           <div class="text-sm font-bold text-white mb-1">Commit History</div>
-          <p class="text-spot-muted">[PLACEHOLDER: Link live repo stats / recent commit cadence if desired]</p>
+          <p class="text-spot-muted">Browse recent commits, branch updates, and ongoing development on <code>master</code>.</p>
         </a>
 
         <a href="https://github.com/h3ma209/Blitz/releases" target="_blank" rel="noopener" class="p-5 rounded-xl glass glass-hover block">
@@ -760,7 +770,7 @@ make run</code></pre>
         <a href="https://github.com/h3ma209/Blitz/blob/master/SECURITY.md" target="_blank" rel="noopener" class="p-5 rounded-xl glass glass-hover block">
           <div class="font-mono text-amber-300 font-bold mb-1">Security</div>
           <div class="text-sm font-bold text-white mb-1">SECURITY.md</div>
-          <p class="text-spot-muted">Vulnerability reporting &amp; secret handling. [PLACEHOLDER: Maintainer security contact email]</p>
+          <p class="text-spot-muted">Vulnerability reporting guidelines and secret-handling details on GitHub.</p>
         </a>
       </div>
     </section>
