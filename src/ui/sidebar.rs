@@ -302,8 +302,7 @@ pub fn Sidebar(
                             None,
                             active_collection_id,
                         )),
-                        super::icons::ActionIcon { name: "import", size: 17 }
-                        span { "Import" }
+                        super::icons::ActionIcon { name: "import", size: 15 }
                     }
                     button {
                         class: "btn-icon sidebar-action-pill",
@@ -314,8 +313,7 @@ pub fn Sidebar(
                             None,
                             active_collection_id,
                         )),
-                        super::icons::ActionIcon { name: "export", size: 17 }
-                        span { "Export" }
+                        super::icons::ActionIcon { name: "export", size: 15 }
                     }
                     div { class: "sidebar-sort-wrap",
                         button {
@@ -330,8 +328,7 @@ pub fn Sidebar(
                                 evt.stop_propagation();
                                 sort_menu_open.set(!sort_menu_open());
                             },
-                            super::icons::ActionIcon { name: "sort", size: 17 }
-                            span { "Sort ▾" }
+                            super::icons::ActionIcon { name: "sort", size: 15 }
                         }
                         if sort_menu_open() {
                             DismissBackdrop {
@@ -379,8 +376,7 @@ pub fn Sidebar(
                             None,
                             None,
                         )),
-                        super::icons::ActionIcon { name: "add", size: 17 }
-                        span { "New" }
+                        super::icons::ActionIcon { name: "add", size: 15 }
                     }
                 }
             }

@@ -51,6 +51,10 @@ pub fn RequestBuilder(
         _ => BuilderTab::Message,
     };
     let mut tab = use_signal(move || default_tab);
+    let mut live_draft = use_signal(|| draft.clone());
+    if *live_draft.peek() != draft {
+        live_draft.set(draft.clone());
+    }
     let mut copied_curl = use_signal(|| false);
     let mut pasted_curl = use_signal(|| false);
     let mut proto_menu_open = use_signal(|| false);
@@ -271,8 +275,8 @@ pub fn RequestBuilder(
                 input_id: "np-url-input".to_string(),
                 vars: vars.clone(),
                 on_input: {
-                    let draft = draft.clone();
                     move |url: String| {
+                        let cur_draft = live_draft.peek().clone();
                         let trimmed = url.trim_start_matches(|c: char| c.is_whitespace() || c == '#');
                         let lower_head: String = trimmed.chars().take(12).collect::<String>().to_ascii_lowercase();
                         // Smart cURL Paste detection (case-insensitive, supports curl / curl.exe / multiline)
@@ -283,12 +287,12 @@ pub fn RequestBuilder(
                             || lower_head.starts_with("curl.exe ")
                         {
                             if let Ok(mut imported) = crate::core::impex::import_curl(trimmed) {
-                                imported.id = draft.id;
-                                if !draft.name.trim().is_empty()
-                                    && draft.name != "New Request"
-                                    && draft.name != "Untitled"
+                                imported.id = cur_draft.id;
+                                if !cur_draft.name.trim().is_empty()
+                                    && cur_draft.name != "New Request"
+                                    && cur_draft.name != "Untitled"
                                 {
-                                    imported.name = draft.name.clone();
+                                    imported.name = cur_draft.name.clone();
                                 }
                                 if imported.url.contains('?') && imported.params.is_empty() {
                                     let (_, params) = crate::core::extract_url_query_params(&imported.url);
@@ -298,6 +302,7 @@ pub fn RequestBuilder(
                                     &imported.url,
                                     &imported.path_params,
                                 );
+                                live_draft.set(imported.clone());
                                 on_change.call(imported);
                                 pasted_curl.set(true);
                                 spawn(async move {
@@ -308,7 +313,7 @@ pub fn RequestBuilder(
                             }
                         }
 
-                        let mut d = draft.clone();
+                        let mut d = cur_draft;
                         // Auto-detect protocol schemes if currently HTTP
                         if d.protocol == RequestProtocol::Http {
                             let lower = url.trim().to_lowercase();
@@ -333,6 +338,7 @@ pub fn RequestBuilder(
                         }
                         d.path_params = crate::core::sync_path_params(&url, &d.path_params);
                         d.url = url;
+                        live_draft.set(d.clone());
                         on_change.call(d);
                     }
                 },
@@ -460,6 +466,7 @@ pub fn RequestBuilder(
                     ProtocolFields {
                         draft: draft.clone(),
                         on_change,
+                        on_save,
                         on_protocol_action,
                         ws_connected,
                         ws_timeline: ws_timeline.clone(),
@@ -532,14 +539,12 @@ pub fn RequestBuilder(
                                 rows: draft.params.clone(),
                                 vars: vars.clone(),
                                 on_var_edit,
-                                on_change: {
-                                    let draft = draft.clone();
-                                    move |rows| {
-                                        let mut d = draft.clone();
-                                        d.params = rows;
-                                        d.url = crate::core::build_url_with_params(&d.url, &d.params);
-                                        on_change.call(d);
-                                    }
+                                on_change: move |rows| {
+                                    let mut d = live_draft.peek().clone();
+                                    d.params = rows;
+                                    d.url = crate::core::build_url_with_params(&d.url, &d.params);
+                                    live_draft.set(d.clone());
+                                    on_change.call(d);
                                 }
                             }
                         }
@@ -572,15 +577,16 @@ pub fn RequestBuilder(
                                                         input_id: format!("np-path-val-{i}"),
                                                         vars: vars.clone(),
                                                         on_input: {
-                                                            let draft = draft.clone();
-                                                            let path_vars = path_vars.clone();
+                                                            let row_key = row.key.clone();
                                                             move |val: String| {
-                                                                let mut d = draft.clone();
-                                                                let mut updated = path_vars.clone();
-                                                                if let Some(r) = updated.get_mut(i) {
+                                                                let mut d = live_draft.peek().clone();
+                                                                if d.path_params.is_empty() {
+                                                                    d.path_params = crate::core::sync_path_params(&d.url, &d.path_params);
+                                                                }
+                                                                if let Some(r) = d.path_params.iter_mut().find(|r| r.key == row_key) {
                                                                     r.value = val;
                                                                 }
-                                                                d.path_params = updated;
+                                                                live_draft.set(d.clone());
                                                                 on_change.call(d);
                                                             }
                                                         },
@@ -603,13 +609,11 @@ pub fn RequestBuilder(
                         protocol: Some(draft.protocol),
                         body_mode: Some(draft.body_mode),
                         on_var_edit,
-                        on_change: {
-                            let draft = draft.clone();
-                            move |rows| {
-                                let mut d = draft.clone();
-                                d.headers = rows;
-                                on_change.call(d);
-                            }
+                        on_change: move |rows| {
+                            let mut d = live_draft.peek().clone();
+                            d.headers = rows;
+                            live_draft.set(d.clone());
+                            on_change.call(d);
                         }
                     }
                 },
@@ -626,19 +630,17 @@ pub fn RequestBuilder(
                         vars: vars.clone(),
                         data_root: data_root.clone(),
                         on_var_edit,
-                        on_change: {
-                            let draft = draft.clone();
-                            move |(mode, body, binary_path, urlencoded, formdata, gql_q, gql_v)| {
-                                let mut d = draft.clone();
-                                d.body_mode = mode;
-                                d.body = body;
-                                d.binary_path = binary_path;
-                                d.body_urlencoded = urlencoded;
-                                d.body_formdata = formdata;
-                                d.graphql_query = gql_q;
-                                d.graphql_variables = gql_v;
-                                on_change.call(d);
-                            }
+                        on_change: move |(mode, body, binary_path, urlencoded, formdata, gql_q, gql_v)| {
+                            let mut d = live_draft.peek().clone();
+                            d.body_mode = mode;
+                            d.body = body;
+                            d.binary_path = binary_path;
+                            d.body_urlencoded = urlencoded;
+                            d.body_formdata = formdata;
+                            d.graphql_query = gql_q;
+                            d.graphql_variables = gql_v;
+                            live_draft.set(d.clone());
+                            on_change.call(d);
                         }
                     }
                 },
@@ -649,26 +651,22 @@ pub fn RequestBuilder(
                         vars: Some(vars.clone()),
                         on_var_edit: Some(on_var_edit),
                         on_edit_parent_auth,
-                        on_change: {
-                            let draft = draft.clone();
-                            move |auth| {
-                                let mut d = draft.clone();
-                                d.auth = auth;
-                                on_change.call(d);
-                            }
+                        on_change: move |auth| {
+                            let mut d = live_draft.peek().clone();
+                            d.auth = auth;
+                            live_draft.set(d.clone());
+                            on_change.call(d);
                         }
                     }
                 },
                 BuilderTab::Tests => rsx! {
                     super::AssertionsEditor {
                         assertions: draft.assertions.clone(),
-                        on_change: {
-                            let draft = draft.clone();
-                            move |list| {
-                                let mut d = draft.clone();
-                                d.assertions = list;
-                                on_change.call(d);
-                            }
+                        on_change: move |list| {
+                            let mut d = live_draft.peek().clone();
+                            d.assertions = list;
+                            live_draft.set(d.clone());
+                            on_change.call(d);
                         }
                     }
                 },
@@ -678,14 +676,12 @@ pub fn RequestBuilder(
                         pre: draft.pre_request_script.clone(),
                         test: draft.test_script.clone(),
                         vars: vars.clone(),
-                        on_change: {
-                            let draft = draft.clone();
-                            move |(pre, test)| {
-                                let mut d = draft.clone();
-                                d.pre_request_script = pre;
-                                d.test_script = test;
-                                on_change.call(d);
-                            }
+                        on_change: move |(pre, test)| {
+                            let mut d = live_draft.peek().clone();
+                            d.pre_request_script = pre;
+                            d.test_script = test;
+                            live_draft.set(d.clone());
+                            on_change.call(d);
                         }
                     }
                 },
@@ -699,13 +695,11 @@ pub fn RequestBuilder(
                             value: draft.description.clone(),
                             rows: Some("10"),
                             placeholder: "Markdown or plain text — shown for teammates / import".to_string(),
-                            on_change: {
-                                let draft = draft.clone();
-                                move |text: String| {
-                                    let mut d = draft.clone();
-                                    d.description = text;
-                                    on_change.call(d);
-                                }
+                            on_change: move |text: String| {
+                                let mut d = live_draft.peek().clone();
+                                d.description = text;
+                                live_draft.set(d.clone());
+                                on_change.call(d);
                             }
                         }
                     }
@@ -713,13 +707,11 @@ pub fn RequestBuilder(
                 BuilderTab::Settings => rsx! {
                     RequestSettingsEditor {
                         settings: draft.settings.clone(),
-                        on_change: {
-                            let draft = draft.clone();
-                            move |settings| {
-                                let mut d = draft.clone();
-                                d.settings = settings;
-                                on_change.call(d);
-                            }
+                        on_change: move |settings| {
+                            let mut d = live_draft.peek().clone();
+                            d.settings = settings;
+                            live_draft.set(d.clone());
+                            on_change.call(d);
                         }
                     }
                 },
@@ -782,6 +774,7 @@ fn method_class_name(m: HttpMethod) -> &'static str {
 fn ProtocolFields(
     draft: RequestDraft,
     on_change: EventHandler<RequestDraft>,
+    #[props(default)] on_save: EventHandler<()>,
     on_protocol_action: EventHandler<String>,
     ws_connected: bool,
     #[props(default)] ws_timeline: Vec<crate::core::WsFrameItem>,
@@ -790,6 +783,10 @@ fn ProtocolFields(
     sending: bool,
     #[props(default)] vars: Option<VariableContext>,
 ) -> Element {
+    let mut live_draft = use_signal(|| draft.clone());
+    if *live_draft.peek() != draft {
+        live_draft.set(draft.clone());
+    }
     let mut preset_name_input = use_signal(String::new);
     let mut show_new_preset = use_signal(|| false);
     let mut selected_preset_id = use_signal(|| None::<Uuid>);
@@ -798,6 +795,13 @@ fn ProtocolFields(
     let mut save_feedback = use_signal(|| false);
     let mut composer_h = use_signal(|| 140i32);
     let mut composer_drag = use_signal(|| None::<(f64, i32)>);
+
+    let cur_sel = *selected_preset_id.peek();
+    if let Some(sel_id) = cur_sel {
+        if !draft.ws_presets.iter().any(|p| p.id == sel_id) {
+            selected_preset_id.set(None);
+        }
+    }
 
     let selected_preset = selected_preset_id().and_then(|id| {
         draft.ws_presets.iter().find(|p| p.id == id).cloned()
@@ -811,23 +815,21 @@ fn ProtocolFields(
                         div { class: "ws-mode-switch",
                             button {
                                 class: if draft.ws_deck_mode { "ws-mode-btn active" } else { "ws-mode-btn" },
-                                onclick: {
-                                    let mut d = draft.clone();
-                                    move |_| {
-                                        d.ws_deck_mode = true;
-                                        on_change.call(d.clone());
-                                    }
+                                onclick: move |_| {
+                                    let mut d = live_draft.peek().clone();
+                                    d.ws_deck_mode = true;
+                                    live_draft.set(d.clone());
+                                    on_change.call(d);
                                 },
                                 "⚡ Socket Deck"
                             }
                             button {
                                 class: if !draft.ws_deck_mode { "ws-mode-btn active" } else { "ws-mode-btn" },
-                                onclick: {
-                                    let mut d = draft.clone();
-                                    move |_| {
-                                        d.ws_deck_mode = false;
-                                        on_change.call(d.clone());
-                                    }
+                                onclick: move |_| {
+                                    let mut d = live_draft.peek().clone();
+                                    d.ws_deck_mode = false;
+                                    live_draft.set(d.clone());
+                                    on_change.call(d);
                                 },
                                 "📄 Classic (Postman)"
                             }
@@ -904,19 +906,18 @@ fn ProtocolFields(
                                 }
                             }
                             MultilineCodeField {
+                                key: "ws-classic-{draft.id}",
                                 class: "body-editor".to_string(),
                                 value: draft.ws_message.clone(),
                                 placeholder: "{\"type\": \"subscribe\", ...}".to_string(),
                                 rows: Some("6"),
                                 vars: vars.clone(),
                                 syntax: EditorSyntax::Json,
-                                on_change: {
-                                    let draft = draft.clone();
-                                    move |text: String| {
-                                        let mut d = draft.clone();
-                                        d.ws_message = text;
-                                        on_change.call(d);
-                                    }
+                                on_change: move |text: String| {
+                                    let mut d = live_draft.peek().clone();
+                                    d.ws_message = text;
+                                    live_draft.set(d.clone());
+                                    on_change.call(d);
                                 },
                                 on_submit: {
                                     let on_protocol_action = on_protocol_action;
@@ -964,57 +965,55 @@ fn ProtocolFields(
                                                 value: "{preset_name_input}",
                                                 autofocus: true,
                                                 oninput: move |e: Event<FormData>| preset_name_input.set(e.value()),
-                                                onkeydown: {
-                                                    let draft = draft.clone();
-                                                    move |e: KeyboardEvent| {
-                                                        if e.key() == Key::Enter {
-                                                            let name = preset_name_input().trim().to_string();
-                                                            let n = if name.is_empty() { format!("Preset #{}", draft.ws_presets.len() + 1) } else { name };
-                                                            let mut d = draft.clone();
-                                                            let initial_msg = if d.ws_message.trim().is_empty() {
-                                                                "{\n  \"action\": \"message\"\n}".to_string()
-                                                            } else {
-                                                                d.ws_message.clone()
-                                                            };
-                                                            let new_preset = crate::core::WsPreset::new(n, initial_msg);
-                                                            let new_id = new_preset.id;
-                                                            d.ws_presets.push(new_preset);
-                                                            d.ws_message = d.ws_presets.last().unwrap().message.clone();
-                                                            preset_name_input.set(String::new());
-                                                            show_new_preset.set(false);
-                                                            selected_preset_id.set(Some(new_id));
-                                                            save_feedback.set(false);
-                                                            on_change.call(d);
-                                                        } else if e.key() == Key::Escape {
-                                                            show_new_preset.set(false);
-                                                        }
+                                                onkeydown: move |e: KeyboardEvent| {
+                                                    if e.key() == Key::Enter {
+                                                        let mut d = live_draft.peek().clone();
+                                                        let name = preset_name_input().trim().to_string();
+                                                        let n = if name.is_empty() { format!("Preset #{}", d.ws_presets.len() + 1) } else { name };
+                                                        let initial_msg = if d.ws_message.trim().is_empty() {
+                                                            "{\n  \"action\": \"message\"\n}".to_string()
+                                                        } else {
+                                                            d.ws_message.clone()
+                                                        };
+                                                        let new_preset = crate::core::WsPreset::new(n, initial_msg);
+                                                        let new_id = new_preset.id;
+                                                        d.ws_presets.push(new_preset);
+                                                        d.ws_message = d.ws_presets.last().unwrap().message.clone();
+                                                        preset_name_input.set(String::new());
+                                                        show_new_preset.set(false);
+                                                        selected_preset_id.set(Some(new_id));
+                                                        save_feedback.set(false);
+                                                        live_draft.set(d.clone());
+                                                        on_change.call(d);
+                                                        on_save.call(());
+                                                    } else if e.key() == Key::Escape {
+                                                        show_new_preset.set(false);
                                                     }
                                                 },
                                             }
                                             div { class: "ws-new-preset-btns",
                                                 button {
                                                     class: "btn btn-sm btn-send",
-                                                    onclick: {
-                                                        let draft = draft.clone();
-                                                        move |_| {
-                                                            let name = preset_name_input().trim().to_string();
-                                                            let n = if name.is_empty() { format!("Preset #{}", draft.ws_presets.len() + 1) } else { name };
-                                                            let mut d = draft.clone();
-                                                            let initial_msg = if d.ws_message.trim().is_empty() {
-                                                                "{\n  \"action\": \"message\"\n}".to_string()
-                                                            } else {
-                                                                d.ws_message.clone()
-                                                            };
-                                                            let new_preset = crate::core::WsPreset::new(n, initial_msg);
-                                                            let new_id = new_preset.id;
-                                                            d.ws_presets.push(new_preset);
-                                                            d.ws_message = d.ws_presets.last().unwrap().message.clone();
-                                                            preset_name_input.set(String::new());
-                                                            show_new_preset.set(false);
-                                                            selected_preset_id.set(Some(new_id));
-                                                            save_feedback.set(false);
-                                                            on_change.call(d);
-                                                        }
+                                                    onclick: move |_| {
+                                                        let mut d = live_draft.peek().clone();
+                                                        let name = preset_name_input().trim().to_string();
+                                                        let n = if name.is_empty() { format!("Preset #{}", d.ws_presets.len() + 1) } else { name };
+                                                        let initial_msg = if d.ws_message.trim().is_empty() {
+                                                            "{\n  \"action\": \"message\"\n}".to_string()
+                                                        } else {
+                                                            d.ws_message.clone()
+                                                        };
+                                                        let new_preset = crate::core::WsPreset::new(n, initial_msg);
+                                                        let new_id = new_preset.id;
+                                                        d.ws_presets.push(new_preset);
+                                                        d.ws_message = d.ws_presets.last().unwrap().message.clone();
+                                                        preset_name_input.set(String::new());
+                                                        show_new_preset.set(false);
+                                                        selected_preset_id.set(Some(new_id));
+                                                        save_feedback.set(false);
+                                                        live_draft.set(d.clone());
+                                                        on_change.call(d);
+                                                        on_save.call(());
                                                     },
                                                     "Add Preset"
                                                 }
@@ -1044,16 +1043,15 @@ fn ProtocolFields(
                                                     div {
                                                         class: "{card_class}",
                                                         key: "{p_id}-{pi}",
-                                                        onclick: {
-                                                            let draft = draft.clone();
-                                                            let msg = p_msg.clone();
-                                                            move |_| {
-                                                                selected_preset_id.set(Some(p_id));
-                                                                save_feedback.set(false);
-                                                                let mut d = draft.clone();
-                                                                d.ws_message = msg.clone();
-                                                                on_change.call(d);
+                                                        onclick: move |_| {
+                                                            selected_preset_id.set(Some(p_id));
+                                                            save_feedback.set(false);
+                                                            let mut d = live_draft.peek().clone();
+                                                            if let Some(p) = d.ws_presets.iter().find(|p| p.id == p_id) {
+                                                                d.ws_message = p.message.clone();
                                                             }
+                                                            live_draft.set(d.clone());
+                                                            on_change.call(d);
                                                         },
                                                         div { class: "ws-preset-info",
                                                             if is_renaming {
@@ -1064,45 +1062,43 @@ fn ProtocolFields(
                                                                     onclick: move |e| e.stop_propagation(),
                                                                     onmousedown: move |e| e.stop_propagation(),
                                                                     oninput: move |e: Event<FormData>| rename_draft.set(e.value()),
-                                                                    onkeydown: {
-                                                                        let draft = draft.clone();
-                                                                        move |e: KeyboardEvent| {
-                                                                            e.stop_propagation();
-                                                                            match e.key() {
-                                                                                Key::Enter => {
-                                                                                    let next = rename_draft().trim().to_string();
-                                                                                    if !next.is_empty() {
-                                                                                        let mut d = draft.clone();
-                                                                                        if let Some(p) = d.ws_presets.iter_mut().find(|p| p.id == p_id) {
-                                                                                            p.name = next;
-                                                                                            on_change.call(d);
-                                                                                        }
+                                                                    onkeydown: move |e: KeyboardEvent| {
+                                                                        e.stop_propagation();
+                                                                        match e.key() {
+                                                                            Key::Enter => {
+                                                                                let next = rename_draft().trim().to_string();
+                                                                                if !next.is_empty() {
+                                                                                    let mut d = live_draft.peek().clone();
+                                                                                    if let Some(p) = d.ws_presets.iter_mut().find(|p| p.id == p_id) {
+                                                                                        p.name = next;
+                                                                                        live_draft.set(d.clone());
+                                                                                        on_change.call(d);
+                                                                                        on_save.call(());
                                                                                     }
-                                                                                    renaming_preset_id.set(None);
-                                                                                    rename_draft.set(String::new());
                                                                                 }
-                                                                                Key::Escape => {
-                                                                                    renaming_preset_id.set(None);
-                                                                                    rename_draft.set(String::new());
-                                                                                }
-                                                                                _ => {}
+                                                                                renaming_preset_id.set(None);
+                                                                                rename_draft.set(String::new());
                                                                             }
+                                                                            Key::Escape => {
+                                                                                renaming_preset_id.set(None);
+                                                                                rename_draft.set(String::new());
+                                                                            }
+                                                                            _ => {}
                                                                         }
                                                                     },
-                                                                    onblur: {
-                                                                        let draft = draft.clone();
-                                                                        move |_| {
-                                                                            let next = rename_draft().trim().to_string();
-                                                                            if !next.is_empty() {
-                                                                                let mut d = draft.clone();
-                                                                                if let Some(p) = d.ws_presets.iter_mut().find(|p| p.id == p_id) {
-                                                                                    p.name = next;
-                                                                                    on_change.call(d);
-                                                                                }
+                                                                    onblur: move |_| {
+                                                                        let next = rename_draft().trim().to_string();
+                                                                        if !next.is_empty() {
+                                                                            let mut d = live_draft.peek().clone();
+                                                                            if let Some(p) = d.ws_presets.iter_mut().find(|p| p.id == p_id) {
+                                                                                p.name = next;
+                                                                                live_draft.set(d.clone());
+                                                                                on_change.call(d);
+                                                                                on_save.call(());
                                                                             }
-                                                                            renaming_preset_id.set(None);
-                                                                            rename_draft.set(String::new());
                                                                         }
+                                                                        renaming_preset_id.set(None);
+                                                                        rename_draft.set(String::new());
                                                                     }
                                                                 }
                                                             } else {
@@ -1142,37 +1138,35 @@ fn ProtocolFields(
                                                             button {
                                                                 class: if is_selected { "btn btn-sm btn-icon active" } else { "btn btn-sm btn-icon" },
                                                                 title: "Edit preset frame in composer",
-                                                                onclick: {
-                                                                    let draft = draft.clone();
-                                                                    let msg = p_msg.clone();
-                                                                    move |e| {
-                                                                        e.stop_propagation();
-                                                                        selected_preset_id.set(Some(p_id));
-                                                                        save_feedback.set(false);
-                                                                        let mut d = draft.clone();
-                                                                        d.ws_message = msg.clone();
-                                                                        on_change.call(d);
+                                                                onclick: move |e| {
+                                                                    e.stop_propagation();
+                                                                    selected_preset_id.set(Some(p_id));
+                                                                    save_feedback.set(false);
+                                                                    let mut d = live_draft.peek().clone();
+                                                                    if let Some(p) = d.ws_presets.iter().find(|p| p.id == p_id) {
+                                                                        d.ws_message = p.message.clone();
                                                                     }
+                                                                    live_draft.set(d.clone());
+                                                                    on_change.call(d);
                                                                 },
                                                                 "✎"
                                                             }
                                                             button {
                                                                 class: "btn btn-sm btn-icon text-muted",
                                                                 title: "Delete preset",
-                                                                onclick: {
-                                                                    let draft = draft.clone();
-                                                                    move |e| {
-                                                                        e.stop_propagation();
-                                                                        if selected_preset_id() == Some(p_id) {
-                                                                            selected_preset_id.set(None);
-                                                                        }
-                                                                        if renaming_preset_id() == Some(p_id) {
-                                                                            renaming_preset_id.set(None);
-                                                                        }
-                                                                        let mut d = draft.clone();
-                                                                        d.ws_presets.retain(|p| p.id != p_id);
-                                                                        on_change.call(d);
+                                                                onclick: move |e| {
+                                                                    e.stop_propagation();
+                                                                    if selected_preset_id() == Some(p_id) {
+                                                                        selected_preset_id.set(None);
                                                                     }
+                                                                    if renaming_preset_id() == Some(p_id) {
+                                                                        renaming_preset_id.set(None);
+                                                                    }
+                                                                    let mut d = live_draft.peek().clone();
+                                                                    d.ws_presets.retain(|p| p.id != p_id);
+                                                                    live_draft.set(d.clone());
+                                                                    on_change.call(d);
+                                                                    on_save.call(());
                                                                 },
                                                                 "×"
                                                             }
@@ -1327,6 +1321,7 @@ fn ProtocolFields(
                                                 }
                                             }
                                             MultilineCodeField {
+                                                key: "ws-composer-{draft.id}",
                                                 class: "ws-composer-input".to_string(),
                                                 value: draft.ws_message.clone(),
                                                 placeholder: "Type JSON / text message... (Press Send Frame, ⌘↵, or a Preset)".to_string(),
@@ -1334,14 +1329,12 @@ fn ProtocolFields(
                                                 style: Some(format!("height: {}px;", composer_h())),
                                                 vars: vars.clone(),
                                                 syntax: EditorSyntax::Json,
-                                                on_change: {
-                                                    let draft = draft.clone();
-                                                    move |text: String| {
-                                                        save_feedback.set(false);
-                                                        let mut d = draft.clone();
-                                                        d.ws_message = text;
-                                                        on_change.call(d);
-                                                    }
+                                                on_change: move |text: String| {
+                                                    save_feedback.set(false);
+                                                    let mut d = live_draft.peek().clone();
+                                                    d.ws_message = text;
+                                                    live_draft.set(d.clone());
+                                                    on_change.call(d);
                                                 },
                                                 on_submit: {
                                                     let on_protocol_action = on_protocol_action;
@@ -1367,13 +1360,14 @@ fn ProtocolFields(
                                                     disabled: draft.ws_message.trim().is_empty(),
                                                     title: "Save frame changes to preset \"{sel.name}\"",
                                                     onclick: {
-                                                        let draft = draft.clone();
                                                         let sel_id = sel.id;
                                                         move |_| {
-                                                            let mut d = draft.clone();
+                                                            let mut d = live_draft.peek().clone();
                                                             if let Some(p) = d.ws_presets.iter_mut().find(|p| p.id == sel_id) {
                                                                 p.message = d.ws_message.clone();
+                                                                live_draft.set(d.clone());
                                                                 on_change.call(d);
+                                                                on_save.call(());
                                                                 save_feedback.set(true);
                                                             }
                                                         }
@@ -1385,18 +1379,17 @@ fn ProtocolFields(
                                                     class: "btn btn-ghost",
                                                     disabled: draft.ws_message.trim().is_empty(),
                                                     title: "Save current frame as new preset",
-                                                    onclick: {
-                                                        let draft = draft.clone();
-                                                        move |_| {
-                                                            let mut d = draft.clone();
-                                                            let name = format!("Preset #{}", d.ws_presets.len() + 1);
-                                                            let new_preset = crate::core::WsPreset::new(name, &d.ws_message);
-                                                            let new_id = new_preset.id;
-                                                            d.ws_presets.push(new_preset);
-                                                            selected_preset_id.set(Some(new_id));
-                                                            on_change.call(d);
-                                                            save_feedback.set(true);
-                                                        }
+                                                    onclick: move |_| {
+                                                        let mut d = live_draft.peek().clone();
+                                                        let name = format!("Preset #{}", d.ws_presets.len() + 1);
+                                                        let new_preset = crate::core::WsPreset::new(name, &d.ws_message);
+                                                        let new_id = new_preset.id;
+                                                        d.ws_presets.push(new_preset);
+                                                        selected_preset_id.set(Some(new_id));
+                                                        live_draft.set(d.clone());
+                                                        on_change.call(d);
+                                                        on_save.call(());
+                                                        save_feedback.set(true);
                                                     },
                                                     if save_feedback() { "Saved ✓" } else { "Save Preset" }
                                                 }
@@ -1464,13 +1457,11 @@ fn ProtocolFields(
                         rows: Some("6"),
                         vars: vars.clone(),
                         syntax: EditorSyntax::Json,
-                        on_change: {
-                            let draft = draft.clone();
-                            move |text: String| {
-                                let mut d = draft.clone();
-                                d.body = text;
-                                on_change.call(d);
-                            }
+                        on_change: move |text: String| {
+                            let mut d = live_draft.peek().clone();
+                            d.body = text;
+                            live_draft.set(d.clone());
+                            on_change.call(d);
                         }
                     }
                 },
@@ -1509,13 +1500,11 @@ fn ProtocolFields(
                         rows: Some("3"),
                         vars: vars.clone(),
                         syntax: EditorSyntax::Plain,
-                        on_change: {
-                            let draft = draft.clone();
-                            move |text: String| {
-                                let mut d = draft.clone();
-                                d.body = text;
-                                on_change.call(d);
-                            }
+                        on_change: move |text: String| {
+                            let mut d = live_draft.peek().clone();
+                            d.body = text;
+                            live_draft.set(d.clone());
+                            on_change.call(d);
                         }
                     }
                     div { class: "kv-actions",
@@ -1619,13 +1608,11 @@ fn ProtocolFields(
                         rows: Some("4"),
                         vars: vars.clone(),
                         syntax: EditorSyntax::Json,
-                        on_change: {
-                            let draft = draft.clone();
-                            move |text: String| {
-                                let mut d = draft.clone();
-                                d.mcp_tool_args_json = text;
-                                on_change.call(d);
-                            }
+                        on_change: move |text: String| {
+                            let mut d = live_draft.peek().clone();
+                            d.mcp_tool_args_json = text;
+                            live_draft.set(d.clone());
+                            on_change.call(d);
                         }
                     }
                     div { class: "kv-actions",
@@ -1701,13 +1688,11 @@ fn ProtocolFields(
                         rows: Some("4"),
                         vars: vars.clone(),
                         syntax: EditorSyntax::Json,
-                        on_change: {
-                            let draft = draft.clone();
-                            move |text: String| {
-                                let mut d = draft.clone();
-                                d.body = text;
-                                on_change.call(d);
-                            }
+                        on_change: move |text: String| {
+                            let mut d = live_draft.peek().clone();
+                            d.body = text;
+                            live_draft.set(d.clone());
+                            on_change.call(d);
                         }
                     }
                     div { class: "kv-actions",
@@ -1790,13 +1775,11 @@ fn ProtocolFields(
                         rows: Some("3"),
                         vars: vars.clone(),
                         syntax: EditorSyntax::Json,
-                        on_change: {
-                            let draft = draft.clone();
-                            move |text: String| {
-                                let mut d = draft.clone();
-                                d.graphql_variables = text;
-                                on_change.call(d);
-                            }
+                        on_change: move |text: String| {
+                            let mut d = live_draft.peek().clone();
+                            d.graphql_variables = text;
+                            live_draft.set(d.clone());
+                            on_change.call(d);
                         }
                     }
                     div { class: "kv-actions",
@@ -1944,6 +1927,10 @@ fn SseWorkbench(
     on_change: EventHandler<RequestDraft>,
     on_protocol_action: EventHandler<String>,
 ) -> Element {
+    let mut live_draft = use_signal(|| draft.clone());
+    if *live_draft.peek() != draft {
+        live_draft.set(draft.clone());
+    }
     let mut max_events = use_signal(|| 40usize);
     let mut timeout_secs = use_signal(|| 20u64);
     let mut event_filter = use_signal(String::new);
@@ -2100,14 +2087,12 @@ fn SseWorkbench(
                         rows: Some("5"),
                         vars: Some(vctx),
                         syntax: EditorSyntax::Json,
-                        on_change: {
-                            let draft = draft.clone();
-                            move |text: String| {
-                                let mut d = draft.clone();
-                                d.body_mode = BodyMode::Raw;
-                                d.body = text;
-                                on_change.call(d);
-                            }
+                        on_change: move |text: String| {
+                            let mut d = live_draft.peek().clone();
+                            d.body_mode = BodyMode::Raw;
+                            d.body = text;
+                            live_draft.set(d.clone());
+                            on_change.call(d);
                         }
                     }
                 }
@@ -2469,6 +2454,10 @@ fn KvEditor(
     let mut show_system_headers = use_signal(|| true);
     let mut ac_target = use_signal(|| None::<HdrAcTarget>);
     let mut ac_selected = use_signal(|| 0usize);
+    let mut live_rows = use_signal(|| rows.clone());
+    if *live_rows.peek() != rows {
+        live_rows.set(rows.clone());
+    }
 
     let proto = protocol.unwrap_or(RequestProtocol::Http);
     let auto_headers = if is_headers {
@@ -2489,17 +2478,15 @@ fn KvEditor(
                 button {
                     class: "btn btn-sm btn-ghost",
                     r#type: "button",
-                    onclick: {
-                        let rows = rows.clone();
-                        move |_| {
-                            if !bulk_mode() {
-                                bulk_text.set(key_values_to_raw(&rows));
-                                bulk_mode.set(true);
-                            } else {
-                                let next = raw_to_key_values(&bulk_text());
-                                on_change.call(next);
-                                bulk_mode.set(false);
-                            }
+                    onclick: move |_| {
+                        if !bulk_mode() {
+                            bulk_text.set(key_values_to_raw(&live_rows.peek()));
+                            bulk_mode.set(true);
+                        } else {
+                            let next = raw_to_key_values(&bulk_text());
+                            live_rows.set(next.clone());
+                            on_change.call(next);
+                            bulk_mode.set(false);
                         }
                     },
                     if bulk_mode() { "Table Edit" } else { "Bulk Edit" }
@@ -2508,17 +2495,15 @@ fn KvEditor(
                     button {
                         class: "btn btn-sm btn-ghost",
                         r#type: "button",
-                        onclick: {
-                            let rows = rows.clone();
-                            move |_| {
-                                let mut next = rows.clone();
-                                if next.last().map(|r| !r.key.is_empty() || !r.value.is_empty()).unwrap_or(true) {
-                                    next.push(KeyValue::new("", ""));
-                                } else {
-                                    next.insert(next.len().saturating_sub(1), KeyValue::new("", ""));
-                                }
-                                on_change.call(next);
+                        onclick: move |_| {
+                            let mut next = live_rows.peek().clone();
+                            if next.last().map(|r| !r.key.is_empty() || !r.value.is_empty()).unwrap_or(true) {
+                                next.push(KeyValue::new("", ""));
+                            } else {
+                                next.insert(next.len().saturating_sub(1), KeyValue::new("", ""));
                             }
+                            live_rows.set(next.clone());
+                            on_change.call(next);
                         },
                         if is_headers { "+ Add Header" } else { "+ Add Row" }
                     }
@@ -2596,20 +2581,18 @@ fn KvEditor(
                                                 r#type: "button",
                                                 title: "Copy default header into editable table to customize",
                                                 disabled: overridden,
-                                                onclick: {
-                                                    let rows = rows.clone();
-                                                    move |_| {
-                                                        let mut next = rows.clone();
-                                                        if !next.iter().any(|r| r.key.trim().eq_ignore_ascii_case(k)) {
-                                                            let pos = if next.last().map(|r| r.key.is_empty() && r.value.is_empty()).unwrap_or(false) {
-                                                                next.len() - 1
-                                                            } else {
-                                                                next.len()
-                                                            };
-                                                            next.insert(pos, KeyValue::new(k, v));
-                                                            ensure_trailing_empty(&mut next);
-                                                            on_change.call(next);
-                                                        }
+                                                onclick: move |_| {
+                                                    let mut next = live_rows.peek().clone();
+                                                    if !next.iter().any(|r| r.key.trim().eq_ignore_ascii_case(k)) {
+                                                        let pos = if next.last().map(|r| r.key.is_empty() && r.value.is_empty()).unwrap_or(false) {
+                                                            next.len() - 1
+                                                        } else {
+                                                            next.len()
+                                                        };
+                                                        next.insert(pos, KeyValue::new(k, v));
+                                                        ensure_trailing_empty(&mut next);
+                                                        live_rows.set(next.clone());
+                                                        on_change.call(next);
                                                     }
                                                 },
                                                 if overridden { "Active" } else { "Override" }
@@ -2647,15 +2630,13 @@ fn KvEditor(
                                                 r#type: "checkbox",
                                                 checked: row.enabled,
                                                 title: if row.enabled { "Disable row" } else { "Enable row" },
-                                                onchange: {
-                                                    let rows = rows.clone();
-                                                    move |evt: Event<FormData>| {
-                                                        let mut next = rows.clone();
-                                                        if let Some(r) = next.get_mut(i) {
-                                                            r.enabled = evt.checked();
-                                                        }
-                                                        on_change.call(next);
+                                                onchange: move |evt: Event<FormData>| {
+                                                    let mut next = live_rows.peek().clone();
+                                                    if let Some(r) = next.get_mut(i) {
+                                                        r.enabled = evt.checked();
                                                     }
+                                                    live_rows.set(next.clone());
+                                                    on_change.call(next);
                                                 }
                                             }
                                         }
@@ -2679,7 +2660,6 @@ fn KvEditor(
                                                 },
                                                 onkeydown: {
                                                     let suggestions = key_suggestions.clone();
-                                                    let rows = rows.clone();
                                                     move |evt: Event<KeyboardData>| {
                                                         if suggestions.is_empty() {
                                                             return;
@@ -2699,11 +2679,12 @@ fn KvEditor(
                                                                     if evt.key() == Key::Enter {
                                                                         evt.prevent_default();
                                                                     }
-                                                                    let mut next = rows.clone();
+                                                                    let mut next = live_rows.peek().clone();
                                                                     if let Some(r) = next.get_mut(i) {
                                                                         r.key = picked.to_string();
                                                                     }
                                                                     ensure_trailing_empty(&mut next);
+                                                                    live_rows.set(next.clone());
                                                                     on_change.call(next);
                                                                     ac_target.set(None);
                                                                 }
@@ -2715,19 +2696,17 @@ fn KvEditor(
                                                         }
                                                     }
                                                 },
-                                                oninput: {
-                                                    let rows = rows.clone();
-                                                    move |evt: Event<FormData>| {
-                                                        let mut next = rows.clone();
-                                                        if let Some(r) = next.get_mut(i) {
-                                                            r.key = evt.value();
-                                                        }
-                                                        ensure_trailing_empty(&mut next);
-                                                        on_change.call(next);
-                                                        if is_headers {
-                                                            ac_target.set(Some(HdrAcTarget::Key(i)));
-                                                            ac_selected.set(0);
-                                                        }
+                                                oninput: move |evt: Event<FormData>| {
+                                                    let mut next = live_rows.peek().clone();
+                                                    if let Some(r) = next.get_mut(i) {
+                                                        r.key = evt.value();
+                                                    }
+                                                    ensure_trailing_empty(&mut next);
+                                                    live_rows.set(next.clone());
+                                                    on_change.call(next);
+                                                    if is_headers {
+                                                        ac_target.set(Some(HdrAcTarget::Key(i)));
+                                                        ac_selected.set(0);
                                                     }
                                                 }
                                             }
@@ -2741,15 +2720,15 @@ fn KvEditor(
                                                             class: if s_idx == cur_ac_sel { "hdr-ac-item active" } else { "hdr-ac-item" },
                                                             r#type: "button",
                                                             onmousedown: {
-                                                                let rows = rows.clone();
                                                                 let picked = (*sug).to_string();
                                                                 move |evt| {
                                                                     evt.prevent_default();
-                                                                    let mut next = rows.clone();
+                                                                    let mut next = live_rows.peek().clone();
                                                                     if let Some(r) = next.get_mut(i) {
                                                                         r.key = picked.clone();
                                                                     }
                                                                     ensure_trailing_empty(&mut next);
+                                                                    live_rows.set(next.clone());
                                                                     on_change.call(next);
                                                                     ac_target.set(None);
                                                                 }
@@ -2782,19 +2761,17 @@ fn KvEditor(
                                                     placeholder: if is_headers { "Value or {{var}}".to_string() } else { String::new() },
                                                     input_id: format!("np-kv-val-{i}"),
                                                     vars: vars.clone(),
-                                                    on_input: {
-                                                        let rows = rows.clone();
-                                                        move |val: String| {
-                                                            let mut next = rows.clone();
-                                                            if let Some(r) = next.get_mut(i) {
-                                                                r.value = val;
-                                                            }
-                                                            ensure_trailing_empty(&mut next);
-                                                            on_change.call(next);
-                                                            if is_headers {
-                                                                ac_target.set(Some(HdrAcTarget::Value(i)));
-                                                                ac_selected.set(0);
-                                                            }
+                                                    on_input: move |val: String| {
+                                                        let mut next = live_rows.peek().clone();
+                                                        if let Some(r) = next.get_mut(i) {
+                                                            r.value = val;
+                                                        }
+                                                        ensure_trailing_empty(&mut next);
+                                                        live_rows.set(next.clone());
+                                                        on_change.call(next);
+                                                        if is_headers {
+                                                            ac_target.set(Some(HdrAcTarget::Value(i)));
+                                                            ac_selected.set(0);
                                                         }
                                                     },
                                                     on_var_edit,
@@ -2827,15 +2804,15 @@ fn KvEditor(
                                                             class: if s_idx == cur_ac_sel { "hdr-ac-item active" } else { "hdr-ac-item" },
                                                             r#type: "button",
                                                             onmousedown: {
-                                                                let rows = rows.clone();
                                                                 let picked = (*sug).to_string();
                                                                 move |evt| {
                                                                     evt.prevent_default();
-                                                                    let mut next = rows.clone();
+                                                                    let mut next = live_rows.peek().clone();
                                                                     if let Some(r) = next.get_mut(i) {
                                                                         r.value = picked.clone();
                                                                     }
                                                                     ensure_trailing_empty(&mut next);
+                                                                    live_rows.set(next.clone());
                                                                     on_change.call(next);
                                                                     ac_target.set(None);
                                                                 }
@@ -2853,17 +2830,15 @@ fn KvEditor(
                                                 class: "kv-delete-btn",
                                                 r#type: "button",
                                                 title: "Delete row",
-                                                onclick: {
-                                                    let rows = rows.clone();
-                                                    move |_| {
-                                                        let mut next = rows.clone();
-                                                        if i < next.len() {
-                                                            next.remove(i);
-                                                        }
-                                                        ensure_trailing_empty(&mut next);
-                                                        on_change.call(next);
-                                                        ac_target.set(None);
+                                                onclick: move |_| {
+                                                    let mut next = live_rows.peek().clone();
+                                                    if i < next.len() {
+                                                        next.remove(i);
                                                     }
+                                                    ensure_trailing_empty(&mut next);
+                                                    live_rows.set(next.clone());
+                                                    on_change.call(next);
+                                                    ac_target.set(None);
                                                 },
                                                 "✕"
                                             }
@@ -2913,6 +2888,28 @@ fn BodyEditor(
     on_var_edit: EventHandler<VarEditEvent>,
     on_change: EventHandler<BodyChangePayload>,
 ) -> Element {
+    let mut live_body = use_signal(|| (
+        mode,
+        body.clone(),
+        binary_path.clone(),
+        urlencoded.clone(),
+        formdata.clone(),
+        graphql_query.clone(),
+        graphql_variables.clone(),
+    ));
+    let incoming_body = (
+        mode,
+        body.clone(),
+        binary_path.clone(),
+        urlencoded.clone(),
+        formdata.clone(),
+        graphql_query.clone(),
+        graphql_variables.clone(),
+    );
+    if *live_body.peek() != incoming_body {
+        live_body.set(incoming_body);
+    }
+
     let mode_str = match mode {
         BodyMode::None => "none",
         BodyMode::Raw => "raw",
@@ -2924,32 +2921,18 @@ fn BodyEditor(
     rsx! {
         select {
             value: "{mode_str}",
-            onchange: {
-                let body = body.clone();
-                let binary_path = binary_path.clone();
-                let urlencoded = urlencoded.clone();
-                let formdata = formdata.clone();
-                let graphql_query = graphql_query.clone();
-                let graphql_variables = graphql_variables.clone();
-                move |evt: Event<FormData>| {
-                    let mode = match evt.value().as_str() {
-                        "raw" => BodyMode::Raw,
-                        "urlencoded" => BodyMode::Urlencoded,
-                        "formdata" => BodyMode::FormData,
-                        "graphql" => BodyMode::Graphql,
-                        "binary" => BodyMode::Binary,
-                        _ => BodyMode::None,
-                    };
-                    on_change.call((
-                        mode,
-                        body.clone(),
-                        binary_path.clone(),
-                        urlencoded.clone(),
-                        formdata.clone(),
-                        graphql_query.clone(),
-                        graphql_variables.clone(),
-                    ));
-                }
+            onchange: move |evt: Event<FormData>| {
+                let mut cur = live_body.peek().clone();
+                cur.0 = match evt.value().as_str() {
+                    "raw" => BodyMode::Raw,
+                    "urlencoded" => BodyMode::Urlencoded,
+                    "formdata" => BodyMode::FormData,
+                    "graphql" => BodyMode::Graphql,
+                    "binary" => BodyMode::Binary,
+                    _ => BodyMode::None,
+                };
+                live_body.set(cur.clone());
+                on_change.call(cur);
             },
             option { value: "none", "none" }
             option { value: "raw", "raw (JSON / text)" }
@@ -2965,25 +2948,12 @@ fn BodyEditor(
                         class: "btn btn-sm btn-ghost",
                         r#type: "button",
                         title: "Format and indent JSON body",
-                        onclick: {
-                            let body = body.clone();
-                            let binary_path = binary_path.clone();
-                            let urlencoded = urlencoded.clone();
-                            let formdata = formdata.clone();
-                            let graphql_query = graphql_query.clone();
-                            let graphql_variables = graphql_variables.clone();
-                            move |_| {
-                                if let Some(pretty) = crate::core::beautify_json_body(&body) {
-                                    on_change.call((
-                                        mode,
-                                        pretty,
-                                        binary_path.clone(),
-                                        urlencoded.clone(),
-                                        formdata.clone(),
-                                        graphql_query.clone(),
-                                        graphql_variables.clone(),
-                                    ));
-                                }
+                        onclick: move |_| {
+                            let mut cur = live_body.peek().clone();
+                            if let Some(pretty) = crate::core::beautify_json_body(&cur.1) {
+                                cur.1 = pretty;
+                                live_body.set(cur.clone());
+                                on_change.call(cur);
                             }
                         },
                         super::icons::ActionIcon { name: "format", size: 15 }
@@ -3012,21 +2982,11 @@ fn BodyEditor(
                 placeholder: "{\"hello\": \"world\"}".to_string(),
                 vars: Some(vars.clone()),
                 syntax: EditorSyntax::Json,
-                on_change: {
-                    let binary_path = binary_path.clone();
-                    let urlencoded = urlencoded.clone();
-                    let formdata = formdata.clone();
-                    let graphql_query = graphql_query.clone();
-                    let graphql_variables = graphql_variables.clone();
-                    move |text: String| on_change.call((
-                        mode,
-                        text,
-                        binary_path.clone(),
-                        urlencoded.clone(),
-                        formdata.clone(),
-                        graphql_query.clone(),
-                        graphql_variables.clone(),
-                    ))
+                on_change: move |text: String| {
+                    let mut cur = live_body.peek().clone();
+                    cur.1 = text;
+                    live_body.set(cur.clone());
+                    on_change.call(cur);
                 },
             }
         } else if mode == BodyMode::Binary {
@@ -3035,44 +2995,24 @@ fn BodyEditor(
                 class: "url-input",
                 value: "{binary_path}",
                 placeholder: "assets/payloads/file.bin or /path/to/file.bin",
-                oninput: {
-                    let body = body.clone();
-                    let urlencoded = urlencoded.clone();
-                    let formdata = formdata.clone();
-                    let graphql_query = graphql_query.clone();
-                    let graphql_variables = graphql_variables.clone();
-                    move |evt| on_change.call((
-                        BodyMode::Binary,
-                        body.clone(),
-                        evt.value(),
-                        urlencoded.clone(),
-                        formdata.clone(),
-                        graphql_query.clone(),
-                        graphql_variables.clone(),
-                    ))
+                oninput: move |evt| {
+                    let mut cur = live_body.peek().clone();
+                    cur.0 = BodyMode::Binary;
+                    cur.2 = evt.value();
+                    live_body.set(cur.clone());
+                    on_change.call(cur);
                 }
             }
             div { class: "btn-group", style: "display: flex; gap: 8px; margin-top: 6px;",
                 button {
                     class: "btn btn-ghost",
-                    onclick: {
-                        let body = body.clone();
-                        let urlencoded = urlencoded.clone();
-                        let formdata = formdata.clone();
-                        let graphql_query = graphql_query.clone();
-                        let graphql_variables = graphql_variables.clone();
-                        move |_| {
-                            if let Some(p) = rfd::FileDialog::new().pick_file() {
-                                on_change.call((
-                                    BodyMode::Binary,
-                                    body.clone(),
-                                    p.display().to_string(),
-                                    urlencoded.clone(),
-                                    formdata.clone(),
-                                    graphql_query.clone(),
-                                    graphql_variables.clone(),
-                                ));
-                            }
+                    onclick: move |_| {
+                        if let Some(p) = rfd::FileDialog::new().pick_file() {
+                            let mut cur = live_body.peek().clone();
+                            cur.0 = BodyMode::Binary;
+                            cur.2 = p.display().to_string();
+                            live_body.set(cur.clone());
+                            on_change.call(cur);
                         }
                     },
                     "Browse…"
@@ -3081,11 +3021,6 @@ fn BodyEditor(
                     class: "btn btn-ghost",
                     title: "Select file and save copy to workspace assets/ directory for git sync",
                     onclick: {
-                        let body = body.clone();
-                        let urlencoded = urlencoded.clone();
-                        let formdata = formdata.clone();
-                        let graphql_query = graphql_query.clone();
-                        let graphql_variables = graphql_variables.clone();
                         let data_root = data_root.clone();
                         move |_| {
                             if let Some(p) = rfd::FileDialog::new().pick_file() {
@@ -3098,15 +3033,11 @@ fn BodyEditor(
                                 } else {
                                     p.display().to_string()
                                 };
-                                on_change.call((
-                                    BodyMode::Binary,
-                                    body.clone(),
-                                    path_str,
-                                    urlencoded.clone(),
-                                    formdata.clone(),
-                                    graphql_query.clone(),
-                                    graphql_variables.clone(),
-                                ));
+                                let mut cur = live_body.peek().clone();
+                                cur.0 = BodyMode::Binary;
+                                cur.2 = path_str;
+                                live_body.set(cur.clone());
+                                on_change.call(cur);
                             }
                         }
                     },
@@ -3118,21 +3049,12 @@ fn BodyEditor(
                 rows: urlencoded.clone(),
                 vars: vars.clone(),
                 on_var_edit,
-                on_change: {
-                    let body = body.clone();
-                    let binary_path = binary_path.clone();
-                    let formdata = formdata.clone();
-                    let graphql_query = graphql_query.clone();
-                    let graphql_variables = graphql_variables.clone();
-                    move |rows| on_change.call((
-                        BodyMode::Urlencoded,
-                        body.clone(),
-                        binary_path.clone(),
-                        rows,
-                        formdata.clone(),
-                        graphql_query.clone(),
-                        graphql_variables.clone(),
-                    ))
+                on_change: move |rows| {
+                    let mut cur = live_body.peek().clone();
+                    cur.0 = BodyMode::Urlencoded;
+                    cur.3 = rows;
+                    live_body.set(cur.clone());
+                    on_change.call(cur);
                 }
             }
         } else if mode == BodyMode::FormData {
@@ -3142,21 +3064,12 @@ fn BodyEditor(
                 vars: vars.clone(),
                 data_root: data_root.clone(),
                 on_var_edit,
-                on_change: {
-                    let body = body.clone();
-                    let binary_path = binary_path.clone();
-                    let urlencoded = urlencoded.clone();
-                    let graphql_query = graphql_query.clone();
-                    let graphql_variables = graphql_variables.clone();
-                    move |rows| on_change.call((
-                        BodyMode::FormData,
-                        body.clone(),
-                        binary_path.clone(),
-                        urlencoded.clone(),
-                        rows,
-                        graphql_query.clone(),
-                        graphql_variables.clone(),
-                    ))
+                on_change: move |rows| {
+                    let mut cur = live_body.peek().clone();
+                    cur.0 = BodyMode::FormData;
+                    cur.4 = rows;
+                    live_body.set(cur.clone());
+                    on_change.call(cur);
                 }
             }
         } else if mode == BodyMode::Graphql {
@@ -3166,21 +3079,12 @@ fn BodyEditor(
                 value: graphql_query.clone(),
                 placeholder: "query {{ viewer {{ login }} }}".to_string(),
                 vars: Some(vars.clone()),
-                on_change: {
-                    let body = body.clone();
-                    let binary_path = binary_path.clone();
-                    let urlencoded = urlencoded.clone();
-                    let formdata = formdata.clone();
-                    let graphql_variables = graphql_variables.clone();
-                    move |text: String| on_change.call((
-                        BodyMode::Graphql,
-                        body.clone(),
-                        binary_path.clone(),
-                        urlencoded.clone(),
-                        formdata.clone(),
-                        text,
-                        graphql_variables.clone(),
-                    ))
+                on_change: move |text: String| {
+                    let mut cur = live_body.peek().clone();
+                    cur.0 = BodyMode::Graphql;
+                    cur.5 = text;
+                    live_body.set(cur.clone());
+                    on_change.call(cur);
                 },
             }
             label { class: "hint", "Variables (JSON)" }
@@ -3189,21 +3093,12 @@ fn BodyEditor(
                 value: graphql_variables.clone(),
                 placeholder: "{}".to_string(),
                 vars: Some(vars.clone()),
-                on_change: {
-                    let body = body.clone();
-                    let binary_path = binary_path.clone();
-                    let urlencoded = urlencoded.clone();
-                    let formdata = formdata.clone();
-                    let graphql_query = graphql_query.clone();
-                    move |text: String| on_change.call((
-                        BodyMode::Graphql,
-                        body.clone(),
-                        binary_path.clone(),
-                        urlencoded.clone(),
-                        formdata.clone(),
-                        graphql_query.clone(),
-                        text,
-                    ))
+                on_change: move |text: String| {
+                    let mut cur = live_body.peek().clone();
+                    cur.0 = BodyMode::Graphql;
+                    cur.6 = text;
+                    live_body.set(cur.clone());
+                    on_change.call(cur);
                 },
             }
         } else {
@@ -3220,6 +3115,10 @@ fn FormDataEditor(
     on_var_edit: EventHandler<VarEditEvent>,
     on_change: EventHandler<Vec<FormDataField>>,
 ) -> Element {
+    let mut live_rows = use_signal(|| rows.clone());
+    if *live_rows.peek() != rows {
+        live_rows.set(rows.clone());
+    }
     rsx! {
         table { class: "kv-table",
             thead {
@@ -3237,16 +3136,14 @@ fn FormDataEditor(
                             input {
                                 r#type: "text",
                                 value: "{row.key}",
-                                oninput: {
-                                    let rows = rows.clone();
-                                    move |evt: Event<FormData>| {
-                                        let mut next = rows.clone();
-                                        if let Some(r) = next.get_mut(i) {
-                                            r.key = evt.value();
-                                        }
-                                        ensure_trailing_form(&mut next);
-                                        on_change.call(next);
+                                oninput: move |evt: Event<FormData>| {
+                                    let mut next = live_rows.peek().clone();
+                                    if let Some(r) = next.get_mut(i) {
+                                        r.key = evt.value();
                                     }
+                                    ensure_trailing_form(&mut next);
+                                    live_rows.set(next.clone());
+                                    on_change.call(next);
                                 }
                             }
                         }
@@ -3261,16 +3158,14 @@ fn FormDataEditor(
                                 },
                                 input_id: format!("np-form-val-{i}"),
                                 vars: vars.clone(),
-                                on_input: {
-                                    let rows = rows.clone();
-                                    move |val: String| {
-                                        let mut next = rows.clone();
-                                        if let Some(r) = next.get_mut(i) {
-                                            r.value = val;
-                                        }
-                                        ensure_trailing_form(&mut next);
-                                        on_change.call(next);
+                                on_input: move |val: String| {
+                                    let mut next = live_rows.peek().clone();
+                                    if let Some(r) = next.get_mut(i) {
+                                        r.value = val;
                                     }
+                                    ensure_trailing_form(&mut next);
+                                    live_rows.set(next.clone());
+                                    on_change.call(next);
                                 },
                                 on_var_edit,
                             }
@@ -3279,15 +3174,13 @@ fn FormDataEditor(
                             input {
                                 r#type: "checkbox",
                                 checked: row.is_file,
-                                onchange: {
-                                    let rows = rows.clone();
-                                    move |evt: Event<FormData>| {
-                                        let mut next = rows.clone();
-                                        if let Some(r) = next.get_mut(i) {
-                                            r.is_file = evt.checked();
-                                        }
-                                        on_change.call(next);
+                                onchange: move |evt: Event<FormData>| {
+                                    let mut next = live_rows.peek().clone();
+                                    if let Some(r) = next.get_mut(i) {
+                                        r.is_file = evt.checked();
                                     }
+                                    live_rows.set(next.clone());
+                                    on_change.call(next);
                                 }
                             }
                         }
@@ -3297,17 +3190,15 @@ fn FormDataEditor(
                                     button {
                                         class: "btn btn-ghost",
                                         title: "Browse local file",
-                                        onclick: {
-                                            let rows = rows.clone();
-                                            move |_| {
-                                                if let Some(p) = rfd::FileDialog::new().pick_file() {
-                                                    let mut next = rows.clone();
-                                                    if let Some(r) = next.get_mut(i) {
-                                                        r.value = p.display().to_string();
-                                                    }
-                                                    ensure_trailing_form(&mut next);
-                                                    on_change.call(next);
+                                        onclick: move |_| {
+                                            if let Some(p) = rfd::FileDialog::new().pick_file() {
+                                                let mut next = live_rows.peek().clone();
+                                                if let Some(r) = next.get_mut(i) {
+                                                    r.value = p.display().to_string();
                                                 }
+                                                ensure_trailing_form(&mut next);
+                                                live_rows.set(next.clone());
+                                                on_change.call(next);
                                             }
                                         },
                                         "Browse…"
@@ -3316,7 +3207,6 @@ fn FormDataEditor(
                                         class: "btn btn-ghost",
                                         title: "Upload & copy file to workspace assets/payloads/ directory for git sync",
                                         onclick: {
-                                            let rows = rows.clone();
                                             let data_root = data_root.clone();
                                             move |_| {
                                                 if let Some(p) = rfd::FileDialog::new().pick_file() {
@@ -3329,11 +3219,12 @@ fn FormDataEditor(
                                                     } else {
                                                         p.display().to_string()
                                                     };
-                                                    let mut next = rows.clone();
+                                                    let mut next = live_rows.peek().clone();
                                                     if let Some(r) = next.get_mut(i) {
                                                         r.value = path_str;
                                                     }
                                                     ensure_trailing_form(&mut next);
+                                                    live_rows.set(next.clone());
                                                     on_change.call(next);
                                                 }
                                             }
@@ -3369,6 +3260,10 @@ pub(crate) fn AuthEditor(
     on_edit_parent_auth: EventHandler<uuid::Uuid>,
     on_change: EventHandler<AuthConfig>,
 ) -> Element {
+    let mut live_auth = use_signal(|| auth.clone());
+    if *live_auth.peek() != auth {
+        live_auth.set(auth.clone());
+    }
     let auth_type = auth.auth_type;
     let vctx_opt = vars.clone();
     let token_ph = if auth_type == AuthType::ApiKey { "API key" } else { "Token (or secret://…)" };
@@ -3394,12 +3289,11 @@ pub(crate) fn AuthEditor(
                     class: "auth-type-select",
                     aria_label: "Authorization type",
                     value: "{auth_type_str(auth_type)}",
-                    onchange: {
-                        let mut a = auth.clone();
-                        move |evt: Event<FormData>| {
-                            a.auth_type = parse_auth(&evt.value());
-                            on_change.call(a.clone());
-                        }
+                    onchange: move |evt: Event<FormData>| {
+                        let mut a = live_auth.peek().clone();
+                        a.auth_type = parse_auth(&evt.value());
+                        live_auth.set(a.clone());
+                        on_change.call(a);
                     },
                     option { value: "inherit", "Inherit from parent" }
                     option { value: "no_auth", "No Auth" }
@@ -3426,12 +3320,11 @@ pub(crate) fn AuthEditor(
                     placeholder: token_ph.to_string(),
                     input_id: "auth-token-input".to_string(),
                     vars: vctx.clone(),
-                    on_input: {
-                        let mut a = auth.clone();
-                        move |val: String| {
-                            a.token = val;
-                            on_change.call(a.clone());
-                        }
+                    on_input: move |val: String| {
+                        let mut a = live_auth.peek().clone();
+                        a.token = val;
+                        live_auth.set(a.clone());
+                        on_change.call(a);
                     },
                     on_var_edit: move |evt| {
                         if let Some(h) = on_var_edit {
@@ -3444,12 +3337,11 @@ pub(crate) fn AuthEditor(
                     r#type: "text",
                     placeholder: if auth_type == AuthType::ApiKey { "API key" } else { "Token (or secret://…)" },
                     value: "{auth.token}",
-                    oninput: {
-                        let mut a = auth.clone();
-                        move |evt: Event<FormData>| {
-                            a.token = evt.value();
-                            on_change.call(a.clone());
-                        }
+                    oninput: move |evt: Event<FormData>| {
+                        let mut a = live_auth.peek().clone();
+                        a.token = evt.value();
+                        live_auth.set(a.clone());
+                        on_change.call(a);
                     }
                 }
             }
@@ -3462,12 +3354,11 @@ pub(crate) fn AuthEditor(
                     placeholder: "Header name (default X-Api-Key)".to_string(),
                     input_id: "auth-apikey-header-input".to_string(),
                     vars: vctx.clone(),
-                    on_input: {
-                        let mut a = auth.clone();
-                        move |val: String| {
-                            a.api_key_header = val;
-                            on_change.call(a.clone());
-                        }
+                    on_input: move |val: String| {
+                        let mut a = live_auth.peek().clone();
+                        a.api_key_header = val;
+                        live_auth.set(a.clone());
+                        on_change.call(a);
                     },
                     on_var_edit: move |evt| {
                         if let Some(h) = on_var_edit {
@@ -3480,12 +3371,11 @@ pub(crate) fn AuthEditor(
                     r#type: "text",
                     placeholder: "Header name (default X-Api-Key)",
                     value: "{auth.api_key_header}",
-                    oninput: {
-                        let mut a = auth.clone();
-                        move |evt: Event<FormData>| {
-                            a.api_key_header = evt.value();
-                            on_change.call(a.clone());
-                        }
+                    oninput: move |evt: Event<FormData>| {
+                        let mut a = live_auth.peek().clone();
+                        a.api_key_header = evt.value();
+                        live_auth.set(a.clone());
+                        on_change.call(a);
                     }
                 }
             }
@@ -3498,12 +3388,11 @@ pub(crate) fn AuthEditor(
                     placeholder: "Username".to_string(),
                     input_id: "auth-username-input".to_string(),
                     vars: vctx.clone(),
-                    on_input: {
-                        let mut a = auth.clone();
-                        move |val: String| {
-                            a.username = val;
-                            on_change.call(a.clone());
-                        }
+                    on_input: move |val: String| {
+                        let mut a = live_auth.peek().clone();
+                        a.username = val;
+                        live_auth.set(a.clone());
+                        on_change.call(a);
                     },
                     on_var_edit: move |evt| {
                         if let Some(h) = on_var_edit {
@@ -3517,12 +3406,11 @@ pub(crate) fn AuthEditor(
                     placeholder: "Password".to_string(),
                     input_id: "auth-password-input".to_string(),
                     vars: vctx.clone(),
-                    on_input: {
-                        let mut a = auth.clone();
-                        move |val: String| {
-                            a.password = val;
-                            on_change.call(a.clone());
-                        }
+                    on_input: move |val: String| {
+                        let mut a = live_auth.peek().clone();
+                        a.password = val;
+                        live_auth.set(a.clone());
+                        on_change.call(a);
                     },
                     on_var_edit: move |evt| {
                         if let Some(h) = on_var_edit {
@@ -3535,24 +3423,22 @@ pub(crate) fn AuthEditor(
                     r#type: "text",
                     placeholder: "Username",
                     value: "{auth.username}",
-                    oninput: {
-                        let mut a = auth.clone();
-                        move |evt: Event<FormData>| {
-                            a.username = evt.value();
-                            on_change.call(a.clone());
-                        }
+                    oninput: move |evt: Event<FormData>| {
+                        let mut a = live_auth.peek().clone();
+                        a.username = evt.value();
+                        live_auth.set(a.clone());
+                        on_change.call(a);
                     }
                 }
                 input {
                     r#type: "password",
                     placeholder: "Password",
                     value: "{auth.password}",
-                    oninput: {
-                        let mut a = auth.clone();
-                        move |evt: Event<FormData>| {
-                            a.password = evt.value();
-                            on_change.call(a.clone());
-                        }
+                    oninput: move |evt: Event<FormData>| {
+                        let mut a = live_auth.peek().clone();
+                        a.password = evt.value();
+                        live_auth.set(a.clone());
+                        on_change.call(a);
                     }
                 }
             }
@@ -3563,17 +3449,16 @@ pub(crate) fn AuthEditor(
                     class: "auth-type-select",
                     aria_label: "OAuth 2.0 Grant Type",
                     value: if auth.oauth2.grant == OAuth2Grant::AuthorizationCode { "auth_code" } else { "client_creds" },
-                onchange: {
-                    let mut a = auth.clone();
-                    move |evt: Event<FormData>| {
+                    onchange: move |evt: Event<FormData>| {
+                        let mut a = live_auth.peek().clone();
                         a.oauth2.grant = if evt.value() == "auth_code" {
                             OAuth2Grant::AuthorizationCode
                         } else {
                             OAuth2Grant::ClientCredentials
                         };
-                        on_change.call(a.clone());
-                    }
-                },
+                        live_auth.set(a.clone());
+                        on_change.call(a);
+                    },
                     option { value: "client_creds", "Client Credentials" }
                     option { value: "auth_code", "Authorization Code" }
                 }
@@ -3586,12 +3471,11 @@ pub(crate) fn AuthEditor(
                     placeholder: "Auth URL".to_string(),
                     input_id: "auth-oauth2-authurl-input".to_string(),
                     vars: vctx.clone(),
-                    on_input: {
-                        let mut a = auth.clone();
-                        move |val: String| {
-                            a.oauth2.auth_url = val;
-                            on_change.call(a.clone());
-                        }
+                    on_input: move |val: String| {
+                        let mut a = live_auth.peek().clone();
+                        a.oauth2.auth_url = val;
+                        live_auth.set(a.clone());
+                        on_change.call(a);
                     },
                     on_var_edit: move |evt| {
                         if let Some(h) = on_var_edit {
@@ -3605,12 +3489,11 @@ pub(crate) fn AuthEditor(
                     placeholder: "Token URL".to_string(),
                     input_id: "auth-oauth2-tokenurl-input".to_string(),
                     vars: vctx.clone(),
-                    on_input: {
-                        let mut a = auth.clone();
-                        move |val: String| {
-                            a.oauth2.token_url = val;
-                            on_change.call(a.clone());
-                        }
+                    on_input: move |val: String| {
+                        let mut a = live_auth.peek().clone();
+                        a.oauth2.token_url = val;
+                        live_auth.set(a.clone());
+                        on_change.call(a);
                     },
                     on_var_edit: move |evt| {
                         if let Some(h) = on_var_edit {
@@ -3624,12 +3507,11 @@ pub(crate) fn AuthEditor(
                     placeholder: "Client ID".to_string(),
                     input_id: "auth-oauth2-clientid-input".to_string(),
                     vars: vctx.clone(),
-                    on_input: {
-                        let mut a = auth.clone();
-                        move |val: String| {
-                            a.oauth2.client_id = val;
-                            on_change.call(a.clone());
-                        }
+                    on_input: move |val: String| {
+                        let mut a = live_auth.peek().clone();
+                        a.oauth2.client_id = val;
+                        live_auth.set(a.clone());
+                        on_change.call(a);
                     },
                     on_var_edit: move |evt| {
                         if let Some(h) = on_var_edit {
@@ -3643,12 +3525,11 @@ pub(crate) fn AuthEditor(
                     placeholder: "Client Secret".to_string(),
                     input_id: "auth-oauth2-clientsecret-input".to_string(),
                     vars: vctx.clone(),
-                    on_input: {
-                        let mut a = auth.clone();
-                        move |val: String| {
-                            a.oauth2.client_secret = val;
-                            on_change.call(a.clone());
-                        }
+                    on_input: move |val: String| {
+                        let mut a = live_auth.peek().clone();
+                        a.oauth2.client_secret = val;
+                        live_auth.set(a.clone());
+                        on_change.call(a);
                     },
                     on_var_edit: move |evt| {
                         if let Some(h) = on_var_edit {
@@ -3662,12 +3543,11 @@ pub(crate) fn AuthEditor(
                     placeholder: "Scope".to_string(),
                     input_id: "auth-oauth2-scope-input".to_string(),
                     vars: vctx.clone(),
-                    on_input: {
-                        let mut a = auth.clone();
-                        move |val: String| {
-                            a.oauth2.scope = val;
-                            on_change.call(a.clone());
-                        }
+                    on_input: move |val: String| {
+                        let mut a = live_auth.peek().clone();
+                        a.oauth2.scope = val;
+                        live_auth.set(a.clone());
+                        on_change.call(a);
                     },
                     on_var_edit: move |evt| {
                         if let Some(h) = on_var_edit {
@@ -3680,60 +3560,55 @@ pub(crate) fn AuthEditor(
                     r#type: "text",
                     placeholder: "Auth URL",
                     value: "{auth.oauth2.auth_url}",
-                    oninput: {
-                        let mut a = auth.clone();
-                        move |evt: Event<FormData>| {
-                            a.oauth2.auth_url = evt.value();
-                            on_change.call(a.clone());
-                        }
+                    oninput: move |evt: Event<FormData>| {
+                        let mut a = live_auth.peek().clone();
+                        a.oauth2.auth_url = evt.value();
+                        live_auth.set(a.clone());
+                        on_change.call(a);
                     }
                 }
                 input {
                     r#type: "text",
                     placeholder: "Token URL",
                     value: "{auth.oauth2.token_url}",
-                    oninput: {
-                        let mut a = auth.clone();
-                        move |evt: Event<FormData>| {
-                            a.oauth2.token_url = evt.value();
-                            on_change.call(a.clone());
-                        }
+                    oninput: move |evt: Event<FormData>| {
+                        let mut a = live_auth.peek().clone();
+                        a.oauth2.token_url = evt.value();
+                        live_auth.set(a.clone());
+                        on_change.call(a);
                     }
                 }
                 input {
                     r#type: "text",
                     placeholder: "Client ID",
                     value: "{auth.oauth2.client_id}",
-                    oninput: {
-                        let mut a = auth.clone();
-                        move |evt: Event<FormData>| {
-                            a.oauth2.client_id = evt.value();
-                            on_change.call(a.clone());
-                        }
+                    oninput: move |evt: Event<FormData>| {
+                        let mut a = live_auth.peek().clone();
+                        a.oauth2.client_id = evt.value();
+                        live_auth.set(a.clone());
+                        on_change.call(a);
                     }
                 }
                 input {
                     r#type: "password",
                     placeholder: "Client Secret",
                     value: "{auth.oauth2.client_secret}",
-                    oninput: {
-                        let mut a = auth.clone();
-                        move |evt: Event<FormData>| {
-                            a.oauth2.client_secret = evt.value();
-                            on_change.call(a.clone());
-                        }
+                    oninput: move |evt: Event<FormData>| {
+                        let mut a = live_auth.peek().clone();
+                        a.oauth2.client_secret = evt.value();
+                        live_auth.set(a.clone());
+                        on_change.call(a);
                     }
                 }
                 input {
                     r#type: "text",
                     placeholder: "Scope",
                     value: "{auth.oauth2.scope}",
-                    oninput: {
-                        let mut a = auth.clone();
-                        move |evt: Event<FormData>| {
-                            a.oauth2.scope = evt.value();
-                            on_change.call(a.clone());
-                        }
+                    oninput: move |evt: Event<FormData>| {
+                        let mut a = live_auth.peek().clone();
+                        a.oauth2.scope = evt.value();
+                        live_auth.set(a.clone());
+                        on_change.call(a);
                     }
                 }
             }
@@ -3741,12 +3616,11 @@ pub(crate) fn AuthEditor(
                 r#type: "text",
                 placeholder: "Redirect URI (auth code)",
                 value: "{auth.oauth2.redirect_uri}",
-                oninput: {
-                    let mut a = auth.clone();
-                    move |evt: Event<FormData>| {
-                        a.oauth2.redirect_uri = evt.value();
-                        on_change.call(a.clone());
-                    }
+                oninput: move |evt: Event<FormData>| {
+                    let mut a = live_auth.peek().clone();
+                    a.oauth2.redirect_uri = evt.value();
+                    live_auth.set(a.clone());
+                    on_change.call(a);
                 }
             }
             p { class: "hint",
@@ -3755,32 +3629,31 @@ pub(crate) fn AuthEditor(
             }
             button {
                 class: "btn btn-ghost",
-                onclick: {
-                    let a = auth.clone();
-                    move |_| {
-                        let a = a.clone();
-                        spawn(async move {
-                            let (tx, rx) = tokio::sync::oneshot::channel();
-                            let mut oauth2_cfg = a.oauth2.clone();
-                            std::thread::spawn(move || {
-                                let res = fetch_oauth2_token(&mut oauth2_cfg);
-                                let _ = tx.send((res, oauth2_cfg));
-                            });
-                            if let Ok((res, updated_oauth2)) = rx.await {
-                                let mut next_auth = a.clone();
-                                match res {
-                                    Ok(()) => {
-                                        next_auth.oauth2 = updated_oauth2;
-                                        on_change.call(next_auth);
-                                    }
-                                    Err(e) => {
-                                        next_auth.oauth2.access_token = format!("ERROR: {e}");
-                                        on_change.call(next_auth);
-                                    }
+                onclick: move |_| {
+                    let a = live_auth.peek().clone();
+                    spawn(async move {
+                        let (tx, rx) = tokio::sync::oneshot::channel();
+                        let mut oauth2_cfg = a.oauth2.clone();
+                        std::thread::spawn(move || {
+                            let res = fetch_oauth2_token(&mut oauth2_cfg);
+                            let _ = tx.send((res, oauth2_cfg));
+                        });
+                        if let Ok((res, updated_oauth2)) = rx.await {
+                            let mut next_auth = live_auth.peek().clone();
+                            match res {
+                                Ok(()) => {
+                                    next_auth.oauth2 = updated_oauth2;
+                                    live_auth.set(next_auth.clone());
+                                    on_change.call(next_auth);
+                                }
+                                Err(e) => {
+                                    next_auth.oauth2.access_token = format!("ERROR: {e}");
+                                    live_auth.set(next_auth.clone());
+                                    on_change.call(next_auth);
                                 }
                             }
-                        });
-                    }
+                        }
+                    });
                 },
                 "Get New Access Token"
             }
@@ -3851,24 +3724,22 @@ pub(crate) fn AuthEditor(
                     r#type: "text",
                     placeholder: "Username (DOMAIN\\user)",
                     value: "{auth.username}",
-                    oninput: {
-                        let mut a = auth.clone();
-                        move |evt: Event<FormData>| {
-                            a.username = evt.value();
-                            on_change.call(a.clone());
-                        }
+                    oninput: move |evt: Event<FormData>| {
+                        let mut a = live_auth.peek().clone();
+                        a.username = evt.value();
+                        live_auth.set(a.clone());
+                        on_change.call(a);
                     }
                 }
                 input {
                     r#type: "password",
                     placeholder: "Password",
                     value: "{auth.password}",
-                    oninput: {
-                        let mut a = auth.clone();
-                        move |evt: Event<FormData>| {
-                            a.password = evt.value();
-                            on_change.call(a.clone());
-                        }
+                    oninput: move |evt: Event<FormData>| {
+                        let mut a = live_auth.peek().clone();
+                        a.password = evt.value();
+                        live_auth.set(a.clone());
+                        on_change.call(a);
                     }
                 }
                 p { class: "hint", "NTLM: Type1 negotiate only (partial — no full 401 handshake)." }
@@ -3883,12 +3754,11 @@ pub(crate) fn AuthEditor(
                         _ => "Key",
                     },
                     value: "{auth.extra.key}",
-                    oninput: {
-                        let mut a = auth.clone();
-                        move |evt: Event<FormData>| {
-                            a.extra.key = evt.value();
-                            on_change.call(a.clone());
-                        }
+                    oninput: move |evt: Event<FormData>| {
+                        let mut a = live_auth.peek().clone();
+                        a.extra.key = evt.value();
+                        live_auth.set(a.clone());
+                        on_change.call(a);
                     }
                 }
                 input {
@@ -3901,12 +3771,11 @@ pub(crate) fn AuthEditor(
                         _ => "Secret",
                     },
                     value: "{auth.extra.secret}",
-                    oninput: {
-                        let mut a = auth.clone();
-                        move |evt: Event<FormData>| {
-                            a.extra.secret = evt.value();
-                            on_change.call(a.clone());
-                        }
+                    oninput: move |evt: Event<FormData>| {
+                        let mut a = live_auth.peek().clone();
+                        a.extra.secret = evt.value();
+                        live_auth.set(a.clone());
+                        on_change.call(a);
                     }
                 }
                 input {
@@ -3918,12 +3787,11 @@ pub(crate) fn AuthEditor(
                         _ => "Token (optional)",
                     },
                     value: "{auth.extra.token}",
-                    oninput: {
-                        let mut a = auth.clone();
-                        move |evt: Event<FormData>| {
-                            a.extra.token = evt.value();
-                            on_change.call(a.clone());
-                        }
+                    oninput: move |evt: Event<FormData>| {
+                        let mut a = live_auth.peek().clone();
+                        a.extra.token = evt.value();
+                        live_auth.set(a.clone());
+                        on_change.call(a);
                     }
                 }
                 if matches!(auth_type, AuthType::Oauth1 | AuthType::EdgeGrid) {
@@ -3935,12 +3803,11 @@ pub(crate) fn AuthEditor(
                             "Host (optional)"
                         },
                         value: "{auth.extra.token_secret}",
-                        oninput: {
-                            let mut a = auth.clone();
-                            move |evt: Event<FormData>| {
-                                a.extra.token_secret = evt.value();
-                                on_change.call(a.clone());
-                            }
+                        oninput: move |evt: Event<FormData>| {
+                            let mut a = live_auth.peek().clone();
+                            a.extra.token_secret = evt.value();
+                            live_auth.set(a.clone());
+                            on_change.call(a);
                         }
                     }
                 }
@@ -3949,24 +3816,22 @@ pub(crate) fn AuthEditor(
                         r#type: "text",
                         placeholder: "Region (us-east-1)",
                         value: "{auth.extra.region}",
-                        oninput: {
-                            let mut a = auth.clone();
-                            move |evt: Event<FormData>| {
-                                a.extra.region = evt.value();
-                                on_change.call(a.clone());
-                            }
+                        oninput: move |evt: Event<FormData>| {
+                            let mut a = live_auth.peek().clone();
+                            a.extra.region = evt.value();
+                            live_auth.set(a.clone());
+                            on_change.call(a);
                         }
                     }
                     input {
                         r#type: "text",
                         placeholder: "Service (execute-api)",
                         value: "{auth.extra.service}",
-                        oninput: {
-                            let mut a = auth.clone();
-                            move |evt: Event<FormData>| {
-                                a.extra.service = evt.value();
-                                on_change.call(a.clone());
-                            }
+                        oninput: move |evt: Event<FormData>| {
+                            let mut a = live_auth.peek().clone();
+                            a.extra.service = evt.value();
+                            live_auth.set(a.clone());
+                            on_change.call(a);
                         }
                     }
                 }
@@ -4029,6 +3894,11 @@ pub(crate) fn ScriptsEditor(
     vars: VariableContext,
     on_change: EventHandler<(String, String)>,
 ) -> Element {
+    let mut live_scripts = use_signal(|| (pre.clone(), test.clone()));
+    let incoming = (pre.clone(), test.clone());
+    if *live_scripts.peek() != incoming {
+        live_scripts.set(incoming);
+    }
     rsx! {
         p { class: "hint",
             "Supported: blitz.variables|environment|collectionVariables|globals (.get/set/unset/has/toObject/clear, replaceIn), vault, cookies (get/set/clear), request (url.getPath, method, headers.upsert, body), response (code/status/responseTime/json/text/headers, to.have.status/jsonBody), test/expect (equal/eql/include/ok/above/below/a/property/not), sendRequest, execution, info, visualizer, console.*, CryptoJS.SHA256/HmacSHA256 (pm & epm aliases supported). require: crypto-js only. No async tests / npm / uvm."
@@ -4039,9 +3909,10 @@ pub(crate) fn ScriptsEditor(
             value: pre.clone(),
             placeholder: "blitz.environment.set(\"baseUrl\", \"https://httpbin.org\");\nconsole.log(\"pre\");".to_string(),
             vars: vars.clone(),
-            on_change: {
-                let test = test.clone();
-                move |text: String| on_change.call((text, test.clone()))
+            on_change: move |text: String| {
+                let (_, cur_test) = live_scripts.peek().clone();
+                live_scripts.set((text.clone(), cur_test.clone()));
+                on_change.call((text, cur_test));
             }
         }
         label { "Tests (post-response)" }
@@ -4049,72 +3920,56 @@ pub(crate) fn ScriptsEditor(
             button {
                 class: "btn btn-ghost",
                 r#type: "button",
-                onclick: {
-                    let pre = pre.clone();
-                    let test = test.clone();
-                    move |_| {
-                        on_change.call((
-                            pre.clone(),
-                            append_script_snippet(
-                                &test,
-                                "blitz.test(\"Status 200\", function () {\n  blitz.response.to.have.status(200);\n});\n",
-                            ),
-                        ))
-                    }
+                onclick: move |_| {
+                    let (cur_pre, cur_test) = live_scripts.peek().clone();
+                    let next_test = append_script_snippet(
+                        &cur_test,
+                        "blitz.test(\"Status 200\", function () {\n  blitz.response.to.have.status(200);\n});\n",
+                    );
+                    live_scripts.set((cur_pre.clone(), next_test.clone()));
+                    on_change.call((cur_pre, next_test));
                 },
                 "Status 200"
             }
             button {
                 class: "btn btn-ghost",
                 r#type: "button",
-                onclick: {
-                    let pre = pre.clone();
-                    let test = test.clone();
-                    move |_| {
-                        on_change.call((
-                            pre.clone(),
-                            append_script_snippet(
-                                &test,
-                                "blitz.test(\"Save token\", function () {\n  var t = blitz.response.json().data.token;\n  blitz.environment.set(\"token\", t);\n  blitz.collectionVariables.set(\"token\", t);\n});\n",
-                            ),
-                        ))
-                    }
+                onclick: move |_| {
+                    let (cur_pre, cur_test) = live_scripts.peek().clone();
+                    let next_test = append_script_snippet(
+                        &cur_test,
+                        "blitz.test(\"Save token\", function () {\n  var t = blitz.response.json().data.token;\n  blitz.environment.set(\"token\", t);\n  blitz.collectionVariables.set(\"token\", t);\n});\n",
+                    );
+                    live_scripts.set((cur_pre.clone(), next_test.clone()));
+                    on_change.call((cur_pre, next_test));
                 },
                 "Save token"
             }
             button {
                 class: "btn btn-ghost",
                 r#type: "button",
-                onclick: {
-                    let pre = pre.clone();
-                    let test = test.clone();
-                    move |_| {
-                        on_change.call((
-                            pre.clone(),
-                            append_script_snippet(
-                                &test,
-                                "blitz.test(\"JSON ok\", function () {\n  blitz.response.to.have.jsonBody();\n  blitz.expect(blitz.response.json()).to.be.ok;\n});\n",
-                            ),
-                        ))
-                    }
+                onclick: move |_| {
+                    let (cur_pre, cur_test) = live_scripts.peek().clone();
+                    let next_test = append_script_snippet(
+                        &cur_test,
+                        "blitz.test(\"JSON ok\", function () {\n  blitz.response.to.have.jsonBody();\n  blitz.expect(blitz.response.json()).to.be.ok;\n});\n",
+                    );
+                    live_scripts.set((cur_pre.clone(), next_test.clone()));
+                    on_change.call((cur_pre, next_test));
                 },
                 "JSON ok"
             }
             button {
                 class: "btn btn-ghost",
                 r#type: "button",
-                onclick: {
-                    let pre = pre.clone();
-                    let test = test.clone();
-                    move |_| {
-                        on_change.call((
-                            pre.clone(),
-                            append_script_snippet(
-                                &test,
-                                "blitz.test(\"Response time < 200ms\", function () {\n  blitz.expect(blitz.response.responseTime).to.be.below(200);\n});\n",
-                            ),
-                        ))
-                    }
+                onclick: move |_| {
+                    let (cur_pre, cur_test) = live_scripts.peek().clone();
+                    let next_test = append_script_snippet(
+                        &cur_test,
+                        "blitz.test(\"Response time < 200ms\", function () {\n  blitz.expect(blitz.response.responseTime).to.be.below(200);\n});\n",
+                    );
+                    live_scripts.set((cur_pre.clone(), next_test.clone()));
+                    on_change.call((cur_pre, next_test));
                 },
                 "< 200ms"
             }
@@ -4124,9 +3979,10 @@ pub(crate) fn ScriptsEditor(
             value: test.clone(),
             placeholder: "blitz.test(\"status ok\", function () {{\n  blitz.expect(blitz.response.code).to.equal(200);\n}});".to_string(),
             vars: vars.clone(),
-            on_change: {
-                let pre = pre.clone();
-                move |text: String| on_change.call((pre.clone(), text))
+            on_change: move |text: String| {
+                let (cur_pre, _) = live_scripts.peek().clone();
+                live_scripts.set((cur_pre.clone(), text.clone()));
+                on_change.call((cur_pre, text));
             }
         }
     }
@@ -4137,32 +3993,32 @@ fn RequestSettingsEditor(
     settings: RequestSettings,
     on_change: EventHandler<RequestSettings>,
 ) -> Element {
+    let mut live_settings = use_signal(|| settings.clone());
+    if *live_settings.peek() != settings {
+        live_settings.set(settings.clone());
+    }
     rsx! {
         div { class: "settings-fields",
             label { "Timeout (ms, 0 = none)" }
             input {
                 r#type: "number",
                 value: "{settings.timeout_ms}",
-                oninput: {
-                    let settings = settings.clone();
-                    move |evt: Event<FormData>| {
-                        let mut s = settings.clone();
-                        s.timeout_ms = evt.value().parse().unwrap_or(30_000);
-                        on_change.call(s);
-                    }
+                oninput: move |evt: Event<FormData>| {
+                    let mut s = live_settings.peek().clone();
+                    s.timeout_ms = evt.value().parse().unwrap_or(30_000);
+                    live_settings.set(s.clone());
+                    on_change.call(s);
                 }
             }
             label { class: "checkbox-row",
                 input {
                     r#type: "checkbox",
                     checked: settings.follow_redirects,
-                    onchange: {
-                        let settings = settings.clone();
-                        move |evt: Event<FormData>| {
-                            let mut s = settings.clone();
-                            s.follow_redirects = evt.checked();
-                            on_change.call(s);
-                        }
+                    onchange: move |evt: Event<FormData>| {
+                        let mut s = live_settings.peek().clone();
+                        s.follow_redirects = evt.checked();
+                        live_settings.set(s.clone());
+                        on_change.call(s);
                     }
                 }
                 " Follow redirects"
@@ -4171,13 +4027,11 @@ fn RequestSettingsEditor(
                 input {
                     r#type: "checkbox",
                     checked: settings.ssl_verify,
-                    onchange: {
-                        let settings = settings.clone();
-                        move |evt: Event<FormData>| {
-                            let mut s = settings.clone();
-                            s.ssl_verify = evt.checked();
-                            on_change.call(s);
-                        }
+                    onchange: move |evt: Event<FormData>| {
+                        let mut s = live_settings.peek().clone();
+                        s.ssl_verify = evt.checked();
+                        live_settings.set(s.clone());
+                        on_change.call(s);
                     }
                 }
                 " SSL certificate verification"

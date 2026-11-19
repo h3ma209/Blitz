@@ -503,10 +503,15 @@ pub fn run_protocol_action(mut st: WorkbenchState, action: String) {
     }
     match action.as_str() {
         "ws_connect" => {
-            if let Ok(mut g) = WS_SESSION.lock() {
-                if let Some(old) = g.take() {
-                    old.close();
-                }
+            let my_epoch = crate::ui::workbench::state::WS_POLL_EPOCH
+                .fetch_add(1, std::sync::atomic::Ordering::SeqCst)
+                + 1;
+            let old_sess = WS_SESSION
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .take();
+            if let Some(old) = old_sess {
+                old.close();
             }
             let vars = st.vars.peek();
             let resolved_url = vars.resolve_string(&req.url);
@@ -557,7 +562,11 @@ pub fn run_protocol_action(mut st: WorkbenchState, action: String) {
                         let mut auto_ping_ticks = 0usize;
                         loop {
                             tokio::time::sleep(Duration::from_millis(150)).await;
-                            if !(st.ws_connected)() {
+                            if crate::ui::workbench::state::WS_POLL_EPOCH
+                                .load(std::sync::atomic::Ordering::SeqCst)
+                                != my_epoch
+                                || !(st.ws_connected)()
+                            {
                                 break;
                             }
                             let (events, timeline, still_open) = {
@@ -672,10 +681,14 @@ pub fn run_protocol_action(mut st: WorkbenchState, action: String) {
             st.ws_auto_ping.set(!curr);
         }
         "ws_disconnect" => {
-            if let Ok(mut g) = WS_SESSION.lock() {
-                if let Some(s) = g.take() {
-                    s.close();
-                }
+            crate::ui::workbench::state::WS_POLL_EPOCH
+                .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            let old_sess = WS_SESSION
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .take();
+            if let Some(s) = old_sess {
+                s.close();
             }
             st.ws_connected.set(false);
             st.log_network("⚡ [WS] Disconnected");

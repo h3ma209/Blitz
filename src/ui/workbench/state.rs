@@ -33,6 +33,7 @@ static SAVE_PENDING: Mutex<SavePending> = Mutex::new(SavePending {
 
 pub static MOCK_HANDLE: Mutex<Option<MockHandle>> = Mutex::new(None);
 pub static WS_SESSION: Mutex<Option<WsSession>> = Mutex::new(None);
+pub(crate) static WS_POLL_EPOCH: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 pub static PROXY_HANDLE: Mutex<Option<CaptureProxyHandle>> = Mutex::new(None);
 static GUI_COLLECTIONS_MTIME: Mutex<Option<(std::path::PathBuf, u128)>> = Mutex::new(None);
 
@@ -386,6 +387,18 @@ impl WorkbenchState {
         self.schedule_save(true, true);
     }
 
+    /// Immediately flush collections + view state to disk, cancelling any pending debounce timer.
+    /// Used for explicit Save (Cmd+S / Save button), Save & Close, and tab close so rapid quit/close never drops edits.
+    pub fn persist_now(&mut self) {
+        {
+            let mut pending = SAVE_PENDING.lock().unwrap_or_else(|e| e.into_inner());
+            pending.gen = pending.gen.wrapping_add(1);
+            pending.cloud = false;
+            pending.collections_dirty = false;
+        }
+        self.write_snapshot(true, true);
+    }
+
     fn schedule_save(&self, with_cloud: bool, collections_dirty: bool) {
         let gen = {
             let mut pending = SAVE_PENDING.lock().unwrap_or_else(|e| e.into_inner());
@@ -643,6 +656,26 @@ impl WorkbenchState {
         prune_response_cache(&mut resp_map, &mut prev_map, open_tabs, active_id);
         self.responses.set(resp_map);
         self.prev_responses.set(prev_map);
+
+        let has_ws_tab = open_tabs
+            .iter()
+            .any(|t| t.protocol == crate::core::RequestProtocol::WebSocket);
+        if !has_ws_tab {
+            WS_POLL_EPOCH.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            let old_ws = WS_SESSION
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .take();
+            if let Some(old) = old_ws {
+                old.close();
+            }
+            if *self.ws_connected.peek() {
+                self.ws_connected.set(false);
+            }
+            if !self.ws_timeline.peek().is_empty() {
+                self.ws_timeline.set(Vec::new());
+            }
+        }
     }
 
     pub fn apply_snapshot(&mut self, snap: AppSnapshot, root: &Path) {
@@ -920,6 +953,14 @@ pub fn prune_response_cache(
 
     // Compact oversized payloads on any non-active entries so dozens of open tabs never pin multi-MB bodies in RAM.
     for (id, view) in responses.iter_mut() {
+        if active_id != Some(*id)
+            && (view.body.len() > IN_MEM_COMPACT_THRESHOLD
+                || view.visualizer_html.len() > IN_MEM_COMPACT_THRESHOLD)
+        {
+            *view = Arc::new(compact_response_for_disk(view));
+        }
+    }
+    for (id, view) in prev_responses.iter_mut() {
         if active_id != Some(*id)
             && (view.body.len() > IN_MEM_COMPACT_THRESHOLD
                 || view.visualizer_html.len() > IN_MEM_COMPACT_THRESHOLD)

@@ -182,7 +182,16 @@ pub fn download_and_verify_update(info: &UpdateInfo) -> Result<PathBuf, String> 
         }
     }
 
-    let out_dir = std::env::temp_dir().join(format!("blitz-update-{tag}"));
+    let safe_tag: String = tag
+        .chars()
+        .filter(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '-' | '_'))
+        .collect();
+    let safe_tag = if safe_tag.is_empty() {
+        "latest"
+    } else {
+        &safe_tag
+    };
+    let out_dir = std::env::temp_dir().join(format!("blitz-update-{safe_tag}"));
     std::fs::create_dir_all(&out_dir).map_err(|e| format!("temp dir: {e}"))?;
     let out_path = out_dir.join(asset);
     std::fs::write(&out_path, &bytes).map_err(|e| format!("write installer: {e}"))?;

@@ -88,20 +88,20 @@ pub fn EnvSelector(
                     "Sync"
                 }
             }
+            span { class: "env-territory-sep", aria_hidden: "true" }
             // Quick Look (Eye) Icon
             button {
-                class: if quick_look_open() { "btn-icon btn-icon-active" } else { "btn-icon" },
+                class: if quick_look_open() { "btn-icon btn-icon-active env-action-icon" } else { "btn-icon env-action-icon" },
                 title: "Environment Quick Look (inspect active & global variables)",
                 aria_label: "Environment Quick Look",
                 onclick: move |_| {
                     menu_open.set(false);
                     quick_look_open.set(!quick_look_open());
                 },
-                ActionIcon { name: "eye", size: 16 }
-                span { "Inspect" }
+                ActionIcon { name: "eye", size: 15 }
             }
             button {
-                class: "btn-icon",
+                class: "btn-icon env-action-icon",
                 title: "Manage environments",
                 aria_label: "Manage environments",
                 onclick: move |_| {
@@ -109,8 +109,7 @@ pub fn EnvSelector(
                     quick_look_open.set(false);
                     on_manage.call(());
                 },
-                ActionIcon { name: "edit", size: 16 }
-                span { "Manage" }
+                ActionIcon { name: "edit", size: 15 }
             }
 
             if quick_look_open() {

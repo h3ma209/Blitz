@@ -18,12 +18,11 @@ pub fn ThemeSelector(theme: UiTheme, on_change: EventHandler<UiTheme>) -> Elemen
                 }
             }
             button {
-                class: if menu_open() { "top-icon top-icon-on" } else { "top-icon" },
+                class: if menu_open() { "top-icon top-icon-only top-icon-on" } else { "top-icon top-icon-only" },
                 title: format!("Theme: {}", theme.label()),
                 aria_label: "Theme",
                 onclick: move |_| menu_open.set(!menu_open()),
                 ActionIcon { name: "theme", size: 17 }
-                span { "Theme" }
             }
             if menu_open() {
                 div { class: "theme-menu",

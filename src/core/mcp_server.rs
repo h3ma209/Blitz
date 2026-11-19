@@ -1907,7 +1907,7 @@ fn execute_mcp_tool_with_store(
                 .get("folder")
                 .and_then(|f| f.as_str())
                 .map(str::trim)
-                .filter(|f| !f.is_empty());
+                .filter(|f| f.split('/').any(|s| !s.trim().is_empty()));
             let req_id_opt = args
                 .get("request_id")
                 .and_then(|r| r.as_str())
@@ -3856,11 +3856,14 @@ fn upsert_folder_path_mut<'a>(items: &'a mut Vec<CollectionItem>, folder_path: &
         }
     } else {
         let mut cur_items = items;
-        let segments: Vec<&str> = folder_path
+        let mut segments: Vec<&str> = folder_path
             .split('/')
             .map(str::trim)
             .filter(|s| !s.is_empty())
             .collect();
+        if segments.is_empty() {
+            segments.push("General");
+        }
         for (idx_seg, seg) in segments.iter().enumerate() {
             let found_idx = cur_items.iter().position(|item| match item {
                 CollectionItem::Folder(f) => f.name.eq_ignore_ascii_case(seg),

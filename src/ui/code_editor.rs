@@ -343,13 +343,21 @@ pub fn MultilineCodeField(
     let mut var_menu = use_signal(|| None::<VarSuggestMenu>);
     let mut js_menu = use_signal(|| None::<JsSuggestMenu>);
 
-    let highlight =
-        vars.is_some() || syntax == EditorSyntax::JavaScript || syntax == EditorSyntax::Json;
-    let mirror_html = match (syntax, vars.as_ref()) {
-        (EditorSyntax::JavaScript, v) => render_js_var_mirror_html(&current_val(), v),
-        (EditorSyntax::Json, v) => super::json_highlight::render_json_var_mirror_html(&current_val(), v),
-        (_, Some(v)) => render_var_mirror_html(&current_val(), v),
-        _ => String::new(),
+    let highlight = (vars.is_some()
+        || syntax == EditorSyntax::JavaScript
+        || syntax == EditorSyntax::Json)
+        && current_val().len() <= super::json_highlight::JSON_PAINT_CAP;
+    let mirror_html = if !highlight {
+        String::new()
+    } else {
+        match (syntax, vars.as_ref()) {
+            (EditorSyntax::JavaScript, v) => render_js_var_mirror_html(&current_val(), v),
+            (EditorSyntax::Json, v) => {
+                super::json_highlight::render_json_var_mirror_html(&current_val(), v)
+            }
+            (_, Some(v)) => render_var_mirror_html(&current_val(), v),
+            _ => String::new(),
+        }
     };
     let ta_class = if highlight {
         format!("{class} var-highlight-input")
@@ -665,7 +673,7 @@ pub fn MultilineCodeField(
                     class: "code-action-btn",
                     r#type: "button",
                     title: "Undo (⌘Z)",
-                    disabled: !history().can_undo(),
+                    disabled: !history.read().can_undo(),
                     onclick: {
                         let id = field_id();
                         let cur = current_val();
@@ -691,7 +699,7 @@ pub fn MultilineCodeField(
                     class: "code-action-btn",
                     r#type: "button",
                     title: "Redo (⌘⇧Z)",
-                    disabled: !history().can_redo(),
+                    disabled: !history.read().can_redo(),
                     onclick: {
                         let id = field_id();
                         let cur = current_val();

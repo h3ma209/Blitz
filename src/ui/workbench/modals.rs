@@ -738,15 +738,18 @@ pub fn WorkbenchModals(
                                             st.active_request_id.set(None);
                                             st.response.set(None);
                                             st.draft.set(RequestDraft::default());
-                                            st.open_tabs.set(tabs);
-                                            st.persist();
+                                            st.open_tabs.set(tabs.clone());
+                                            st.cleanup_closed_tabs(&tabs, None);
+                                            st.persist_now();
                                             st.status_msg.set("tab closed".into());
                                             return;
                                         }
+                                        let mut next_active = Some(cur.id);
                                         if closing_active {
                                             let mut st = st;
                                             let next_idx = if idx < tabs.len() { idx } else { tabs.len() - 1 };
                                             let next = tabs[next_idx].clone();
+                                            next_active = Some(next.id);
                                             st.draft.set(next.clone());
                                             st.active_request_id.set(Some(next.id));
                                             let resp_map = (st.responses)();
@@ -757,8 +760,9 @@ pub fn WorkbenchModals(
                                             }
                                         }
                                         let mut st = st;
-                                        st.open_tabs.set(tabs);
-                                        st.persist();
+                                        st.open_tabs.set(tabs.clone());
+                                        st.cleanup_closed_tabs(&tabs, next_active);
+                                        st.persist_now();
                                         st.status_msg.set("changes discarded".into());
                                     }
                                 },
@@ -776,10 +780,10 @@ pub fn WorkbenchModals(
                                         let owner = save_request_to_collections(&mut cols, active_collection_id(), pd.clone());
                                         collections.set(cols);
                                         active_collection_id.set(Some(owner));
-                                        st.persist();
                                         let mut tabs = (st.open_tabs)();
                                         let cur = (st.draft)();
                                         let Some(idx) = tabs.iter().position(|t| t.id == tid) else {
+                                            st.persist_now();
                                             return;
                                         };
                                         let closing_active = cur.id == tid;
@@ -788,13 +792,17 @@ pub fn WorkbenchModals(
                                             st.active_request_id.set(None);
                                             st.response.set(None);
                                             st.draft.set(RequestDraft::default());
-                                            st.open_tabs.set(tabs);
+                                            st.open_tabs.set(tabs.clone());
+                                            st.cleanup_closed_tabs(&tabs, None);
+                                            st.persist_now();
                                             st.status_msg.set(format!("saved & closed '{}'", pd.name));
                                             return;
                                         }
+                                        let mut next_active = Some(cur.id);
                                         if closing_active {
                                             let next_idx = if idx < tabs.len() { idx } else { tabs.len() - 1 };
                                             let next = tabs[next_idx].clone();
+                                            next_active = Some(next.id);
                                             st.draft.set(next.clone());
                                             st.active_request_id.set(Some(next.id));
                                             let resp_map = (st.responses)();
@@ -804,7 +812,9 @@ pub fn WorkbenchModals(
                                                 st.response.set(None);
                                             }
                                         }
-                                        st.open_tabs.set(tabs);
+                                        st.open_tabs.set(tabs.clone());
+                                        st.cleanup_closed_tabs(&tabs, next_active);
+                                        st.persist_now();
                                         st.status_msg.set(format!("saved & closed '{}'", pd.name));
                                     }
                                 },

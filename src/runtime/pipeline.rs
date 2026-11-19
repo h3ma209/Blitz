@@ -1333,50 +1333,61 @@ pub fn send_request_with_options(
 
     // 6. Post-response / tests: request → folder → collection
     check_cancelled(&opts.cancel)?;
-    let sandbox_resp = SandboxResponse {
-        status,
-        status_text: status_text.clone(),
-        body: body.clone(),
-        headers: resp_headers.clone(),
-        response_time: elapsed_ms as u64,
-    };
-    extras.event_name = "test".into();
-    extras.vault = ctx.vault.entries.clone();
+    let assertion_script = crate::core::assertions_to_script(&draft.assertions);
+    let has_post_scripts = !assertion_script.is_empty()
+        || !draft.test_script.trim().is_empty()
+        || opts.inherited_post.iter().any(|s| !s.trim().is_empty());
+
     let mut test_results: Vec<TestResult> = Vec::new();
     let mut visualizer_html = String::new();
-    let mut run_post = |script: &str, phase: &str| {
-        let tests = run_script_ex(script, phase, ctx, Some(&sandbox_resp), &extras);
-        log.extend(tests.messages.iter().cloned());
-        console.extend(tests.messages.iter().cloned());
-        if let Some(err) = tests.error {
-            log.push(err);
-        }
-        test_results.extend(tests.tests);
-        if !tests.visualizer_html.is_empty() {
-            visualizer_html = tests.visualizer_html;
-        }
-        if let Some(h) = opts.execution.as_mut() {
-            if tests.execution.skip_request {
-                h.skip_request = true;
+    if has_post_scripts {
+        let sandbox_resp = SandboxResponse {
+            status,
+            status_text: status_text.clone(),
+            body: body.clone(),
+            headers: resp_headers.clone(),
+            response_time: elapsed_ms as u64,
+        };
+        extras.event_name = "test".into();
+        extras.vault = ctx.vault.entries.clone();
+        let mut run_post = |script: &str, phase: &str| {
+            let tests = run_script_ex(script, phase, ctx, Some(&sandbox_resp), &extras);
+            log.extend(tests.messages.iter().cloned());
+            console.extend(tests.messages.iter().cloned());
+            if let Some(err) = tests.error {
+                log.push(err);
             }
-            if tests.execution.next_request.is_some() {
-                h.next_request = tests.execution.next_request;
+            test_results.extend(tests.tests);
+            if !tests.visualizer_html.is_empty() {
+                visualizer_html = tests.visualizer_html;
             }
+            if let Some(h) = opts.execution.as_mut() {
+                if tests.execution.skip_request {
+                    h.skip_request = true;
+                }
+                if tests.execution.next_request.is_some() {
+                    h.next_request = tests.execution.next_request;
+                }
+            }
+        };
+        if !assertion_script.is_empty() {
+            run_post(&assertion_script, "assertions");
         }
-    };
-    let assertion_script = crate::core::assertions_to_script(&draft.assertions);
-    if !assertion_script.is_empty() {
-        run_post(&assertion_script, "assertions");
-    }
-    run_post(&draft.test_script, "tests");
-    for (i, script) in opts.inherited_post.iter().enumerate() {
-        run_post(script, &format!("tests/inherited-{i}"));
+        run_post(&draft.test_script, "tests");
+        for (i, script) in opts.inherited_post.iter().enumerate() {
+            run_post(script, &format!("tests/inherited-{i}"));
+        }
     }
 
-    // Fallback visualizer: raw HTML response
-    if visualizer_html.is_empty() {
-        let t = body.trim_start().to_ascii_lowercase();
-        if t.starts_with("<!doctype html") || t.starts_with("<html") {
+    // Fallback visualizer: raw HTML response (avoid 50MB lowercase allocation; cap at 512 KiB)
+    if visualizer_html.is_empty() && body.len() <= 512 * 1024 {
+        let head: String = body
+            .trim_start()
+            .chars()
+            .take(32)
+            .collect::<String>()
+            .to_ascii_lowercase();
+        if head.starts_with("<!doctype html") || head.starts_with("<html") {
             visualizer_html = body.clone();
         }
     }

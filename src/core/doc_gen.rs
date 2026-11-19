@@ -412,7 +412,7 @@ fn collect_endpoints<'a>(
 
 /// Compiles a collection into a standalone interactive Swagger UI HTML file.
 pub fn generate_swagger_ui_html(collection: &Collection) -> Result<String, crate::core::impex::ImpexError> {
-    let openapi_json = crate::core::impex::export_openapi3(collection)?;
+    let openapi_json = crate::core::impex::export_openapi3(collection)?.replace("</", "<\\/");
     let escaped_title = html_escape(&collection.name);
 
     let html = format!(

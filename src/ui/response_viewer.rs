@@ -551,9 +551,17 @@ pub fn ResponseViewer(
                     },
                     RespTab::Raw => {
                         let query = search_query();
+                        let paint_key = resp.body.len();
+                        let off = if paint_off().0 == paint_key { paint_off().1 } else { 0 };
+                        let (start, end) = json_paint_range(&resp.body, off);
+                        let slice = &resp.body[start..end];
+                        let paged = start > 0 || end < paint_key;
                         if !query.is_empty() {
-                            let highlighted = highlight_search_matches(&resp.body, &query);
+                            let highlighted = highlight_search_matches(slice, &query);
                             rsx! {
+                                if paged {
+                                    {paint_controls(paint_key, paint_key, start, end, paint_off)}
+                                }
                                 pre {
                                     class: "response-body",
                                     dangerous_inner_html: "{highlighted}",
@@ -561,11 +569,14 @@ pub fn ResponseViewer(
                             }
                         } else {
                             rsx! {
+                                if paged {
+                                    {paint_controls(paint_key, paint_key, start, end, paint_off)}
+                                }
                                 pre { class: "response-body",
                                     if resp.body.is_empty() && resp.error.is_none() {
                                         "(empty body)"
                                     } else {
-                                        "{resp.body}"
+                                        "{slice}"
                                     }
                                 }
                             }
@@ -757,6 +768,10 @@ pub fn ResponseViewer(
                                 }),
                         };
 
+                        let computed_diff = baseline_data.as_ref().map(|(_, _, _, _, old_body)| {
+                            diff_bodies(old_body, &resp.body)
+                        });
+
                         rsx! {
                             div { class: "response-diff-pane",
                                 div { class: "response-diff-toolbar",
@@ -792,10 +807,9 @@ pub fn ResponseViewer(
                                             }
                                         }
                                     }
-                                    if let Some((_, old_status, _, old_ms, ref old_body)) = baseline_data {
+                                    if let (Some((_, old_status, _, old_ms, _)), Some((_, ref stats))) = (&baseline_data, &computed_diff) {
                                         {
-                                            let (_, stats) = diff_bodies(old_body, &resp.body);
-                                            let status_delta = if old_status == resp.status {
+                                            let status_delta = if *old_status == resp.status {
                                                 format!("Status {}", resp.status)
                                             } else {
                                                 format!("Status {} → {}", old_status, resp.status)
@@ -822,17 +836,18 @@ pub fn ResponseViewer(
                                     }
                                 }
 
-                                if let Some((label, _, _, _, old_body)) = baseline_data {
+                                if let (Some((label, _, _, _, _)), Some((lines, stats))) = (baseline_data, computed_diff) {
                                     {
-                                        let (lines, stats) = diff_bodies(&old_body, &resp.body);
                                         if stats.added == 0 && stats.removed == 0 {
                                             rsx! {
                                                 p { class: "hint", "No differences between {label} and current response (JSON keys normalized)." }
                                             }
                                         } else {
+                                            let total_lines = lines.len();
+                                            let max_diff_lines = 2_000usize;
                                             rsx! {
                                                 div { class: "response-diff-lines",
-                                                    for (idx, line) in lines.into_iter().enumerate() {
+                                                    for (idx, line) in lines.into_iter().take(max_diff_lines).enumerate() {
                                                         match line {
                                                             DiffLine::Same(text) => rsx! {
                                                                 div { key: "{idx}", class: "diff-line diff-line-same",
@@ -853,6 +868,9 @@ pub fn ResponseViewer(
                                                                 }
                                                             },
                                                         }
+                                                    }
+                                                    if total_lines > max_diff_lines {
+                                                        div { class: "hint", style: "padding: 8px;", "… showing first {max_diff_lines} of {total_lines} diff lines" }
                                                     }
                                                 }
                                             }
@@ -895,10 +913,11 @@ pub fn ResponseViewer(
                                         }
                                     }
                                     if render_mode() {
-                                        div {
+                                        iframe {
                                             class: "visualizer-rendered",
-                                            style: "background: #fff; color: #111; padding: 16px; border-radius: 6px; overflow: auto; min-height: 200px;",
-                                            dangerous_inner_html: "{resp.visualizer_html}",
+                                            "sandbox": "",
+                                            srcdoc: "{resp.visualizer_html}",
+                                            style: "width: 100%; min-height: 360px; border: none; border-radius: 6px; background: #fff; color: #111;",
                                         }
                                     } else {
                                         pre { class: "response-body", "{resp.visualizer_html}" }

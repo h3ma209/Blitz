@@ -1,6 +1,6 @@
 [package]
 name = "blitz"
-version = "0.2.15"
+version = "0.2.16"
 edition = "2021"
 description = "Local-first API client (Rust + Dioxus) — ⚡ Blitz"
 license = "MIT"

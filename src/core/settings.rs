@@ -195,20 +195,9 @@ impl UiTheme {
         }
     }
 
-    /// Structural layout family (shared geometry, separate palettes).
+    /// Structural layout family — palette-only theming keeps component geometry invariant.
     pub fn chassis_token(self) -> Option<&'static str> {
-        match self {
-            Self::Linear => Some("chassis-linear"),
-            Self::OneDarkPro
-            | Self::TokyoNight
-            | Self::Dracula
-            | Self::GitHubLight
-            | Self::GitHubDarkHc => Some("chassis-ide"),
-            Self::CatppuccinMocha | Self::Nord | Self::GruvboxDark | Self::SolarizedLight => {
-                Some("chassis-zen")
-            }
-            Self::Spotify => None,
-        }
+        None
     }
 
     /// Human label for Settings dropdown.
@@ -231,7 +220,7 @@ impl UiTheme {
     /// Palette subtitle / description.
     pub fn description(self) -> &'static str {
         match self {
-            Self::Spotify => "Dark glass & Spotify green",
+            Self::Spotify => "Calm charcoal & smooth Spotify green",
             Self::Linear => "Midnight zinc & electric iris",
             Self::OneDarkPro => "Atom charcoal & crisp syntax",
             Self::TokyoNight => "Deep indigo & sapphire neon",
@@ -744,11 +733,9 @@ mod tests {
 
     #[test]
     fn theme_chassis_and_fallback_tokens() {
-        assert_eq!(UiTheme::OneDarkPro.chassis_token(), Some("chassis-ide"));
-        assert_eq!(UiTheme::GitHubLight.chassis_token(), Some("chassis-ide"));
-        assert_eq!(UiTheme::CatppuccinMocha.chassis_token(), Some("chassis-zen"));
-        assert_eq!(UiTheme::Linear.chassis_token(), Some("chassis-linear"));
-        assert_eq!(UiTheme::Spotify.chassis_token(), None);
+        for theme in UiTheme::all() {
+            assert_eq!(theme.chassis_token(), None);
+        }
         assert_eq!(UiTheme::Dracula.class_token(), "theme-dracula");
         assert_eq!(UiTheme::Dracula.label(), "Dracula");
 
@@ -758,7 +745,7 @@ mod tests {
         };
         let tokens = ui_zen.shell_class_tokens();
         assert!(tokens.contains("theme-nord"));
-        assert!(tokens.contains("chassis-zen"));
+        assert!(!tokens.contains("chassis-"));
 
         // Legacy theme keys fall back safely to Spotify
         let legacy: UiSettings = serde_json::from_str(r#"{"theme":"blueprint"}"#).unwrap();

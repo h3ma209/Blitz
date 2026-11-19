@@ -243,7 +243,7 @@ pub fn export_workspace_tree(
         schema_version: 1,
         name: project_name.to_string(),
         default_env: default_env.to_string(),
-        remote: remote.to_string(),
+        remote: super::git::mask_remote_url(remote),
     };
     fs::write(
         blitz.join("project.json"),

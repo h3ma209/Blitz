@@ -614,8 +614,10 @@ blitz.request.toString = pm.request.toString;
     );
 
     // IIFE keeps `var` / `function` off the reused realm. Newline before close so a trailing `//` comment cannot swallow it.
-    // Null out `__np` right after serializing so multi-MB response/request payloads are never pinned in JS_REALM.
-    let full = format!("{prelude}\n(function(){{\n{sanitized_script}\n}})();\nvar __np_out = JSON.stringify(__np);\n__np = null;\n__np_out;");
+    // Strip heavy read-only fields before serializing and null out `__np` inside an IIFE so multi-MB response/request payloads are never pinned in JS_REALM.
+    let full = format!(
+        "{prelude}\n(function(){{\n{sanitized_script}\n}})();\n(function(){{ if (__np) {{ delete __np.response; delete __np.requestBodyRaw; delete __np.requestHeaders; delete __np.iterationData; }} var out = JSON.stringify(__np); __np = null; return out; }})();"
+    );
 
     let eval_result = JS_REALM.with(|ptr| {
         // Exclusive for this call: host callbacks do not re-enter the sandbox.
@@ -743,7 +745,15 @@ fn host_send_request(spec_json: &str) -> String {
                     headers.push((k.to_string(), val.to_string()));
                 }
             }
-            let body = resp.text().unwrap_or_default();
+            let mut body = resp.text().unwrap_or_default();
+            const MAX_SCRIPT_HTTP_BYTES: usize = 2 * 1024 * 1024;
+            if body.len() > MAX_SCRIPT_HTTP_BYTES {
+                let end = (0..=MAX_SCRIPT_HTTP_BYTES)
+                    .rev()
+                    .find(|&i| body.is_char_boundary(i))
+                    .unwrap_or(0);
+                body.truncate(end);
+            }
             let code = body.clone();
             serde_json::json!({
                 "error": null,

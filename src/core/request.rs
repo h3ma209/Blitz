@@ -285,7 +285,7 @@ impl SavedExample {
             status: view.status,
             status_text: view.status_text.clone(),
             headers: view.headers.clone(),
-            body: view.body.clone(),
+            body: cap_persisted_str(&view.body, PERSISTED_BODY_CAP),
         }
     }
 }
@@ -842,7 +842,21 @@ pub fn compact_response_for_disk(view: &ResponseView) -> ResponseView {
         } else {
             view.visualizer_html.clone()
         },
-        sent_headers: view.sent_headers.clone(),
+        sent_headers: view
+            .sent_headers
+            .iter()
+            .map(|(k, v)| {
+                if k.eq_ignore_ascii_case("authorization")
+                    || k.eq_ignore_ascii_case("proxy-authorization")
+                    || k.eq_ignore_ascii_case("cookie")
+                    || k.eq_ignore_ascii_case("x-api-key")
+                {
+                    (k.clone(), "[REDACTED]".to_string())
+                } else {
+                    (k.clone(), v.clone())
+                }
+            })
+            .collect(),
         sent_body: view
             .sent_body
             .as_ref()

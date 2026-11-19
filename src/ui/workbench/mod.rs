@@ -426,7 +426,7 @@ pub fn Workbench() -> Element {
             *slot = cur.clone();
             open_tabs.set(tabs);
         }
-        st.persist();
+        st.persist_now();
         status_msg.set(format!("saved '{}'", cur.name));
         st.notify(format!("Saved '{}'", cur.name), ToastLevel::Success);
     });
@@ -468,7 +468,7 @@ pub fn Workbench() -> Element {
             open_tabs.set(tabs.clone());
             let mut st = st;
             st.cleanup_closed_tabs(&tabs, None);
-            st.persist();
+            st.persist_now();
             status_msg.set("tab closed".into());
             return;
         }
@@ -494,7 +494,7 @@ pub fn Workbench() -> Element {
         open_tabs.set(tabs.clone());
         let mut st = st;
         st.cleanup_closed_tabs(&tabs, next_active);
-        st.persist();
+        st.persist_now();
         status_msg.set("tab closed".into());
     });
 
@@ -1701,21 +1701,33 @@ pub fn Workbench() -> Element {
                     .or_else(|| cols.first());
                 if let Some(c) = col {
                     let html = generate_static_doc_html(c);
-                    let safe_name = c.name.to_lowercase().replace(' ', "-");
+                    let safe_name: String = c
+                        .name
+                        .to_lowercase()
+                        .chars()
+                        .map(|ch| {
+                            if ch.is_ascii_alphanumeric() || ch == '-' || ch == '_' {
+                                ch
+                            } else {
+                                '-'
+                            }
+                        })
+                        .collect();
+                    let filename = format!("{safe_name}-docs.html");
                     let script = format!(
                         r#"
                         const blob = new Blob([{}], {{ type: 'text/html' }});
                         const url = URL.createObjectURL(blob);
                         const a = document.createElement('a');
                         a.href = url;
-                        a.download = '{}-docs.html';
+                        a.download = {};
                         document.body.appendChild(a);
                         a.click();
                         document.body.removeChild(a);
                         URL.revokeObjectURL(url);
                         "#,
                         serde_json::to_string(&html).unwrap_or_else(|_| "\"\"".into()),
-                        safe_name
+                        serde_json::to_string(&filename).unwrap_or_else(|_| "\"docs.html\"".into())
                     );
                     spawn(async move {
                         let _ = document::eval(&script).await;
@@ -1732,21 +1744,34 @@ pub fn Workbench() -> Element {
                 if let Some(c) = col {
                     match generate_swagger_ui_html(c) {
                         Ok(html) => {
-                            let safe_name = c.name.to_lowercase().replace(' ', "-");
+                            let safe_name: String = c
+                                .name
+                                .to_lowercase()
+                                .chars()
+                                .map(|ch| {
+                                    if ch.is_ascii_alphanumeric() || ch == '-' || ch == '_' {
+                                        ch
+                                    } else {
+                                        '-'
+                                    }
+                                })
+                                .collect();
+                            let filename = format!("{safe_name}-swagger.html");
                             let script = format!(
                                 r#"
                                 const blob = new Blob([{}], {{ type: 'text/html' }});
                                 const url = URL.createObjectURL(blob);
                                 const a = document.createElement('a');
                                 a.href = url;
-                                a.download = '{}-swagger.html';
+                                a.download = {};
                                 document.body.appendChild(a);
                                 a.click();
                                 document.body.removeChild(a);
                                 URL.revokeObjectURL(url);
                                 "#,
                                 serde_json::to_string(&html).unwrap_or_else(|_| "\"\"".into()),
-                                safe_name
+                                serde_json::to_string(&filename)
+                                    .unwrap_or_else(|_| "\"swagger.html\"".into())
                             );
                             spawn(async move {
                                 let _ = document::eval(&script).await;
@@ -3729,7 +3754,11 @@ fn log_request_details(
     if let Some(b) = body_str {
         sent.push_str("\nPayload:\n");
         if b.len() > 8192 {
-            sent.push_str(&b[..8192]);
+            let end = (0..=8192.min(b.len()))
+                .rev()
+                .find(|&i| b.is_char_boundary(i))
+                .unwrap_or(0);
+            sent.push_str(&b[..end]);
             sent.push_str("\n... [truncated]");
         } else {
             sent.push_str(&b);
@@ -3762,7 +3791,11 @@ fn log_request_details(
     if !view.body.trim().is_empty() {
         recv.push_str("\nPayload:\n");
         if view.body.len() > 8192 {
-            recv.push_str(&view.body[..8192]);
+            let end = (0..=8192.min(view.body.len()))
+                .rev()
+                .find(|&i| view.body.is_char_boundary(i))
+                .unwrap_or(0);
+            recv.push_str(&view.body[..end]);
             recv.push_str("\n... [truncated]");
         } else {
             recv.push_str(&view.body);
@@ -3835,6 +3868,26 @@ mod tests {
         assert!(lines[1].message.contains("Received Response"));
         assert!(lines[1].message.contains("Status: 200 OK (82 ms)"));
         assert!(lines[1].message.contains(r#"{"id": 42, "name": "bob"}"#));
+    }
+
+    #[test]
+    fn test_log_request_details_multibyte_utf8_over_8k() {
+        let mut lines = Vec::new();
+        let mut req = RequestDraft::default();
+        req.url = "https://api.example.com/utf8".into();
+        req.body_mode = crate::core::BodyMode::Raw;
+        // 3-byte char '─' and 4-byte emoji '🔥' straddling 8192 boundary
+        req.body = "a".repeat(8191) + &"🔥".repeat(100);
+
+        let mut view = ResponseView::error("", vec![]);
+        view.status = 200;
+        view.status_text = "OK".into();
+        view.body = "b".repeat(8190) + &"─".repeat(100);
+
+        log_request_details(&mut lines, &req, &view, false);
+        assert_eq!(lines.len(), 2);
+        assert!(lines[0].message.contains("... [truncated]"));
+        assert!(lines[1].message.contains("... [truncated]"));
     }
 
     #[test]

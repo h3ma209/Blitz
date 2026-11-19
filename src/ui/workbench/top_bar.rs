@@ -811,40 +811,6 @@ pub fn TopBar(st: WorkbenchState) -> Element {
             span { class: "spacer" }
 
             div { class: "top-end",
-                if app_settings().cloud_sync.enabled {
-                    span {
-                        class: "live-chip live-cloud",
-                        title: "{app_settings().cloud_sync.last_status}",
-                        onclick: move |_| cloud_menu_open.set(!cloud_menu_open()),
-                        {
-                            let cs = app_settings().cloud_sync;
-                            let branch = if cs.last_branch.is_empty() {
-                                "cloud".to_string()
-                            } else {
-                                cs.last_branch.clone()
-                            };
-                            let st_str = if cloud_busy() {
-                                "…".to_string()
-                            } else if cs.last_status.is_empty() {
-                                "on".to_string()
-                            } else if cs.last_status.to_lowercase().contains("fail")
-                                || cs.last_status.to_lowercase().contains("error")
-                                || cs.last_status.to_lowercase().contains("conflict")
-                                || cs.last_status.to_lowercase().contains("auth")
-                            {
-                                "err".to_string()
-                            } else if cs.last_status.to_lowercase().contains("push")
-                                || cs.last_status.to_lowercase().contains("synced")
-                                || cs.last_status.to_lowercase().contains("pulled")
-                            {
-                                "ok".to_string()
-                            } else {
-                                "…".to_string()
-                            };
-                            format!("{branch} · {st_str}")
-                        }
-                    }
-                }
                 if mock_port().is_some() || proxy_port().is_some() {
                     span { class: "top-live",
                         if let Some(p) = mock_port() {
@@ -870,14 +836,14 @@ pub fn TopBar(st: WorkbenchState) -> Element {
                 }
                 div { class: "top-nav-cluster",
                     button {
-                        class: if show_team() { "top-icon top-icon-on" } else { "top-icon" },
+                        class: if show_team() { "top-icon top-icon-only top-icon-on" } else { "top-icon top-icon-only" },
                         title: "Team collaboration · Members, recent git commits & edited files",
+                        aria_label: "Team collaboration",
                         disabled: cloud_busy(),
                         onclick: move |_| {
                             open_team_activity(st, true);
                         },
-                        crate::ui::icons::ActionIcon { name: "users", size: 17 }
-                        span { "Team" }
+                        crate::ui::icons::ActionIcon { name: "branch", size: 17 }
                     }
                     button {
                         class: if show_vars() { "top-icon top-icon-on" } else { "top-icon" },
@@ -895,7 +861,7 @@ pub fn TopBar(st: WorkbenchState) -> Element {
                     }
                 }
                 span { class: "top-nav-divider", aria_hidden: "true" }
-                div { class: "top-nav-cluster",
+                div { class: "top-nav-cluster top-env-territory",
                     EnvSelector {
                         environments: environments(),
                         active_id: active_env_id(),
@@ -1000,9 +966,9 @@ pub fn TopBar(st: WorkbenchState) -> Element {
                 }
                 button {
                     class: if show_settings() {
-                        "top-icon top-icon-on"
+                        "top-icon top-icon-only top-icon-on"
                     } else {
-                        "top-icon"
+                        "top-icon top-icon-only"
                     },
                     title: "Settings & preferences",
                     aria_label: "Settings",
@@ -1015,7 +981,6 @@ pub fn TopBar(st: WorkbenchState) -> Element {
                         }
                     },
                     crate::ui::icons::ActionIcon { name: "sliders", size: 17 }
-                    span { "Settings" }
                 }
                 }
             }

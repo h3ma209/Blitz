@@ -41,6 +41,10 @@ pub fn CollectionEditor(
     let mut runner_running = use_signal(|| false);
     let mut runner_report = use_signal(|| None::<RunnerReport>);
     let mut status_toast = use_signal(String::new);
+    let mut live_col = use_signal(|| collection.clone());
+    if *live_col.peek() != collection {
+        live_col.set(collection.clone());
+    }
 
     let col_id = collection.id;
     let col_name = collection.name.clone();
@@ -53,27 +57,23 @@ pub fn CollectionEditor(
                     super::icons::CollectionIconPicker {
                         icon: collection.icon.clone(),
                         color: collection.color.clone(),
-                        on_select: {
-                            let collection = collection.clone();
-                            move |(new_icon, new_color): (Option<String>, Option<String>)| {
-                                let mut c = collection.clone();
-                                c.icon = new_icon;
-                                c.color = new_color;
-                                on_change.call(c);
-                            }
+                        on_select: move |(new_icon, new_color): (Option<String>, Option<String>)| {
+                            let mut c = live_col.peek().clone();
+                            c.icon = new_icon;
+                            c.color = new_color;
+                            live_col.set(c.clone());
+                            on_change.call(c);
                         },
                     }
                     input {
                         class: "col-editor-name-input",
                         value: "{col_name}",
                         placeholder: "Collection name",
-                        oninput: {
-                            let collection = collection.clone();
-                            move |evt: Event<FormData>| {
-                                let mut c = collection.clone();
-                                c.name = evt.value();
-                                on_change.call(c);
-                            }
+                        oninput: move |evt: Event<FormData>| {
+                            let mut c = live_col.peek().clone();
+                            c.name = evt.value();
+                            live_col.set(c.clone());
+                            on_change.call(c);
                         }
                     }
                 }
@@ -128,13 +128,11 @@ pub fn CollectionEditor(
                                 value: collection.description.clone(),
                                 rows: Some("12"),
                                 placeholder: "Describe the API endpoints in this collection...".to_string(),
-                                on_change: {
-                                    let collection = collection.clone();
-                                    move |desc: String| {
-                                        let mut c = collection.clone();
-                                        c.description = desc;
-                                        on_change.call(c);
-                                    }
+                                on_change: move |desc: String| {
+                                    let mut c = live_col.peek().clone();
+                                    c.description = desc;
+                                    live_col.set(c.clone());
+                                    on_change.call(c);
                                 }
                             }
                             label { class: "col-field-label", "Pinned environment" }
@@ -144,20 +142,18 @@ pub fn CollectionEditor(
                             select {
                                 class: "input-select",
                                 value: "{collection.pinned_environment_id.map(|id| id.to_string()).unwrap_or_default()}",
-                                onchange: {
-                                    let collection = collection.clone();
-                                    move |evt| {
-                                        let mut c = collection.clone();
-                                        let val = evt.value();
-                                        c.pinned_environment_id = if val.is_empty() {
-                                            None
-                                        } else if let Ok(id) = Uuid::parse_str(&val) {
-                                            Some(id)
-                                        } else {
-                                            c.pinned_environment_id
-                                        };
-                                        on_change.call(c);
-                                    }
+                                onchange: move |evt| {
+                                    let mut c = live_col.peek().clone();
+                                    let val = evt.value();
+                                    c.pinned_environment_id = if val.is_empty() {
+                                        None
+                                    } else if let Ok(id) = Uuid::parse_str(&val) {
+                                        Some(id)
+                                    } else {
+                                        c.pinned_environment_id
+                                    };
+                                    live_col.set(c.clone());
+                                    on_change.call(c);
                                 },
                                 option { value: "", "None (use global env)" }
                                 for (e_idx, env) in environments.iter().enumerate() {
@@ -178,44 +174,40 @@ pub fn CollectionEditor(
                                 class: "input-text",
                                 value: "{collection.openapi_spec_path}",
                                 placeholder: "/path/to/openapi.yaml",
-                                oninput: {
-                                    let collection = collection.clone();
-                                    move |evt| {
-                                        let mut c = collection.clone();
-                                        c.openapi_spec_path = evt.value();
-                                        on_change.call(c);
-                                    }
+                                oninput: move |evt| {
+                                    let mut c = live_col.peek().clone();
+                                    c.openapi_spec_path = evt.value();
+                                    live_col.set(c.clone());
+                                    on_change.call(c);
                                 }
                             }
                             button {
                                 class: "btn btn-secondary btn-sm",
                                 style: "margin-top: 8px;",
                                 disabled: collection.openapi_spec_path.trim().is_empty(),
-                                onclick: {
-                                    let collection = collection.clone();
-                                    move |_| {
-                                        let path = collection.openapi_spec_path.trim();
-                                        if path.is_empty() {
-                                            return;
-                                        }
-                                        match std::fs::read_to_string(path) {
-                                            Ok(text) => {
-                                                let mut c = collection.clone();
-                                                match reconcile_openapi3_collection(&mut c, &text) {
-                                                    Ok((added, _preserved)) => {
-                                                        mark_collection_spec_synced(&mut c);
-                                                        on_change.call(c);
-                                                        if added > 0 {
-                                                            status_toast.set(format!("synced spec — {added} request(s) added"));
-                                                        } else {
-                                                            status_toast.set("spec in sync".into());
-                                                        }
+                                onclick: move |_| {
+                                    let mut c = live_col.peek().clone();
+                                    let path = c.openapi_spec_path.trim().to_string();
+                                    if path.is_empty() {
+                                        return;
+                                    }
+                                    match std::fs::read_to_string(&path) {
+                                        Ok(text) => {
+                                            match reconcile_openapi3_collection(&mut c, &text) {
+                                                Ok((added, _preserved)) => {
+                                                    mark_collection_spec_synced(&mut c);
+                                                    live_col.set(c.clone());
+                                                    on_change.call(c);
+                                                    if added > 0 {
+                                                        status_toast.set(format!("synced spec — {added} request(s) added"));
+                                                    } else {
+                                                        status_toast.set("spec in sync".into());
                                                     }
-                                                    Err(e) => status_toast.set(format!("openapi sync: {e:?}")),
                                                 }
+                                                Err(e) => status_toast.set(format!("openapi sync: {e:?}")),
                                             }
-                                            Err(e) => status_toast.set(format!("read spec: {e}")),
                                         }
+                                        Err(e) => status_toast.set(format!("read spec: {e}")),
                                     }
                                 },
                                 "Sync from OpenAPI"
@@ -248,36 +240,38 @@ pub fn CollectionEditor(
                                     class: "btn btn-primary",
                                     style: "white-space: nowrap; margin-left: 16px;",
                                     disabled: exporting_docs(),
-                                    onclick: {
-                                        let collection = collection.clone();
-                                        move |_| {
-                                            if exporting_docs() {
-                                                return;
-                                            }
-                                            exporting_docs.set(true);
-                                            let collection = collection.clone();
-                                            spawn(async move {
-                                                let html = crate::core::generate_static_doc_html(&collection);
-                                                let safe_name = collection.name.to_lowercase().replace(' ', "-");
-                                                let script = format!(
-                                                    r#"
-                                                    const blob = new Blob([{}], {{ type: 'text/html' }});
-                                                    const url = URL.createObjectURL(blob);
-                                                    const a = document.createElement('a');
-                                                    a.href = url;
-                                                    a.download = '{}-docs.html';
-                                                    document.body.appendChild(a);
-                                                    a.click();
-                                                    document.body.removeChild(a);
-                                                    URL.revokeObjectURL(url);
-                                                    "#,
-                                                    serde_json::to_string(&html).unwrap_or_else(|_| "\"\"".into()),
-                                                    safe_name
-                                                );
-                                                let _ = document::eval(&script).await;
-                                                exporting_docs.set(false);
-                                            });
+                                    onclick: move |_| {
+                                        if exporting_docs() {
+                                            return;
                                         }
+                                        exporting_docs.set(true);
+                                        let collection = live_col.peek().clone();
+                                        spawn(async move {
+                                            let html = crate::core::generate_static_doc_html(&collection);
+                                            let safe_name: String = collection
+                                                .name
+                                                .chars()
+                                                .map(|ch| if ch.is_ascii_alphanumeric() || ch == '-' || ch == '_' { ch.to_ascii_lowercase() } else { '-' })
+                                                .collect();
+                                            let filename = format!("{safe_name}-docs.html");
+                                            let script = format!(
+                                                r#"
+                                                const blob = new Blob([{}], {{ type: 'text/html' }});
+                                                const url = URL.createObjectURL(blob);
+                                                const a = document.createElement('a');
+                                                a.href = url;
+                                                a.download = {};
+                                                document.body.appendChild(a);
+                                                a.click();
+                                                document.body.removeChild(a);
+                                                URL.revokeObjectURL(url);
+                                                "#,
+                                                serde_json::to_string(&html).unwrap_or_else(|_| "\"\"".into()),
+                                                serde_json::to_string(&filename).unwrap_or_else(|_| "\"docs.html\"".into())
+                                            );
+                                            let _ = document::eval(&script).await;
+                                            exporting_docs.set(false);
+                                        });
                                     },
                                     if exporting_docs() {
                                         Spinner { class: "spinner-sm".to_string() }
@@ -290,37 +284,39 @@ pub fn CollectionEditor(
                                     class: "btn btn-secondary",
                                     style: "white-space: nowrap; margin-left: 8px;",
                                     disabled: exporting_swagger(),
-                                    onclick: {
-                                        let collection = collection.clone();
-                                        move |_| {
-                                            if exporting_swagger() {
-                                                return;
-                                            }
-                                            exporting_swagger.set(true);
-                                            let collection = collection.clone();
-                                            spawn(async move {
-                                                if let Ok(html) = crate::core::generate_swagger_ui_html(&collection) {
-                                                    let safe_name = collection.name.to_lowercase().replace(' ', "-");
-                                                    let script = format!(
-                                                        r#"
-                                                        const blob = new Blob([{}], {{ type: 'text/html' }});
-                                                        const url = URL.createObjectURL(blob);
-                                                        const a = document.createElement('a');
-                                                        a.href = url;
-                                                        a.download = '{}-swagger.html';
-                                                        document.body.appendChild(a);
-                                                        a.click();
-                                                        document.body.removeChild(a);
-                                                        URL.revokeObjectURL(url);
-                                                        "#,
-                                                        serde_json::to_string(&html).unwrap_or_else(|_| "\"\"".into()),
-                                                        safe_name
-                                                    );
-                                                    let _ = document::eval(&script).await;
-                                                }
-                                                exporting_swagger.set(false);
-                                            });
+                                    onclick: move |_| {
+                                        if exporting_swagger() {
+                                            return;
                                         }
+                                        exporting_swagger.set(true);
+                                        let collection = live_col.peek().clone();
+                                        spawn(async move {
+                                            if let Ok(html) = crate::core::generate_swagger_ui_html(&collection) {
+                                                let safe_name: String = collection
+                                                    .name
+                                                    .chars()
+                                                    .map(|ch| if ch.is_ascii_alphanumeric() || ch == '-' || ch == '_' { ch.to_ascii_lowercase() } else { '-' })
+                                                    .collect();
+                                                let filename = format!("{safe_name}-swagger.html");
+                                                let script = format!(
+                                                    r#"
+                                                    const blob = new Blob([{}], {{ type: 'text/html' }});
+                                                    const url = URL.createObjectURL(blob);
+                                                    const a = document.createElement('a');
+                                                    a.href = url;
+                                                    a.download = {};
+                                                    document.body.appendChild(a);
+                                                    a.click();
+                                                    document.body.removeChild(a);
+                                                    URL.revokeObjectURL(url);
+                                                    "#,
+                                                    serde_json::to_string(&html).unwrap_or_else(|_| "\"\"".into()),
+                                                    serde_json::to_string(&filename).unwrap_or_else(|_| "\"swagger.html\"".into())
+                                                );
+                                                let _ = document::eval(&script).await;
+                                            }
+                                            exporting_swagger.set(false);
+                                        });
                                     },
                                     if exporting_swagger() {
                                         Spinner { class: "spinner-sm".to_string() }
@@ -344,13 +340,11 @@ pub fn CollectionEditor(
                                     ancestor_origin: None,
                                     vars: Some(vars.clone()),
                                     on_edit_parent_auth: move |_| {},
-                                    on_change: {
-                                        let collection = collection.clone();
-                                        move |new_auth: AuthConfig| {
-                                            let mut c = collection.clone();
-                                            c.auth = new_auth;
-                                            on_change.call(c);
-                                        }
+                                    on_change: move |new_auth: AuthConfig| {
+                                        let mut c = live_col.peek().clone();
+                                        c.auth = new_auth;
+                                        live_col.set(c.clone());
+                                        on_change.call(c);
                                     }
                                 }
                             }
@@ -366,14 +360,12 @@ pub fn CollectionEditor(
                                 pre: collection.pre_request_script.clone(),
                                 test: collection.test_script.clone(),
                                 vars: vars.clone(),
-                                on_change: {
-                                    let collection = collection.clone();
-                                    move |(pre, test): (String, String)| {
-                                        let mut c = collection.clone();
-                                        c.pre_request_script = pre;
-                                        c.test_script = test;
-                                        on_change.call(c);
-                                    }
+                                on_change: move |(pre, test): (String, String)| {
+                                    let mut c = live_col.peek().clone();
+                                    c.pre_request_script = pre;
+                                    c.test_script = test;
+                                    live_col.set(c.clone());
+                                    on_change.call(c);
                                 }
                             }
                         }
@@ -404,15 +396,13 @@ pub fn CollectionEditor(
                                                         input {
                                                             value: "{k}",
                                                             placeholder: "Key",
-                                                            oninput: {
-                                                                let collection = collection.clone();
-                                                                move |evt: Event<FormData>| {
-                                                                    let mut c = collection.clone();
-                                                                    if let Some(r) = c.variables.get_mut(i) {
-                                                                        r.key = evt.value();
-                                                                    }
-                                                                    on_change.call(c);
+                                                            oninput: move |evt: Event<FormData>| {
+                                                                let mut c = live_col.peek().clone();
+                                                                if let Some(r) = c.variables.get_mut(i) {
+                                                                    r.key = evt.value();
                                                                 }
+                                                                live_col.set(c.clone());
+                                                                on_change.call(c);
                                                             }
                                                         }
                                                     }
@@ -423,15 +413,13 @@ pub fn CollectionEditor(
                                                             placeholder: "Initial value (synced)".to_string(),
                                                             input_id: format!("col-var-{col_id}-{i}"),
                                                             vars: vars.clone(),
-                                                            on_input: {
-                                                                let collection = collection.clone();
-                                                                move |val: String| {
-                                                                    let mut c = collection.clone();
-                                                                    if let Some(r) = c.variables.get_mut(i) {
-                                                                        r.value = val;
-                                                                    }
-                                                                    on_change.call(c);
+                                                            on_input: move |val: String| {
+                                                                let mut c = live_col.peek().clone();
+                                                                if let Some(r) = c.variables.get_mut(i) {
+                                                                    r.value = val;
                                                                 }
+                                                                live_col.set(c.clone());
+                                                                on_change.call(c);
                                                             },
                                                             on_var_edit: move |_| {},
                                                         }
@@ -448,15 +436,13 @@ pub fn CollectionEditor(
                                                         button {
                                                             class: "btn btn-ghost",
                                                             title: "Remove variable",
-                                                            onclick: {
-                                                                let collection = collection.clone();
-                                                                move |_| {
-                                                                    let mut c = collection.clone();
-                                                                    if i < c.variables.len() {
-                                                                        c.variables.remove(i);
-                                                                    }
-                                                                    on_change.call(c);
+                                                            onclick: move |_| {
+                                                                let mut c = live_col.peek().clone();
+                                                                if i < c.variables.len() {
+                                                                    c.variables.remove(i);
                                                                 }
+                                                                live_col.set(c.clone());
+                                                                on_change.call(c);
                                                             },
                                                             "×"
                                                         }
@@ -470,17 +456,15 @@ pub fn CollectionEditor(
                             div { class: "kv-actions", style: "margin-top: 10px;",
                                 button {
                                     class: "btn btn-ghost",
-                                    onclick: {
-                                        let collection = collection.clone();
-                                        move |_| {
-                                            let mut c = collection.clone();
-                                            c.variables.push(KeyValue {
-                                                key: String::new(),
-                                                value: String::new(),
-                                                enabled: true,
-                                            });
-                                            on_change.call(c);
-                                        }
+                                    onclick: move |_| {
+                                        let mut c = live_col.peek().clone();
+                                        c.variables.push(KeyValue {
+                                            key: String::new(),
+                                            value: String::new(),
+                                            enabled: true,
+                                        });
+                                        live_col.set(c.clone());
+                                        on_change.call(c);
                                     },
                                     "+ Add variable"
                                 }

@@ -12,6 +12,10 @@ pub fn AssertionsEditor(
     assertions: Vec<Assertion>,
     on_change: EventHandler<Vec<Assertion>>,
 ) -> Element {
+    let mut live_list = use_signal(|| assertions.clone());
+    if *live_list.peek() != assertions {
+        live_list.set(assertions.clone());
+    }
     let count = assertions.len();
     rsx! {
         p { class: "hint",
@@ -29,25 +33,21 @@ pub fn AssertionsEditor(
                 AssertionRow {
                     key: "{a.id}-{i}",
                     assertion: a.clone(),
-                    on_change: {
-                        let list = assertions.clone();
-                        move |updated: Assertion| {
-                            let mut next = list.clone();
-                            if let Some(slot) = next.get_mut(i) {
-                                *slot = updated;
-                            }
-                            on_change.call(next);
+                    on_change: move |updated: Assertion| {
+                        let mut next = live_list.peek().clone();
+                        if let Some(slot) = next.get_mut(i) {
+                            *slot = updated;
                         }
+                        live_list.set(next.clone());
+                        on_change.call(next);
                     },
-                    on_remove: {
-                        let list = assertions.clone();
-                        move |_| {
-                            let mut next = list.clone();
-                            if i < next.len() {
-                                next.remove(i);
-                            }
-                            on_change.call(next);
+                    on_remove: move |_| {
+                        let mut next = live_list.peek().clone();
+                        if i < next.len() {
+                            next.remove(i);
                         }
+                        live_list.set(next.clone());
+                        on_change.call(next);
                     },
                 }
             }
@@ -58,14 +58,12 @@ pub fn AssertionsEditor(
                 class: "assert-add-select",
                 value: "",
                 title: "Add an assertion",
-                onchange: {
-                    let list = assertions.clone();
-                    move |evt: Event<FormData>| {
-                        if let Some(kind) = AssertionKind::default_for(&evt.value()) {
-                            let mut next = list.clone();
-                            next.push(Assertion::new(kind));
-                            on_change.call(next);
-                        }
+                onchange: move |evt: Event<FormData>| {
+                    if let Some(kind) = AssertionKind::default_for(&evt.value()) {
+                        let mut next = live_list.peek().clone();
+                        next.push(Assertion::new(kind));
+                        live_list.set(next.clone());
+                        on_change.call(next);
                     }
                 },
                 option { value: "", selected: true, "+ Add assertion…" }
