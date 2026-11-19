@@ -1041,7 +1041,8 @@ mod tests {
         assert!(ctx.resolve_string("{{$timestampMs}}").parse::<u64>().is_ok());
         assert!(ctx.resolve_string("{{$randomDomain}}").ends_with(".example.com"));
         assert!(ctx.resolve_string("{{$randomSlug}}").contains('-'));
-        assert!(ctx.resolve_string("{{$randomUserAgent}}").contains("Mozilla/") || ctx.resolve_string("{{$randomUserAgent}}").contains("Blitz-Client/"));
+        let ua = ctx.resolve_string("{{$randomUserAgent}}");
+        assert!(ua.contains("Mozilla/") || ua.contains("Blitz-Client/"), "unexpected UA: {ua}");
         assert_eq!(ctx.resolve_string("{{$randomHexColor}}").len(), 7);
 
         // 6. Autocomplete suggestions include dynamic variables
