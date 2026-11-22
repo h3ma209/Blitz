@@ -441,11 +441,16 @@ fn import_request(item: &Value, folder_hint: Option<&str>) -> Result<RequestDraf
                                 f.get("value").and_then(|v| v.as_str()).unwrap_or("").to_string()
                             };
                             let disabled = f.get("disabled").and_then(|v| v.as_bool()).unwrap_or(false);
+                            let content_type = f
+                                .get("contentType")
+                                .and_then(|v| v.as_str())
+                                .map(|s| s.to_string());
                             Some(FormDataField {
                                 key,
                                 value,
                                 enabled: !disabled,
                                 is_file,
+                                content_type,
                             })
                         })
                         .collect();

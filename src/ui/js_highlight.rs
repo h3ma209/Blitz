@@ -203,6 +203,8 @@ pub fn render_js_var_mirror_html(text: &str, vars: Option<&VariableContext>) -> 
         };
         html.push_str("<span class=\"");
         html.push_str(class);
+        html.push_str("\" data-var-raw=\"");
+        html.push_str(&escape_html(&span.raw));
         html.push_str("\" title=\"");
         html.push_str(&escape_html(&title));
         html.push_str("\">");

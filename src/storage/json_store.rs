@@ -80,11 +80,66 @@ pub struct JsonStore {
 }
 
 impl JsonStore {
-    pub fn open_default() -> Result<Self, StorageError> {
-        let root = dirs::data_dir()
+    pub fn base_data_root() -> PathBuf {
+        dirs::data_dir()
             .unwrap_or_else(|| PathBuf::from("."))
-            .join("blitz");
-        Self::open(root)
+            .join("blitz")
+    }
+
+    pub fn active_session_name() -> Option<String> {
+        std::env::var("BLITZ_SESSION")
+            .ok()
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+    }
+
+    pub fn sanitize_session_slug(name: &str) -> String {
+        let slug: String = name
+            .trim()
+            .chars()
+            .map(|c| {
+                if c.is_ascii_alphanumeric() || c == '-' || c == '_' {
+                    c
+                } else {
+                    '-'
+                }
+            })
+            .collect();
+        let trimmed = slug.trim_matches('-');
+        if trimmed.is_empty() {
+            "session".to_string()
+        } else {
+            trimmed.to_string()
+        }
+    }
+
+    pub fn seed_session_dir_from_base(base_root: &Path, session_root: &Path) -> Result<(), StorageError> {
+        fs::create_dir_all(session_root)?;
+        for file in [
+            "collections.json",
+            "environments.json",
+            "vault.json",
+            "snapshot.json",
+        ] {
+            let src = base_root.join(file);
+            let dst = session_root.join(file);
+            if src.is_file() && !dst.exists() {
+                let _ = fs::copy(&src, &dst);
+            }
+        }
+        Ok(())
+    }
+
+    pub fn open_default() -> Result<Self, StorageError> {
+        let base_root = Self::base_data_root();
+        if let Some(session_name) = Self::active_session_name() {
+            let session_root = base_root
+                .join("sessions")
+                .join(Self::sanitize_session_slug(&session_name));
+            Self::seed_session_dir_from_base(&base_root, &session_root)?;
+            return Self::open(session_root);
+        }
+        Self::open(base_root)
     }
 
     pub fn open_for_settings(settings: &AppSettings) -> Result<Self, StorageError> {
@@ -584,5 +639,28 @@ mod tests {
         assert!(!snap.collections.is_empty());
         assert!(!snap.environments.is_empty());
         let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn session_store_seeds_and_isolates_from_base() {
+        assert_eq!(JsonStore::sanitize_session_slug("Session 2 / User B"), "Session-2---User-B");
+        assert_eq!(JsonStore::sanitize_session_slug("..."), "session");
+
+        let base = temp_root();
+        fs::create_dir_all(&base).unwrap();
+        let sess = base.join("sessions").join("Session-2");
+        fs::write(base.join("collections.json"), "[{\"id\":\"00000000-0000-0000-0000-000000000001\",\"name\":\"BaseCol\",\"description\":\"\",\"items\":[]}]").unwrap();
+        fs::write(base.join("environments.json"), "[]").unwrap();
+
+        JsonStore::seed_session_dir_from_base(&base, &sess).unwrap();
+        assert!(sess.join("collections.json").is_file());
+        assert!(sess.join("environments.json").is_file());
+
+        // Subsequent seed does not clobber session edits
+        fs::write(sess.join("environments.json"), "[{\"custom\":true}]").unwrap();
+        JsonStore::seed_session_dir_from_base(&base, &sess).unwrap();
+        assert_eq!(fs::read_to_string(sess.join("environments.json")).unwrap(), "[{\"custom\":true}]");
+
+        let _ = fs::remove_dir_all(&base);
     }
 }

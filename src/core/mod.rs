@@ -19,6 +19,7 @@ pub mod env_diff;
 pub mod environment;
 pub mod history;
 pub mod impex;
+pub mod import_formats;
 pub mod collection_lint;
 pub mod json_lint;
 pub mod openapi_watch;
@@ -56,7 +57,7 @@ pub use collection::{
     batch_move_items, collapsed_except_expanded, collapsible_tree_ids, collect_all_subtree_ids,
     delete_needs_confirmation, demo_collections, duplicate_across, filter_tree_rows,
     find_request_across, flatten_collections, flatten_collections_filtered,
-    flatten_collections_searchable, folder_child_count,
+    flatten_collections_searchable, folder_child_count, is_internal_mcp_test_collection,
     folder_path_to_request, insert_item_under, is_draft_dirty, item_contains_id, move_item_to, paste_target_parent_id,
     remint_pasted_item, request_tab_display_name, resolve_ancestor_auth, snapshot_tree_item,
     purge_from_trash, remove_across, rename_across, reorder_before, restore_from_trash,
@@ -76,7 +77,7 @@ pub use env_diff::{
 pub use environment::{
     deduplicate_environments_by_id, demo_environments, ensure_default_environments,
     export_environment_json, find_environment, import_environment_json, import_environment_texts,
-    upsert_environments, EnvVar, Environment, DEFAULT_ENV_NAMES,
+    reorder_environments, upsert_environments, EnvVar, Environment, DEFAULT_ENV_NAMES,
 };
 pub use collection_lint::{lint_collections, lint_error_count, LintIssue, LintSeverity};
 pub use history::{push_history, HistoryEntry, HISTORY_MAX};
@@ -89,6 +90,7 @@ pub use impex::{
 pub use json_lint::{beautify_json_body, lint_json_body};
 pub use json_query::{query_json, root_keys, scalar_or_compact_json};
 pub use impex::reconcile_openapi3_collection;
+pub use import_formats::{import_auto_bundle, import_bruno_dir, ImportBundle};
 pub use mock_server::{
     routes_from_collections, save_example_to_request, start_mock, MockHandle,
     MockRoute,
@@ -132,7 +134,7 @@ pub use settings::{
 };
 pub use variables::{
     apply_collection_map, apply_collection_var_edit, apply_env_var_edit, apply_environment_map,
-    apply_var_insert, find_var_at, iter_var_spans,
+    apply_var_insert, find_var_at, iter_var_spans, replace_var_token,
     render_var_highlight_html, snap_to_char_boundary,
     var_insert_context, VarHoverInfo, VarResolveScope, VarSpan, VariableContext, VariableScope,
     VariableSuggestion,

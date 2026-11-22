@@ -11,11 +11,11 @@ use dioxus::prelude::*;
 use crate::core::{
     apply_collection_map, apply_environment_map, batch_move_items, detect_git_conflicts,
     find_environment, find_request_across, generate_snippet_resolved, get_team_activity,
-    import_collection_v21, import_curl, import_har, import_openapi3, limitations_blurb,
-    pull_workspace, purge_from_trash, push_console, push_workspace, restore_from_trash,
-    run_performance_with_cancel, save_request_to_collections, snippet_languages, upsert_collection,
-    valid_move_destinations, Collection, ConsoleLine, Cookie, EnvVar, Environment, KeyValue,
-    RequestDraft, VariableContext,
+    import_auto_bundle, limitations_blurb, pull_workspace, purge_from_trash, push_console,
+    push_workspace, reorder_environments, restore_from_trash, run_performance_with_cancel,
+    save_request_to_collections,
+    snippet_languages, valid_move_destinations, Collection, ConsoleLine, Cookie, EnvVar,
+    Environment, KeyValue, RequestDraft, VariableContext,
 };
 use crate::runtime::{
     run_collection_with_config, RunnerConfig, RunnerProgress, RunnerProgressSnapshot,
@@ -40,6 +40,8 @@ pub fn VarsPage(st: WorkbenchState) -> Element {
     let mut active_env_id = st.active_env_id;
     let mut editing_env_id = st.editing_env_id;
     let mut vars = st.vars;
+    let mut drag_env_idx = use_signal(|| None::<usize>);
+    let mut drop_env_idx = use_signal(|| None::<usize>);
 
     if !show_vars() {
         return rsx! {};
@@ -125,18 +127,65 @@ pub fn VarsPage(st: WorkbenchState) -> Element {
                                     let tier = crate::ui::icons::env_tier(&name);
                                     let is_editing = editing_env_id() == Some(id);
                                     let is_active = active_env_id() == Some(id);
+                                    let is_dragging = drag_env_idx() == Some(e_idx);
+                                    let is_drop_target = drop_env_idx() == Some(e_idx) && !is_dragging;
+                                    let item_class = match (is_editing, is_dragging, is_drop_target) {
+                                        (true, true, _) => "env-sidebar-item active dragging",
+                                        (true, false, true) => "env-sidebar-item active drag-over",
+                                        (true, false, false) => "env-sidebar-item active",
+                                        (false, true, _) => "env-sidebar-item dragging",
+                                        (false, false, true) => "env-sidebar-item drag-over",
+                                        (false, false, false) => "env-sidebar-item",
+                                    };
                                     rsx! {
                                         div {
-                                            key: "{e_idx}-{id}",
-                                            class: if is_editing { "env-sidebar-item active" } else { "env-sidebar-item" },
+                                            key: "{id}",
+                                            class: "{item_class}",
+                                            draggable: true,
                                             style: if let Some(c) = color.as_deref().filter(|s| !s.trim().is_empty()) {
                                                 format!("background: {c}33; border-left: 3px solid {c};")
                                             } else {
                                                 String::new()
                                             },
+                                            ondragstart: move |_| {
+                                                drag_env_idx.set(Some(e_idx));
+                                            },
+                                            ondragover: move |evt| {
+                                                evt.prevent_default();
+                                                if drop_env_idx() != Some(e_idx) {
+                                                    drop_env_idx.set(Some(e_idx));
+                                                }
+                                            },
+                                            ondragleave: move |_| {
+                                                if drop_env_idx() == Some(e_idx) {
+                                                    drop_env_idx.set(None);
+                                                }
+                                            },
+                                            ondrop: move |evt| {
+                                                evt.prevent_default();
+                                                if let Some(from) = drag_env_idx() {
+                                                    let mut envs = environments();
+                                                    if reorder_environments(&mut envs, from, e_idx) {
+                                                        environments.set(envs);
+                                                        let mut st = st;
+                                                        st.persist();
+                                                    }
+                                                }
+                                                drag_env_idx.set(None);
+                                                drop_env_idx.set(None);
+                                            },
+                                            ondragend: move |_| {
+                                                drag_env_idx.set(None);
+                                                drop_env_idx.set(None);
+                                            },
                                             onclick: move |_| {
                                                 editing_env_id.set(Some(id));
                                             },
+                                            span {
+                                                class: "env-drag-handle",
+                                                title: "Drag to reorder",
+                                                "⠿"
+                                            }
                                             crate::ui::icons::EnvIcon { icon, color: color.clone(), tier, size: 15 }
                                             span { class: "env-name-text", "{name}" }
                                             if is_active {
@@ -1593,61 +1642,11 @@ pub fn WorkbenchModals(
                 on_close: move |_| impex_modal.set(None),
                 on_import: move |text: String| {
                     let mut st = st;
-                    let text = text.trim().to_string();
-                    let imported = if text.contains("\"log\"") && text.contains("\"entries\"") {
-                        import_har(&text)
-                    } else if (text.trim_start().starts_with('{')
-                        && (text.contains("\"openapi\"") || text.contains("\"paths\"")))
-                        || (!text.trim_start().starts_with('{')
-                            && (text.contains("openapi:") || text.contains("paths:")))
-                    {
-                        import_openapi3(&text)
-                    } else if text.to_ascii_lowercase().contains("curl ")
-                        || text.to_ascii_lowercase().starts_with("curl")
-                    {
-                        import_curl(&text).map(|d| {
-                            let mut c = Collection::new("cURL import");
-                            c.add_request(d);
-                            c
-                        })
-                    } else {
-                        import_collection_v21(&text)
-                    };
-                    match imported {
-                        Ok(col) => {
-                            let mut cols = collections();
-                            let stats = upsert_collection(&mut cols, col);
-                            let id = stats.collection_id;
-                            let mut v = vars();
-                            if let Some(col_ref) = cols.iter().find(|c| c.id == id) {
-                                v.collection = col_ref.variables_map();
-                            }
-                            vars.set(v);
-                            collections.set(cols.clone());
-                            st.open_tabs.with_mut(|tabs| {
-                                for tab in tabs.iter_mut() {
-                                    if let Some(updated) = cols.iter().find_map(|c| c.find_request(tab.id)) {
-                                        *tab = updated.clone();
-                                    }
-                                }
-                            });
-                            if let Some(active_id) = (st.active_request_id)() {
-                                if let Some(updated) = cols.iter().find_map(|c| c.find_request(active_id)) {
-                                    st.draft.set(updated.clone());
-                                }
-                            }
-                            active_collection_id.set(Some(id));
-                            fold_epoch.set(fold_epoch() + 1);
+                    match import_auto_bundle(&text) {
+                        Ok(bundle) => {
+                            let summary = st.apply_import_bundle(bundle);
                             impex_modal.set(None);
-                            st.persist();
-                            if stats.created_new {
-                                status_msg.set("imported collection".into());
-                            } else {
-                                status_msg.set(format!(
-                                    "updated collection (+{} new, {} updated requests)",
-                                    stats.added_requests, stats.updated_requests
-                                ));
-                            }
+                            status_msg.set(summary);
                         }
                         Err(e) => status_msg.set(format!("import error: {e}")),
                     }
@@ -1869,7 +1868,7 @@ pub fn ImpexDialog(
     let is_import = matches!(modal, ImpexModal::Import { .. });
     let title = match &modal {
         ImpexModal::Import { .. } => {
-            "Import from Postman export (v2.1 JSON / cURL / OpenAPI)".to_string()
+            "Import (Postman / Bruno / Yaak / cURL / OpenAPI / HAR)".to_string()
         }
         ImpexModal::Export { name, .. } => format!("Export: {name}"),
     };

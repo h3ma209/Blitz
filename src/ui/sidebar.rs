@@ -8,7 +8,8 @@ use uuid::Uuid;
 use crate::core::{
     ancestor_ids_for_request, ancestor_ids_for_tree_node, collapsed_except_expanded,
     collection_spec_drift, filter_tree_rows, flatten_collections_filtered,
-    flatten_collections_searchable, paste_target_parent_id, search_highlight_term, Collection,
+    flatten_collections_searchable, is_internal_mcp_test_collection, paste_target_parent_id,
+    search_highlight_term, Collection,
     CollectionSortMode, HistoryEntry, HttpMethod, RequestProtocol, TreeRowKind,
 };
 
@@ -158,7 +159,12 @@ pub fn Sidebar(
     let mut active_sort_mode = use_signal(CollectionSortMode::default);
 
     let rows_memo = use_memo(move || {
-        let cols = collections.read();
+        let cols: Vec<Collection> = collections
+            .read()
+            .iter()
+            .filter(|c| !is_internal_mcp_test_collection(&c.name))
+            .cloned()
+            .collect();
         let query = search();
         if !query.trim().is_empty() {
             // While searching, uncollapse all nodes with empty collapsed set and build search index

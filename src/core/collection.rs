@@ -861,6 +861,14 @@ pub fn collapsed_except_expanded(
         .collect()
 }
 
+/// Returns `true` for internal/synthetic MCP test collections that must not appear in the UI sidebar.
+pub fn is_internal_mcp_test_collection(name: &str) -> bool {
+    let t = name.trim();
+    t.starts_with("__blitz_mcp_")
+        || t.eq_ignore_ascii_case("__mcp_test__")
+        || t.eq_ignore_ascii_case("MCP Test")
+}
+
 /// Walk all collections into indented rows for the sidebar tree.
 pub fn flatten_collections(collections: &[Collection]) -> Vec<TreeRow> {
     flatten_collections_filtered(collections, &std::collections::HashSet::new())

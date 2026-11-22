@@ -5,8 +5,8 @@ use std::time::Duration;
 use dioxus::prelude::*;
 
 use crate::core::{
-    apply_var_insert, find_var_at, render_var_highlight_html, var_insert_context, VarHoverInfo,
-    VarResolveScope, VariableContext, VariableSuggestion,
+    apply_var_insert, find_var_at, render_var_highlight_html, replace_var_token,
+    var_insert_context, VarHoverInfo, VarResolveScope, VariableContext, VariableSuggestion,
 };
 
 use super::var_autocomplete::{
@@ -16,9 +16,9 @@ use super::var_autocomplete::{
 use super::DismissBackdrop;
 
 /// Dwell time: mouse must hover on a variable token before popover appears (prevents rapid cursor flash).
-const HOVER_DWELL_MS: u64 = 160;
+pub(super) const HOVER_DWELL_MS: u64 = 160;
 /// Fast switch dwell when a popover is already visible and pointer moves to another token.
-const HOVER_SWITCH_MS: u64 = 50;
+pub(super) const HOVER_SWITCH_MS: u64 = 50;
 /// Grace window so pointer can travel from token → popover without flicker.
 const DISMISS_GRACE_MS: u64 = 260;
 
@@ -31,17 +31,18 @@ pub enum VarEditEvent {
         scope: VarResolveScope,
         value: String,
     },
-    AddToEnvironment {
+    Create {
         name: String,
+        scope: VarResolveScope,
         value: String,
     },
 }
 
 #[derive(Debug, Clone, PartialEq)]
-struct PopoverState {
-    info: VarHoverInfo,
-    left: f64,
-    top: f64,
+pub(super) struct PopoverState {
+    pub info: VarHoverInfo,
+    pub left: f64,
+    pub top: f64,
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -65,7 +66,7 @@ fn try_open_popover(
 }
 
 /// After grace, close unless value input focused or pointer is over the popover.
-fn schedule_dismiss(
+pub(super) fn schedule_dismiss(
     mut popover: Signal<Option<PopoverState>>,
     mut dismiss_gen: Signal<u64>,
     editing: Signal<bool>,
@@ -84,7 +85,7 @@ fn schedule_dismiss(
     });
 }
 
-fn cancel_dismiss(mut dismiss_gen: Signal<u64>) {
+pub(super) fn cancel_dismiss(mut dismiss_gen: Signal<u64>) {
     dismiss_gen.set(dismiss_gen() + 1);
 }
 
@@ -101,9 +102,9 @@ pub fn VarHoverInput(
     on_var_edit: EventHandler<VarEditEvent>,
 ) -> Element {
     let mut popover = use_signal(|| None::<PopoverState>);
-    let mut draft = use_signal(String::new);
+    let draft = use_signal(String::new);
     let mut editing = use_signal(|| false);
-    let mut over_popover = use_signal(|| false);
+    let over_popover = use_signal(|| false);
     let mut dismiss_gen = use_signal(|| 0u64);
     let mut hover_seq = use_signal(|| 0u64);
     let mut var_suggest = use_signal(|| None::<VarSuggestMenu>);
@@ -347,149 +348,207 @@ pub fn VarHoverInput(
                 }
             }
 
-            if let Some(state) = popover() {
-                {
-                    let info = state.info.clone();
-                    let scope_label = info.scope.label();
-                    let left = state.left;
-                    let top = state.top;
-                    let token = if info.scope == VarResolveScope::Path {
-                        format!(":{}", info.name)
-                    } else {
-                        format!("{{{{{}}}}}", info.name)
-                    };
-                    rsx! {
-                        DismissBackdrop {
-                            z_index: 940,
-                            on_dismiss: move |_| {
-                                dismiss_gen.set(dismiss_gen() + 1);
-                                editing.set(false);
-                                popover.set(None);
-                            },
-                        }
-                        div {
-                            class: "var-popover",
-                            style: "left: {left}px; top: {top}px;",
-                            onmouseenter: move |_| {
-                                over_popover.set(true);
-                                cancel_dismiss(dismiss_gen);
-                            },
-                            onmouseleave: move |_| {
-                                over_popover.set(false);
-                                schedule_dismiss(popover, dismiss_gen, editing, over_popover);
-                            },
-                            onkeydown: {
-                                let info = info.clone();
-                                move |evt: Event<KeyboardData>| {
-                                    match evt.key() {
-                                        Key::Escape => {
-                                            evt.prevent_default();
-                                            dismiss_gen.set(dismiss_gen() + 1);
-                                            editing.set(false);
-                                            popover.set(None);
-                                        }
-                                        Key::Enter => {
-                                            evt.prevent_default();
-                                            let value = draft();
-                                            if info.is_unresolved() {
-                                                on_var_edit.call(VarEditEvent::AddToEnvironment {
-                                                    name: info.name.clone(),
-                                                    value,
-                                                });
-                                            } else {
-                                                on_var_edit.call(VarEditEvent::Save {
-                                                    name: info.name.clone(),
-                                                    raw: info.raw.clone(),
-                                                    scope: info.scope,
-                                                    value,
-                                                });
-                                            }
-                                            editing.set(false);
-                                            popover.set(None);
-                                        }
-                                        _ => {}
-                                    }
-                                }
-                            },
-                            div { class: "var-popover-head",
-                                code { class: "var-popover-name", "{token}" }
-                                span {
-                                    class: if info.is_unresolved() {
-                                        "var-popover-scope unresolved"
-                                    } else {
-                                        "var-popover-scope"
-                                    },
-                                    "{scope_label}"
-                                }
-                            }
-                            if info.is_unresolved() {
-                                p { class: "hint var-popover-hint",
-                                    "Unresolved — add to active environment or dismiss."
-                                }
-                            }
-                            label { class: "hint", "Value" }
-                            input {
-                                class: "var-popover-input",
-                                r#type: "text",
-                                value: "{draft()}",
-                                autofocus: true,
-                                onfocus: move |_| {
-                                    editing.set(true);
-                                    cancel_dismiss(dismiss_gen);
-                                },
-                                onblur: move |_| {
-                                    editing.set(false);
-                                    schedule_dismiss(popover, dismiss_gen, editing, over_popover);
-                                },
-                                oninput: move |evt| draft.set(evt.value()),
-                            }
-                            div { class: "var-popover-actions",
-                                if info.is_unresolved() {
-                                    button {
-                                        class: "btn btn-send",
-                                        onclick: {
-                                            let info = info.clone();
-                                            move |_| {
-                                                on_var_edit.call(VarEditEvent::AddToEnvironment {
-                                                    name: info.name.clone(),
-                                                    value: draft(),
-                                                });
-                                                editing.set(false);
-                                                popover.set(None);
-                                            }
-                                        },
-                                        "Add to environment"
-                                    }
-                                } else {
-                                    button {
-                                        class: "btn btn-send",
-                                        onclick: {
-                                            let info = info.clone();
-                                            move |_| {
-                                                on_var_edit.call(VarEditEvent::Save {
-                                                    name: info.name.clone(),
-                                                    raw: info.raw.clone(),
-                                                    scope: info.scope,
-                                                    value: draft(),
-                                                });
-                                                editing.set(false);
-                                                popover.set(None);
-                                            }
-                                        },
-                                        "Save"
-                                    }
-                                }
-                                button {
-                                    class: "btn btn-ghost",
-                                    onclick: move |_| {
-                                        editing.set(false);
-                                        popover.set(None);
-                                    },
-                                    "Esc"
-                                }
-                            }
+            VarHoverPopover {
+                popover,
+                draft,
+                dismiss_gen,
+                editing,
+                over_popover,
+                on_var_edit,
+                on_replace_token: Some(EventHandler::new({
+                    let value = value.clone();
+                    move |(old_raw, new_raw): (String, String)| {
+                        let updated = replace_var_token(&value, &old_raw, &new_raw);
+                        if updated != value {
+                            on_input.call(updated);
                         }
                     }
+                })),
+            }
+        }
+    }
+}
+
+#[component]
+pub(super) fn VarHoverPopover(
+    mut popover: Signal<Option<PopoverState>>,
+    mut draft: Signal<String>,
+    mut dismiss_gen: Signal<u64>,
+    mut editing: Signal<bool>,
+    mut over_popover: Signal<bool>,
+    on_var_edit: EventHandler<VarEditEvent>,
+    #[props(default)] on_replace_token: Option<EventHandler<(String, String)>>,
+) -> Element {
+    let mut target_scope = use_signal(|| VarResolveScope::Environment);
+    let mut last_raw = use_signal(String::new);
+
+    let Some(state) = popover() else {
+        return rsx! {};
+    };
+    let info = state.info;
+    if *last_raw.peek() != info.raw {
+        last_raw.set(info.raw.clone());
+        let default_scope = if info.raw.starts_with("vault:") {
+            VarResolveScope::Vault
+        } else {
+            VarResolveScope::Environment
+        };
+        target_scope.set(default_scope);
+    }
+    let selected_scope = target_scope();
+    let scope_label = info.scope.label();
+    let left = state.left;
+    let top = state.top;
+    let token = if info.scope == VarResolveScope::Path {
+        format!(":{}", info.name)
+    } else if info.is_unresolved() && selected_scope == VarResolveScope::Vault {
+        format!("{{{{vault:{}}}}}", info.name)
+    } else if info.is_unresolved() {
+        format!("{{{{{}}}}}", info.name)
+    } else {
+        format!("{{{{{}}}}}", info.raw)
+    };
+    let submit_edit = {
+        let info = info.clone();
+        move |value: String| {
+            if info.is_unresolved() {
+                let scope = target_scope();
+                let new_raw = if scope == VarResolveScope::Vault {
+                    format!("vault:{}", info.name)
+                } else {
+                    info.name.clone()
+                };
+                on_var_edit.call(VarEditEvent::Create {
+                    name: info.name.clone(),
+                    scope,
+                    value,
+                });
+                if new_raw != info.raw {
+                    if let Some(ref replace) = on_replace_token {
+                        replace.call((info.raw.clone(), new_raw));
+                    }
+                }
+            } else {
+                on_var_edit.call(VarEditEvent::Save {
+                    name: info.name.clone(),
+                    raw: info.raw.clone(),
+                    scope: info.scope,
+                    value,
+                });
+            }
+            editing.set(false);
+            popover.set(None);
+        }
+    };
+    rsx! {
+        DismissBackdrop {
+            z_index: 940,
+            on_dismiss: move |_| {
+                dismiss_gen.set(dismiss_gen() + 1);
+                editing.set(false);
+                popover.set(None);
+            },
+        }
+        div {
+            class: "var-popover",
+            style: "left: {left}px; top: {top}px;",
+            onmouseenter: move |_| {
+                over_popover.set(true);
+                cancel_dismiss(dismiss_gen);
+            },
+            onmouseleave: move |_| {
+                over_popover.set(false);
+                schedule_dismiss(popover, dismiss_gen, editing, over_popover);
+            },
+            onkeydown: {
+                let mut submit_edit = submit_edit.clone();
+                move |evt: Event<KeyboardData>| {
+                    match evt.key() {
+                        Key::Escape => {
+                            evt.prevent_default();
+                            dismiss_gen.set(dismiss_gen() + 1);
+                            editing.set(false);
+                            popover.set(None);
+                        }
+                        Key::Enter => {
+                            evt.prevent_default();
+                            submit_edit(draft());
+                        }
+                        _ => {}
+                    }
+                }
+            },
+            div { class: "var-popover-head",
+                code { class: "var-popover-name", "{token}" }
+                span {
+                    class: if info.is_unresolved() {
+                        "var-popover-scope unresolved"
+                    } else {
+                        "var-popover-scope"
+                    },
+                    "{scope_label}"
+                }
+            }
+            if info.is_unresolved() {
+                label { class: "hint", "Save to" }
+                div { class: "var-scope-picker",
+                    for (scope_opt, label_str) in [
+                        (VarResolveScope::Environment, "Environment"),
+                        (VarResolveScope::Collection, "Collection"),
+                        (VarResolveScope::Global, "Global"),
+                        (VarResolveScope::Vault, "Vault"),
+                    ] {
+                        button {
+                            key: "{label_str}",
+                            r#type: "button",
+                            class: if selected_scope == scope_opt { "var-scope-pill active" } else { "var-scope-pill" },
+                            onmousedown: move |evt| evt.prevent_default(),
+                            onclick: move |_| {
+                                cancel_dismiss(dismiss_gen);
+                                target_scope.set(scope_opt);
+                            },
+                            "{label_str}"
+                        }
+                    }
+                }
+                if selected_scope == VarResolveScope::Vault && !info.raw.starts_with("vault:") {
+                    p { class: "hint var-popover-hint",
+                        "Will update token to {{{{vault:{info.name}}}}}."
+                    }
+                }
+            }
+            label { class: "hint", "Value" }
+            input {
+                class: "var-popover-input",
+                r#type: "text",
+                value: "{draft()}",
+                autofocus: true,
+                onfocus: move |_| {
+                    editing.set(true);
+                    cancel_dismiss(dismiss_gen);
+                },
+                onblur: move |_| {
+                    editing.set(false);
+                    schedule_dismiss(popover, dismiss_gen, editing, over_popover);
+                },
+                oninput: move |evt| draft.set(evt.value()),
+            }
+            div { class: "var-popover-actions",
+                button {
+                    class: "btn btn-send",
+                    onclick: {
+                        let mut submit_edit = submit_edit;
+                        move |_| submit_edit(draft())
+                    },
+                    if info.is_unresolved() { "Add variable" } else { "Save" }
+                }
+                button {
+                    class: "btn btn-ghost",
+                    onclick: move |_| {
+                        editing.set(false);
+                        popover.set(None);
+                    },
+                    "Esc"
                 }
             }
         }

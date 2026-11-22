@@ -7,7 +7,9 @@
   /* —— Modular type scale (major second 1.125; driven by --fs-base) —— */
   --ratio: 1.125;
   --fs-base: 15px;
+  --fs-input: 14px;
   --fs-editor: 16px;
+  --fs-response: 14px;
   --fs-micro: calc(var(--fs-base) * 10 / 13);
   --fs-caption: calc(var(--fs-base) * 11 / 13);
   --fs-body: var(--fs-base);
@@ -29,58 +31,58 @@
   --font: "Inter", "Segoe UI", system-ui, -apple-system, sans-serif;
   --mono: "JetBrains Mono", "SF Mono", ui-monospace, monospace;
 
-  /* —— Spotify stage (Astryx eye-comfort lifted charcoal & calm emerald) —— */
-  --spot-green: #27b35c;
-  --spot-green-bright: #3bc770;
-  --spot-green-dim: #1e934a;
-  --spot-black: #171a1e;
-  --spot-void: #121417;
-  --spot-elevated: #1f2328;
-  --spot-highlight: #282d34;
-  --spot-muted: #a3adb8;
-  --spot-faint: #7c8692;
+  /* —— Spotify stage (One Dark Pro–calibrated matte charcoal & smooth Spotify green) —— */
+  --spot-green: #26c260;
+  --spot-green-bright: #43d97b;
+  --spot-green-dim: #1ca04d;
+  --spot-black: #202223;
+  --spot-void: #1e2021;
+  --spot-elevated: #26282a;
+  --spot-highlight: #2e3134;
+  --spot-muted: #abb3ae;
+  --spot-faint: #818a85;
 
-  --white: #e6e9ec;
-  --black: #0c0e11;
-  --ink: #e6e9ec;
-  --paper: rgba(23, 26, 30, 0.84);
-  --paper-solid: #1f2328;
-  --paper-dim: #171a1e;
-  --paper-mute: #1c2025;
-  --hairline: rgba(255, 255, 255, 0.065);
-  --rule: rgba(255, 255, 255, 0.11);
-  --line: rgba(255, 255, 255, 0.10);
-  --line-strong: rgba(255, 255, 255, 0.17);
-  --gray-1: #1a1e23;
-  --gray-2: #242930;
-  --gray-3: #363c45;
-  --gray-4: #6d7682;
-  --gray-5: #a3adb8;
-  --gray-6: #d6dce2;
+  --white: #e6e9e7;
+  --black: #111314;
+  --ink: #e6e9e7;
+  --paper: rgba(38, 40, 42, 0.90);
+  --paper-solid: #26282a;
+  --paper-dim: #202223;
+  --paper-mute: #2e3134;
+  --hairline: rgba(205, 214, 208, 0.08);
+  --rule: rgba(205, 214, 208, 0.14);
+  --line: rgba(205, 214, 208, 0.14);
+  --line-strong: rgba(205, 214, 208, 0.25);
+  --gray-1: #202223;
+  --gray-2: #2e3134;
+  --gray-3: #3d4245;
+  --gray-4: #68706b;
+  --gray-5: #abb3ae;
+  --gray-6: #dde2df;
 
   /* Surface hierarchy — 4 distinct depth layers */
-  --surface-base: #121417;       /* Base app canvas */
-  --surface-panel: #171a1e;      /* Sidebars, headers, bottom docks */
-  --surface-editor: #14171b;     /* Editors, URL input, textareas */
-  --surface-raised: #1f2328;     /* Raised cards, active tabs, modals */
-  --surface-border: rgba(255, 255, 255, 0.075);
+  --surface-base: #1e2021;       /* Base app canvas */
+  --surface-panel: #202223;      /* Sidebars, headers, bottom docks */
+  --surface-editor: #26282a;     /* Editors, URL stage, response stage */
+  --surface-raised: #2e3134;     /* Raised cards, active tabs, modals */
+  --surface-border: rgba(205, 214, 208, 0.14);
 
   --bg: var(--surface-base);
   --bg-panel: var(--surface-panel);
   --bg-elevated: var(--surface-raised);
-  --bg-input: var(--surface-editor);
-  --bg-hover: rgba(255, 255, 255, 0.05);
-  --bg-active: rgba(39, 179, 92, 0.14);
+  --bg-input: #1b1d1e;
+  --bg-hover: rgba(205, 214, 208, 0.08);
+  --bg-active: rgba(38, 194, 96, 0.17);
   --border: var(--surface-border);
-  --border-strong: rgba(255, 255, 255, 0.16);
+  --border-strong: rgba(205, 214, 208, 0.25);
   --text: var(--white);
   --text-bright: var(--text);
-  --text-muted: #a3adb8;
-  --text-faint: #7c8692;
+  --text-muted: #abb3ae;
+  --text-faint: #818a85;
   --accent: var(--spot-green);
   --accent-dim: var(--spot-green-dim);
-  --accent-soft: rgba(39, 179, 92, 0.13);
-  --accent-ink: #09150d;
+  --accent-soft: rgba(38, 194, 96, 0.15);
+  --accent-ink: #09170e;
 
   /* Compatibility aliases so panels / widgets always resolve crisp theme tokens */
   --bg-primary: var(--bg);
@@ -94,47 +96,47 @@
   --primary: var(--accent);
 
   /* Glass */
-  --glass-bg: rgba(23, 26, 30, 0.84);
-  --glass-bg-strong: rgba(21, 24, 28, 0.94);
-  --glass-blur: blur(16px) saturate(1.12);
-  --glass-border: 1px solid rgba(255, 255, 255, 0.08);
+  --glass-bg: rgba(32, 34, 35, 0.90);
+  --glass-bg-strong: rgba(30, 32, 33, 0.97);
+  --glass-blur: blur(16px) saturate(1.08);
+  --glass-border: 1px solid rgba(205, 214, 208, 0.15);
   --glass-shine: inset 0 1px 0 rgba(255, 255, 255, 0.05);
 
-  /* Semantic — status (calm status green separated from brand green) */
-  --ok: #2fb878;
-  --ok-soft: rgba(47, 184, 120, 0.14);
-  --err: #e56b73;
-  --err-soft: rgba(229, 107, 115, 0.15);
-  --warn: #e3a84f;
-  --warn-soft: rgba(227, 168, 79, 0.14);
-  --info: #5da3f5;
-  --info-soft: rgba(93, 163, 245, 0.14);
+  /* Semantic — status (pastel-balanced like One Dark Pro) */
+  --ok: #46c97a;
+  --ok-soft: rgba(70, 201, 122, 0.15);
+  --err: #e6737b;
+  --err-soft: rgba(230, 115, 123, 0.15);
+  --warn: #e6b966;
+  --warn-soft: rgba(230, 185, 102, 0.15);
+  --info: #6ab0f3;
+  --info-soft: rgba(106, 176, 243, 0.15);
 
   /* Response code classes */
-  --status-2xx: #2fb878;
-  --status-2xx-soft: rgba(47, 184, 120, 0.14);
-  --status-3xx: #5da3f5;
-  --status-3xx-soft: rgba(93, 163, 245, 0.14);
-  --status-4xx: #e3a84f;
-  --status-4xx-soft: rgba(227, 168, 79, 0.14);
-  --status-5xx: #e56b73;
-  --status-5xx-soft: rgba(229, 107, 115, 0.15);
+  --status-2xx: #46c97a;
+  --status-2xx-soft: rgba(70, 201, 122, 0.15);
+  --status-3xx: #6ab0f3;
+  --status-3xx-soft: rgba(106, 176, 243, 0.15);
+  --status-4xx: #e6b966;
+  --status-4xx-soft: rgba(230, 185, 102, 0.15);
+  --status-5xx: #e6737b;
+  --status-5xx-soft: rgba(230, 115, 123, 0.15);
 
   /* Semantic — HTTP methods */
-  --method-get: #5da3f5;          /* Distinct clean blue */
-  --method-get-soft: rgba(93, 163, 245, 0.15);
-  --method-post: #2fb878;         /* Calm emerald green */
-  --method-post-soft: rgba(47, 184, 120, 0.15);
-  --method-put: #e3a84f;          /* Warm amber/gold */
-  --method-put-soft: rgba(227, 168, 79, 0.15);
-  --method-patch: #a486f5;        /* Softened violet/purple */
-  --method-patch-soft: rgba(164, 134, 245, 0.15);
-  --method-delete: #e56b73;       /* Calm crimson/red */
-  --method-delete-soft: rgba(229, 107, 115, 0.15);
-  --method-head: #3cc0d6;         /* Cyan */
-  --method-head-soft: rgba(60, 192, 214, 0.15);
-  --method-options: #e07bb0;      /* Soft magenta/pink */
-  --method-options-soft: rgba(224, 123, 176, 0.15);
+  --method-get: #6ab0f3;          /* Soft sky blue */
+  --method-get-soft: rgba(106, 176, 243, 0.15);
+  --method-post: #46c97a;         /* Soft emerald green */
+  --method-post-soft: rgba(70, 201, 122, 0.15);
+  --method-put: #e6b966;          /* Soft warm amber */
+  --method-put-soft: rgba(230, 185, 102, 0.15);
+  --method-patch: #b88ef2;        /* Pastel violet */
+  --method-patch-soft: rgba(184, 142, 242, 0.15);
+  --method-delete: #e6737b;       /* Soft coral crimson */
+  --method-delete-soft: rgba(230, 115, 123, 0.15);
+  --method-head: #54c4d3;         /* Calm cyan */
+  --method-head-soft: rgba(84, 196, 211, 0.15);
+  --method-options: #e082b4;      /* Soft rose pink */
+  --method-options-soft: rgba(224, 130, 180, 0.15);
 
   /* Semantic — protocols */
   --proto-http: #4ea1ff;
@@ -168,18 +170,18 @@
   --shadow-modal: 0 20px 60px rgba(0, 0, 0, 0.48), var(--glass-shine);
 
   /* Focus + icon scale */
-  --focus-ring: rgba(39, 179, 92, 0.34);
+  --focus-ring: rgba(38, 194, 96, 0.42);
   --focus-ring-width: 1px;
   --icon-sm: 16px;
   --icon-md: 18px;
 
-  /* Syntax highlighting tokens — calm high-contrast palette */
-  --syn-key: #7ab3f0;              /* Clear soft blue for keys */
-  --syn-str: #5ec996;              /* Soft emerald green for strings */
-  --syn-num: #e6a66c;              /* Warm amber/peach for numbers */
-  --syn-bool: #c39cf2;             /* Soft violet for booleans */
-  --syn-null: #8e9aa8;             /* Neutral slate for null */
-  --syn-punct: #6c7785;            /* Soft muted punctuation */
+  /* Syntax highlighting tokens — smooth balanced contrast on #26282a */
+  --syn-key: #7db8f0;              /* Soft blue for keys */
+  --syn-str: #7bd495;              /* Soft emerald green for strings */
+  --syn-num: #e6a870;              /* Warm peach amber for numbers */
+  --syn-bool: #c59bf0;             /* Pastel violet for booleans */
+  --syn-null: #8e9892;             /* Muted neutral slate for null */
+  --syn-punct: #96a09a;            /* Clear soft punctuation */
 }
 
 * {
@@ -197,8 +199,8 @@ body {
   letter-spacing: -0.01em;
   background-color: var(--spot-void);
   background-image:
-    radial-gradient(ellipse 75% 45% at 15% -12%, rgba(39, 179, 92, 0.08), transparent 60%),
-    linear-gradient(180deg, #121417 0%, #16191d 100%);
+    radial-gradient(ellipse 70% 42% at 14% -12%, rgba(38, 194, 96, 0.06), transparent 58%),
+    linear-gradient(180deg, #202223 0%, #1b1d1e 100%);
   background-attachment: fixed;
   color: var(--text);
   -webkit-font-smoothing: antialiased;
@@ -365,19 +367,19 @@ body {
 }
 
 .app-shell.accent-soft {
-  --accent-soft: rgba(39, 179, 92, 0.08);
-  --bg-active: rgba(39, 179, 92, 0.09);
+  --accent-soft: rgba(38, 194, 96, 0.09);
+  --bg-active: rgba(38, 194, 96, 0.11);
 }
 
 .app-shell.accent-normal {
-  --accent-soft: rgba(39, 179, 92, 0.13);
-  --bg-active: rgba(39, 179, 92, 0.14);
+  --accent-soft: rgba(38, 194, 96, 0.15);
+  --bg-active: rgba(38, 194, 96, 0.17);
 }
 
 .app-shell.accent-strong {
-  --accent-soft: rgba(39, 179, 92, 0.22);
-  --bg-active: rgba(39, 179, 92, 0.24);
-  --spot-green-bright: #3bc770;
+  --accent-soft: rgba(38, 194, 96, 0.25);
+  --bg-active: rgba(38, 194, 96, 0.27);
+  --spot-green-bright: #43d97b;
 }
 
 .app-shell.reduce-motion,
@@ -2889,7 +2891,7 @@ button.env-menu-row:hover,
   border: 1px solid rgba(255, 255, 255, 0.2);
 }
 
-.theme-dot-theme-spotify { background: #27b35c; }
+.theme-dot-theme-spotify { background: #26c260; }
 .theme-dot-theme-linear { background: #6366f1; }
 .theme-dot-theme-one-dark-pro { background: #61afef; }
 .theme-dot-theme-tokyo-night { background: #7aa2f7; }
@@ -3572,6 +3574,7 @@ textarea {
   border: 1px solid var(--surface-border);
   border-radius: var(--radius-sm);
   padding: 7px var(--space-3);
+  font-size: var(--fs-input);
   transition: box-shadow var(--ease), border-color var(--ease), background var(--ease);
   color: var(--text);
 }
@@ -3588,7 +3591,7 @@ textarea:focus {
 .url-input {
   flex: 1;
   font-family: var(--mono);
-  font-size: var(--fs-body);
+  font-size: var(--fs-input);
   letter-spacing: var(--track-mono);
   padding: 7px 14px;
   border-radius: var(--radius-sm);
@@ -3840,10 +3843,12 @@ textarea:focus {
 
 .body-editor {
   width: 100%;
-  height: 180px;
-  min-height: 140px;
+  height: 240px;
+  min-height: 160px;
+  padding: var(--space-2) var(--space-3);
   font-family: var(--mono);
   font-size: var(--fs-editor);
+  letter-spacing: var(--track-mono);
   line-height: var(--lh-loose);
   resize: vertical;
 }
@@ -4034,7 +4039,7 @@ textarea:focus {
   padding: var(--space-3);
   overflow: auto;
   font-family: var(--mono);
-  font-size: var(--fs-caption);
+  font-size: var(--fs-response);
   line-height: var(--lh-loose);
   letter-spacing: var(--track-mono);
   white-space: pre-wrap;
@@ -4069,12 +4074,18 @@ textarea:focus {
 .code-editor-mirror .json-punct {
   color: var(--syn-punct);
 }
+.response-body-json .json-comment,
+.code-editor-mirror .json-comment {
+  color: var(--text-faint);
+  font-style: italic;
+  opacity: 0.78;
+}
 
 /* JSON Collapsible Tree Folding — Pro DevTools / VS Code Style */
 .json-tree {
   white-space: normal;
   font-family: var(--mono);
-  font-size: 12.5px;
+  font-size: var(--fs-response);
   line-height: 1.55;
   user-select: text;
 }
@@ -7410,6 +7421,32 @@ details.json-fold:not([open]) > summary .json-fold-close-comma {
   font-weight: 600;
 }
 
+.env-drag-handle {
+  font-size: 13px;
+  line-height: 1;
+  color: var(--text-faint);
+  cursor: grab;
+  user-select: none;
+  flex-shrink: 0;
+  opacity: 0.55;
+  transition: opacity 120ms ease, color 120ms ease;
+}
+
+.env-sidebar-item:hover .env-drag-handle {
+  opacity: 1;
+  color: var(--text-muted);
+}
+
+.env-sidebar-item.dragging {
+  opacity: 0.45;
+  cursor: grabbing;
+}
+
+.env-sidebar-item.drag-over {
+  border-top: 2px solid var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+
 .env-active-indicator {
   font-size: 11px;
   background: color-mix(in srgb, var(--primary) 20%, transparent);
@@ -8257,7 +8294,7 @@ html {
   white-space: pre;
   color: var(--text);
   font-family: var(--mono);
-  font-size: var(--fs-body);
+  font-size: var(--fs-input);
   letter-spacing: var(--track-mono);
   line-height: normal;
   padding: var(--space-2) var(--space-3);
@@ -8278,9 +8315,24 @@ html {
 .var-highlight-mirror-multiline {
   white-space: pre-wrap;
   overflow-wrap: break-word;
-  word-break: break-word;
+  word-break: normal;
   font-size: var(--fs-editor);
   line-height: var(--lh-loose);
+  tab-size: var(--editor-tab-size);
+  -moz-tab-size: var(--editor-tab-size);
+}
+
+.app-shell.editor-wrap .var-highlight-mirror-multiline {
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+  word-break: normal;
+}
+
+.app-shell.editor-nowrap .var-highlight-mirror-multiline {
+  white-space: pre;
+  overflow-x: auto;
+  overflow-wrap: normal;
+  word-break: normal;
 }
 
 .var-highlight-input {
@@ -8443,6 +8495,37 @@ html {
   white-space: normal;
 }
 
+.var-scope-picker {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 5px;
+}
+
+.var-scope-pill {
+  font-size: 11px;
+  font-weight: 500;
+  padding: 4px 8px;
+  border-radius: 5px;
+  border: 1px solid var(--surface-border);
+  background: var(--bg-input);
+  color: var(--text-muted);
+  cursor: pointer;
+  text-align: center;
+  transition: border-color var(--ease), color var(--ease), background var(--ease);
+}
+
+.var-scope-pill:hover {
+  border-color: var(--border-strong);
+  color: var(--text);
+}
+
+.var-scope-pill.active {
+  border-color: color-mix(in srgb, var(--accent) 60%, transparent);
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+  color: var(--spot-green-bright);
+  font-weight: 600;
+}
+
 .var-popover-input {
   width: 100%;
   box-sizing: border-box;
@@ -8487,15 +8570,15 @@ html {
   right: 12px;
   display: flex;
   align-items: center;
-  gap: 3px;
+  gap: 4px;
   z-index: 10;
-  opacity: 0.35;
+  opacity: 0.45;
   transition: opacity 0.15s ease;
-  background: rgba(18, 20, 29, 0.75);
+  background: rgba(18, 20, 29, 0.82);
   backdrop-filter: blur(8px);
-  padding: 2px 4px;
+  padding: 3px 5px;
   border-radius: 6px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.1);
 }
 
 .code-editor-host:hover .code-editor-quick-actions,
@@ -8504,15 +8587,21 @@ html {
 }
 
 .code-action-btn {
-  width: 22px;
-  height: 22px;
+  width: auto;
+  min-width: 24px;
+  height: 24px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  padding: 0;
+  gap: 4px;
+  padding: 0 7px;
   border: none;
   background: transparent;
-  color: #94a3b8;
+  color: #cbd5e1;
+  font-size: 11px;
+  font-weight: 500;
+  white-space: nowrap;
+  flex-shrink: 0;
   border-radius: 4px;
   cursor: pointer;
   transition: all 0.12s ease;
@@ -8770,71 +8859,128 @@ html {
 }
 
 /* —— Color themes (UiTheme → class on `.app-shell`) —— */
-/* Spotify (Default): Astryx Eye-Comfort Charcoal & Calm Spotify Green */
+/* Spotify (Default): One Dark Pro–calibrated matte charcoal & smooth Spotify green */
 .app-shell.theme-spotify,
 .app-shell.theme-spotify.accent-soft,
 .app-shell.theme-spotify.accent-normal,
 .app-shell.theme-spotify.accent-strong {
-  --spot-green: #27b35c;
-  --spot-green-bright: #3bc770;
-  --spot-green-dim: #1e934a;
-  --spot-void: #121417;
-  --spot-black: #171a1e;
-  --spot-elevated: #1f2328;
-  --spot-highlight: #282d34;
-  --spot-muted: #a3adb8;
-  --spot-faint: #7c8692;
+  --spot-green: #26c260;
+  --spot-green-bright: #43d97b;
+  --spot-green-dim: #1ca04d;
+  --spot-void: #1e2021;
+  --spot-black: #202223;
+  --spot-elevated: #26282a;
+  --spot-highlight: #2e3134;
+  --spot-muted: #abb3ae;
+  --spot-faint: #818a85;
 
-  --white: #e6e9ec;
-  --ink: #e6e9ec;
-  --surface-base: #121417;
-  --surface-panel: #171a1e;
-  --surface-editor: #14171b;
-  --surface-raised: #1f2328;
-  --surface-border: rgba(255, 255, 255, 0.075);
+  --white: #e6e9e7;
+  --ink: #e6e9e7;
+  --surface-base: #1e2021;
+  --surface-panel: #202223;
+  --surface-editor: #26282a;
+  --surface-raised: #2e3134;
+  --surface-border: rgba(205, 214, 208, 0.14);
+
+  --paper: rgba(38, 40, 42, 0.90);
+  --paper-solid: #26282a;
+  --paper-dim: #202223;
+  --paper-mute: #2e3134;
+
+  --hairline: rgba(205, 214, 208, 0.08);
+  --rule: rgba(205, 214, 208, 0.14);
+  --line: rgba(205, 214, 208, 0.14);
+  --line-strong: rgba(205, 214, 208, 0.25);
+
+  --gray-1: #202223;
+  --gray-2: #2e3134;
+  --gray-3: #3d4245;
+  --gray-4: #68706b;
+  --gray-5: #abb3ae;
+  --gray-6: #dde2df;
 
   --bg: var(--surface-base);
   --bg-panel: var(--surface-panel);
   --bg-elevated: var(--surface-raised);
-  --bg-input: var(--surface-editor);
-  --bg-hover: rgba(255, 255, 255, 0.05);
-  --bg-active: rgba(39, 179, 92, 0.14);
+  --bg-input: #1b1d1e;
+  --bg-hover: rgba(205, 214, 208, 0.08);
+  --bg-active: rgba(38, 194, 96, 0.17);
 
   --border: var(--surface-border);
-  --border-strong: rgba(255, 255, 255, 0.16);
+  --border-strong: rgba(205, 214, 208, 0.25);
 
-  --text: #e6e9ec;
+  --text: #e6e9e7;
   --text-bright: var(--text);
-  --text-muted: #a3adb8;
-  --text-faint: #7c8692;
+  --text-muted: #abb3ae;
+  --text-faint: #818a85;
 
-  --accent: #27b35c;
-  --accent-dim: #1e934a;
-  --accent-soft: rgba(39, 179, 92, 0.13);
-  --accent-ink: #09150d;
+  --accent: #26c260;
+  --accent-dim: #1ca04d;
+  --accent-soft: rgba(38, 194, 96, 0.15);
+  --accent-ink: #09170e;
 
-  --glass-bg: rgba(23, 26, 30, 0.84);
-  --glass-bg-strong: rgba(21, 24, 28, 0.94);
-  --glass-border: 1px solid rgba(255, 255, 255, 0.08);
+  --glass-bg: rgba(32, 34, 35, 0.90);
+  --glass-bg-strong: rgba(30, 32, 33, 0.97);
+  --glass-border: 1px solid rgba(205, 214, 208, 0.15);
   --glass-shine: inset 0 1px 0 rgba(255, 255, 255, 0.05);
-  --focus-ring: rgba(39, 179, 92, 0.34);
+  --focus-ring: rgba(38, 194, 96, 0.42);
+
+  --ok: #46c97a;
+  --ok-soft: rgba(70, 201, 122, 0.15);
+  --err: #e6737b;
+  --err-soft: rgba(230, 115, 123, 0.15);
+  --warn: #e6b966;
+  --warn-soft: rgba(230, 185, 102, 0.15);
+  --info: #6ab0f3;
+  --info-soft: rgba(106, 176, 243, 0.15);
+
+  --status-2xx: #46c97a;
+  --status-2xx-soft: rgba(70, 201, 122, 0.15);
+  --status-3xx: #6ab0f3;
+  --status-3xx-soft: rgba(106, 176, 243, 0.15);
+  --status-4xx: #e6b966;
+  --status-4xx-soft: rgba(230, 185, 102, 0.15);
+  --status-5xx: #e6737b;
+  --status-5xx-soft: rgba(230, 115, 123, 0.15);
+
+  --method-get: #6ab0f3;
+  --method-get-soft: rgba(106, 176, 243, 0.15);
+  --method-post: #46c97a;
+  --method-post-soft: rgba(70, 201, 122, 0.15);
+  --method-put: #e6b966;
+  --method-put-soft: rgba(230, 185, 102, 0.15);
+  --method-patch: #b88ef2;
+  --method-patch-soft: rgba(184, 142, 242, 0.15);
+  --method-delete: #e6737b;
+  --method-delete-soft: rgba(230, 115, 123, 0.15);
+  --method-head: #54c4d3;
+  --method-head-soft: rgba(84, 196, 211, 0.15);
+  --method-options: #e082b4;
+  --method-options-soft: rgba(224, 130, 180, 0.15);
+
+  --syn-key: #7db8f0;
+  --syn-str: #7bd495;
+  --syn-num: #e6a870;
+  --syn-bool: #c59bf0;
+  --syn-null: #8e9892;
+  --syn-punct: #96a09a;
 }
 
 html:has(.app-shell.theme-spotify) body {
-  background-color: #121417;
+  background-color: #1e2021;
   background-image:
-    radial-gradient(ellipse 75% 45% at 15% -12%, rgba(39, 179, 92, 0.08), transparent 60%),
-    linear-gradient(180deg, #121417 0%, #16191d 100%);
+    radial-gradient(ellipse 70% 42% at 14% -12%, rgba(38, 194, 96, 0.06), transparent 58%),
+    linear-gradient(180deg, #202223 0%, #1b1d1e 100%);
 }
 
 .app-shell.theme-spotify.accent-soft {
-  --accent-soft: rgba(39, 179, 92, 0.08);
-  --bg-active: rgba(39, 179, 92, 0.09);
+  --accent-soft: rgba(38, 194, 96, 0.09);
+  --bg-active: rgba(38, 194, 96, 0.11);
 }
 
 .app-shell.theme-spotify.accent-strong {
-  --accent-soft: rgba(39, 179, 92, 0.22);
-  --bg-active: rgba(39, 179, 92, 0.24);
+  --accent-soft: rgba(38, 194, 96, 0.25);
+  --bg-active: rgba(38, 194, 96, 0.27);
 }
 
 /* Linear Studio Dark: Hyper-refined midnight zinc & electric iris accent */

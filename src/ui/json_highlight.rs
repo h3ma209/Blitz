@@ -26,6 +26,29 @@ pub fn highlight_json_fragment(text: &str) -> String {
         let rest = &text[i..];
         let rb = rest.as_bytes();
 
+        // Line comment `// ...`
+        if rb.starts_with(b"//") {
+            let end = rest.find('\n').map(|n| i + n).unwrap_or(text.len());
+            html.push_str("<span class=\"json-comment\">");
+            html.push_str(&escape_html(&text[i..end]));
+            html.push_str("</span>");
+            i = end;
+            continue;
+        }
+
+        // Block comment `/* ... */`
+        if rb.starts_with(b"/*") {
+            let end = rest[2..]
+                .find("*/")
+                .map(|n| i + 2 + n + 2)
+                .unwrap_or(text.len());
+            html.push_str("<span class=\"json-comment\">");
+            html.push_str(&escape_html(&text[i..end]));
+            html.push_str("</span>");
+            i = end;
+            continue;
+        }
+
         // String or Key
         if rb[0] == b'"' {
             let mut j = 1usize;
@@ -114,37 +137,150 @@ pub fn highlight_json_fragment(text: &str) -> String {
     html
 }
 
-/// Highlight a live JSON editor buffer, preserving variable tokens `{{var}}` with resolution status.
-pub fn render_json_var_mirror_html(text: &str, vars: Option<&VariableContext>) -> String {
-    let mut html = String::with_capacity(text.len().saturating_mul(2));
-    let mut cursor = 0;
-    for span in iter_var_spans(text) {
-        if span.start > cursor {
-            html.push_str(&highlight_json_fragment(&text[cursor..span.start]));
-        }
-        let token = &text[span.start..span.end];
-        let (class, title) = match vars {
-            Some(v) => {
-                let info = v.inspect_var(&span.raw);
-                if info.is_unresolved() {
-                    ("var-token unresolved", format!("{}: (unresolved)", span.raw))
-                } else {
-                    ("var-token", format!("{}: {} ({})", span.raw, info.value, info.scope.label()))
-                }
+fn push_var_span_html(
+    html: &mut String,
+    token: &str,
+    raw: &str,
+    vars: Option<&VariableContext>,
+) {
+    let (class, title) = match vars {
+        Some(v) => {
+            let info = v.inspect_var(raw);
+            if info.is_unresolved() {
+                ("var-token unresolved", format!("{raw}: (unresolved)"))
+            } else {
+                ("var-token", format!("{raw}: {} ({})", info.value, info.scope.label()))
             }
-            None => ("var-token", span.raw.clone()),
-        };
-        html.push_str("<span class=\"");
-        html.push_str(class);
-        html.push_str("\" title=\"");
-        html.push_str(&escape_html(&title));
-        html.push_str("\">");
-        html.push_str(&escape_html(token));
-        html.push_str("</span>");
+        }
+        None => ("var-token", raw.to_string()),
+    };
+    html.push_str("<span class=\"");
+    html.push_str(class);
+    html.push_str("\" data-var-raw=\"");
+    html.push_str(&escape_html(raw));
+    html.push_str("\" title=\"");
+    html.push_str(&escape_html(&title));
+    html.push_str("\">");
+    html.push_str(&escape_html(token));
+    html.push_str("</span>");
+}
+
+fn push_text_with_vars(
+    html: &mut String,
+    segment: &str,
+    vars: Option<&VariableContext>,
+) {
+    let mut cursor = 0;
+    for span in iter_var_spans(segment) {
+        if span.start > cursor {
+            html.push_str(&escape_html(&segment[cursor..span.start]));
+        }
+        push_var_span_html(html, &segment[span.start..span.end], &span.raw, vars);
         cursor = span.end;
     }
-    if cursor < text.len() {
-        html.push_str(&highlight_json_fragment(&text[cursor..]));
+    if cursor < segment.len() {
+        html.push_str(&escape_html(&segment[cursor..]));
+    }
+}
+
+/// Highlight a live JSON editor buffer, preserving variable tokens `{{var}}` and JSONC comments.
+pub fn render_json_var_mirror_html(text: &str, vars: Option<&VariableContext>) -> String {
+    let mut html = String::with_capacity(text.len().saturating_mul(2));
+    let mut i = 0usize;
+    let mut plain_start = 0usize;
+
+    while i < text.len() {
+        let rest = &text[i..];
+        let rb = rest.as_bytes();
+
+        // Line comment `// ...` (outside strings)
+        if rb.starts_with(b"//") {
+            if i > plain_start {
+                html.push_str(&highlight_json_fragment(&text[plain_start..i]));
+            }
+            let end = rest.find('\n').map(|n| i + n).unwrap_or(text.len());
+            html.push_str("<span class=\"json-comment\">");
+            html.push_str(&escape_html(&text[i..end]));
+            html.push_str("</span>");
+            i = end;
+            plain_start = end;
+            continue;
+        }
+
+        // Block comment `/* ... */` (outside strings)
+        if rb.starts_with(b"/*") {
+            if i > plain_start {
+                html.push_str(&highlight_json_fragment(&text[plain_start..i]));
+            }
+            let end = rest[2..]
+                .find("*/")
+                .map(|n| i + 2 + n + 2)
+                .unwrap_or(text.len());
+            html.push_str("<span class=\"json-comment\">");
+            html.push_str(&escape_html(&text[i..end]));
+            html.push_str("</span>");
+            i = end;
+            plain_start = end;
+            continue;
+        }
+
+        // String / Key (may contain `{{var}}` tokens)
+        if rb[0] == b'"' {
+            if i > plain_start {
+                html.push_str(&highlight_json_fragment(&text[plain_start..i]));
+            }
+            let mut j = 1usize;
+            while j < rb.len() {
+                if rb[j] == b'\\' {
+                    j += 1;
+                    if let Some(escaped) = rest[j..].chars().next() {
+                        j += escaped.len_utf8();
+                    }
+                    continue;
+                }
+                if rb[j] == b'"' {
+                    j += 1;
+                    break;
+                }
+                if let Some(c) = rest[j..].chars().next() {
+                    j += c.len_utf8();
+                } else {
+                    j += 1;
+                }
+            }
+            let end = i + j.min(rb.len());
+            let str_val = &text[i..end];
+            let is_key = text[end..].trim_start().starts_with(':');
+            let class = if is_key { "json-key" } else { "json-string" };
+            html.push_str("<span class=\"");
+            html.push_str(class);
+            html.push_str("\">");
+            push_text_with_vars(&mut html, str_val, vars);
+            html.push_str("</span>");
+            i = end;
+            plain_start = end;
+            continue;
+        }
+
+        // Template variable `{{var}}` outside strings/comments
+        if rb.starts_with(b"{{") {
+            if let Some(span) = iter_var_spans(rest).next().filter(|s| s.start == 0) {
+                if i > plain_start {
+                    html.push_str(&highlight_json_fragment(&text[plain_start..i]));
+                }
+                push_var_span_html(&mut html, &rest[..span.end], &span.raw, vars);
+                i += span.end;
+                plain_start = i;
+                continue;
+            }
+        }
+
+        let ch_len = rest.chars().next().map(|c| c.len_utf8()).unwrap_or(1);
+        i += ch_len;
+    }
+
+    if plain_start < text.len() {
+        html.push_str(&highlight_json_fragment(&text[plain_start..]));
     }
     if text.ends_with('\n') {
         html.push('\n');
@@ -532,5 +668,19 @@ mod tests {
         let (start, end) = json_paint_range(&big, JSON_PAINT_CAP);
         assert!(big[start..end].contains(tail));
         assert!(start > 0);
+    }
+
+    #[test]
+    fn mirror_highlights_json_comments_and_var_tokens() {
+        let mut vars = VariableContext::default();
+        vars.environment.insert("token".into(), "secret".into());
+
+        let input = "{\n  // \"disabled\": {{new_var}},\n  /* block */\n  \"url\": \"https://example.com/{{token}}\",\n  \"missing\": {{brand_new}}\n}";
+        let html = render_json_var_mirror_html(input, Some(&vars));
+
+        assert!(html.contains(r#"<span class="json-comment">// &quot;disabled&quot;: {{new_var}},</span>"#));
+        assert!(html.contains(r#"<span class="json-comment">/* block */</span>"#));
+        assert!(html.contains(r#"<span class="json-string">&quot;https://example.com/<span class="var-token" data-var-raw="token""#));
+        assert!(html.contains(r#"<span class="var-token unresolved" data-var-raw="brand_new""#));
     }
 }

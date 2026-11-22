@@ -203,6 +203,20 @@ pub fn upsert_environments(
     (ids, created, updated)
 }
 
+/// Move an environment from `from_idx` to `to_idx` in place. Returns `true` if order changed.
+pub fn reorder_environments(
+    envs: &mut Vec<Environment>,
+    from_idx: usize,
+    to_idx: usize,
+) -> bool {
+    if from_idx >= envs.len() || to_idx >= envs.len() || from_idx == to_idx {
+        return false;
+    }
+    let item = envs.remove(from_idx);
+    envs.insert(to_idx, item);
+    true
+}
+
 pub fn find_environment(
     environments: &[Environment],
     id: Option<Uuid>,
@@ -458,5 +472,21 @@ mod tests {
         assert!(json_some.contains("\"icon\":\"rocket\""));
         let decoded_some: Environment = serde_json::from_str(&json_some).unwrap();
         assert_eq!(decoded_some.icon.as_deref(), Some("rocket"));
+    }
+
+    #[test]
+    fn reorder_environments_moves_in_place() {
+        let mut envs = vec![
+            Environment::new("Local"),
+            Environment::new("Staging"),
+            Environment::new("Production"),
+        ];
+        assert!(reorder_environments(&mut envs, 2, 0));
+        assert_eq!(
+            envs.iter().map(|e| e.name.as_str()).collect::<Vec<_>>(),
+            vec!["Production", "Local", "Staging"]
+        );
+        assert!(!reorder_environments(&mut envs, 1, 1));
+        assert!(!reorder_environments(&mut envs, 9, 0));
     }
 }

@@ -31,18 +31,29 @@ use crate::core::perf_runner::run_performance;
 use crate::core::protocols::{
     graphql_ws_subscribe_with_headers, grpc_unary_with_headers, mcp_call_tool, mcp_list_tools,
     mqtt_publish_opts, mqtt_subscribe_once, socketio_session, split_mcp_args, sse_listen,
-    ws_connect_session_with_headers, WsSessionEvent,
+    ws_connect_session_with_headers, WsSession, WsSessionEvent,
 };
 use crate::core::request::{
-    compact_response_for_disk, AuthConfig, AuthType, BodyMode, HttpMethod, KeyValue,
-    RequestDraft, RequestProtocol, SavedExample,
+    compact_response_for_disk, AuthConfig, AuthType, BodyMode, FormDataField, HttpMethod,
+    KeyValue, RequestDraft, RequestProtocol, SavedExample,
 };
 use crate::core::response_diff::{diff_bodies, DiffLine};
+use crate::core::VariableContext;
 use crate::runtime::pipeline::{send_request_with_options, SendOptions};
 use crate::runtime::runner::{run_collection_with_config, RunnerConfig};
 use crate::storage::{AppSnapshot, JsonStore};
 
 static ACTIVE_MOCK: Mutex<Option<MockHandle>> = Mutex::new(None);
+
+const MAX_MCP_WS_SESSIONS: usize = 32;
+
+struct McpWsSession {
+    url: String,
+    session: WsSession,
+    cursor: usize,
+}
+
+static WS_SESSIONS: Mutex<Option<HashMap<String, McpWsSession>>> = Mutex::new(None);
 
 /// Entry point to start the Blitz MCP server on stdio.
 /// Reads JSON-RPC requests line-by-line from stdin and writes responses to stdout.
@@ -380,6 +391,26 @@ fn list_mcp_tools() -> Vec<JsonValue> {
                         "type": "string",
                         "description": "Optional body mode: none, raw, urlencoded, form-data, graphql, binary."
                     },
+                    "form_data": {
+                        "type": "array",
+                        "description": "Optional multipart/form-data fields (auto-selects 'form-data' mode). Each item supports {key, value?, file_path?, type?: 'text'|'file', content_type?, enabled?}.",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "key": { "type": "string" },
+                                "value": { "type": "string" },
+                                "file_path": { "type": "string" },
+                                "type": { "type": "string", "enum": ["text", "file"] },
+                                "content_type": { "type": "string" },
+                                "enabled": { "type": "boolean" }
+                            },
+                            "required": ["key"]
+                        }
+                    },
+                    "file_path": {
+                        "type": "string",
+                        "description": "Optional local file path for 'binary' body_mode (auto-selects 'binary' mode if body_mode omitted)."
+                    },
                     "graphql_query": {
                         "type": "string",
                         "description": "Optional GraphQL query string (automatically uses GraphQL body mode if supplied)."
@@ -391,6 +422,10 @@ fn list_mcp_tools() -> Vec<JsonValue> {
                     "environment": {
                         "type": "string",
                         "description": "Optional environment name to resolve {{variables}} against."
+                    },
+                    "override_vars": {
+                        "type": "object",
+                        "description": "Optional key-value pairs to override {{variables}} for this request."
                     },
                     "save_to_env": {
                         "type": "object",
@@ -1020,32 +1055,185 @@ fn list_mcp_tools() -> Vec<JsonValue> {
         }),
         json!({
             "name": "blitz_websocket_send",
-            "description": "Connects to a WebSocket server (ws:// or wss://), transmits an optional text/JSON payload, captures streaming inbound messages, and gracefully disconnects.",
+            "description": "Connects to a WebSocket server (ws:// or wss://), transmits one or more text/JSON payloads (with {{variable}} interpolation), captures streaming inbound messages, and gracefully disconnects.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
                     "url": {
                         "type": "string",
-                        "description": "WebSocket endpoint URL (e.g. 'wss://echo.websocket.events' or 'ws://127.0.0.1:8080/ws')."
+                        "description": "WebSocket endpoint URL (supports {{variable}} interpolation)."
                     },
                     "message": {
                         "type": "string",
-                        "description": "Optional text or JSON message string to transmit after connection handshake."
+                        "description": "Optional single text or JSON message string to transmit after connection handshake."
+                    },
+                    "messages": {
+                        "type": "array",
+                        "description": "Optional ordered sequence of messages to send on the same socket. Each item may be a string or {message: string, delay_ms?: integer}.",
+                        "items": {
+                            "oneOf": [
+                                { "type": "string" },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "message": { "type": "string" },
+                                        "delay_ms": { "type": "integer" }
+                                    },
+                                    "required": ["message"]
+                                }
+                            ]
+                        }
                     },
                     "headers": {
                         "type": "object",
-                        "description": "Optional handshake HTTP headers dictionary."
+                        "description": "Optional handshake HTTP headers dictionary (supports {{variable}} interpolation)."
+                    },
+                    "environment": {
+                        "type": "string",
+                        "description": "Optional environment name or UUID to resolve {{variables}} against."
+                    },
+                    "override_vars": {
+                        "type": "object",
+                        "description": "Optional key-value pairs to override {{variables}} for this call."
                     },
                     "timeout_ms": {
                         "type": "integer",
-                        "description": "Duration in milliseconds to wait and collect inbound messages. Defaults to 2000 (max 10000)."
+                        "description": "Duration in milliseconds to wait after sending to collect inbound messages. Defaults to 2000 (max 30000)."
                     },
                     "max_messages": {
                         "type": "integer",
-                        "description": "Maximum number of inbound messages to collect before closing session. Defaults to 5 (max 50)."
+                        "description": "Maximum number of inbound messages to collect before closing session. Defaults to 5 (max 200)."
                     }
                 },
                 "required": ["url"]
+            }
+        }),
+        json!({
+            "name": "blitz_websocket_connect",
+            "description": "Opens and keeps alive a persistent WebSocket session (supports concurrent multi-client sessions and {{variable}} interpolation). Returns a session_id for blitz_websocket_session_send, blitz_websocket_read, and blitz_websocket_close.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "url": {
+                        "type": "string",
+                        "description": "WebSocket endpoint URL (supports {{variable}} interpolation)."
+                    },
+                    "session_id": {
+                        "type": "string",
+                        "description": "Optional custom session identifier (e.g. 'user_a'). Auto-generated UUID if omitted."
+                    },
+                    "headers": {
+                        "type": "object",
+                        "description": "Optional handshake HTTP headers dictionary (supports {{variable}} interpolation)."
+                    },
+                    "environment": {
+                        "type": "string",
+                        "description": "Optional environment name or UUID to resolve {{variables}} against."
+                    },
+                    "override_vars": {
+                        "type": "object",
+                        "description": "Optional key-value pairs to override {{variables}} for this session."
+                    },
+                    "timeout_ms": {
+                        "type": "integer",
+                        "description": "Handshake timeout in milliseconds. Defaults to 3000 (max 15000)."
+                    }
+                },
+                "required": ["url"]
+            }
+        }),
+        json!({
+            "name": "blitz_websocket_session_send",
+            "description": "Sends one or more text/JSON messages over an open persistent WebSocket session without closing it, and returns any newly received inbound messages.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "session_id": {
+                        "type": "string",
+                        "description": "Active session ID returned by blitz_websocket_connect."
+                    },
+                    "message": {
+                        "type": "string",
+                        "description": "Single text or JSON message to send (supports {{variable}} interpolation)."
+                    },
+                    "messages": {
+                        "type": "array",
+                        "description": "Ordered sequence of messages to send. Each item may be a string or {message: string, delay_ms?: integer}.",
+                        "items": {
+                            "oneOf": [
+                                { "type": "string" },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "message": { "type": "string" },
+                                        "delay_ms": { "type": "integer" }
+                                    },
+                                    "required": ["message"]
+                                }
+                            ]
+                        }
+                    },
+                    "environment": {
+                        "type": "string",
+                        "description": "Optional environment name or UUID to resolve {{variables}} against."
+                    },
+                    "override_vars": {
+                        "type": "object",
+                        "description": "Optional key-value pairs to override {{variables}} for this send."
+                    },
+                    "wait_ms": {
+                        "type": "integer",
+                        "description": "Milliseconds to wait after sending for immediate inbound replies. Defaults to 250 (max 10000)."
+                    },
+                    "max_messages": {
+                        "type": "integer",
+                        "description": "Maximum unread inbound messages to return. Defaults to 50 (max 200)."
+                    }
+                },
+                "required": ["session_id"]
+            }
+        }),
+        json!({
+            "name": "blitz_websocket_read",
+            "description": "Reads unread inbound messages from an open persistent WebSocket session without closing it.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "session_id": {
+                        "type": "string",
+                        "description": "Active session ID returned by blitz_websocket_connect."
+                    },
+                    "timeout_ms": {
+                        "type": "integer",
+                        "description": "Milliseconds to wait for inbound messages. Defaults to 1000 (max 15000)."
+                    },
+                    "max_messages": {
+                        "type": "integer",
+                        "description": "Maximum messages to return. Defaults to 50 (max 200)."
+                    },
+                    "include_history": {
+                        "type": "boolean",
+                        "description": "If true, returns all messages from session start instead of only unread messages since last read/send."
+                    }
+                },
+                "required": ["session_id"]
+            }
+        }),
+        json!({
+            "name": "blitz_websocket_close",
+            "description": "Closes an open persistent WebSocket session (or all open sessions when session_id is '*' or all=true).",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "session_id": {
+                        "type": "string",
+                        "description": "Session ID to close, or '*' to close all sessions."
+                    },
+                    "all": {
+                        "type": "boolean",
+                        "description": "When true, closes all open persistent WebSocket sessions."
+                    }
+                }
             }
         }),
         json!({
@@ -1566,14 +1754,49 @@ fn execute_mcp_tool_with_store(
                 .and_then(|b| b.as_str())
                 .unwrap_or("")
                 .to_string();
+            let form_data_fields = parse_form_data_arg(args.get("form_data"))?;
+            let binary_path = args
+                .get("file_path")
+                .or_else(|| args.get("binary_path"))
+                .and_then(|p| p.as_str())
+                .unwrap_or("")
+                .to_string();
+
+            let explicit_body_mode = args.get("body_mode").and_then(|m| m.as_str());
             let body_mode = if !gql_query.is_empty() {
                 BodyMode::Graphql
+            } else if explicit_body_mode.is_none() && !form_data_fields.is_empty() {
+                BodyMode::FormData
+            } else if explicit_body_mode.is_none() && !binary_path.is_empty() {
+                BodyMode::Binary
             } else {
-                parse_body_mode_arg(
-                    args.get("body_mode").and_then(|m| m.as_str()),
-                    &body_str,
-                )
+                parse_body_mode_arg(explicit_body_mode, &body_str)
             };
+
+            let mut ctx = build_mcp_var_ctx(
+                &snapshot,
+                args.get("environment").and_then(|e| e.as_str()),
+                args.get("override_vars"),
+            )?;
+
+            if body_mode == BodyMode::FormData {
+                for f in &form_data_fields {
+                    if f.enabled && f.is_file {
+                        let resolved = ctx.resolve_string(f.value.trim());
+                        if !std::path::Path::new(&resolved).is_file() {
+                            return Err(format!(
+                                "Multipart file not found for field '{}': {}",
+                                f.key, resolved
+                            ));
+                        }
+                    }
+                }
+            } else if body_mode == BodyMode::Binary && !binary_path.trim().is_empty() {
+                let resolved = ctx.resolve_string(binary_path.trim());
+                if !std::path::Path::new(&resolved).is_file() {
+                    return Err(format!("Binary file not found: {resolved}"));
+                }
+            }
 
             let draft = RequestDraft {
                 name: "Ad-hoc Request".into(),
@@ -1582,13 +1805,12 @@ fn execute_mcp_tool_with_store(
                 headers: headers_vec,
                 body_mode,
                 body: body_str,
+                binary_path,
+                body_formdata: form_data_fields,
                 graphql_query: gql_query,
                 graphql_variables: gql_vars,
                 ..Default::default()
             };
-
-            let mut ctx = snapshot.variables.clone();
-            ctx.environment = resolve_env_map(&snapshot, args.get("environment").and_then(|e| e.as_str()))?;
 
             let mut jar = snapshot.cookies.clone();
             let send_opts = SendOptions {
@@ -3186,76 +3408,75 @@ fn execute_mcp_tool_with_store(
             serde_json::to_string_pretty(&res).map_err(|e| e.to_string())
         }
         "blitz_websocket_send" => {
-            let url = args
+            let raw_url = args
                 .get("url")
                 .and_then(|u| u.as_str())
                 .ok_or_else(|| "Missing required parameter 'url'".to_string())?;
-            let msg_opt = args.get("message").and_then(|m| m.as_str());
-            let headers_vec = parse_headers_arg(args.get("headers"));
+            let ctx = build_mcp_var_ctx(
+                &snapshot,
+                args.get("environment").and_then(|e| e.as_str()),
+                args.get("override_vars"),
+            )?;
+            let url = ctx.resolve_string(raw_url);
+            let headers_vec = resolve_headers_with_ctx(parse_headers_arg(args.get("headers")), &ctx);
+            let outbound = parse_ws_messages_arg(args, &ctx)?;
             let timeout_ms = args
                 .get("timeout_ms")
                 .and_then(|t| t.as_u64())
                 .unwrap_or(2000)
-                .min(10_000);
+                .min(30_000);
             let max_msgs = args
                 .get("max_messages")
                 .and_then(|m| m.as_u64())
                 .unwrap_or(5)
-                .min(50) as usize;
+                .min(200) as usize;
 
-            let sess = ws_connect_session_with_headers(url, &headers_vec)
+            let total_start = Instant::now();
+            let sess = ws_connect_session_with_headers(&url, &headers_vec)
                 .map_err(|e| format!("Connect: {e}"))?;
-            let start = Instant::now();
-            let mut opened = false;
-            let handshake_limit = Duration::from_millis(timeout_ms.min(2000));
-            while start.elapsed() < handshake_limit {
-                let evs = sess.events_snapshot();
-                if evs.iter().any(|e| matches!(e, WsSessionEvent::Opened)) {
-                    opened = true;
-                    break;
-                }
-                if let Some(err) = evs.iter().find_map(|e| match e {
-                    WsSessionEvent::Error(s) => Some(s.clone()),
-                    _ => None,
-                }) {
-                    sess.close();
-                    return Err(format!("WebSocket error: {err}"));
-                }
-                std::thread::sleep(Duration::from_millis(25));
-            }
-
-            if !opened {
-                let evs = sess.events_snapshot();
+            if let Err(err) = ws_wait_handshake(&sess, Duration::from_millis(timeout_ms.min(5000))) {
                 sess.close();
-                let err_msg = evs
-                    .into_iter()
-                    .find_map(|e| match e {
-                        WsSessionEvent::Error(s) => Some(s),
-                        _ => None,
-                    })
-                    .unwrap_or_else(|| "Connection timed out during handshake".to_string());
-                return Err(format!("WebSocket failed: {err_msg}"));
+                return Err(err);
             }
 
-            if let Some(msg) = msg_opt {
-                sess.send_text(msg).map_err(|e| format!("Send text: {e}"))?;
+            let mut sent_messages = Vec::with_capacity(outbound.len());
+            for (msg, delay_ms) in outbound {
+                if delay_ms > 0 {
+                    std::thread::sleep(Duration::from_millis(delay_ms));
+                }
+                if let Err(e) = sess.send_text(&msg) {
+                    sess.close();
+                    return Err(format!("Send text: {e}"));
+                }
+                sent_messages.push(msg);
             }
 
             let mut messages = Vec::new();
             let mut seen_events = 0usize;
+            let collect_start = Instant::now();
             let collect_limit = Duration::from_millis(timeout_ms);
-            while start.elapsed() < collect_limit && messages.len() < max_msgs {
+            while collect_start.elapsed() < collect_limit && messages.len() < max_msgs {
                 let evs = sess.events_snapshot();
+                let mut closed_or_err = false;
                 if evs.len() > seen_events {
                     for ev in &evs[seen_events..] {
-                        if let WsSessionEvent::Message(m) = ev {
-                            messages.push(m.clone());
-                            if messages.len() >= max_msgs {
-                                break;
+                        match ev {
+                            WsSessionEvent::Message(m) => {
+                                messages.push(m.clone());
+                                if messages.len() >= max_msgs {
+                                    break;
+                                }
                             }
+                            WsSessionEvent::Closed(_) | WsSessionEvent::Error(_) => {
+                                closed_or_err = true;
+                            }
+                            _ => {}
                         }
                     }
                     seen_events = evs.len();
+                }
+                if closed_or_err || messages.len() >= max_msgs {
+                    break;
                 }
                 std::thread::sleep(Duration::from_millis(25));
             }
@@ -3265,12 +3486,365 @@ fn execute_mcp_tool_with_store(
             let res = json!({
                 "status": "ok",
                 "url": url,
-                "sent": msg_opt,
+                "sent": sent_messages.first().cloned(),
+                "sent_messages": sent_messages,
                 "messages": messages,
                 "count": messages.len(),
-                "elapsed_ms": start.elapsed().as_millis()
+                "elapsed_ms": total_start.elapsed().as_millis()
             });
             serde_json::to_string_pretty(&res).map_err(|e| e.to_string())
+        }
+        "blitz_websocket_connect" => {
+            let raw_url = args
+                .get("url")
+                .and_then(|u| u.as_str())
+                .ok_or_else(|| "Missing required parameter 'url'".to_string())?;
+            let ctx = build_mcp_var_ctx(
+                &snapshot,
+                args.get("environment").and_then(|e| e.as_str()),
+                args.get("override_vars"),
+            )?;
+            let url = ctx.resolve_string(raw_url);
+            let headers_vec = resolve_headers_with_ctx(parse_headers_arg(args.get("headers")), &ctx);
+            let timeout_ms = args
+                .get("timeout_ms")
+                .and_then(|t| t.as_u64())
+                .unwrap_or(3000)
+                .min(15_000);
+            let session_id = args
+                .get("session_id")
+                .and_then(|s| s.as_str())
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .map(|s| s.to_string())
+                .unwrap_or_else(|| Uuid::new_v4().to_string());
+
+            {
+                let guard = WS_SESSIONS
+                    .lock()
+                    .map_err(|_| "WebSocket session registry poisoned".to_string())?;
+                if let Some(map) = guard.as_ref() {
+                    if map.contains_key(&session_id) {
+                        return Err(format!(
+                            "WebSocket session '{session_id}' already exists; close it first or choose another session_id"
+                        ));
+                    }
+                    if map.len() >= MAX_MCP_WS_SESSIONS {
+                        return Err(format!(
+                            "Maximum concurrent WebSocket sessions ({MAX_MCP_WS_SESSIONS}) reached; close unused sessions with blitz_websocket_close"
+                        ));
+                    }
+                }
+            }
+
+            let sess = ws_connect_session_with_headers(&url, &headers_vec)
+                .map_err(|e| format!("Connect: {e}"))?;
+            if let Err(err) = ws_wait_handshake(&sess, Duration::from_millis(timeout_ms)) {
+                sess.close();
+                return Err(err);
+            }
+
+            let evs = sess.events_snapshot();
+            let initial_messages: Vec<String> = evs
+                .iter()
+                .filter_map(|e| match e {
+                    WsSessionEvent::Message(m) => Some(m.clone()),
+                    _ => None,
+                })
+                .collect();
+            let cursor = evs.len();
+
+            {
+                let mut guard = WS_SESSIONS
+                    .lock()
+                    .map_err(|_| "WebSocket session registry poisoned".to_string())?;
+                let map = guard.get_or_insert_with(HashMap::new);
+                map.insert(
+                    session_id.clone(),
+                    McpWsSession {
+                        url: url.clone(),
+                        session: sess,
+                        cursor,
+                    },
+                );
+            }
+
+            let out = json!({
+                "status": "connected",
+                "session_id": session_id,
+                "url": url,
+                "initial_messages": initial_messages
+            });
+            serde_json::to_string_pretty(&out).map_err(|e| e.to_string())
+        }
+        "blitz_websocket_session_send" => {
+            let session_id = args
+                .get("session_id")
+                .and_then(|s| s.as_str())
+                .ok_or_else(|| "Missing required parameter 'session_id'".to_string())?;
+            let ctx = build_mcp_var_ctx(
+                &snapshot,
+                args.get("environment").and_then(|e| e.as_str()),
+                args.get("override_vars"),
+            )?;
+            let outbound = parse_ws_messages_arg(args, &ctx)?;
+            if outbound.is_empty() {
+                return Err("Provide 'message' or non-empty 'messages'".to_string());
+            }
+            let wait_ms = args
+                .get("wait_ms")
+                .and_then(|t| t.as_u64())
+                .unwrap_or(250)
+                .min(10_000);
+            let max_msgs = args
+                .get("max_messages")
+                .and_then(|m| m.as_u64())
+                .unwrap_or(50)
+                .min(200) as usize;
+
+            // Send under lock (non-blocking unbounded channel send), then release lock while sleeping/collecting.
+            let (url, start_cursor) = {
+                let guard = WS_SESSIONS
+                    .lock()
+                    .map_err(|_| "WebSocket session registry poisoned".to_string())?;
+                let map = guard
+                    .as_ref()
+                    .ok_or_else(|| format!("WebSocket session '{session_id}' not found"))?;
+                let entry = map
+                    .get(session_id)
+                    .ok_or_else(|| format!("WebSocket session '{session_id}' not found"))?;
+                (entry.url.clone(), entry.cursor)
+            };
+
+            let mut sent_messages = Vec::with_capacity(outbound.len());
+            for (msg, delay_ms) in outbound {
+                if delay_ms > 0 {
+                    std::thread::sleep(Duration::from_millis(delay_ms));
+                }
+                let guard = WS_SESSIONS
+                    .lock()
+                    .map_err(|_| "WebSocket session registry poisoned".to_string())?;
+                let entry = guard
+                    .as_ref()
+                    .and_then(|m| m.get(session_id))
+                    .ok_or_else(|| format!("WebSocket session '{session_id}' was closed"))?;
+                entry
+                    .session
+                    .send_text(&msg)
+                    .map_err(|e| format!("Send text: {e}"))?;
+                sent_messages.push(msg);
+            }
+
+            let wait_start = Instant::now();
+            let wait_limit = Duration::from_millis(wait_ms);
+            let mut new_cursor = start_cursor;
+            let mut messages = Vec::new();
+            let mut closed = false;
+            let mut close_reason: Option<String> = None;
+            let mut error: Option<String> = None;
+
+            loop {
+                let evs = {
+                    let guard = WS_SESSIONS
+                        .lock()
+                        .map_err(|_| "WebSocket session registry poisoned".to_string())?;
+                    let entry = guard
+                        .as_ref()
+                        .and_then(|m| m.get(session_id))
+                        .ok_or_else(|| format!("WebSocket session '{session_id}' was closed"))?;
+                    entry.session.events_snapshot()
+                };
+                if evs.len() > new_cursor {
+                    for ev in &evs[new_cursor..] {
+                        new_cursor += 1;
+                        match ev {
+                            WsSessionEvent::Message(m) => {
+                                messages.push(m.clone());
+                                if messages.len() >= max_msgs {
+                                    break;
+                                }
+                            }
+                            WsSessionEvent::Closed(r) => {
+                                closed = true;
+                                close_reason = Some(r.clone());
+                            }
+                            WsSessionEvent::Error(e) => {
+                                closed = true;
+                                error = Some(e.clone());
+                            }
+                            _ => {}
+                        }
+                    }
+                }
+                if closed || messages.len() >= max_msgs || wait_start.elapsed() >= wait_limit {
+                    break;
+                }
+                std::thread::sleep(Duration::from_millis(25));
+            }
+
+            if let Ok(mut guard) = WS_SESSIONS.lock() {
+                if let Some(entry) = guard.as_mut().and_then(|m| m.get_mut(session_id)) {
+                    entry.cursor = new_cursor;
+                }
+            }
+
+            let out = json!({
+                "status": if closed { "closed" } else { "ok" },
+                "session_id": session_id,
+                "url": url,
+                "sent_count": sent_messages.len(),
+                "sent_messages": sent_messages,
+                "messages": messages,
+                "count": messages.len(),
+                "closed": closed,
+                "close_reason": close_reason,
+                "error": error
+            });
+            serde_json::to_string_pretty(&out).map_err(|e| e.to_string())
+        }
+        "blitz_websocket_read" => {
+            let session_id = args
+                .get("session_id")
+                .and_then(|s| s.as_str())
+                .ok_or_else(|| "Missing required parameter 'session_id'".to_string())?;
+            let timeout_ms = args
+                .get("timeout_ms")
+                .and_then(|t| t.as_u64())
+                .unwrap_or(1000)
+                .min(15_000);
+            let max_msgs = args
+                .get("max_messages")
+                .and_then(|m| m.as_u64())
+                .unwrap_or(50)
+                .min(200) as usize;
+            let include_history = args
+                .get("include_history")
+                .and_then(|b| b.as_bool())
+                .unwrap_or(false);
+
+            let (url, start_cursor) = {
+                let guard = WS_SESSIONS
+                    .lock()
+                    .map_err(|_| "WebSocket session registry poisoned".to_string())?;
+                let entry = guard
+                    .as_ref()
+                    .and_then(|m| m.get(session_id))
+                    .ok_or_else(|| format!("WebSocket session '{session_id}' not found"))?;
+                (
+                    entry.url.clone(),
+                    if include_history { 0 } else { entry.cursor },
+                )
+            };
+
+            let read_start = Instant::now();
+            let read_limit = Duration::from_millis(timeout_ms);
+            let mut new_cursor = start_cursor;
+            let mut messages = Vec::new();
+            let mut closed = false;
+            let mut close_reason: Option<String> = None;
+            let mut error: Option<String> = None;
+
+            loop {
+                let evs = {
+                    let guard = WS_SESSIONS
+                        .lock()
+                        .map_err(|_| "WebSocket session registry poisoned".to_string())?;
+                    let entry = guard
+                        .as_ref()
+                        .and_then(|m| m.get(session_id))
+                        .ok_or_else(|| format!("WebSocket session '{session_id}' was closed"))?;
+                    entry.session.events_snapshot()
+                };
+                if evs.len() > new_cursor {
+                    for ev in &evs[new_cursor..] {
+                        new_cursor += 1;
+                        match ev {
+                            WsSessionEvent::Message(m) => {
+                                messages.push(m.clone());
+                                if messages.len() >= max_msgs {
+                                    break;
+                                }
+                            }
+                            WsSessionEvent::Closed(r) => {
+                                closed = true;
+                                close_reason = Some(r.clone());
+                            }
+                            WsSessionEvent::Error(e) => {
+                                closed = true;
+                                error = Some(e.clone());
+                            }
+                            _ => {}
+                        }
+                    }
+                }
+                if closed || messages.len() >= max_msgs || read_start.elapsed() >= read_limit {
+                    break;
+                }
+                std::thread::sleep(Duration::from_millis(25));
+            }
+
+            if let Ok(mut guard) = WS_SESSIONS.lock() {
+                if let Some(entry) = guard.as_mut().and_then(|m| m.get_mut(session_id)) {
+                    entry.cursor = entry.cursor.max(new_cursor);
+                }
+            }
+
+            let out = json!({
+                "status": if closed { "closed" } else { "ok" },
+                "session_id": session_id,
+                "url": url,
+                "messages": messages,
+                "count": messages.len(),
+                "closed": closed,
+                "close_reason": close_reason,
+                "error": error
+            });
+            serde_json::to_string_pretty(&out).map_err(|e| e.to_string())
+        }
+        "blitz_websocket_close" => {
+            let close_all = args.get("all").and_then(|b| b.as_bool()).unwrap_or(false);
+            let session_id = args.get("session_id").and_then(|s| s.as_str()).unwrap_or("");
+            if close_all || session_id == "*" {
+                let drained: Vec<(String, McpWsSession)> = {
+                    let mut guard = WS_SESSIONS
+                        .lock()
+                        .map_err(|_| "WebSocket session registry poisoned".to_string())?;
+                    guard
+                        .as_mut()
+                        .map(|m| m.drain().collect())
+                        .unwrap_or_default()
+                };
+                let closed_ids: Vec<String> = drained
+                    .into_iter()
+                    .map(|(id, entry)| {
+                        entry.session.close();
+                        id
+                    })
+                    .collect();
+                let out = json!({
+                    "status": "closed",
+                    "closed_sessions": closed_ids,
+                    "count": closed_ids.len()
+                });
+                return serde_json::to_string_pretty(&out).map_err(|e| e.to_string());
+            }
+
+            if session_id.trim().is_empty() {
+                return Err("Missing required parameter 'session_id' (or pass all: true)".to_string());
+            }
+            let removed = {
+                let mut guard = WS_SESSIONS
+                    .lock()
+                    .map_err(|_| "WebSocket session registry poisoned".to_string())?;
+                guard.as_mut().and_then(|m| m.remove(session_id))
+            }
+            .ok_or_else(|| format!("WebSocket session '{session_id}' not found"))?;
+            removed.session.close();
+            let out = json!({
+                "status": "closed",
+                "session_id": session_id
+            });
+            serde_json::to_string_pretty(&out).map_err(|e| e.to_string())
         }
         "blitz_grpc_unary" => {
             let endpoint = args
@@ -3769,6 +4343,147 @@ fn parse_headers_arg(val: Option<&JsonValue>) -> Vec<(String, String)> {
         }
     }
     out
+}
+
+fn build_mcp_var_ctx(
+    snapshot: &AppSnapshot,
+    environment: Option<&str>,
+    override_vars: Option<&JsonValue>,
+) -> Result<VariableContext, String> {
+    let mut ctx = snapshot.variables.clone();
+    ctx.environment = resolve_env_map(snapshot, environment)?;
+    if let Some(obj) = override_vars.and_then(|v| v.as_object()) {
+        for (k, v) in obj {
+            let val = match v {
+                JsonValue::String(s) => s.clone(),
+                JsonValue::Null => continue,
+                other => other.to_string(),
+            };
+            ctx.local.insert(k.clone(), val);
+        }
+    }
+    Ok(ctx)
+}
+
+fn resolve_headers_with_ctx(
+    headers: Vec<(String, String)>,
+    ctx: &VariableContext,
+) -> Vec<(String, String)> {
+    headers
+        .into_iter()
+        .map(|(k, v)| (ctx.resolve_string(&k), ctx.resolve_string(&v)))
+        .collect()
+}
+
+fn parse_form_data_arg(val: Option<&JsonValue>) -> Result<Vec<FormDataField>, String> {
+    let Some(raw) = val else {
+        return Ok(Vec::new());
+    };
+    let arr = raw
+        .as_array()
+        .ok_or_else(|| "'form_data' must be an array of field objects".to_string())?;
+    let mut out = Vec::with_capacity(arr.len());
+    for (idx, item) in arr.iter().enumerate() {
+        let obj = item
+            .as_object()
+            .ok_or_else(|| format!("form_data[{idx}] must be an object"))?;
+        let key = obj
+            .get("key")
+            .and_then(|k| k.as_str())
+            .ok_or_else(|| format!("form_data[{idx}] missing string 'key'"))?
+            .to_string();
+        let enabled = obj.get("enabled").and_then(|b| b.as_bool()).unwrap_or(true);
+        let file_path = obj.get("file_path").and_then(|p| p.as_str());
+        let type_is_file = obj
+            .get("type")
+            .and_then(|t| t.as_str())
+            .is_some_and(|t| t.eq_ignore_ascii_case("file"));
+        let is_file = file_path.is_some() || type_is_file;
+        let value = if let Some(fp) = file_path {
+            fp.to_string()
+        } else if let Some(v) = obj.get("value") {
+            match v {
+                JsonValue::String(s) => s.clone(),
+                JsonValue::Null => String::new(),
+                other => other.to_string(),
+            }
+        } else {
+            String::new()
+        };
+        let content_type = obj
+            .get("content_type")
+            .and_then(|c| c.as_str())
+            .map(|s| s.to_string());
+        out.push(FormDataField {
+            key,
+            value,
+            enabled,
+            is_file,
+            content_type,
+        });
+    }
+    Ok(out)
+}
+
+fn parse_ws_messages_arg(
+    args: &JsonValue,
+    ctx: &VariableContext,
+) -> Result<Vec<(String, u64)>, String> {
+    let mut out = Vec::new();
+    if let Some(msg) = args.get("message").and_then(|m| m.as_str()) {
+        out.push((ctx.resolve_string(msg), 0));
+    }
+    if let Some(arr) = args.get("messages").and_then(|m| m.as_array()) {
+        for (idx, item) in arr.iter().enumerate() {
+            match item {
+                JsonValue::String(s) => out.push((ctx.resolve_string(s), 0)),
+                JsonValue::Object(obj) => {
+                    let msg = obj
+                        .get("message")
+                        .and_then(|m| m.as_str())
+                        .ok_or_else(|| format!("messages[{idx}] missing string 'message'"))?;
+                    let delay_ms = obj
+                        .get("delay_ms")
+                        .and_then(|d| d.as_u64())
+                        .unwrap_or(0)
+                        .min(5000);
+                    out.push((ctx.resolve_string(msg), delay_ms));
+                }
+                _ => {
+                    return Err(format!(
+                        "messages[{idx}] must be a string or {{message, delay_ms?}} object"
+                    ))
+                }
+            }
+        }
+    }
+    Ok(out)
+}
+
+fn ws_wait_handshake(sess: &WsSession, limit: Duration) -> Result<(), String> {
+    let start = Instant::now();
+    while start.elapsed() < limit {
+        let evs = sess.events_snapshot();
+        if evs.iter().any(|e| matches!(e, WsSessionEvent::Opened)) {
+            return Ok(());
+        }
+        if let Some(err) = evs.iter().find_map(|e| match e {
+            WsSessionEvent::Error(s) => Some(s.clone()),
+            _ => None,
+        }) {
+            return Err(format!("WebSocket error: {err}"));
+        }
+        std::thread::sleep(Duration::from_millis(25));
+    }
+    let evs = sess.events_snapshot();
+    let err_msg = evs
+        .into_iter()
+        .find_map(|e| match e {
+            WsSessionEvent::Error(s) => Some(s),
+            _ => None,
+        })
+        .unwrap_or_else(|| "Connection timed out during handshake".to_string());
+    Err(format!("WebSocket failed: {err_msg}"))
 }
 
 fn parse_protocol_arg(raw: &str) -> RequestProtocol {
@@ -4386,6 +5101,10 @@ mod tests {
         assert!(tools.iter().any(|t| t["name"] == "blitz_import_har"));
         assert!(tools.iter().any(|t| t["name"] == "blitz_manage_cookies"));
         assert!(tools.iter().any(|t| t["name"] == "blitz_websocket_send"));
+        assert!(tools.iter().any(|t| t["name"] == "blitz_websocket_connect"));
+        assert!(tools.iter().any(|t| t["name"] == "blitz_websocket_session_send"));
+        assert!(tools.iter().any(|t| t["name"] == "blitz_websocket_read"));
+        assert!(tools.iter().any(|t| t["name"] == "blitz_websocket_close"));
         assert!(tools.iter().any(|t| t["name"] == "blitz_grpc_unary"));
         assert!(tools.iter().any(|t| t["name"] == "blitz_sse_listen"));
         assert!(tools.iter().any(|t| t["name"] == "blitz_mqtt_publish"));
@@ -4397,7 +5116,7 @@ mod tests {
         assert!(tools.iter().any(|t| t["name"] == "blitz_set_collection_var"));
         assert!(tools.iter().any(|t| t["name"] == "blitz_import_collection"));
         assert!(tools.iter().any(|t| t["name"] == "blitz_mcp_call"));
-        assert_eq!(tools.len(), 42);
+        assert_eq!(tools.len(), 46);
     }
 
     #[test]
@@ -5413,5 +6132,282 @@ mod tests {
         )
         .unwrap();
         assert!(mcp_call["result"].to_string().contains("42"), "mcp_call: {mcp_call}");
+    }
+
+    #[test]
+    fn test_execute_http_multipart_form_data_and_missing_file_error() {
+        use std::io::{Read, Write};
+        use std::net::TcpListener;
+
+        let temp = TempMcpStore::new("mcp_multipart");
+        let upload_path = temp.dir.join("xss_probe.html");
+        std::fs::write(&upload_path, b"<script>alert(1)</script>").unwrap();
+
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server_handle = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let _ = stream.set_read_timeout(Some(Duration::from_secs(2)));
+            let mut buf = Vec::new();
+            let mut chunk = [0u8; 4096];
+            loop {
+                match stream.read(&mut chunk) {
+                    Ok(0) => break,
+                    Ok(n) => {
+                        buf.extend_from_slice(&chunk[..n]);
+                        if buf.windows(4).any(|w| w == b"\r\n\r\n") && buf.len() > 200 {
+                            // Give reqwest a tiny moment if body arrived in a second packet
+                            if String::from_utf8_lossy(&buf).contains("--\r\n") {
+                                break;
+                            }
+                        }
+                    }
+                    Err(_) => break,
+                }
+            }
+            let raw = String::from_utf8_lossy(&buf).into_owned();
+            let resp_body = r#"{"uploaded":true}"#;
+            let resp = format!(
+                "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                resp_body.len(),
+                resp_body
+            );
+            let _ = stream.write_all(resp.as_bytes());
+            raw
+        });
+
+        let out_str = execute_mcp_tool_with_store(
+            &temp.store,
+            "blitz_execute_http",
+            &json!({
+                "method": "POST",
+                "url": format!("http://{addr}/upload"),
+                "override_vars": { "caption_val": "avatar-probe" },
+                "form_data": [
+                    { "key": "caption", "value": "{{caption_val}}" },
+                    {
+                        "key": "file",
+                        "file_path": upload_path.to_string_lossy(),
+                        "content_type": "text/html"
+                    }
+                ]
+            }),
+        )
+        .expect("multipart upload should succeed");
+
+        let out: JsonValue = serde_json::from_str(&out_str).unwrap();
+        assert_eq!(out["status"], 200);
+        assert_eq!(out["json"]["uploaded"], true);
+
+        let raw_req = server_handle.join().unwrap();
+        assert!(raw_req.to_ascii_lowercase().contains("multipart/form-data"));
+        assert!(raw_req.contains("avatar-probe"), "raw_req: {raw_req}");
+        assert!(raw_req.contains("xss_probe.html"), "raw_req: {raw_req}");
+        assert!(raw_req.contains("text/html"), "raw_req: {raw_req}");
+        assert!(raw_req.contains("<script>alert(1)</script>"), "raw_req: {raw_req}");
+
+        let missing_err = execute_mcp_tool_with_store(
+            &temp.store,
+            "blitz_execute_http",
+            &json!({
+                "method": "POST",
+                "url": format!("http://{addr}/upload"),
+                "form_data": [
+                    { "key": "file", "file_path": "/nonexistent/blitz_missing_file.png" }
+                ]
+            }),
+        )
+        .unwrap_err();
+        assert!(missing_err.contains("Multipart file not found"), "err: {missing_err}");
+    }
+
+    #[test]
+    fn test_websocket_multi_message_var_interpolation_and_concurrent_sessions() {
+        use futures_util::{SinkExt, StreamExt};
+        use tokio::sync::broadcast;
+        use tokio_tungstenite::tungstenite::Message as WsMsg;
+
+        let temp = TempMcpStore::new("mcp_ws_multi");
+        let mut snap = temp.store.load().unwrap();
+        let mut env = crate::core::Environment::new("TestEnv");
+        env.values.push(crate::core::EnvVar::new("ws_token", "jwt-abc-123"));
+        snap.active_environment_id = Some(env.id);
+        snap.active_environment = env.name.clone();
+        snap.environments.push(env);
+        temp.store.save(&snap).unwrap();
+
+        let (port_tx, port_rx) = std::sync::mpsc::channel::<u16>();
+        let (stop_tx, mut stop_rx) = tokio::sync::oneshot::channel::<()>();
+        let server_thread = std::thread::spawn(move || {
+            let rt = tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .unwrap();
+            rt.block_on(async move {
+                let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+                let port = listener.local_addr().unwrap().port();
+                let _ = port_tx.send(port);
+                let (btx, _) = broadcast::channel::<String>(64);
+
+                loop {
+                    tokio::select! {
+                        _ = &mut stop_rx => break,
+                        accept_res = listener.accept() => {
+                            let Ok((stream, _)) = accept_res else { break; };
+                            let btx = btx.clone();
+                            let mut brx = btx.subscribe();
+                            tokio::spawn(async move {
+                                let mut auth_hdr = String::new();
+                                let cb = |req: &tokio_tungstenite::tungstenite::handshake::server::Request,
+                                          resp: tokio_tungstenite::tungstenite::handshake::server::Response| {
+                                    if let Some(v) = req.headers().get("authorization") {
+                                        auth_hdr = v.to_str().unwrap_or("").to_string();
+                                    }
+                                    Ok(resp)
+                                };
+                                let Ok(ws) = tokio_tungstenite::accept_hdr_async(stream, cb).await else { return; };
+                                let (mut write, mut read) = ws.split();
+                                let _ = write.send(WsMsg::Text(format!("welcome:{auth_hdr}").into())).await;
+                                loop {
+                                    tokio::select! {
+                                        msg = read.next() => {
+                                            match msg {
+                                                Some(Ok(WsMsg::Text(t))) => {
+                                                    let _ = btx.send(t.to_string());
+                                                }
+                                                Some(Ok(WsMsg::Close(_))) | None => break,
+                                                _ => {}
+                                            }
+                                        }
+                                        bcast = brx.recv() => {
+                                            if let Ok(txt) = bcast {
+                                                if write.send(WsMsg::Text(txt.into())).await.is_err() {
+                                                    break;
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            });
+                        }
+                    }
+                }
+            });
+        });
+
+        let port = port_rx.recv_timeout(Duration::from_secs(3)).unwrap();
+
+        // 1. One-shot blitz_websocket_send with {{var}} interpolation + multi-step messages
+        let oneshot_str = execute_mcp_tool_with_store(
+            &temp.store,
+            "blitz_websocket_send",
+            &json!({
+                "url": "ws://127.0.0.1:{{ws_port}}/ws",
+                "override_vars": { "ws_port": port.to_string() },
+                "headers": { "Authorization": "Bearer {{ws_token}}" },
+                "messages": [
+                    "step1:join",
+                    { "message": "step2:{{ws_token}}", "delay_ms": 10 }
+                ],
+                "timeout_ms": 1000,
+                "max_messages": 10
+            }),
+        )
+        .unwrap();
+        let oneshot: JsonValue = serde_json::from_str(&oneshot_str).unwrap();
+        let oneshot_msgs = oneshot["messages"].as_array().unwrap();
+        assert!(
+            oneshot_msgs.iter().any(|m| m.as_str() == Some("welcome:Bearer jwt-abc-123")),
+            "oneshot_msgs: {oneshot_msgs:?}"
+        );
+        assert!(
+            oneshot_msgs.iter().any(|m| m.as_str() == Some("step1:join")),
+            "oneshot_msgs: {oneshot_msgs:?}"
+        );
+        assert!(
+            oneshot_msgs.iter().any(|m| m.as_str() == Some("step2:jwt-abc-123")),
+            "oneshot_msgs: {oneshot_msgs:?}"
+        );
+
+        // 2. Concurrent persistent sessions: user_a sends -> user_b reads
+        let conn_a: JsonValue = serde_json::from_str(
+            &execute_mcp_tool_with_store(
+                &temp.store,
+                "blitz_websocket_connect",
+                &json!({
+                    "session_id": "user_a",
+                    "url": "ws://127.0.0.1:{{ws_port}}/ws",
+                    "override_vars": { "ws_port": port.to_string() },
+                    "headers": { "Authorization": "Bearer {{ws_token}}" }
+                }),
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(conn_a["session_id"], "user_a");
+
+        let conn_b: JsonValue = serde_json::from_str(
+            &execute_mcp_tool_with_store(
+                &temp.store,
+                "blitz_websocket_connect",
+                &json!({
+                    "session_id": "user_b",
+                    "url": format!("ws://127.0.0.1:{port}/ws"),
+                    "headers": { "Authorization": "Bearer user-b-jwt" }
+                }),
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(conn_b["session_id"], "user_b");
+
+        let send_a: JsonValue = serde_json::from_str(
+            &execute_mcp_tool_with_store(
+                &temp.store,
+                "blitz_websocket_session_send",
+                &json!({
+                    "session_id": "user_a",
+                    "messages": ["dm:hello-user-b", "dm:second-msg"],
+                    "wait_ms": 200
+                }),
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(send_a["sent_count"], 2);
+
+        let read_b: JsonValue = serde_json::from_str(
+            &execute_mcp_tool_with_store(
+                &temp.store,
+                "blitz_websocket_read",
+                &json!({
+                    "session_id": "user_b",
+                    "timeout_ms": 1000,
+                    "max_messages": 10
+                }),
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        let b_msgs = read_b["messages"].as_array().unwrap();
+        assert!(
+            b_msgs.iter().any(|m| m.as_str() == Some("dm:hello-user-b"))
+                && b_msgs.iter().any(|m| m.as_str() == Some("dm:second-msg")),
+            "b_msgs: {b_msgs:?}"
+        );
+
+        let close_res: JsonValue = serde_json::from_str(
+            &execute_mcp_tool_with_store(
+                &temp.store,
+                "blitz_websocket_close",
+                &json!({ "all": true }),
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(close_res["count"], 2);
+
+        let _ = stop_tx.send(());
+        let _ = server_thread.join();
     }
 }

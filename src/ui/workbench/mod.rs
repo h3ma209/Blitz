@@ -93,6 +93,7 @@ pub fn Workbench() -> Element {
     let protocol_log = st.protocol_log;
     let mut file_menu_open = st.file_menu_open;
     let mut tools_menu_open = st.tools_menu_open;
+    let mut view_menu_open = st.view_menu_open;
     let mut cloud_menu_open = st.cloud_menu_open;
     let mut show_col_vars = st.show_col_vars;
     let mut col_vars_all = st.col_vars_all;
@@ -1800,10 +1801,12 @@ pub fn Workbench() -> Element {
         ui.sidebar_width_px as f64
     };
     let shell_style = format!(
-        "--fs-base: {}px; --fs-body: {}px; --fs-editor: {}px; --sidebar-w: {}px; --editor-tab-size: {}; --bar-h: {}px;",
+        "--fs-base: {}px; --fs-body: {}px; --fs-input: {}px; --fs-editor: {}px; --fs-response: {}px; --sidebar-w: {}px; --editor-tab-size: {}; --bar-h: {}px;",
         ui.ui_font_size_px,
         ui.ui_font_size_px,
+        ui.input_font_size_px,
         ui.editor_font_size_px,
+        ui.response_font_size_px,
         live_sidebar_w,
         ui.tab_size,
         ui.toolbar_height_px
@@ -1845,7 +1848,8 @@ pub fn Workbench() -> Element {
         }
         classes.join(" ")
     };
-    let top_nav_menus_open = file_menu_open() || tools_menu_open() || cloud_menu_open();
+    let top_nav_menus_open =
+        file_menu_open() || tools_menu_open() || view_menu_open() || cloud_menu_open();
 
     let on_save_example = use_callback(move |_| {
         let mut st = st;
@@ -1938,6 +1942,7 @@ pub fn Workbench() -> Element {
             onmousedown: move |_| {
                 file_menu_open.set(false);
                 tools_menu_open.set(false);
+                view_menu_open.set(false);
                 cloud_menu_open.set(false);
             },
             onmousemove: move |evt| {
@@ -2182,12 +2187,18 @@ pub fn Workbench() -> Element {
                         } else if (st.show_tab_menu)() {
                             let mut sig = st.show_tab_menu;
                             sig.set(false);
-                        } else if (st.file_menu_open)() || (st.tools_menu_open)() || (st.cloud_menu_open)() {
+                        } else if (st.file_menu_open)()
+                            || (st.tools_menu_open)()
+                            || (st.view_menu_open)()
+                            || (st.cloud_menu_open)()
+                        {
                             let mut f = st.file_menu_open;
                             let mut t = st.tools_menu_open;
+                            let mut v = st.view_menu_open;
                             let mut c = st.cloud_menu_open;
                             f.set(false);
                             t.set(false);
+                            v.set(false);
                             c.set(false);
                         } else if (st.show_palette)() {
                             let mut sig = st.show_palette;
@@ -2521,12 +2532,18 @@ pub fn Workbench() -> Element {
                         } else if (st.show_tab_menu)() {
                             let mut sig = st.show_tab_menu;
                             sig.set(false);
-                        } else if (st.file_menu_open)() || (st.tools_menu_open)() || (st.cloud_menu_open)() {
+                        } else if (st.file_menu_open)()
+                            || (st.tools_menu_open)()
+                            || (st.view_menu_open)()
+                            || (st.cloud_menu_open)()
+                        {
                             let mut f = st.file_menu_open;
                             let mut t = st.tools_menu_open;
+                            let mut v = st.view_menu_open;
                             let mut c = st.cloud_menu_open;
                             f.set(false);
                             t.set(false);
+                            v.set(false);
                             c.set(false);
                         } else if (st.show_palette)() {
                             let mut sig = st.show_palette;
@@ -3267,24 +3284,78 @@ pub fn Workbench() -> Element {
                                                         st.persist();
                                                         status_msg.set(format!("updated {name}"));
                                                     }
-                                                    RequestVarEditEvent::AddToEnvironment { name, value } => {
-                                                        let mut envs = environments();
-                                                        let Some(id) = active_env_id() else {
-                                                            status_msg.set("no active environment".into());
-                                                            return;
-                                                        };
-                                                        if let Some(env) = envs.iter_mut().find(|e| e.id == id) {
-                                                            apply_env_var_edit(env, &name, &value);
-                                                        } else {
-                                                            status_msg.set("no active environment".into());
-                                                            return;
+                                                    RequestVarEditEvent::Create { name, scope, value } => {
+                                                        match scope {
+                                                            VarResolveScope::Environment => {
+                                                                let mut envs = environments();
+                                                                let added = if let Some(id) = active_env_id() {
+                                                                    if let Some(env) = envs.iter_mut().find(|e| e.id == id) {
+                                                                        apply_env_var_edit(env, &name, &value);
+                                                                        environments.set(envs.clone());
+                                                                        let mut v = vars();
+                                                                        sync_env_vars(&envs, Some(id), &mut v);
+                                                                        vars.set(v);
+                                                                        true
+                                                                    } else {
+                                                                        false
+                                                                    }
+                                                                } else {
+                                                                    false
+                                                                };
+                                                                if added {
+                                                                    status_msg.set(format!("added {name} to environment"));
+                                                                } else {
+                                                                    let mut v = vars();
+                                                                    v.apply_edit(VarResolveScope::Global, &name, &value);
+                                                                    vars.set(v);
+                                                                    status_msg.set(format!("no active environment — added {name} to globals"));
+                                                                }
+                                                            }
+                                                            VarResolveScope::Collection => {
+                                                                let mut cols = collections();
+                                                                let added = if let Some(id) = active_collection_id() {
+                                                                    if let Some(col) = cols.iter_mut().find(|c| c.id == id) {
+                                                                        apply_collection_var_edit(col, &name, &value);
+                                                                        let mut v = vars();
+                                                                        v.collection = col.variables_map();
+                                                                        vars.set(v);
+                                                                        true
+                                                                    } else {
+                                                                        false
+                                                                    }
+                                                                } else {
+                                                                    false
+                                                                };
+                                                                collections.set(cols);
+                                                                if added {
+                                                                    status_msg.set(format!("added {name} to collection"));
+                                                                } else {
+                                                                    let mut v = vars();
+                                                                    v.apply_edit(VarResolveScope::Global, &name, &value);
+                                                                    vars.set(v);
+                                                                    status_msg.set(format!("no active collection — added {name} to globals"));
+                                                                }
+                                                            }
+                                                            VarResolveScope::Vault => {
+                                                                let mut v = vars();
+                                                                v.apply_edit(VarResolveScope::Vault, &name, &value);
+                                                                vars.set(v);
+                                                                status_msg.set(format!("added {{{{vault:{name}}}}} to vault"));
+                                                            }
+                                                            VarResolveScope::Local => {
+                                                                let mut v = vars();
+                                                                v.apply_edit(VarResolveScope::Local, &name, &value);
+                                                                vars.set(v);
+                                                                status_msg.set(format!("added {name} to local vars"));
+                                                            }
+                                                            _ => {
+                                                                let mut v = vars();
+                                                                v.apply_edit(VarResolveScope::Global, &name, &value);
+                                                                vars.set(v);
+                                                                status_msg.set(format!("added {name} to globals"));
+                                                            }
                                                         }
-                                                        environments.set(envs.clone());
-                                                        let mut v = vars();
-                                                        sync_env_vars(&envs, Some(id), &mut v);
-                                                        vars.set(v);
                                                         st.persist();
-                                                        status_msg.set(format!("added {name} to environment"));
                                                     }
                                                 }
                                             },
@@ -3427,6 +3498,7 @@ pub fn Workbench() -> Element {
                         on_dismiss: move |_| {
                             file_menu_open.set(false);
                             tools_menu_open.set(false);
+                            view_menu_open.set(false);
                             cloud_menu_open.set(false);
                         },
                     }

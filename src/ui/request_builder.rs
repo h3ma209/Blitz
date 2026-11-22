@@ -2981,6 +2981,7 @@ fn BodyEditor(
                 value: body.clone(),
                 placeholder: "{\"hello\": \"world\"}".to_string(),
                 vars: Some(vars.clone()),
+                on_var_edit: Some(on_var_edit),
                 syntax: EditorSyntax::Json,
                 on_change: move |text: String| {
                     let mut cur = live_body.peek().clone();

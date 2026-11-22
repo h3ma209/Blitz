@@ -159,6 +159,28 @@ pub fn find_var_at(text: &str, index: usize) -> Option<VarSpan> {
     iter_all_var_spans(text).into_iter().find(|span| index >= span.start && index <= span.end)
 }
 
+/// Rewrite `{{old_raw}}` tokens in `text` to `{{new_raw}}` (e.g. `{{apiKey}}` → `{{vault:apiKey}}`).
+pub fn replace_var_token(text: &str, old_raw: &str, new_raw: &str) -> String {
+    let old_trimmed = old_raw.trim();
+    let new_trimmed = new_raw.trim();
+    if old_trimmed == new_trimmed || old_trimmed.is_empty() || new_trimmed.is_empty() {
+        return text.to_string();
+    }
+    let mut out = String::with_capacity(text.len() + 16);
+    let mut cursor = 0;
+    for span in iter_var_spans(text) {
+        if span.raw == old_trimmed {
+            out.push_str(&text[cursor..span.start]);
+            out.push_str("{{");
+            out.push_str(new_trimmed);
+            out.push_str("}}");
+            cursor = span.end;
+        }
+    }
+    out.push_str(&text[cursor..]);
+    out
+}
+
 /// Caret is inside an incomplete `{{…}}` token → `(byte index of `{`, partial name)`.
 /// Safely handles UTF-8 character boundaries if caret is byte or char offset.
 pub fn var_insert_context(text: &str, caret: usize) -> Option<(usize, String)> {
@@ -251,6 +273,8 @@ pub fn render_var_highlight_html(text: &str, vars: Option<&VariableContext>) -> 
         };
         html.push_str("<span class=\"");
         html.push_str(class);
+        html.push_str("\" data-var-raw=\"");
+        html.push_str(&escape_html(&span.raw));
         html.push_str("\" title=\"");
         html.push_str(&escape_html(&title));
         html.push_str("\">");
@@ -844,8 +868,8 @@ mod tests {
 
         let ctx = VariableContext::demo();
         let html = render_var_highlight_html(text, Some(&ctx));
-        assert!(html.contains("<span class=\"var-token\" title=\"baseUrl: https://httpbin.org (environment)\">{{baseUrl}}</span>"));
-        assert!(html.contains("<span class=\"var-token unresolved\" title=\"missing: (unresolved)\">{{missing}}</span>"));
+        assert!(html.contains("<span class=\"var-token\" data-var-raw=\"baseUrl\" title=\"baseUrl: https://httpbin.org (environment)\">{{baseUrl}}</span>"));
+        assert!(html.contains("<span class=\"var-token unresolved\" data-var-raw=\"missing\" title=\"missing: (unresolved)\">{{missing}}</span>"));
         assert!(html.contains("&lt;x&gt;&amp;"));
         assert!(!html.contains("<x>"));
     }
@@ -1111,5 +1135,21 @@ mod tests {
         assert!(resolved.contains("missing={{unset_var}}"));
         assert!(!resolved.contains("TOP_SECRET_JWT"));
         assert!(!resolved.contains("TOP_SECRET_PLAIN"));
+    }
+
+    #[test]
+    fn replace_var_token_rewrites_matching_tokens_only() {
+        assert_eq!(
+            replace_var_token(
+                r#"{"token": "{{api_key}}", "note": "api_key"}"#,
+                "api_key",
+                "vault:api_key"
+            ),
+            r#"{"token": "{{vault:api_key}}", "note": "api_key"}"#
+        );
+        assert_eq!(
+            replace_var_token("Bearer {{ vault:api_key }}", "vault:api_key", "api_key"),
+            "Bearer {{api_key}}"
+        );
     }
 }

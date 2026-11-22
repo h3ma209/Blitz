@@ -9,10 +9,11 @@ use dioxus::prelude::*;
 
 use crate::core::{
     collect_all_subtree_ids, compact_response_for_disk, ensure_default_environments,
-    find_environment, find_request_across, remove_across, resolve_ancestor_auth, sync_on_save, trash_collection,
-    AncestorAuthOrigin, AppSettings, AuthConfig, AuthType, CaptureProxyHandle, Collection,
-    CollectionItem, ConsoleLine, CookieJar, Environment, HistoryEntry, MockHandle, PerfReport,
-    RequestDraft, ResponseView, TeamActivity, UpdateInfo, VariableContext, VaultStore, WsSession,
+    find_environment, find_request_across, remove_across, resolve_ancestor_auth, sync_on_save,
+    trash_collection, upsert_collection, upsert_environments, AncestorAuthOrigin, AppSettings,
+    AuthConfig, AuthType, CaptureProxyHandle, Collection, CollectionItem, ConsoleLine, CookieJar,
+    Environment, HistoryEntry, ImportBundle, MockHandle, PerfReport, RequestDraft, ResponseView,
+    TeamActivity, UpdateInfo, VariableContext, VaultStore, WsSession,
 };
 use crate::core::collection::RequestEnvOverride;
 use crate::runtime::RunnerReport;
@@ -174,6 +175,7 @@ pub struct WorkbenchState {
     pub perf_secs: Signal<u64>,
     pub file_menu_open: Signal<bool>,
     pub tools_menu_open: Signal<bool>,
+    pub view_menu_open: Signal<bool>,
     pub cloud_menu_open: Signal<bool>,
     pub show_cookies: Signal<bool>,
     pub show_team: Signal<bool>,
@@ -272,6 +274,7 @@ impl WorkbenchState {
             perf_secs: use_signal(|| 5u64),
             file_menu_open: use_signal(|| false),
             tools_menu_open: use_signal(|| false),
+            view_menu_open: use_signal(|| false),
             cloud_menu_open: use_signal(|| false),
             show_cookies: use_signal(|| false),
             show_team: use_signal(|| false),
@@ -385,6 +388,68 @@ impl WorkbenchState {
 
     pub fn persist(&mut self) {
         self.schedule_save(true, true);
+    }
+
+    /// Apply a categorized [`ImportBundle`] (collections, environments, globals, vault secrets)
+    /// into workbench state, persist, and return a human-readable summary.
+    pub fn apply_import_bundle(&mut self, bundle: ImportBundle) -> String {
+        let summary = bundle.summary();
+        let mut v = (self.vars)();
+
+        if !bundle.collections.is_empty() {
+            let mut cols = (self.collections)();
+            let mut last_id = None;
+            for col in bundle.collections {
+                let stats = upsert_collection(&mut cols, col);
+                last_id = Some(stats.collection_id);
+            }
+            self.collections.set(cols.clone());
+            self.open_tabs.with_mut(|tabs| {
+                for tab in tabs.iter_mut() {
+                    if let Some(updated) = cols.iter().find_map(|c| c.find_request(tab.id)) {
+                        *tab = updated.clone();
+                    }
+                }
+            });
+            if let Some(active_id) = (self.active_request_id)() {
+                if let Some(updated) = cols.iter().find_map(|c| c.find_request(active_id)) {
+                    self.draft.set(updated.clone());
+                }
+            }
+            if let Some(id) = last_id {
+                self.active_collection_id.set(Some(id));
+                if let Some(col) = cols.iter().find(|c| c.id == id) {
+                    v.collection = col.variables_map();
+                }
+            }
+            let ep = (self.fold_epoch)();
+            self.fold_epoch.set(ep + 1);
+        }
+
+        if !bundle.environments.is_empty() {
+            let mut envs = (self.environments)();
+            let (ids, _, _) = upsert_environments(&mut envs, bundle.environments);
+            if let Some(&last_env_id) = ids.last() {
+                self.active_env_id.set(Some(last_env_id));
+                sync_env_vars(&envs, Some(last_env_id), &mut v);
+            }
+            self.environments.set(envs);
+        }
+
+        for (k, val) in bundle.globals {
+            if !k.is_empty() && (!v.global.contains_key(&k) || !val.is_empty()) {
+                v.global.insert(k, val);
+            }
+        }
+        for (k, val) in bundle.vault_secrets {
+            if !k.is_empty() && (v.vault.get(&k).is_none() || !val.is_empty()) {
+                v.vault.set(k, val);
+            }
+        }
+
+        self.vars.set(v);
+        self.persist();
+        summary
     }
 
     /// Immediately flush collections + view state to disk, cancelling any pending debounce timer.

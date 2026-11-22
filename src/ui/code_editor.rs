@@ -2,7 +2,9 @@
 
 use dioxus::prelude::*;
 
-use crate::core::{apply_var_insert, var_insert_context, VariableContext, VariableSuggestion};
+use crate::core::{
+    apply_var_insert, replace_var_token, var_insert_context, VariableContext, VariableSuggestion,
+};
 
 use super::comment_toggle::{
     is_toggle_block_comment_shortcut, is_toggle_line_comment_shortcut, toggle_block_comments,
@@ -12,6 +14,10 @@ use super::js_highlight::{render_js_var_mirror_html, render_var_mirror_html};
 use super::var_autocomplete::{
     apply_var_completion_dom, read_field_caret_anchor, restore_field_caret, VarSuggestDropdown,
     VarSuggestMenu,
+};
+use super::var_hover::{
+    cancel_dismiss, schedule_dismiss, PopoverState, VarEditEvent, VarHoverPopover, HOVER_DWELL_MS,
+    HOVER_SWITCH_MS,
 };
 
 /// Syntax highlighting mode for editor mirrors.
@@ -317,6 +323,7 @@ pub fn MultilineCodeField(
     #[props(default)] placeholder: String,
     #[props(default)] rows: Option<&'static str>,
     #[props(default)] vars: Option<VariableContext>,
+    #[props(default)] on_var_edit: Option<EventHandler<VarEditEvent>>,
     #[props(default)] syntax: EditorSyntax,
     #[props(default)] js_completions: bool,
     #[props(default)] on_submit: Option<EventHandler<()>>,
@@ -325,6 +332,11 @@ pub fn MultilineCodeField(
     let mut current_val = use_signal(|| value.clone());
     let mut last_sent = use_signal(|| value.clone());
     let mut history = use_signal(|| TextHistory::new(&value));
+    let mut live_vars = use_signal(|| vars.clone());
+
+    use_effect(use_reactive((&vars,), move |(next_vars,)| {
+        live_vars.set(next_vars);
+    }));
 
     use_effect(use_reactive((&value,), move |(next_val,)| {
         if next_val != last_sent() {
@@ -342,6 +354,12 @@ pub fn MultilineCodeField(
     let field_id = use_signal(|| format!("np-code-{}", uuid::Uuid::new_v4()));
     let mut var_menu = use_signal(|| None::<VarSuggestMenu>);
     let mut js_menu = use_signal(|| None::<JsSuggestMenu>);
+    let mut popover = use_signal(|| None::<PopoverState>);
+    let mut pop_draft = use_signal(String::new);
+    let mut editing_pop = use_signal(|| false);
+    let over_popover = use_signal(|| false);
+    let mut dismiss_gen = use_signal(|| 0u64);
+    let mut hover_seq = use_signal(|| 0u64);
 
     let highlight = (vars.is_some()
         || syntax == EditorSyntax::JavaScript
@@ -418,6 +436,9 @@ pub fn MultilineCodeField(
             onclick: {
                 let vars = vars.clone();
                 move |_| {
+                    dismiss_gen.set(dismiss_gen() + 1);
+                    editing_pop.set(false);
+                    popover.set(None);
                     let vars = vars.clone();
                     let field_id = field_id();
                     spawn(async move {
@@ -433,6 +454,51 @@ pub fn MultilineCodeField(
                         }
                     });
                 }
+            },
+            onmousemove: move |evt: Event<MouseData>| {
+                if on_var_edit.is_none()
+                    || !highlight
+                    || editing_pop()
+                    || var_menu.peek().is_some()
+                    || js_menu.peek().is_some()
+                {
+                    return;
+                }
+                let client_x = evt.client_coordinates().x;
+                let client_y = evt.client_coordinates().y;
+                let next_seq = hover_seq() + 1;
+                hover_seq.set(next_seq);
+                let id = field_id();
+                spawn(async move {
+                    let already_open = popover.peek().is_some();
+                    let dwell = if already_open { HOVER_SWITCH_MS } else { HOVER_DWELL_MS };
+                    tokio::time::sleep(std::time::Duration::from_millis(dwell)).await;
+                    if *hover_seq.peek() != next_seq
+                        || var_menu.peek().is_some()
+                        || js_menu.peek().is_some()
+                    {
+                        return;
+                    }
+                    if let Some((raw, left, top)) =
+                        read_multiline_hover_var_and_anchor(&id, client_x, client_y).await
+                    {
+                        if *hover_seq.peek() != next_seq {
+                            return;
+                        }
+                        if let Some(v) = live_vars.peek().as_ref() {
+                            cancel_dismiss(dismiss_gen);
+                            let info = v.inspect_var(&raw);
+                            pop_draft.set(info.value.clone());
+                            popover.set(Some(PopoverState { info, left, top }));
+                        }
+                    } else if popover.peek().is_some() {
+                        schedule_dismiss(popover, dismiss_gen, editing_pop, over_popover);
+                    }
+                });
+            },
+            onmouseleave: move |_| {
+                hover_seq.set(hover_seq() + 1);
+                schedule_dismiss(popover, dismiss_gen, editing_pop, over_popover);
             },
             onscroll: move |_| {
                 if !highlight {
@@ -787,6 +853,26 @@ pub fn MultilineCodeField(
                     }
                 }
             }
+            if let Some(on_var_edit) = on_var_edit {
+                VarHoverPopover {
+                    popover,
+                    draft: pop_draft,
+                    dismiss_gen,
+                    editing: editing_pop,
+                    over_popover,
+                    on_var_edit,
+                    on_replace_token: Some(EventHandler::new(move |(old_raw, new_raw): (String, String)| {
+                        let prev = current_val();
+                        let updated = replace_var_token(&prev, &old_raw, &new_raw);
+                        if updated != prev {
+                            history.write().push_explicit_checkpoint(&prev, prev.len());
+                            current_val.set(updated.clone());
+                            last_sent.set(updated.clone());
+                            on_change.call(updated);
+                        }
+                    })),
+                }
+            }
         }
     }
 }
@@ -1106,6 +1192,60 @@ async fn apply_editor_undo_redo(textarea_id: &str, text: &str, byte_caret: usize
         byte_caret = byte_caret
     );
     let _ = document::eval(&script).await;
+}
+
+async fn read_multiline_hover_var_and_anchor(
+    textarea_id: &str,
+    client_x: f64,
+    client_y: f64,
+) -> Option<(String, f64, f64)> {
+    let script = format!(
+        r#"
+        const el = document.getElementById({id});
+        if (!el) return null;
+        const host = el.closest('.code-editor-host');
+        const mirror = host && host.querySelector('.code-editor-mirror');
+        if (!host || !mirror) return null;
+        mirror.scrollTop = el.scrollTop || 0;
+        mirror.scrollLeft = el.scrollLeft || 0;
+        const hr = host.getBoundingClientRect();
+        const boundaryEl = el.closest('.modal, .modal-dialog, .workbench-pane, #main') || document.body;
+        const boundary = boundaryEl.getBoundingClientRect();
+        const tokens = mirror.querySelectorAll('.var-token');
+        for (const tok of tokens) {{
+            const rects = tok.getClientRects();
+            for (const r of rects) {{
+                if ({cx} >= r.left - 2 && {cx} <= r.right + 2 && {cy} >= r.top - 2 && {cy} <= r.bottom + 2) {{
+                    const raw = tok.getAttribute('data-var-raw') || '';
+                    if (!raw) return null;
+                    const popWidth = 300;
+                    const maxGlobalRight = Math.min(window.innerWidth - 12, boundary.right - 12);
+                    const rawLeft = r.left - hr.left;
+                    const maxLeft = Math.max(8, maxGlobalRight - hr.left - popWidth);
+                    const left = Math.max(8, Math.min(rawLeft, maxLeft));
+                    const top = r.bottom - hr.top + 4;
+                    return [raw, left, top];
+                }}
+            }}
+        }}
+        return null;
+        "#,
+        id = serde_json::to_string(textarea_id).unwrap_or_else(|_| "\"\"".into()),
+        cx = client_x,
+        cy = client_y,
+    );
+    let v = document::eval(&script).await.ok()?;
+    let arr = v.as_array()?;
+    let raw = arr.first()?.as_str()?.to_string();
+    let left = arr
+        .get(1)?
+        .as_f64()
+        .or_else(|| arr.get(1)?.as_u64().map(|n| n as f64))?;
+    let top = arr
+        .get(2)?
+        .as_f64()
+        .or_else(|| arr.get(2)?.as_u64().map(|n| n as f64))?;
+    Some((raw, left, top))
 }
 
 #[cfg(test)]

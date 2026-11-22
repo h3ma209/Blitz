@@ -321,6 +321,9 @@ pub struct FormDataField {
     /// When true, `value` is a local filesystem path uploaded as a file part.
     #[serde(default)]
     pub is_file: bool,
+    /// Optional MIME Content-Type override for this part (e.g. `image/png`, `text/html`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub content_type: Option<String>,
 }
 
 impl FormDataField {
@@ -330,6 +333,7 @@ impl FormDataField {
             value: value.into(),
             enabled: true,
             is_file: false,
+            content_type: None,
         }
     }
 }

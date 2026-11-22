@@ -3,10 +3,10 @@ use dioxus::prelude::*;
 use crate::core::{
     bundled_postman_collections, check_for_updates, export_collection_v21,
     export_environment_json, generate_static_doc_html, generate_swagger_ui_html,
-    import_collection_v21, import_environment_texts, import_har, import_openapi3,
+    import_auto_bundle, import_bruno_dir, import_environment_texts,
     interceptor_limits_blurb, open_browser_url, push_history, routes_from_collections,
-    start_capture_proxy, start_mock, upsert_collection, upsert_environments, HistoryEntry,
-    HttpMethod, RequestDraft, UiSettings, UiTheme, default_zoom_percent,
+    start_capture_proxy, start_mock, upsert_environments, HistoryEntry,
+    HttpMethod, ImportBundle, RequestDraft, UiSettings, UiTheme, default_zoom_percent,
     HISTORY_MAX,
 };
 use crate::ui::env_selector::EnvSelector;
@@ -21,6 +21,7 @@ use crate::ui::workbench::state::{ImpexModal, WorkbenchState, MOCK_HANDLE, PROXY
 pub fn TopBar(st: WorkbenchState) -> Element {
     let mut file_menu_open = st.file_menu_open;
     let mut tools_menu_open = st.tools_menu_open;
+    let mut view_menu_open = st.view_menu_open;
     let mut cloud_menu_open = st.cloud_menu_open;
     let mut is_loading = st.is_loading;
     let mut collections = st.collections;
@@ -55,7 +56,9 @@ pub fn TopBar(st: WorkbenchState) -> Element {
     let conflict_state = st.conflict_state;
     let cloud_busy = st.cloud_busy;
 
-    let top_nav_menus_open = file_menu_open() || tools_menu_open() || cloud_menu_open();
+    let top_nav_menus_open =
+        file_menu_open() || tools_menu_open() || view_menu_open() || cloud_menu_open();
+    let active_session_label = crate::storage::JsonStore::active_session_name();
     let top_bar_class = if top_nav_menus_open {
         "top-bar top-bar-elevated"
     } else {
@@ -89,6 +92,7 @@ pub fn TopBar(st: WorkbenchState) -> Element {
                         onmousedown: move |evt| evt.stop_propagation(),
                         onclick: move |_| {
                             tools_menu_open.set(false);
+                            view_menu_open.set(false);
                             cloud_menu_open.set(false);
                             file_menu_open.set(!file_menu_open());
                         },
@@ -96,8 +100,33 @@ pub fn TopBar(st: WorkbenchState) -> Element {
                         span { class: "top-caret", "▾" }
                     }
                     if file_menu_open() {
-                        div { class: "menu-dropdown",
+                        div { class: "menu-dropdown menu-dropdown-wide",
                             onmousedown: move |evt| evt.stop_propagation(),
+                            div { class: "menu-category-header", "Window & Session" }
+                            button {
+                                class: "menu-item",
+                                title: "Open a new Blitz window with isolated auth tokens, cookies, and WebSocket sessions",
+                                onclick: move |_| {
+                                    file_menu_open.set(false);
+                                    match spawn_new_blitz_window(true) {
+                                        Ok(label) => status_msg.set(format!("opened isolated window: {label}")),
+                                        Err(e) => status_msg.set(format!("new window error: {e}")),
+                                    }
+                                },
+                                "New Session Window (Isolated Auth)"
+                            }
+                            button {
+                                class: "menu-item",
+                                title: "Open another Blitz window sharing the same workspace",
+                                onclick: move |_| {
+                                    file_menu_open.set(false);
+                                    match spawn_new_blitz_window(false) {
+                                        Ok(_) => status_msg.set("opened new Blitz window".into()),
+                                        Err(e) => status_msg.set(format!("new window error: {e}")),
+                                    }
+                                },
+                                "New Window (Shared Workspace)"
+                            }
                             div { class: "menu-category-header", "Import" }
                             button {
                                 class: "menu-item",
@@ -107,32 +136,22 @@ pub fn TopBar(st: WorkbenchState) -> Element {
                                     let mut st = st;
                                     spawn(async move {
                                         let picked = rfd::FileDialog::new()
-                                            .set_title("Import from Postman export")
-                                            .add_filter("Postman Collection", &["json"])
+                                            .set_title("Import Postman / Bruno / Yaak / OpenAPI")
+                                            .add_filter(
+                                                "API Exports",
+                                                &["json", "yaml", "yml", "bru", "har"],
+                                            )
                                             .pick_files();
                                         let Some(paths) = picked else {
                                             is_loading.set(false);
                                             return;
                                         };
-                                        let mut cols = collections();
-                                        let mut imported_n = 0usize;
-                                        let mut created_n = 0usize;
-                                        let mut updated_n = 0usize;
-                                        let mut last_id = None;
+                                        let mut merged = ImportBundle::default();
                                         let mut errs = Vec::new();
                                         for path in paths {
                                             match std::fs::read_to_string(&path) {
-                                                Ok(text) => match import_collection_v21(&text) {
-                                                    Ok(col) => {
-                                                        let stats = upsert_collection(&mut cols, col);
-                                                        last_id = Some(stats.collection_id);
-                                                        if stats.created_new {
-                                                            created_n += 1;
-                                                        } else {
-                                                            updated_n += 1;
-                                                        }
-                                                        imported_n += 1;
-                                                    }
+                                                Ok(text) => match import_auto_bundle(&text) {
+                                                    Ok(bundle) => merged.merge(bundle),
                                                     Err(e) => errs.push(format!(
                                                         "{}: {e}",
                                                         path.file_name()
@@ -146,46 +165,49 @@ pub fn TopBar(st: WorkbenchState) -> Element {
                                                 )),
                                             }
                                         }
-                                        if imported_n > 0 {
-                                            collections.set(cols.clone());
-                                            let mut st_ref = st;
-                                            st_ref.open_tabs.with_mut(|tabs| {
-                                                for tab in tabs.iter_mut() {
-                                                    if let Some(updated) = cols.iter().find_map(|c| c.find_request(tab.id)) {
-                                                        *tab = updated.clone();
-                                                    }
-                                                }
-                                            });
-                                            if let Some(active_id) = (st.active_request_id)() {
-                                                if let Some(updated) = cols.iter().find_map(|c| c.find_request(active_id)) {
-                                                    st_ref.draft.set(updated.clone());
-                                                }
-                                            }
-                                            if let Some(id) = last_id {
-                                                active_collection_id.set(Some(id));
-                                                if let Some(col) = cols.iter().find(|c| c.id == id) {
-                                                    let mut v = vars();
-                                                    v.collection = col.variables_map();
-                                                    vars.set(v);
-                                                }
-                                            }
-                                            fold_epoch.set(fold_epoch() + 1);
-                                            st.persist();
-                                        }
+                                        let summary = if !merged.is_empty() {
+                                            st.apply_import_bundle(merged)
+                                        } else {
+                                            "nothing imported".to_string()
+                                        };
                                         is_loading.set(false);
                                         if errs.is_empty() {
-                                            status_msg.set(format!(
-                                                "imported {created_n} new, updated {updated_n} existing collection(s)"
-                                            ));
+                                            status_msg.set(summary);
                                         } else {
                                             status_msg.set(format!(
-                                                "imported {created_n} / updated {updated_n}; errors: {}",
+                                                "{summary}; errors: {}",
                                                 errs.join("; ")
                                             ));
                                         }
                                     });
                                 },
-                                "Import from Postman export…"
+                                "Import Postman / Bruno / Yaak…"
+                            }
+                            button {
+                                class: "menu-item",
+                                onclick: move |_| {
+                                    file_menu_open.set(false);
+                                    is_loading.set(true);
+                                    let mut st = st;
+                                    spawn(async move {
+                                        let picked = rfd::FileDialog::new()
+                                            .set_title("Select Bruno Collection Folder")
+                                            .pick_folder();
+                                        let Some(dir) = picked else {
+                                            is_loading.set(false);
+                                            return;
+                                        };
+                                        match import_bruno_dir(&dir) {
+                                            Ok(bundle) => {
+                                                let summary = st.apply_import_bundle(bundle);
+                                                status_msg.set(summary);
+                                            }
+                                            Err(e) => status_msg.set(format!("bruno import: {e}")),
+                                        }
+                                        is_loading.set(false);
+                                    });
+                                },
+                                "Import Bruno Folder…"
                             }
                             button {
                                 class: "menu-item",
@@ -224,6 +246,80 @@ pub fn TopBar(st: WorkbenchState) -> Element {
                                 },
                                 "Load bundled sample exports"
                             }
+                            button {
+                                class: "menu-item",
+                                onclick: move |_| {
+                                    file_menu_open.set(false);
+                                    is_loading.set(true);
+                                    let mut st = st;
+                                    spawn(async move {
+                                        let picked = rfd::FileDialog::new()
+                                            .set_title("Import Postman environment(s)")
+                                            .add_filter("Environment JSON", &["json"])
+                                            .pick_files();
+                                        let Some(paths) = picked else {
+                                            is_loading.set(false);
+                                            return;
+                                        };
+                                        if paths.is_empty() {
+                                            is_loading.set(false);
+                                            return;
+                                        }
+                                        let texts: Vec<String> = paths
+                                            .iter()
+                                            .filter_map(|p| std::fs::read_to_string(p).ok())
+                                            .collect();
+                                        match import_environment_texts(&texts) {
+                                            Ok(envs) => {
+                                                let mut store = environments();
+                                                let (ids, created_n, updated_n) =
+                                                    upsert_environments(&mut store, envs);
+                                                if let Some(&last_id) = ids.last() {
+                                                    active_env_id.set(Some(last_id));
+                                                }
+                                                environments.set(store);
+                                                st.persist();
+                                                status_msg.set(format!(
+                                                    "env import: {created_n} added, {updated_n} updated"
+                                                ));
+                                            }
+                                            Err(e) => status_msg.set(format!("env import: {e}")),
+                                        }
+                                        is_loading.set(false);
+                                    });
+                                },
+                                "Import Environment(s)…"
+                            }
+                            button {
+                                class: "menu-item",
+                                onclick: move |_| {
+                                    file_menu_open.set(false);
+                                    is_loading.set(true);
+                                    let mut st = st;
+                                    spawn(async move {
+                                        let picked = rfd::FileDialog::new()
+                                            .set_title("Import HAR / OpenAPI")
+                                            .add_filter("HAR / OpenAPI", &["json", "yaml", "yml", "har"])
+                                            .pick_file();
+                                        let Some(path) = picked else {
+                                            is_loading.set(false);
+                                            return;
+                                        };
+                                        match std::fs::read_to_string(&path) {
+                                            Ok(text) => match import_auto_bundle(&text) {
+                                                Ok(bundle) => {
+                                                    let summary = st.apply_import_bundle(bundle);
+                                                    status_msg.set(summary);
+                                                }
+                                                Err(e) => status_msg.set(format!("import: {e}")),
+                                            },
+                                            Err(e) => status_msg.set(format!("read: {e}")),
+                                        }
+                                        is_loading.set(false);
+                                    });
+                                },
+                                "Import HAR / OpenAPI…"
+                            }
                             div { class: "menu-category-header", "Export & Docs" }
                             button {
                                 class: "menu-item",
@@ -247,6 +343,44 @@ pub fn TopBar(st: WorkbenchState) -> Element {
                                     }
                                 },
                                 "Export Active Collection (JSON)…"
+                            }
+                            button {
+                                class: "menu-item",
+                                onclick: move |_| {
+                                    file_menu_open.set(false);
+                                    is_loading.set(true);
+                                    spawn(async move {
+                                        let envs = environments();
+                                        let env = active_env_id()
+                                            .and_then(|id| envs.iter().find(|e| e.id == id))
+                                            .or_else(|| envs.first());
+                                        match env {
+                                            Some(e) => match export_environment_json(e) {
+                                                Ok(text) => {
+                                                    if let Some(path) = rfd::FileDialog::new()
+                                                        .set_title("Export environment")
+                                                        .set_file_name(format!("{}.postman_environment.json", e.name))
+                                                        .save_file()
+                                                    {
+                                                        match std::fs::write(&path, text) {
+                                                            Ok(()) => status_msg.set(format!(
+                                                                "exported env to {}",
+                                                                path.display()
+                                                            )),
+                                                            Err(err) => {
+                                                                status_msg.set(format!("write: {err}"))
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                                Err(e) => status_msg.set(format!("env export: {e}")),
+                                            },
+                                            None => status_msg.set("no environment to export".into()),
+                                        }
+                                        is_loading.set(false);
+                                    });
+                                },
+                                "Export Active Environment…"
                             }
                             button {
                                 class: "menu-item",
@@ -292,162 +426,6 @@ pub fn TopBar(st: WorkbenchState) -> Element {
                                 },
                                 "Export Swagger UI Docs…"
                             }
-                            button {
-                                class: "menu-item",
-                                onclick: move |_| {
-                                    file_menu_open.set(false);
-                                    is_loading.set(true);
-                                    let mut st = st;
-                                    spawn(async move {
-                                        let picked = rfd::FileDialog::new()
-                                            .set_title("Import Postman environment(s)")
-                                            .add_filter("Environment JSON", &["json"])
-                                            .pick_files();
-                                        let Some(paths) = picked else {
-                                            is_loading.set(false);
-                                            return;
-                                        };
-                                        if paths.is_empty() {
-                                            is_loading.set(false);
-                                            return;
-                                        }
-                                        let texts: Vec<String> = paths
-                                            .iter()
-                                            .filter_map(|p| std::fs::read_to_string(p).ok())
-                                            .collect();
-                                        match import_environment_texts(&texts) {
-                                            Ok(envs) => {
-                                                let mut store = environments();
-                                                let (ids, created_n, updated_n) =
-                                                    upsert_environments(&mut store, envs);
-                                                if let Some(&last_id) = ids.last() {
-                                                    active_env_id.set(Some(last_id));
-                                                }
-                                                environments.set(store);
-                                                st.persist();
-                                                status_msg.set(format!(
-                                                    "env import: {created_n} added, {updated_n} updated"
-                                                ));
-                                            }
-                                            Err(e) => status_msg.set(format!("env import: {e}")),
-                                        }
-                                        is_loading.set(false);
-                                    });
-                                },
-                                "Import environment(s)…"
-                            }
-                            button {
-                                class: "menu-item",
-                                onclick: move |_| {
-                                    file_menu_open.set(false);
-                                    is_loading.set(true);
-                                    spawn(async move {
-                                        let envs = environments();
-                                        let env = active_env_id()
-                                            .and_then(|id| envs.iter().find(|e| e.id == id))
-                                            .or_else(|| envs.first());
-                                        match env {
-                                            Some(e) => match export_environment_json(e) {
-                                                Ok(text) => {
-                                                    if let Some(path) = rfd::FileDialog::new()
-                                                        .set_title("Export environment")
-                                                        .set_file_name(format!("{}.postman_environment.json", e.name))
-                                                        .save_file()
-                                                    {
-                                                        match std::fs::write(&path, text) {
-                                                            Ok(()) => status_msg.set(format!(
-                                                                "exported env to {}",
-                                                                path.display()
-                                                            )),
-                                                            Err(err) => {
-                                                                status_msg.set(format!("write: {err}"))
-                                                            }
-                                                        }
-                                                    }
-                                                }
-                                                Err(e) => status_msg.set(format!("env export: {e}")),
-                                            },
-                                            None => status_msg.set("no environment to export".into()),
-                                        }
-                                        is_loading.set(false);
-                                    });
-                                },
-                                "Export active environment…"
-                            }
-                            button {
-                                class: "menu-item",
-                                onclick: move |_| {
-                                    file_menu_open.set(false);
-                                    is_loading.set(true);
-                                    let mut st = st;
-                                    spawn(async move {
-                                        let picked = rfd::FileDialog::new()
-                                            .set_title("Import HAR / OpenAPI")
-                                            .add_filter("HAR / OpenAPI", &["json", "yaml", "yml", "har"])
-                                            .pick_file();
-                                        let Some(path) = picked else {
-                                            is_loading.set(false);
-                                            return;
-                                        };
-                                        match std::fs::read_to_string(&path) {
-                                            Ok(text) => {
-                                                let col = if path
-                                                    .extension()
-                                                    .and_then(|e| e.to_str())
-                                                    .map(|e| {
-                                                        e.eq_ignore_ascii_case("yaml")
-                                                            || e.eq_ignore_ascii_case("yml")
-                                                    })
-                                                    .unwrap_or(false)
-                                                {
-                                                    import_openapi3(&text)
-                                                } else if text.contains("\"log\"")
-                                                    && text.contains("\"entries\"")
-                                                {
-                                                    import_har(&text)
-                                                } else if text.contains("openapi")
-                                                    || text.contains("\"paths\"")
-                                                {
-                                                    import_openapi3(&text)
-                                                } else {
-                                                    import_collection_v21(&text)
-                                                };
-                                                match col {
-                                                    Ok(c) => {
-                                                        let mut cols = collections();
-                                                        let stats = upsert_collection(&mut cols, c);
-                                                        let id = stats.collection_id;
-                                                        let mut v = vars();
-                                                        if let Some(col_ref) = cols.iter().find(|x| x.id == id) {
-                                                            v.collection = col_ref.variables_map();
-                                                        }
-                                                        vars.set(v);
-                                                        collections.set(cols);
-                                                        active_collection_id.set(Some(id));
-                                                        fold_epoch.set(fold_epoch() + 1);
-                                                        st.persist();
-                                                        if stats.created_new {
-                                                            status_msg.set("imported HAR/OpenAPI/collection".into());
-                                                        } else {
-                                                            status_msg.set(format!(
-                                                                "updated existing collection (+{} / ~{} reqs)",
-                                                                stats.added_requests,
-                                                                stats.updated_requests
-                                                            ));
-                                                        }
-                                                    }
-                                                    Err(e) => {
-                                                        status_msg.set(format!("import: {e}"))
-                                                    }
-                                                }
-                                            }
-                                            Err(e) => status_msg.set(format!("read: {e}")),
-                                        }
-                                        is_loading.set(false);
-                                    });
-                                },
-                                "Import HAR / OpenAPI…"
-                            }
                         }
                     }
                 }
@@ -463,6 +441,7 @@ pub fn TopBar(st: WorkbenchState) -> Element {
                         onmousedown: move |evt| evt.stop_propagation(),
                         onclick: move |_| {
                             file_menu_open.set(false);
+                            view_menu_open.set(false);
                             cloud_menu_open.set(false);
                             tools_menu_open.set(!tools_menu_open());
                         },
@@ -622,11 +601,32 @@ pub fn TopBar(st: WorkbenchState) -> Element {
                                 },
                                 "Trash…"
                             }
-                            div { class: "menu-category-header", "View & App" }
+                        }
+                    }
+                }
+
+                div { class: "menu-file",
+                    button {
+                        class: if view_menu_open() { "top-link top-link-active" } else { "top-link" },
+                        title: "View, Windows & Help",
+                        onmousedown: move |evt| evt.stop_propagation(),
+                        onclick: move |_| {
+                            file_menu_open.set(false);
+                            tools_menu_open.set(false);
+                            cloud_menu_open.set(false);
+                            view_menu_open.set(!view_menu_open());
+                        },
+                        "View"
+                        span { class: "top-caret", "▾" }
+                    }
+                    if view_menu_open() {
+                        div { class: "menu-dropdown menu-dropdown-wide",
+                            onmousedown: move |evt| evt.stop_propagation(),
+                            div { class: "menu-category-header", "Zoom & Display" }
                             button {
                                 class: "menu-item",
                                 onclick: move |_| {
-                                    tools_menu_open.set(false);
+                                    view_menu_open.set(false);
                                     let mut s = app_settings();
                                     let old_z = s.ui.zoom_percent;
                                     let new_z = UiSettings::clamp_zoom_percent(old_z.saturating_add(UiSettings::ZOOM_STEP_PERCENT));
@@ -642,7 +642,7 @@ pub fn TopBar(st: WorkbenchState) -> Element {
                             button {
                                 class: "menu-item",
                                 onclick: move |_| {
-                                    tools_menu_open.set(false);
+                                    view_menu_open.set(false);
                                     let mut s = app_settings();
                                     let old_z = s.ui.zoom_percent;
                                     let new_z = UiSettings::clamp_zoom_percent(old_z.saturating_sub(UiSettings::ZOOM_STEP_PERCENT));
@@ -658,7 +658,7 @@ pub fn TopBar(st: WorkbenchState) -> Element {
                             button {
                                 class: "menu-item",
                                 onclick: move |_| {
-                                    tools_menu_open.set(false);
+                                    view_menu_open.set(false);
                                     let mut s = app_settings();
                                     let new_z = default_zoom_percent();
                                     if s.ui.zoom_percent != new_z {
@@ -670,10 +670,34 @@ pub fn TopBar(st: WorkbenchState) -> Element {
                                 },
                                 "Reset Zoom (⌘0 · {app_settings().ui.zoom_percent}%)"
                             }
+                            div { class: "menu-category-header", "Windows" }
                             button {
                                 class: "menu-item",
                                 onclick: move |_| {
-                                    tools_menu_open.set(false);
+                                    view_menu_open.set(false);
+                                    match spawn_new_blitz_window(true) {
+                                        Ok(label) => status_msg.set(format!("opened isolated window: {label}")),
+                                        Err(e) => status_msg.set(format!("new window error: {e}")),
+                                    }
+                                },
+                                "New Isolated Session Window"
+                            }
+                            button {
+                                class: "menu-item",
+                                onclick: move |_| {
+                                    view_menu_open.set(false);
+                                    match spawn_new_blitz_window(false) {
+                                        Ok(_) => status_msg.set("opened new Blitz window".into()),
+                                        Err(e) => status_msg.set(format!("new window error: {e}")),
+                                    }
+                                },
+                                "New Shared Window"
+                            }
+                            div { class: "menu-category-header", "Help & Updates" }
+                            button {
+                                class: "menu-item",
+                                onclick: move |_| {
+                                    view_menu_open.set(false);
                                     checking_update.set(true);
                                     status_msg.set("checking for updates…".into());
                                     spawn(async move {
@@ -698,7 +722,7 @@ pub fn TopBar(st: WorkbenchState) -> Element {
                             button {
                                 class: "menu-item",
                                 onclick: move |_| {
-                                    tools_menu_open.set(false);
+                                    view_menu_open.set(false);
                                     open_browser_url("https://h3ma209.github.io/Blitz/docs.html");
                                 },
                                 "Documentation & Reference…"
@@ -719,6 +743,7 @@ pub fn TopBar(st: WorkbenchState) -> Element {
                         onclick: move |_| {
                             file_menu_open.set(false);
                             tools_menu_open.set(false);
+                            view_menu_open.set(false);
                             cloud_menu_open.set(!cloud_menu_open());
                         },
                         "Cloud"
@@ -834,7 +859,26 @@ pub fn TopBar(st: WorkbenchState) -> Element {
                         "{conf.files.len()} Conflicts"
                     }
                 }
+                if let Some(ref sess_name) = active_session_label {
+                    span {
+                        class: "live-chip live-mock",
+                        title: "Isolated window session (separate auth tokens, cookies, and WS connections)",
+                        "{sess_name}"
+                    }
+                }
                 div { class: "top-nav-cluster",
+                    button {
+                        class: "top-icon top-icon-only",
+                        title: "New isolated session window (separate auth tokens, cookies & WS for 2nd user)",
+                        aria_label: "New Session Window",
+                        onclick: move |_| {
+                            match spawn_new_blitz_window(true) {
+                                Ok(label) => status_msg.set(format!("opened isolated window: {label}")),
+                                Err(e) => status_msg.set(format!("new window error: {e}")),
+                            }
+                        },
+                        crate::ui::icons::ActionIcon { name: "users", size: 17 }
+                    }
                     button {
                         class: if show_team() { "top-icon top-icon-only top-icon-on" } else { "top-icon top-icon-only" },
                         title: "Team collaboration · Members, recent git commits & edited files",
@@ -884,7 +928,26 @@ pub fn TopBar(st: WorkbenchState) -> Element {
                     }
                 }
                 span { class: "top-nav-divider", aria_hidden: "true" }
+                if let Some(ref sess_name) = active_session_label {
+                    span {
+                        class: "live-chip live-mock",
+                        title: "Isolated window session (separate auth tokens, cookies, and WS connections)",
+                        "{sess_name}"
+                    }
+                }
                 div { class: "top-nav-cluster",
+                    button {
+                        class: "top-icon top-icon-only",
+                        title: "New isolated session window (separate auth tokens, cookies & WS for 2nd user)",
+                        aria_label: "New Session Window",
+                        onclick: move |_| {
+                            match spawn_new_blitz_window(true) {
+                                Ok(label) => status_msg.set(format!("opened isolated window: {label}")),
+                                Err(e) => status_msg.set(format!("new window error: {e}")),
+                            }
+                        },
+                        crate::ui::icons::ActionIcon { name: "users", size: 17 }
+                    }
                     ThemeSelector {
                         theme: app_settings().ui.theme,
                         on_change: move |t: UiTheme| {
@@ -985,5 +1048,25 @@ pub fn TopBar(st: WorkbenchState) -> Element {
                 }
             }
         }
+    }
+}
+
+fn spawn_new_blitz_window(isolated_session: bool) -> Result<String, String> {
+    let exe = std::env::current_exe().map_err(|e| e.to_string())?;
+    let mut cmd = std::process::Command::new(exe);
+    if isolated_session {
+        let base_sessions = crate::storage::JsonStore::base_data_root().join("sessions");
+        let mut n = 2usize;
+        while base_sessions.join(format!("Session-{n}")).exists() && n < 99 {
+            n += 1;
+        }
+        let label = format!("Session {n}");
+        cmd.arg("--session").arg(&label);
+        cmd.spawn().map_err(|e| e.to_string())?;
+        Ok(label)
+    } else {
+        cmd.arg("--new-window");
+        cmd.spawn().map_err(|e| e.to_string())?;
+        Ok("Shared Window".to_string())
     }
 }

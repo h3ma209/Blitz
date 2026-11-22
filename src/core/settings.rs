@@ -57,8 +57,16 @@ fn default_ui_font_size_px() -> u32 {
     15
 }
 
+fn default_input_font_size_px() -> u32 {
+    14
+}
+
 fn default_editor_font_size_px() -> u32 {
     16
+}
+
+fn default_response_font_size_px() -> u32 {
+    14
 }
 
 fn default_sidebar_width_px() -> u32 {
@@ -338,9 +346,15 @@ pub struct UiSettings {
     /// Base UI font size in px (drives `--fs-base` / type scale).
     #[serde(default = "default_ui_font_size_px")]
     pub ui_font_size_px: u32,
-    /// Mono editor / body textarea font size (`--fs-editor`).
+    /// Input areas (URL bar, KV inputs, form fields) font size (`--fs-input`).
+    #[serde(default = "default_input_font_size_px")]
+    pub input_font_size_px: u32,
+    /// Mono editor / request body / script textarea font size (`--fs-editor`).
     #[serde(default = "default_editor_font_size_px")]
     pub editor_font_size_px: u32,
+    /// Response body / JSON tree font size (`--fs-response`).
+    #[serde(default = "default_response_font_size_px")]
+    pub response_font_size_px: u32,
     /// Left sidebar width in px (`--sidebar-w`).
     #[serde(default = "default_sidebar_width_px")]
     pub sidebar_width_px: u32,
@@ -396,7 +410,9 @@ impl Default for UiSettings {
         Self {
             layout: WorkbenchLayout::default(),
             ui_font_size_px: default_ui_font_size_px(),
+            input_font_size_px: default_input_font_size_px(),
             editor_font_size_px: default_editor_font_size_px(),
+            response_font_size_px: default_response_font_size_px(),
             sidebar_width_px: default_sidebar_width_px(),
             request_pane_height_px: default_request_pane_height_px(),
             console_height_px: default_console_height_px(),
@@ -474,7 +490,9 @@ impl UiSettings {
     /// Normalize all fields into allowed ranges.
     pub fn clamped(mut self) -> Self {
         self.ui_font_size_px = Self::clamp_font_size(self.ui_font_size_px);
+        self.input_font_size_px = Self::clamp_font_size(self.input_font_size_px);
         self.editor_font_size_px = Self::clamp_font_size(self.editor_font_size_px);
+        self.response_font_size_px = Self::clamp_font_size(self.response_font_size_px);
         self.sidebar_width_px = Self::clamp_sidebar_width(self.sidebar_width_px);
         if self.request_pane_height_px > 0 {
             self.request_pane_height_px =

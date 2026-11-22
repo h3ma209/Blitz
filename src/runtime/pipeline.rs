@@ -228,6 +228,7 @@ fn resolve_draft(
                 value: resolve(&f.value),
                 enabled: f.enabled,
                 is_file: f.is_file,
+                content_type: f.content_type.as_deref().map(&resolve),
             })
             .collect()
     };
@@ -824,7 +825,17 @@ fn build_formdata(
                         .and_then(|n| n.to_str())
                         .unwrap_or("file")
                         .to_string();
-                    let part = multipart::Part::bytes(bytes).file_name(filename);
+                    let mut part = multipart::Part::bytes(bytes).file_name(filename);
+                    if let Some(ct) = f
+                        .content_type
+                        .as_deref()
+                        .map(str::trim)
+                        .filter(|s| !s.is_empty())
+                    {
+                        part = part.mime_str(ct).map_err(|e| {
+                            SendError::Client(format!("invalid multipart content-type '{ct}': {e}"))
+                        })?;
+                    }
                     form = form.part(f.key.clone(), part);
                     file_n += 1;
                 }
@@ -1516,6 +1527,7 @@ mod tests {
                 value: "/tmp/x".into(),
                 enabled: true,
                 is_file: true,
+                content_type: None,
             },
         ];
         let form = build_formdata(&fields, None, &mut log).unwrap();

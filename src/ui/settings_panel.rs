@@ -41,7 +41,9 @@ pub fn SettingsPanel(
     let mut cert_enabled = use_signal(|| s_now.client_cert.enabled);
     let mut zoom = use_signal(|| s_now.ui.zoom_percent);
     let mut ui_font = use_signal(|| s_now.ui.ui_font_size_px);
+    let mut input_font = use_signal(|| s_now.ui.input_font_size_px);
     let mut editor_font = use_signal(|| s_now.ui.editor_font_size_px);
+    let mut response_font = use_signal(|| s_now.ui.response_font_size_px);
     let mut sidebar_w = use_signal(|| s_now.ui.sidebar_width_px);
     let mut request_h = use_signal(|| s_now.ui.request_pane_height_px);
     let mut console_h = use_signal(|| s_now.ui.console_height_px);
@@ -91,8 +93,14 @@ pub fn SettingsPanel(
         if s.ui.ui_font_size_px != prev.ui.ui_font_size_px {
             ui_font.set(s.ui.ui_font_size_px);
         }
+        if s.ui.input_font_size_px != prev.ui.input_font_size_px {
+            input_font.set(s.ui.input_font_size_px);
+        }
         if s.ui.editor_font_size_px != prev.ui.editor_font_size_px {
             editor_font.set(s.ui.editor_font_size_px);
+        }
+        if s.ui.response_font_size_px != prev.ui.response_font_size_px {
+            response_font.set(s.ui.response_font_size_px);
         }
         if s.ui.sidebar_width_px != prev.ui.sidebar_width_px {
             sidebar_w.set(s.ui.sidebar_width_px);
@@ -332,40 +340,10 @@ pub fn SettingsPanel(
                                             },
                                         }
                                     }
-                                    div { class: "settings-slider-row",
-                                        div { class: "slider-label-wrap",
-                                            span { class: "slider-name", "UI Font Size" }
-                                            span { class: "slider-badge", "{ui_font()} px" }
-                                        }
-                                        input {
-                                            r#type: "range",
-                                            min: "{UiSettings::FONT_MIN_PX}",
-                                            max: "{UiSettings::FONT_MAX_PX}",
-                                            value: "{ui_font()}",
-                                            oninput: move |evt| {
-                                                if let Ok(v) = evt.value().parse::<u32>() {
-                                                    ui_font.set(UiSettings::clamp_font_size(v));
-                                                }
-                                            },
-                                        }
-                                    }
-                                    div { class: "settings-slider-row",
-                                        div { class: "slider-label-wrap",
-                                            span { class: "slider-name", "Editor Font Size" }
-                                            span { class: "slider-badge", "{editor_font()} px" }
-                                        }
-                                        input {
-                                            r#type: "range",
-                                            min: "{UiSettings::FONT_MIN_PX}",
-                                            max: "{UiSettings::FONT_MAX_PX}",
-                                            value: "{editor_font()}",
-                                            oninput: move |evt| {
-                                                if let Ok(v) = evt.value().parse::<u32>() {
-                                                    editor_font.set(UiSettings::clamp_font_size(v));
-                                                }
-                                            },
-                                        }
-                                    }
+                                    {font_size_slider_row("UI Font Size", ui_font)}
+                                    {font_size_slider_row("Input Areas Font Size", input_font)}
+                                    {font_size_slider_row("Request Body & Script Font Size", editor_font)}
+                                    {font_size_slider_row("Response Body Font Size", response_font)}
                                 }
                             }
 
@@ -585,7 +563,9 @@ pub fn SettingsPanel(
                                             let d = UiSettings::default();
                                             zoom.set(d.zoom_percent);
                                             ui_font.set(d.ui_font_size_px);
+                                            input_font.set(d.input_font_size_px);
                                             editor_font.set(d.editor_font_size_px);
+                                            response_font.set(d.response_font_size_px);
                                             sidebar_w.set(d.sidebar_width_px);
                                             request_h.set(d.request_pane_height_px);
                                             console_h.set(d.console_height_px);
@@ -979,7 +959,9 @@ pub fn SettingsPanel(
                             },
                             ui: UiSettings {
                                 ui_font_size_px: ui_font(),
+                                input_font_size_px: input_font(),
                                 editor_font_size_px: editor_font(),
+                                response_font_size_px: response_font(),
                                 sidebar_width_px: sidebar_w(),
                                 request_pane_height_px: request_h(),
                                 console_height_px: console_h(),
@@ -1017,6 +999,28 @@ pub fn SettingsPanel(
                     "Save Changes"
                 }
                 }
+            }
+        }
+    }
+}
+
+fn font_size_slider_row(label: &str, mut value: Signal<u32>) -> Element {
+    rsx! {
+        div { class: "settings-slider-row",
+            div { class: "slider-label-wrap",
+                span { class: "slider-name", "{label}" }
+                span { class: "slider-badge", "{value()} px" }
+            }
+            input {
+                r#type: "range",
+                min: "{UiSettings::FONT_MIN_PX}",
+                max: "{UiSettings::FONT_MAX_PX}",
+                value: "{value()}",
+                oninput: move |evt| {
+                    if let Ok(v) = evt.value().parse::<u32>() {
+                        value.set(UiSettings::clamp_font_size(v));
+                    }
+                },
             }
         }
     }
