@@ -57,7 +57,7 @@ Blitz is a **lightweight, open-source API development and testing client** writt
 |---|:---:|:---:|:---:|:---:|
 | **Language & Engine** | Electron + Node.js | Electron + Node.js | Tauri + React | **Pure Rust + Dioxus** |
 | **Startup Time** | ~3,500 ms | ~1,200 ms | ~450 ms | **< 20 ms (CLI) / Native WebView (GUI)** |
-| **Memory Footprint** | 800 MB – 1.5 GB | 150 MB – 300 MB | ~120 MB | **~200 MB app (~350 MB w/ WebView) / ~10 MB CLI** |
+| **Memory Footprint** | 800 MB – 1.5 GB | 150 MB – 300 MB | ~120 MB | **~~198 MB main / ~346 MB total (with 9 open request tabs)** |
 | **Account Required** | **Mandatory Cloud** | No | No | **Never (100% Offline)** |
 | **Team Sync** | Paid Cloud ($19+/mo) | Git (.bru files) | Git / Cloud | **Git-Native (standard JSON)** |
 | **AI Agent Bridge** | Proprietary AI add-on | None | None | **Built-in MCP Server (42 tools)** |
