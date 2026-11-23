@@ -1653,6 +1653,126 @@ pub fn WorkbenchModals(
                 },
             }
         }
+
+        if (st.show_update_modal)() {
+            if let Some(upd) = (st.available_update)() {
+                UpdateAvailableModal {
+                    st,
+                    info: upd,
+                }
+            }
+        }
+    }
+}
+
+fn format_update_bytes(bytes: u64) -> String {
+    if bytes >= 1024 * 1024 {
+        format!("{:.1} MB", bytes as f64 / (1024.0 * 1024.0))
+    } else if bytes >= 1024 {
+        format!("{:.0} KB", bytes as f64 / 1024.0)
+    } else {
+        format!("{bytes} B")
+    }
+}
+
+#[component]
+fn UpdateAvailableModal(st: WorkbenchState, info: crate::core::UpdateInfo) -> Element {
+    let mut show_update_modal = st.show_update_modal;
+    let installing = (st.installing_update)();
+    let progress = (st.update_progress)();
+    let err_msg = (st.update_error)();
+    let rel_name = info.release_name.trim().to_string();
+
+    rsx! {
+        ModalShell {
+            title: format!("Update Available — Blitz v{}", info.latest_version),
+            on_close: move |_| {
+                if !(st.installing_update)() {
+                    show_update_modal.set(false);
+                }
+            },
+            div { class: "update-modal",
+                div { class: "update-modal-head",
+                    span { class: "update-version-pill", "Current: v{info.current_version} → New: v{info.latest_version}" }
+                    if !rel_name.is_empty() {
+                        span { class: "hint", "{rel_name}" }
+                    }
+                }
+                if let Some(p) = &progress {
+                    div { class: "update-progress-wrap",
+                        div { class: "update-progress-meta",
+                            span { "{p.message}" }
+                            if matches!(p.stage, crate::core::UpdateStage::Downloading) {
+                                if let (Some(pct), Some(total)) = (p.percent(), p.total_bytes) {
+                                    span { class: "update-progress-pct",
+                                        "{format_update_bytes(p.downloaded_bytes)} / {format_update_bytes(total)} ({pct}%)"
+                                    }
+                                } else if p.downloaded_bytes > 0 {
+                                    span { class: "update-progress-pct",
+                                        "{format_update_bytes(p.downloaded_bytes)}"
+                                    }
+                                }
+                            } else if matches!(p.stage, crate::core::UpdateStage::Verifying) {
+                                span { class: "update-progress-pct", "Verifying…" }
+                            } else if matches!(p.stage, crate::core::UpdateStage::Installing) {
+                                span { class: "update-progress-pct", "Installing…" }
+                            }
+                        }
+                        div { class: "update-progress-track",
+                            if matches!(p.stage, crate::core::UpdateStage::Downloading) {
+                                if let Some(pct) = p.percent() {
+                                    div {
+                                        class: "update-progress-fill",
+                                        style: "width: {pct}%;",
+                                    }
+                                } else {
+                                    div { class: "update-progress-fill update-progress-indeterminate" }
+                                }
+                            } else {
+                                div {
+                                    class: "update-progress-fill update-progress-indeterminate",
+                                    style: "width: 100%;",
+                                }
+                            }
+                        }
+                    }
+                }
+                if let Some(err) = &err_msg {
+                    div { class: "update-error-box", "{err}" }
+                }
+                div { class: "kv-actions",
+                    if !installing {
+                        button {
+                            class: "btn btn-send",
+                            onclick: {
+                                let info = info.clone();
+                                move |_| st.start_update_install(info.clone())
+                            },
+                            if err_msg.is_some() {
+                                "Retry Update"
+                            } else {
+                                "Download & Install"
+                            }
+                        }
+                        button {
+                            class: "btn btn-ghost",
+                            onclick: {
+                                let url = info.release_url.clone();
+                                move |_| crate::core::open_browser_url(&url)
+                            },
+                            "Release Notes"
+                        }
+                        button {
+                            class: "btn btn-ghost",
+                            onclick: move |_| show_update_modal.set(false),
+                            "Later"
+                        }
+                    } else {
+                        span { class: "hint", "Please wait — Blitz will restart automatically when ready." }
+                    }
+                }
+            }
+        }
     }
 }
 

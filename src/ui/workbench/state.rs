@@ -13,7 +13,7 @@ use crate::core::{
     trash_collection, upsert_collection, upsert_environments, AncestorAuthOrigin, AppSettings,
     AuthConfig, AuthType, CaptureProxyHandle, Collection, CollectionItem, ConsoleLine, CookieJar,
     Environment, HistoryEntry, ImportBundle, MockHandle, PerfReport, RequestDraft, ResponseView,
-    TeamActivity, UpdateInfo, VariableContext, VaultStore, WsSession,
+    TeamActivity, UpdateInfo, UpdateProgress, UpdateStage, VariableContext, VaultStore, WsSession,
 };
 use crate::core::collection::RequestEnvOverride;
 use crate::runtime::RunnerReport;
@@ -198,6 +198,9 @@ pub struct WorkbenchState {
     pub pending_close_tab: Signal<Option<PendingCloseTab>>,
     pub tree_clipboard: Signal<Option<TreeClipboard>>,
     pub available_update: Signal<Option<UpdateInfo>>,
+    pub show_update_modal: Signal<bool>,
+    pub update_progress: Signal<Option<UpdateProgress>>,
+    pub update_error: Signal<Option<String>>,
     pub checking_update: Signal<bool>,
     pub installing_update: Signal<bool>,
     pub toasts: Signal<Vec<Toast>>,
@@ -297,6 +300,9 @@ impl WorkbenchState {
             pending_close_tab: use_signal(|| None::<PendingCloseTab>),
             tree_clipboard: use_signal(|| None::<TreeClipboard>),
             available_update: use_signal(|| None::<UpdateInfo>),
+            show_update_modal: use_signal(|| false),
+            update_progress: use_signal(|| None::<UpdateProgress>),
+            update_error: use_signal(|| None::<String>),
             checking_update: use_signal(|| false),
             installing_update: use_signal(|| false),
             toasts: use_signal(Vec::<Toast>::new),
@@ -310,6 +316,89 @@ impl WorkbenchState {
 
     pub fn notify(&self, msg: impl Into<String>, level: ToastLevel) {
         push_toast(self.toasts, Toast::new(msg, level));
+    }
+
+    pub fn start_update_install(&self, info: UpdateInfo) {
+        let mut st = *self;
+        if (st.installing_update)() {
+            return;
+        }
+        st.show_update_modal.set(true);
+        st.installing_update.set(true);
+        st.update_error.set(None);
+        st.update_progress.set(Some(UpdateProgress {
+            stage: UpdateStage::Downloading,
+            downloaded_bytes: 0,
+            total_bytes: None,
+            message: format!("Starting download for Blitz v{}…", info.latest_version),
+        }));
+        st.status_msg
+            .set(format!("downloading Blitz v{}…", info.latest_version));
+
+        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<UpdateProgress>();
+        let mut progress_sig = st.update_progress;
+        spawn(async move {
+            while let Some(p) = rx.recv().await {
+                progress_sig.set(Some(p));
+            }
+        });
+
+        let info_bg = info.clone();
+        spawn(async move {
+            let res = tokio::task::spawn_blocking(move || {
+                crate::core::download_and_verify_update_with_progress(&info_bg, move |p| {
+                    let _ = tx.send(p);
+                })
+            })
+            .await;
+            match res {
+                Ok(Ok(path)) => {
+                    st.persist_now();
+                    st.update_progress.set(Some(UpdateProgress {
+                        stage: UpdateStage::Installing,
+                        downloaded_bytes: 1,
+                        total_bytes: Some(1),
+                        message: "Installing update and restarting Blitz…".into(),
+                    }));
+                    st.status_msg
+                        .set("installing update and restarting Blitz…".to_string());
+                    let p_install = path.clone();
+                    let install_res = tokio::task::spawn_blocking(move || {
+                        crate::core::install_update_and_restart(&p_install)
+                    })
+                    .await;
+                    st.installing_update.set(false);
+                    match install_res {
+                        Ok(Ok(())) => {}
+                        Ok(Err(e)) => {
+                            let msg = format!(
+                                "Auto-update failed ({e}) — opened downloaded installer instead."
+                            );
+                            st.update_error.set(Some(msg.clone()));
+                            st.status_msg.set(msg);
+                            crate::core::reveal_or_open_installer(&path);
+                        }
+                        Err(e) => {
+                            let msg = format!("Install task error: {e}");
+                            st.update_error.set(Some(msg.clone()));
+                            st.status_msg.set(msg);
+                            crate::core::reveal_or_open_installer(&path);
+                        }
+                    }
+                }
+                Ok(Err(e)) => {
+                    st.installing_update.set(false);
+                    st.update_error.set(Some(format!("Download failed: {e}")));
+                    st.status_msg
+                        .set(format!("update download failed ({e})"));
+                }
+                Err(e) => {
+                    st.installing_update.set(false);
+                    st.update_error.set(Some(format!("Update task error: {e}")));
+                    st.status_msg.set(format!("update join error: {e}"));
+                }
+            }
+        });
     }
 
     pub fn log(&self, line: ConsoleLine) {

@@ -143,9 +143,40 @@ pub fn verify_sha256_manifest(
     }
 }
 
-/// Download the platform installer for `info.latest_version` into the system temp directory
-/// and verify its SHA-256 checksum against the release's `SHA256SUMS` asset when present.
-pub fn download_and_verify_update(info: &UpdateInfo) -> Result<PathBuf, String> {
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum UpdateStage {
+    Downloading,
+    Verifying,
+    Installing,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UpdateProgress {
+    pub stage: UpdateStage,
+    pub downloaded_bytes: u64,
+    pub total_bytes: Option<u64>,
+    pub message: String,
+}
+
+impl UpdateProgress {
+    pub fn percent(&self) -> Option<u8> {
+        let total = self.total_bytes?;
+        if total == 0 {
+            return None;
+        }
+        Some(((self.downloaded_bytes.saturating_mul(100)) / total).min(100) as u8)
+    }
+}
+
+/// Streaming download of the platform installer for `info.latest_version` into the system temp
+/// directory, reporting byte-level progress and verifying SHA-256 against `SHA256SUMS` if present.
+pub fn download_and_verify_update_with_progress<F: FnMut(UpdateProgress)>(
+    info: &UpdateInfo,
+    mut on_progress: F,
+) -> Result<PathBuf, String> {
+    use std::io::Read;
+    use std::time::Instant;
+
     let asset = platform_asset_name();
     let tag = if info.latest_version.starts_with('v') {
         info.latest_version.clone()
@@ -162,16 +193,60 @@ pub fn download_and_verify_update(info: &UpdateInfo) -> Result<PathBuf, String> 
         .build()
         .map_err(|e| format!("http client: {e}"))?;
 
-    let resp = client
+    on_progress(UpdateProgress {
+        stage: UpdateStage::Downloading,
+        downloaded_bytes: 0,
+        total_bytes: None,
+        message: format!("Connecting to download {asset}…"),
+    });
+
+    let mut resp = client
         .get(&asset_url)
         .send()
         .map_err(|e| format!("download failed: {e}"))?;
     if !resp.status().is_success() {
         return Err(format!("asset HTTP {}", resp.status()));
     }
-    let bytes = resp
-        .bytes()
-        .map_err(|e| format!("read asset bytes: {e}"))?;
+
+    let total_bytes = resp.content_length();
+    let mut bytes = Vec::with_capacity(total_bytes.unwrap_or(0).min(64 * 1024 * 1024) as usize);
+    let mut buf = [0u8; 64 * 1024];
+    let mut downloaded_bytes = 0u64;
+    let mut last_emit = Instant::now();
+
+    on_progress(UpdateProgress {
+        stage: UpdateStage::Downloading,
+        downloaded_bytes,
+        total_bytes,
+        message: format!("Downloading {asset}…"),
+    });
+
+    loop {
+        let n = resp
+            .read(&mut buf)
+            .map_err(|e| format!("read asset bytes: {e}"))?;
+        if n == 0 {
+            break;
+        }
+        bytes.extend_from_slice(&buf[..n]);
+        downloaded_bytes += n as u64;
+        if last_emit.elapsed() >= Duration::from_millis(90) {
+            on_progress(UpdateProgress {
+                stage: UpdateStage::Downloading,
+                downloaded_bytes,
+                total_bytes,
+                message: format!("Downloading {asset}…"),
+            });
+            last_emit = Instant::now();
+        }
+    }
+
+    on_progress(UpdateProgress {
+        stage: UpdateStage::Verifying,
+        downloaded_bytes,
+        total_bytes: total_bytes.or(Some(downloaded_bytes)),
+        message: "Verifying SHA-256 checksum…".into(),
+    });
 
     // Check SHA256SUMS if published on this release
     if let Ok(sums_resp) = client.get(&sums_url).send() {

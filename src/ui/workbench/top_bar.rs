@@ -707,6 +707,8 @@ pub fn TopBar(st: WorkbenchState) -> Element {
                                             Some(info) if info.has_update => {
                                                 status_msg.set(format!("New version v{} available!", info.latest_version));
                                                 available_update.set(Some(info));
+                                                let mut show_upd = st.show_update_modal;
+                                                show_upd.set(true);
                                             }
                                             Some(info) => {
                                                 status_msg.set(format!("Blitz v{} is up to date", info.current_version));
@@ -963,59 +965,10 @@ pub fn TopBar(st: WorkbenchState) -> Element {
                     div { class: "update-pill-group",
                         button {
                             class: "top-link update-pill-pulse",
-                            disabled: (st.installing_update)(),
-                            title: format!("Download update, install silently, and restart Blitz v{}", upd.latest_version),
-                            onclick: {
-                                let info = upd.clone();
-                                move |_| {
-                                    let mut st = st;
-                                    if (st.installing_update)() {
-                                        return;
-                                    }
-                                    st.installing_update.set(true);
-                                    st.status_msg.set(format!("downloading Blitz v{}…", info.latest_version));
-                                    let info_bg = info.clone();
-                                    let rel_url = info.release_url.clone();
-                                    spawn(async move {
-                                        let res = tokio::task::spawn_blocking(move || {
-                                            crate::core::download_and_verify_update(&info_bg)
-                                        }).await;
-                                        match res {
-                                            Ok(Ok(path)) => {
-                                                st.persist_now();
-                                                st.status_msg.set("installing update and restarting Blitz…".to_string());
-                                                let p_install = path.clone();
-                                                let install_res = tokio::task::spawn_blocking(move || {
-                                                    crate::core::install_update_and_restart(&p_install)
-                                                }).await;
-                                                st.installing_update.set(false);
-                                                match install_res {
-                                                    Ok(Ok(())) => {
-                                                        // Process exits on restart
-                                                    }
-                                                    Ok(Err(e)) => {
-                                                        st.status_msg.set(format!("auto-update failed ({e}) — falling back to manual installer"));
-                                                        // Fallback so user can still update manually using the downloaded file
-                                                        crate::core::reveal_or_open_installer(&path);
-                                                    }
-                                                    Err(e) => {
-                                                        st.status_msg.set(format!("install task join error: {e}"));
-                                                        crate::core::reveal_or_open_installer(&path);
-                                                    }
-                                                }
-                                            }
-                                            Ok(Err(e)) => {
-                                                st.installing_update.set(false);
-                                                st.status_msg.set(format!("update failed ({e}) — opening release page"));
-                                                open_browser_url(&rel_url);
-                                            }
-                                            Err(e) => {
-                                                st.installing_update.set(false);
-                                                st.status_msg.set(format!("update join error: {e}"));
-                                            }
-                                        }
-                                    });
-                                }
+                            title: format!("View update & install Blitz v{}", upd.latest_version),
+                            onclick: move |_| {
+                                let mut show_upd = st.show_update_modal;
+                                show_upd.set(true);
                             },
                             span { class: "update-badge-dot" }
                             span {

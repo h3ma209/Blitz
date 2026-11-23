@@ -143,7 +143,8 @@ pub use variables::{
 pub use variables::utf16_offset_to_byte_offset;
 pub use vault::{resolve_vault_key, VaultStore, VAULT_ACCOUNT_ID};
 pub use updater::{
-    check_for_updates, current_app_bundle, download_and_verify_update, install_update_and_restart,
-    is_newer_version, open_browser_url, platform_asset_name, reveal_or_open_installer,
-    verify_sha256_manifest, UpdateInfo, CURRENT_VERSION,
+    check_for_updates, current_app_bundle, download_and_verify_update_with_progress,
+    install_update_and_restart, is_newer_version, open_browser_url, platform_asset_name,
+    reveal_or_open_installer, verify_sha256_manifest, UpdateInfo, UpdateProgress, UpdateStage,
+    CURRENT_VERSION,
 };

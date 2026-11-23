@@ -172,12 +172,14 @@ pub fn Workbench() -> Element {
             if let Some(info) = info {
                 if info.has_update {
                     let msg = format!(
-                        "New version v{} available (current v{}) — click Update in top bar",
+                        "New version v{} available (current v{})",
                         info.latest_version, info.current_version
                     );
                     status_msg.set(msg.clone());
                     st.log_info(msg);
                     available_update.set(Some(info));
+                    let mut show_upd = st.show_update_modal;
+                    show_upd.set(true);
                 } else {
                     st.log_info(format!("Blitz v{} is up to date", info.current_version));
                 }
