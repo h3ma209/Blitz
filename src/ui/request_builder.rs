@@ -3902,7 +3902,7 @@ pub(crate) fn ScriptsEditor(
     }
     rsx! {
         p { class: "hint",
-            "Supported: blitz.variables|environment|collectionVariables|globals (.get/set/unset/has/toObject/clear, replaceIn), vault, cookies (get/set/clear), request (url.getPath, method, headers.upsert, body), response (code/status/responseTime/json/text/headers, to.have.status/jsonBody), test/expect (equal/eql/include/ok/above/below/a/property/not), sendRequest, execution, info, visualizer, console.*, CryptoJS.SHA256/HmacSHA256 (pm & epm aliases supported). require: crypto-js only. No async tests / npm / uvm."
+            "Supported: blitz.variables|environment|collectionVariables|globals (.get/set/unset/has/toObject/clear, replaceIn), vault, cookies, request (url.update/addQueryParams/getPath, method, headers.upsert/remove/has, body.update), response (code/status/responseTime/json/text/headers, to.be.ok/json/error, to.have.status/header/body/jsonBody), test/expect (Chai BDD + .and/.not/.deep/.nested), sendRequest, execution, info, visualizer, console.*, CryptoJS (MD5/SHA1/SHA256/SHA512/Hmac/Utf8/Base64/Hex), btoa/atob, URLSearchParams, require('crypto-js'|'lodash'). pm./bru./bruno./insomnia. auto-convert to blitz."
         }
         label { "Pre-request" }
         ScriptCodeEditor {
@@ -3911,9 +3911,10 @@ pub(crate) fn ScriptsEditor(
             placeholder: "blitz.environment.set(\"baseUrl\", \"https://httpbin.org\");\nconsole.log(\"pre\");".to_string(),
             vars: vars.clone(),
             on_change: move |text: String| {
+                let normalized = crate::core::normalize_script_to_blitz(&text);
                 let (_, cur_test) = live_scripts.peek().clone();
-                live_scripts.set((text.clone(), cur_test.clone()));
-                on_change.call((text, cur_test));
+                live_scripts.set((normalized.clone(), cur_test.clone()));
+                on_change.call((normalized, cur_test));
             }
         }
         label { "Tests (post-response)" }
@@ -3981,9 +3982,10 @@ pub(crate) fn ScriptsEditor(
             placeholder: "blitz.test(\"status ok\", function () {{\n  blitz.expect(blitz.response.code).to.equal(200);\n}});".to_string(),
             vars: vars.clone(),
             on_change: move |text: String| {
+                let normalized = crate::core::normalize_script_to_blitz(&text);
                 let (cur_pre, _) = live_scripts.peek().clone();
-                live_scripts.set((cur_pre.clone(), text.clone()));
-                on_change.call((cur_pre, text));
+                live_scripts.set((cur_pre.clone(), normalized.clone()));
+                on_change.call((cur_pre, normalized));
             }
         }
     }

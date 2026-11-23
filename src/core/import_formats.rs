@@ -882,10 +882,10 @@ fn import_bruno_json(root: &Value) -> Result<ImportBundle, ImpexError> {
             }
         }
         if let Some(pre) = root_req.pointer("/script/req").and_then(|v| v.as_str()) {
-            col.pre_request_script = pre.to_string();
+            col.pre_request_script = crate::core::normalize_script_to_blitz(pre);
         }
         if let Some(tests) = root_req.get("tests").and_then(|v| v.as_str()) {
-            col.test_script = tests.to_string();
+            col.test_script = crate::core::normalize_script_to_blitz(tests);
         }
     }
 
@@ -1045,16 +1045,16 @@ fn import_bruno_json_items(items: &[Value]) -> Vec<CollectionItem> {
             _ => {}
         }
 
-        let pre_request_script = req
-            .pointer("/script/req")
-            .and_then(|v| v.as_str())
-            .unwrap_or("")
-            .to_string();
-        let test_script = req
-            .get("tests")
-            .and_then(|v| v.as_str())
-            .unwrap_or("")
-            .to_string();
+        let pre_request_script = crate::core::normalize_script_to_blitz(
+            req.pointer("/script/req")
+                .and_then(|v| v.as_str())
+                .unwrap_or(""),
+        );
+        let test_script = crate::core::normalize_script_to_blitz(
+            req.get("tests")
+                .and_then(|v| v.as_str())
+                .unwrap_or(""),
+        );
 
         out.push(CollectionItem::Request(RequestDraft {
             id: Uuid::new_v4(),
@@ -1216,9 +1216,11 @@ fn read_bru_items_in_dir(dir: &Path, vault_secrets: &mut Vec<(String, String)>) 
                                 ..Default::default()
                             };
                         } else if bname == "script:pre-request" {
-                            folder.pre_request_script = body.trim().to_string();
+                            folder.pre_request_script =
+                                crate::core::normalize_script_to_blitz(body.trim());
                         } else if bname == "tests" || bname == "script:post-response" {
-                            folder.test_script = body.trim().to_string();
+                            folder.test_script =
+                                crate::core::normalize_script_to_blitz(body.trim());
                         }
                     }
                     let _ = vault_secrets;
@@ -1374,8 +1376,12 @@ fn apply_bru_scope_to_collection(
                     ..Default::default()
                 };
             }
-            "script:pre-request" => col.pre_request_script = body.trim().to_string(),
-            "tests" | "script:post-response" => col.test_script = body.trim().to_string(),
+            "script:pre-request" => {
+                col.pre_request_script = crate::core::normalize_script_to_blitz(body.trim())
+            }
+            "tests" | "script:post-response" => {
+                col.test_script = crate::core::normalize_script_to_blitz(body.trim())
+            }
             _ => {}
         }
     }
@@ -1464,8 +1470,12 @@ fn bru_blocks_to_request(blocks: &[(String, String)], fallback_name: &str) -> Re
                     ..Default::default()
                 };
             }
-            "script:pre-request" => req.pre_request_script = body.trim().to_string(),
-            "tests" | "script:post-response" => req.test_script = body.trim().to_string(),
+            "script:pre-request" => {
+                req.pre_request_script = crate::core::normalize_script_to_blitz(body.trim())
+            }
+            "tests" | "script:post-response" => {
+                req.test_script = crate::core::normalize_script_to_blitz(body.trim())
+            }
             _ => {}
         }
     }

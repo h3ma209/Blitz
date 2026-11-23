@@ -24,12 +24,16 @@
 
 use boa_engine::{js_string, Context, JsArgs, JsResult, JsValue, NativeFunction, Source};
 use hmac::{Hmac, Mac};
+use md5::Md5;
 use serde_json::Value as JsonValue;
-use sha2::{Digest, Sha256};
+use sha1::Sha1;
+use sha2::{Digest, Sha256, Sha512};
 
 use crate::core::{TestResult, VariableContext};
 
+type HmacSha1 = Hmac<Sha1>;
 type HmacSha256 = Hmac<Sha256>;
+type HmacSha512 = Hmac<Sha512>;
 
 #[derive(Debug, Default)]
 pub struct SandboxOutcome {
@@ -41,6 +45,12 @@ pub struct SandboxOutcome {
     pub visualizer_html: String,
     /// Headers upserted via `blitz.request.headers.upsert` / `.add` (pre-request).
     pub request_header_upserts: Vec<(String, String)>,
+    /// Headers removed via `blitz.request.headers.remove` / `.clear` (pre-request).
+    pub request_header_removals: Vec<String>,
+    /// Overridden request URL from `blitz.request.url.update(...)` or assignment.
+    pub request_url_override: Option<String>,
+    /// Overridden raw request body from `blitz.request.body.update(...)`.
+    pub request_body_raw_override: Option<String>,
     /// Cookie map after script when `blitz.cookies.set/clear` ran.
     pub cookies: Option<std::collections::HashMap<String, String>>,
 }
@@ -102,6 +112,7 @@ pub fn normalize_smart_quotes(code: &str) -> String {
 thread_local! {
     static JS_REALM: *mut Context = {
         let mut context = Context::default();
+        context.runtime_limits_mut().set_loop_iteration_limit(2_000_000);
         register_host_fns(&mut context).expect("sandbox host fns");
         Box::into_raw(Box::new(context))
     };
@@ -116,6 +127,14 @@ fn register_host_fns(context: &mut Context) -> Result<(), String> {
         ),
         ("__np_sha256_hex", 1, np_sha256_hex_native),
         ("__np_hmac_sha256_b64", 2, np_hmac_sha256_b64_native),
+        ("__np_hash", 2, np_hash_native),
+        ("__np_hmac", 3, np_hmac_native),
+        ("__np_hex_to_b64", 1, np_hex_to_b64_native),
+        ("__np_b64_to_hex", 1, np_b64_to_hex_native),
+        ("__np_btoa", 1, np_btoa_native),
+        ("__np_atob", 1, np_atob_native),
+        ("__np_utf8_to_hex", 1, np_utf8_to_hex_native),
+        ("__np_hex_to_utf8", 1, np_hex_to_utf8_native),
     ] {
         context
             .register_global_callable(js_string!(name), arity, NativeFunction::from_fn_ptr(f))
@@ -142,7 +161,7 @@ pub fn run_js_sandbox_ex(
     let bridge_json = serde_json::to_string(&bridge).unwrap_or_else(|_| "{}".into());
 
     let prelude = format!(
-        r#"
+        r##"
 var __np = {bridge_json};
 var console = {{
   log: function() {{ __np.logs.push(__np_fmtArgs(arguments)); }},
@@ -282,14 +301,18 @@ function __reqHdrGet(name) {{
   }}
   return undefined;
 }}
+function __reqHdrHas(name) {{
+  return __reqHdrGet(name) !== undefined;
+}}
 function __reqHdrUpsert(kv) {{
   if (!kv) return;
   var key = String(kv.key || kv.name || "");
   var value = kv.value === undefined || kv.value === null ? "" : String(kv.value);
   if (!key) return;
+  var lower = key.toLowerCase();
   var found = false;
   for (var i = 0; i < __reqHdrs.length; i++) {{
-    if (String(__reqHdrs[i].key).toLowerCase() === key.toLowerCase()) {{
+    if (String(__reqHdrs[i].key).toLowerCase() === lower) {{
       __reqHdrs[i].key = key;
       __reqHdrs[i].value = value;
       found = true;
@@ -297,13 +320,42 @@ function __reqHdrUpsert(kv) {{
     }}
   }}
   if (!found) __reqHdrs.push({{ key: key, value: value }});
-  __np.requestHeaderUpserts.push([key, value]);
+  __np.requestHeaderRemovals = (__np.requestHeaderRemovals || []).filter(function(r) {{
+    return String(r).toLowerCase() !== lower;
+  }});
+  var replaced = false;
+  for (var j = 0; j < __np.requestHeaderUpserts.length; j++) {{
+    if (String(__np.requestHeaderUpserts[j][0]).toLowerCase() === lower) {{
+      __np.requestHeaderUpserts[j] = [key, value];
+      replaced = true;
+      break;
+    }}
+  }}
+  if (!replaced) __np.requestHeaderUpserts.push([key, value]);
+}}
+function __reqHdrRemove(name) {{
+  var lower = String(name || "").toLowerCase();
+  if (!lower) return;
+  __reqHdrs = __reqHdrs.filter(function(h) {{ return String(h.key).toLowerCase() !== lower; }});
+  __np.requestHeaderUpserts = __np.requestHeaderUpserts.filter(function(u) {{
+    return String(u[0]).toLowerCase() !== lower;
+  }});
+  if (!__np.requestHeaderRemovals) __np.requestHeaderRemovals = [];
+  if (__np.requestHeaderRemovals.indexOf(lower) < 0) {{
+    __np.requestHeaderRemovals.push(lower);
+  }}
+}}
+function __reqHdrClear() {{
+  var copy = __reqHdrs.slice();
+  for (var i = 0; i < copy.length; i++) __reqHdrRemove(copy[i].key);
 }}
 var __hdrMap = {{}};
+var __respHdrs = [];
 if (__np.response && __np.response.headers) {{
   for (var i = 0; i < __np.response.headers.length; i++) {{
     var h = __np.response.headers[i];
     __hdrMap[String(h[0]).toLowerCase()] = h[1];
+    __respHdrs.push({{ key: String(h[0]), value: String(h[1]) }});
   }}
 }}
 function __urlPath(urlStr) {{
@@ -318,109 +370,504 @@ function __urlPath(urlStr) {{
   }} catch (e) {{}}
   return "/";
 }}
-function __expect(actual) {{
+function __urlHost(urlStr) {{
+  urlStr = String(urlStr || "");
+  var m = urlStr.match(/^[a-zA-Z][a-zA-Z0-9+.-]*:\/\/([^\/?#]+)/);
+  return m ? m[1] : "";
+}}
+function __urlQuery(urlStr) {{
+  urlStr = String(urlStr || "");
+  var q = urlStr.indexOf("?");
+  if (q < 0) return "";
+  var h = urlStr.indexOf("#", q);
+  return h >= 0 ? urlStr.slice(q + 1, h) : urlStr.slice(q + 1);
+}}
+function __urlPathWithQuery(urlStr) {{
+  var p = __urlPath(urlStr);
+  var q = __urlQuery(urlStr);
+  return q ? (p + "?" + q) : p;
+}}
+function __np_deepEqual(a, b) {{
+  if (a === b) return true;
+  if (a == null || b == null) return a === b;
+  if (typeof a !== typeof b) return false;
+  if (typeof a !== "object") return Number.isNaN(a) && Number.isNaN(b);
+  if (Array.isArray(a) !== Array.isArray(b)) return false;
+  if (Array.isArray(a)) {{
+    if (a.length !== b.length) return false;
+    for (var i = 0; i < a.length; i++) {{
+      if (!__np_deepEqual(a[i], b[i])) return false;
+    }}
+    return true;
+  }}
+  var ka = Object.keys(a);
+  var kb = Object.keys(b);
+  if (ka.length !== kb.length) return false;
+  for (var j = 0; j < ka.length; j++) {{
+    var k = ka[j];
+    if (!Object.prototype.hasOwnProperty.call(b, k)) return false;
+    if (!__np_deepEqual(a[k], b[k])) return false;
+  }}
+  return true;
+}}
+function __np_typeOf(v) {{
+  if (v === null) return "null";
+  if (Array.isArray(v)) return "array";
+  return typeof v;
+}}
+function __np_getNested(obj, path) {{
+  var parts = String(path).replace(/\[(\d+)\]/g, ".$1").split(".");
+  var cur = obj;
+  for (var i = 0; i < parts.length; i++) {{
+    if (cur == null) return {{ found: false, value: undefined }};
+    var p = parts[i];
+    if (!(p in Object(cur))) return {{ found: false, value: undefined }};
+    cur = cur[p];
+  }}
+  return {{ found: true, value: cur }};
+}}
+function __np_makeExpect(actual, flags) {{
+  flags = flags || {{ neg: false, deep: false, nested: false, allKeys: true, anyKeys: false }};
   function fail(msg) {{ throw new Error(msg); }}
+  function check(cond, posMsg, negMsg) {{
+    if (flags.neg) {{
+      if (cond) fail(negMsg || ("not " + posMsg));
+    }} else {{
+      if (!cond) fail(posMsg);
+    }}
+  }}
+  function withFlag(patch) {{
+    var nf = {{
+      neg: patch.neg !== undefined ? patch.neg : flags.neg,
+      deep: patch.deep !== undefined ? patch.deep : flags.deep,
+      nested: patch.nested !== undefined ? patch.nested : flags.nested,
+      allKeys: patch.allKeys !== undefined ? patch.allKeys : flags.allKeys,
+      anyKeys: patch.anyKeys !== undefined ? patch.anyKeys : flags.anyKeys
+    }};
+    return __np_makeExpect(actual, nf);
+  }}
   var api = {{
-    to: {{
-      eql: function(expected) {{
-        var a = JSON.stringify(actual);
-        var e = JSON.stringify(expected);
-        if (a !== e) fail("expected " + e + " but got " + a);
-        return api;
-      }},
-      equal: function(expected) {{
-        if (actual !== expected) fail("expected " + String(expected) + " but got " + String(actual));
-        return api;
-      }},
-      include: function(part) {{
-        if (Array.isArray(actual)) {{
-          var ok = false;
-          for (var i = 0; i < actual.length; i++) {{
-            if (actual[i] === part || JSON.stringify(actual[i]) === JSON.stringify(part)) {{ ok = true; break; }}
-          }}
-          if (!ok) fail("expected array to include " + part);
-        }} else {{
-          var s = typeof actual === "string" ? actual : JSON.stringify(actual);
-          if (s.indexOf(String(part)) < 0) fail("expected to include " + part);
+    get to() {{ return api; }},
+    get be() {{ return api; }},
+    get have() {{ return api; }},
+    get and() {{ return __np_makeExpect(actual, {{ neg: false, deep: false, nested: false, allKeys: true, anyKeys: false }}); }},
+    get is() {{ return api; }},
+    get that() {{ return api; }},
+    get which() {{ return api; }},
+    get with() {{ return api; }},
+    get at() {{ return api; }},
+    get of() {{ return api; }},
+    get same() {{ return api; }},
+    get but() {{ return api; }},
+    get does() {{ return api; }},
+    get still() {{ return api; }},
+    get not() {{ return withFlag({{ neg: !flags.neg }}); }},
+    get deep() {{ return withFlag({{ deep: true }}); }},
+    get nested() {{ return withFlag({{ nested: true }}); }},
+    get all() {{ return withFlag({{ allKeys: true, anyKeys: false }}); }},
+    get any() {{ return withFlag({{ allKeys: false, anyKeys: true }}); }},
+    eql: function(expected) {{
+      var eq = __np_deepEqual(actual, expected);
+      check(eq, "expected " + JSON.stringify(expected) + " but got " + JSON.stringify(actual), "expected not eql " + JSON.stringify(expected));
+      return api;
+    }},
+    eqls: function(expected) {{ return api.eql(expected); }},
+    equal: function(expected) {{
+      var eq = flags.deep ? __np_deepEqual(actual, expected) : (actual === expected);
+      check(eq, "expected " + String(expected) + " but got " + String(actual), "expected not equal " + String(expected));
+      return api;
+    }},
+    equals: function(expected) {{ return api.equal(expected); }},
+    eq: function(expected) {{ return api.equal(expected); }},
+    include: function(part) {{
+      var ok = false;
+      if (Array.isArray(actual)) {{
+        for (var i = 0; i < actual.length; i++) {{
+          if (flags.deep ? __np_deepEqual(actual[i], part) : (actual[i] === part || JSON.stringify(actual[i]) === JSON.stringify(part))) {{ ok = true; break; }}
         }}
-        return api;
-      }},
-      be: {{
-        get ok() {{
-          if (!actual) fail("expected truthy");
-          return true;
-        }},
-        above: function(n) {{
-          if (!(Number(actual) > Number(n))) fail("expected " + actual + " above " + n);
-          return api;
-        }},
-        below: function(n) {{
-          if (!(Number(actual) < Number(n))) fail("expected " + actual + " below " + n);
-          return api;
-        }},
-        a: function(type) {{
-          type = String(type).toLowerCase();
-          var t = Array.isArray(actual) ? "array" : (actual === null ? "null" : typeof actual);
-          if (t !== type) fail("expected type " + type + " but got " + t);
-          return api;
-        }},
-        an: function(type) {{ return api.to.be.a(type); }}
-      }},
-      have: {{
-        status: function(code) {{
-          var c = (__np.response && __np.response.status) || 0;
-          if (c !== code) fail("expected status " + code + " got " + c);
-          return api;
-        }},
-        property: function(name, val) {{
-          if (actual == null || actual[name] === undefined) fail("missing property " + name);
-          if (arguments.length > 1 && actual[name] !== val) {{
-            fail("property " + name + " expected " + val + " got " + actual[name]);
-          }}
-          return api;
-        }},
-        jsonBody: function() {{
-          var t = (__np.response && __np.response.body) || "";
-          try {{ JSON.parse(t); }} catch (e) {{ fail("expected JSON body"); }}
-          return api;
+      }} else if (typeof actual === "string") {{
+        ok = actual.indexOf(String(part)) >= 0;
+      }} else if (actual && typeof actual === "object" && part && typeof part === "object") {{
+        ok = true;
+        var pk = Object.keys(part);
+        for (var j = 0; j < pk.length; j++) {{
+          if (!__np_deepEqual(actual[pk[j]], part[pk[j]])) {{ ok = false; break; }}
         }}
-      }},
-      not: {{
-        eql: function(expected) {{
-          if (JSON.stringify(actual) === JSON.stringify(expected)) fail("expected not eql");
-          return api;
-        }},
-        equal: function(expected) {{
-          if (actual === expected) fail("expected not equal");
-          return api;
-        }},
-        include: function(part) {{
-          var s = typeof actual === "string" ? actual : JSON.stringify(actual);
-          if (s.indexOf(String(part)) >= 0) fail("expected not to include " + part);
-          return api;
+      }} else {{
+        ok = JSON.stringify(actual).indexOf(String(part)) >= 0;
+      }}
+      check(ok, "expected to include " + part, "expected not to include " + part);
+      return api;
+    }},
+    includes: function(p) {{ return api.include(p); }},
+    contain: function(p) {{ return api.include(p); }},
+    contains: function(p) {{ return api.include(p); }},
+    match: function(re) {{
+      var r = re instanceof RegExp ? re : new RegExp(String(re));
+      var ok = r.test(String(actual));
+      check(ok, "expected " + actual + " to match " + r, "expected " + actual + " not to match " + r);
+      return api;
+    }},
+    matches: function(re) {{ return api.match(re); }},
+    get ok() {{
+      check(Boolean(actual), "expected truthy", "expected falsy");
+      return api;
+    }},
+    get true() {{
+      check(actual === true, "expected true but got " + actual, "expected not true");
+      return api;
+    }},
+    get false() {{
+      check(actual === false, "expected false but got " + actual, "expected not false");
+      return api;
+    }},
+    get null() {{
+      check(actual === null, "expected null but got " + actual, "expected not null");
+      return api;
+    }},
+    get undefined() {{
+      check(actual === undefined, "expected undefined but got " + actual, "expected not undefined");
+      return api;
+    }},
+    get nan() {{
+      check(typeof actual === "number" && Number.isNaN(actual), "expected NaN", "expected not NaN");
+      return api;
+    }},
+    get empty() {{
+      var isEmpty = false;
+      if (actual == null) isEmpty = true;
+      else if (typeof actual === "string" || Array.isArray(actual)) isEmpty = actual.length === 0;
+      else if (typeof actual === "object") isEmpty = Object.keys(actual).length === 0;
+      check(isEmpty, "expected empty", "expected not empty");
+      return api;
+    }},
+    above: function(n) {{
+      check(Number(actual) > Number(n), "expected " + actual + " above " + n, "expected " + actual + " not above " + n);
+      return api;
+    }},
+    greaterThan: function(n) {{ return api.above(n); }},
+    gt: function(n) {{ return api.above(n); }},
+    below: function(n) {{
+      check(Number(actual) < Number(n), "expected " + actual + " below " + n, "expected " + actual + " not below " + n);
+      return api;
+    }},
+    lessThan: function(n) {{ return api.below(n); }},
+    lt: function(n) {{ return api.below(n); }},
+    least: function(n) {{
+      check(Number(actual) >= Number(n), "expected " + actual + " >= " + n, "expected " + actual + " < " + n);
+      return api;
+    }},
+    gte: function(n) {{ return api.least(n); }},
+    most: function(n) {{
+      check(Number(actual) <= Number(n), "expected " + actual + " <= " + n, "expected " + actual + " > " + n);
+      return api;
+    }},
+    lte: function(n) {{ return api.most(n); }},
+    within: function(min, max) {{
+      var v = Number(actual);
+      check(v >= Number(min) && v <= Number(max), "expected " + actual + " within [" + min + "," + max + "]", "expected " + actual + " not within [" + min + "," + max + "]");
+      return api;
+    }},
+    oneOf: function(list) {{
+      var ok = Array.isArray(list) && list.indexOf(actual) >= 0;
+      check(ok, "expected " + actual + " to be one of " + JSON.stringify(list), "expected " + actual + " not to be one of " + JSON.stringify(list));
+      return api;
+    }},
+    a: function(type) {{
+      type = String(type).toLowerCase();
+      var t = __np_typeOf(actual);
+      check(t === type, "expected type " + type + " but got " + t, "expected type not " + type);
+      return api;
+    }},
+    an: function(type) {{ return api.a(type); }},
+    status: function(code) {{
+      var c = (__np.response && __np.response.status) || 0;
+      check(c === code, "expected status " + code + " got " + c, "expected status not " + code);
+      return api;
+    }},
+    property: function(name, val) {{
+      var hasVal = arguments.length > 1;
+      var found = false;
+      var propVal = undefined;
+      if (actual != null) {{
+        if (flags.nested) {{
+          var r = __np_getNested(actual, name);
+          found = r.found;
+          propVal = r.value;
+        }} else if (actual[name] !== undefined || Object.prototype.hasOwnProperty.call(Object(actual), name)) {{
+          found = true;
+          propVal = actual[name];
         }}
       }}
-    }}
+      if (flags.neg) {{
+        if (hasVal) {{
+          if (found && __np_deepEqual(propVal, val)) fail("expected property " + name + " not to equal " + val);
+        }} else {{
+          if (found) fail("expected not to have property " + name);
+        }}
+      }} else {{
+        if (!found) fail("missing property " + name);
+        if (hasVal && !(flags.deep ? __np_deepEqual(propVal, val) : (propVal === val))) {{
+          fail("property " + name + " expected " + val + " got " + propVal);
+        }}
+      }}
+      return api;
+    }},
+    ownProperty: function(name) {{
+      var found = actual != null && Object.prototype.hasOwnProperty.call(Object(actual), name);
+      check(found, "missing own property " + name, "expected not to have own property " + name);
+      return api;
+    }},
+    lengthOf: function(n) {{
+      var len = actual != null && actual.length !== undefined ? actual.length : -1;
+      check(len === Number(n), "expected length " + n + " but got " + len, "expected length not " + n);
+      return api;
+    }},
+    length: function(n) {{ return api.lengthOf(n); }},
+    keys: function() {{
+      var expected = arguments.length === 1 && Array.isArray(arguments[0]) ? arguments[0] : Array.prototype.slice.call(arguments);
+      var objKeys = actual && typeof actual === "object" ? Object.keys(actual) : [];
+      var ok = false;
+      if (flags.anyKeys) {{
+        for (var i = 0; i < expected.length; i++) {{
+          if (objKeys.indexOf(String(expected[i])) >= 0) {{ ok = true; break; }}
+        }}
+      }} else {{
+        ok = expected.length === objKeys.length;
+        if (ok) {{
+          for (var j = 0; j < expected.length; j++) {{
+            if (objKeys.indexOf(String(expected[j])) < 0) {{ ok = false; break; }}
+          }}
+        }}
+      }}
+      check(ok, "expected keys " + JSON.stringify(expected) + " got " + JSON.stringify(objKeys), "expected not to have keys " + JSON.stringify(expected));
+      return api;
+    }},
+    key: function() {{ return api.keys.apply(api, arguments); }},
+    jsonBody: function() {{
+      var t = (__np.response && __np.response.body) || "";
+      var ok = true;
+      try {{ JSON.parse(t); }} catch (e) {{ ok = false; }}
+      check(ok, "expected JSON body", "expected non-JSON body");
+      return api;
+    }},
+    throw: function(expected) {{
+      var threw = false;
+      var errMsg = "";
+      try {{
+        if (typeof actual === "function") actual();
+      }} catch (e) {{
+        threw = true;
+        errMsg = String(e && e.message ? e.message : e);
+      }}
+      if (flags.neg) {{
+        if (threw) fail("expected not to throw but threw: " + errMsg);
+      }} else {{
+        if (!threw) fail("expected function to throw");
+        if (expected !== undefined) {{
+          if (expected instanceof RegExp && !expected.test(errMsg)) fail("expected error matching " + expected + " got " + errMsg);
+          else if (typeof expected === "string" && errMsg.indexOf(expected) < 0) fail("expected error containing " + expected + " got " + errMsg);
+        }}
+      }}
+      return api;
+    }},
+    throws: function(e) {{ return api.throw(e); }}
   }};
   return api;
 }}
+function __expect(actual) {{
+  return __np_makeExpect(actual);
+}}
+function __np_wordStr(w) {{
+  if (w == null) return "";
+  if (typeof w === "object") {{
+    if (w.__utf8 !== undefined) return String(w.__utf8);
+    if (w.__hex !== undefined) return __np_hex_to_utf8(String(w.__hex));
+  }}
+  return String(w);
+}}
+function __np_makeHashObj(hexStr) {{
+  var hex = String(hexStr || "");
+  return {{
+    __hex: hex,
+    toString: function(enc) {{
+      if (enc === CryptoJS.enc.Base64) return __np_hex_to_b64(hex);
+      if (enc === CryptoJS.enc.Utf8) return __np_hex_to_utf8(hex);
+      return hex;
+    }}
+  }};
+}}
 var CryptoJS = {{
   enc: {{
-    Hex: {{ stringify: function(w) {{ return String(w); }} }},
-    Base64: {{ stringify: function(w) {{ return String(w); }} }}
+    Hex: {{
+      parse: function(hexStr) {{ return __np_makeHashObj(String(hexStr || "")); }},
+      stringify: function(w) {{
+        if (w && w.__hex !== undefined) return String(w.__hex);
+        if (w && w.__utf8 !== undefined) return __np_utf8_to_hex(String(w.__utf8));
+        return String(w == null ? "" : w);
+      }}
+    }},
+    Base64: {{
+      parse: function(b64Str) {{ return __np_makeHashObj(__np_b64_to_hex(String(b64Str || ""))); }},
+      stringify: function(w) {{
+        if (w && w.__hex !== undefined) return __np_hex_to_b64(String(w.__hex));
+        if (w && w.__utf8 !== undefined) return __np_btoa(String(w.__utf8));
+        return __np_btoa(String(w == null ? "" : w));
+      }}
+    }},
+    Utf8: {{
+      parse: function(str) {{
+        var s = String(str == null ? "" : str);
+        return {{
+          __utf8: s,
+          __hex: __np_utf8_to_hex(s),
+          toString: function(enc) {{
+            if (enc === CryptoJS.enc.Base64) return __np_btoa(s);
+            if (enc === CryptoJS.enc.Hex) return __np_utf8_to_hex(s);
+            return s;
+          }}
+        }};
+      }},
+      stringify: function(w) {{ return __np_wordStr(w); }}
+    }}
   }},
-  SHA256: function(msg) {{
-    var hex = __np_sha256_hex(String(msg == null ? "" : msg));
-    return {{ toString: function(enc) {{ return hex; }} }};
+  MD5: function(msg) {{ return __np_makeHashObj(__np_hash("md5", __np_wordStr(msg))); }},
+  SHA1: function(msg) {{ return __np_makeHashObj(__np_hash("sha1", __np_wordStr(msg))); }},
+  SHA256: function(msg) {{ return __np_makeHashObj(__np_hash("sha256", __np_wordStr(msg))); }},
+  SHA512: function(msg) {{ return __np_makeHashObj(__np_hash("sha512", __np_wordStr(msg))); }},
+  HmacSHA1: function(msg, key) {{ return __np_makeHashObj(__np_hmac("sha1", __np_wordStr(msg), __np_wordStr(key))); }},
+  HmacSHA256: function(msg, key) {{ return __np_makeHashObj(__np_hmac("sha256", __np_wordStr(msg), __np_wordStr(key))); }},
+  HmacSHA512: function(msg, key) {{ return __np_makeHashObj(__np_hmac("sha512", __np_wordStr(msg), __np_wordStr(key))); }}
+}};
+if (typeof btoa === "undefined") {{ var btoa = function(s) {{ return __np_btoa(String(s == null ? "" : s)); }}; }}
+if (typeof atob === "undefined") {{ var atob = function(s) {{ return __np_atob(String(s == null ? "" : s)); }}; }}
+if (typeof URLSearchParams === "undefined") {{
+  var URLSearchParams = function(init) {{
+    this._pairs = [];
+    if (typeof init === "string") {{
+      var s = init.charAt(0) === "?" ? init.slice(1) : init;
+      if (s) {{
+        var parts = s.split("&");
+        for (var i = 0; i < parts.length; i++) {{
+          var eq = parts[i].indexOf("=");
+          var k = eq >= 0 ? decodeURIComponent(parts[i].slice(0, eq).replace(/\+/g, " ")) : decodeURIComponent(parts[i]);
+          var v = eq >= 0 ? decodeURIComponent(parts[i].slice(eq + 1).replace(/\+/g, " ")) : "";
+          this._pairs.push([k, v]);
+        }}
+      }}
+    }} else if (init && typeof init === "object") {{
+      var ks = Object.keys(init);
+      for (var j = 0; j < ks.length; j++) this._pairs.push([ks[j], String(init[ks[j]])]);
+    }}
+  }};
+  URLSearchParams.prototype.append = function(k, v) {{ this._pairs.push([String(k), String(v)]); }};
+  URLSearchParams.prototype.set = function(k, v) {{
+    k = String(k); v = String(v);
+    var out = []; var set = false;
+    for (var i = 0; i < this._pairs.length; i++) {{
+      if (this._pairs[i][0] === k) {{ if (!set) {{ out.push([k, v]); set = true; }} }}
+      else out.push(this._pairs[i]);
+    }}
+    if (!set) out.push([k, v]);
+    this._pairs = out;
+  }};
+  URLSearchParams.prototype.get = function(k) {{
+    k = String(k);
+    for (var i = 0; i < this._pairs.length; i++) if (this._pairs[i][0] === k) return this._pairs[i][1];
+    return null;
+  }};
+  URLSearchParams.prototype.has = function(k) {{ return this.get(k) !== null; }};
+  URLSearchParams.prototype.toString = function() {{
+    var out = [];
+    for (var i = 0; i < this._pairs.length; i++) {{
+      out.push(encodeURIComponent(this._pairs[i][0]) + "=" + encodeURIComponent(this._pairs[i][1]));
+    }}
+    return out.join("&");
+  }};
+}}
+var __np_lodash = {{
+  isEmpty: function(v) {{
+    if (v == null) return true;
+    if (typeof v === "string" || Array.isArray(v)) return v.length === 0;
+    if (typeof v === "object") return Object.keys(v).length === 0;
+    return false;
   }},
-  HmacSHA256: function(msg, key) {{
-    var b64 = __np_hmac_sha256_b64(String(msg == null ? "" : msg), String(key == null ? "" : key));
-    return {{ toString: function(enc) {{ return b64; }} }};
+  get: function(obj, path, defVal) {{
+    var r = __np_getNested(obj, path);
+    return r.found && r.value !== undefined ? r.value : defVal;
+  }},
+  has: function(obj, path) {{ return __np_getNested(obj, path).found; }},
+  uniq: function(arr) {{
+    if (!Array.isArray(arr)) return [];
+    var out = [];
+    for (var i = 0; i < arr.length; i++) if (out.indexOf(arr[i]) < 0) out.push(arr[i]);
+    return out;
+  }},
+  flatten: function(arr) {{
+    if (!Array.isArray(arr)) return [];
+    var out = [];
+    for (var i = 0; i < arr.length; i++) {{
+      if (Array.isArray(arr[i])) out = out.concat(arr[i]);
+      else out.push(arr[i]);
+    }}
+    return out;
+  }},
+  chunk: function(arr, size) {{
+    if (!Array.isArray(arr) || !size || size < 1) return [];
+    var out = [];
+    for (var i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
+    return out;
+  }},
+  pick: function(obj, keys) {{
+    var out = {{}};
+    if (!obj || typeof obj !== "object") return out;
+    var ks = Array.isArray(keys) ? keys : Array.prototype.slice.call(arguments, 1);
+    for (var i = 0; i < ks.length; i++) if (ks[i] in obj) out[ks[i]] = obj[ks[i]];
+    return out;
+  }},
+  omit: function(obj, keys) {{
+    var out = {{}};
+    if (!obj || typeof obj !== "object") return out;
+    var skip = Array.isArray(keys) ? keys : Array.prototype.slice.call(arguments, 1);
+    var ks = Object.keys(obj);
+    for (var i = 0; i < ks.length; i++) if (skip.indexOf(ks[i]) < 0) out[ks[i]] = obj[ks[i]];
+    return out;
+  }},
+  cloneDeep: function(v) {{ return v === undefined ? undefined : JSON.parse(JSON.stringify(v)); }},
+  isEqual: function(a, b) {{ return __np_deepEqual(a, b); }},
+  keys: function(o) {{ return o && typeof o === "object" ? Object.keys(o) : []; }},
+  values: function(o) {{ return o && typeof o === "object" ? Object.keys(o).map(function(k) {{ return o[k]; }}) : []; }},
+  includes: function(col, val) {{
+    if (typeof col === "string") return col.indexOf(String(val)) >= 0;
+    if (Array.isArray(col)) return col.indexOf(val) >= 0;
+    return false;
+  }},
+  map: function(arr, fn) {{ return Array.isArray(arr) ? arr.map(typeof fn === "function" ? fn : function(x) {{ return x && x[fn]; }}) : []; }},
+  filter: function(arr, fn) {{ return Array.isArray(arr) ? arr.filter(typeof fn === "function" ? fn : function(x) {{ return Boolean(x && x[fn]); }}) : []; }},
+  find: function(arr, fn) {{
+    if (!Array.isArray(arr)) return undefined;
+    var pred = typeof fn === "function" ? fn : function(x) {{ return Boolean(x && x[fn]); }};
+    for (var i = 0; i < arr.length; i++) if (pred(arr[i], i, arr)) return arr[i];
+    return undefined;
+  }},
+  some: function(arr, fn) {{ return Array.isArray(arr) ? arr.some(fn) : false; }},
+  every: function(arr, fn) {{ return Array.isArray(arr) ? arr.every(fn) : false; }},
+  random: function(min, max) {{
+    if (max === undefined) {{ max = min || 1; min = 0; }}
+    return Math.floor(Math.random() * (max - min + 1)) + min;
+  }},
+  range: function(start, end, step) {{
+    if (end === undefined) {{ end = start; start = 0; }}
+    step = step || 1;
+    var out = [];
+    for (var i = start; step > 0 ? i < end : i > end; i += step) out.push(i);
+    return out;
   }}
 }};
 function require(id) {{
   id = String(id || "");
   if (id === "crypto-js" || id === "crypto") return CryptoJS;
+  if (id === "lodash" || id === "_") return __np_lodash;
   console.warn('require("' + id + '") unsupported — stub empty object');
   return {{}};
 }}
@@ -481,24 +928,66 @@ var pm = {{
   request: {{
     url: (function() {{
       var u = String(__np.requestUrl || "");
-      // String object so `.getPath` works; coerces in many string contexts.
       var o = new String(u);
-      o.getPath = function() {{ return __urlPath(u); }};
+      o.getPath = function() {{ return __urlPath(__np.requestUrlOverride !== null ? __np.requestUrlOverride : u); }};
+      o.getHost = function() {{ return __urlHost(__np.requestUrlOverride !== null ? __np.requestUrlOverride : u); }};
+      o.getQueryString = function() {{ return __urlQuery(__np.requestUrlOverride !== null ? __np.requestUrlOverride : u); }};
+      o.getPathWithQuery = function() {{ return __urlPathWithQuery(__np.requestUrlOverride !== null ? __np.requestUrlOverride : u); }};
+      o.update = function(nextUrl) {{
+        var s = String(nextUrl || "");
+        __np.requestUrlOverride = s;
+        return s;
+      }};
+      o.addQueryParams = function(params) {{
+        var cur = __np.requestUrlOverride !== null ? __np.requestUrlOverride : u;
+        var sep = cur.indexOf("?") >= 0 ? "&" : "?";
+        var pairs = [];
+        if (typeof params === "string") {{
+          pairs.push(params.replace(/^\?/, ""));
+        }} else if (Array.isArray(params)) {{
+          for (var i = 0; i < params.length; i++) {{
+            var p = params[i];
+            if (p && p.key) pairs.push(encodeURIComponent(p.key) + "=" + encodeURIComponent(p.value == null ? "" : p.value));
+          }}
+        }} else if (params && typeof params === "object") {{
+          var ks = Object.keys(params);
+          for (var j = 0; j < ks.length; j++) {{
+            pairs.push(encodeURIComponent(ks[j]) + "=" + encodeURIComponent(params[ks[j]] == null ? "" : params[ks[j]]));
+          }}
+        }}
+        var next = pairs.length ? (cur + sep + pairs.join("&")) : cur;
+        __np.requestUrlOverride = next;
+        return next;
+      }};
       return o;
     }})(),
     method: String(__np.requestMethod || ""),
     headers: {{
       get: __reqHdrGet,
+      has: __reqHdrHas,
       upsert: __reqHdrUpsert,
       add: __reqHdrUpsert,
-      remove: function(name) {{
-        name = String(name).toLowerCase();
-        __reqHdrs = __reqHdrs.filter(function(h) {{ return String(h.key).toLowerCase() !== name; }});
-      }}
+      remove: __reqHdrRemove,
+      clear: __reqHdrClear,
+      toObject: function() {{
+        var out = {{}};
+        for (var i = 0; i < __reqHdrs.length; i++) out[__reqHdrs[i].key] = __reqHdrs[i].value;
+        return out;
+      }},
+      each: function(fn) {{
+        if (typeof fn === "function") for (var i = 0; i < __reqHdrs.length; i++) fn(__reqHdrs[i]);
+      }},
+      all: function() {{ return __reqHdrs.slice(); }}
     }},
     body: {{
       mode: String(__np.requestBodyMode || "none"),
-      raw: String(__np.requestBodyRaw || "")
+      raw: String(__np.requestBodyRaw || ""),
+      update: function(nextBody) {{
+        var s = typeof nextBody === "string" ? nextBody : JSON.stringify(nextBody);
+        __np.requestBodyRawOverride = s;
+        pm.request.body.raw = s;
+        return s;
+      }}
     }}
   }},
   iterationData: (function() {{
@@ -509,31 +998,92 @@ var pm = {{
     setNextRequest: function(name) {{ __np.execution.nextRequest = name === null ? null : String(name); }},
     skipRequest: function() {{ __np.execution.skipRequest = true; }}
   }},
-  response: {{
-    code: (__np.response && __np.response.status) || 0,
-    status: (__np.response && __np.response.statusText) || "",
-    responseTime: (__np.response && __np.response.responseTime) || 0,
-    headers: {{
-      get: function(name) {{ return __hdrMap[String(name).toLowerCase()]; }}
-    }},
-    text: function() {{ return (__np.response && __np.response.body) || ""; }},
-    json: function() {{
-      var t = (__np.response && __np.response.body) || "";
-      return t ? JSON.parse(t) : null;
-    }},
-    to: {{
-      have: {{
-        status: function(code) {{
-          var c = (__np.response && __np.response.status) || 0;
-          if (c !== code) throw new Error("expected status " + code + " got " + c);
+  response: (function() {{
+    var code = (__np.response && __np.response.status) || 0;
+    var statusText = (__np.response && __np.response.statusText) || "";
+    var bodyStr = (__np.response && __np.response.body) || "";
+    var respApi = {{
+      code: code,
+      status: statusText,
+      responseTime: (__np.response && __np.response.responseTime) || 0,
+      responseSize: bodyStr.length,
+      reason: function() {{ return statusText; }},
+      headers: {{
+        get: function(name) {{ return __hdrMap[String(name).toLowerCase()]; }},
+        has: function(name) {{ return Object.prototype.hasOwnProperty.call(__hdrMap, String(name).toLowerCase()); }},
+        toObject: function() {{
+          var out = {{}};
+          for (var i = 0; i < __respHdrs.length; i++) out[__respHdrs[i].key] = __respHdrs[i].value;
+          return out;
         }},
-        jsonBody: function() {{
-          var t = (__np.response && __np.response.body) || "";
-          try {{ JSON.parse(t); }} catch (e) {{ throw new Error("expected JSON body"); }}
+        each: function(fn) {{
+          if (typeof fn === "function") for (var i = 0; i < __respHdrs.length; i++) fn(__respHdrs[i]);
+        }},
+        all: function() {{ return __respHdrs.slice(); }}
+      }},
+      text: function() {{ return bodyStr; }},
+      json: function() {{
+        return bodyStr ? JSON.parse(bodyStr) : null;
+      }},
+      to: {{
+        have: {{
+          status: function(expected) {{
+            if (typeof expected === "number") {{
+              if (code !== expected) throw new Error("expected status " + expected + " got " + code);
+            }} else if (typeof expected === "string") {{
+              if (statusText.toLowerCase() !== expected.toLowerCase()) throw new Error("expected status " + expected + " got " + statusText);
+            }}
+            return respApi;
+          }},
+          header: function(name, val) {{
+            var key = String(name).toLowerCase();
+            if (!Object.prototype.hasOwnProperty.call(__hdrMap, key)) throw new Error("missing response header " + name);
+            if (arguments.length > 1 && __hdrMap[key] !== String(val)) {{
+              throw new Error("header " + name + " expected " + val + " got " + __hdrMap[key]);
+            }}
+            return respApi;
+          }},
+          body: function(expected) {{
+            if (arguments.length === 0) {{
+              if (!bodyStr) throw new Error("expected non-empty response body");
+            }} else if (expected instanceof RegExp) {{
+              if (!expected.test(bodyStr)) throw new Error("expected body to match " + expected);
+            }} else {{
+              if (bodyStr !== String(expected)) throw new Error("expected body " + expected + " got " + bodyStr);
+            }}
+            return respApi;
+          }},
+          jsonBody: function(expected) {{
+            var parsed;
+            try {{ parsed = JSON.parse(bodyStr); }} catch (e) {{ throw new Error("expected JSON body"); }}
+            if (arguments.length > 0 && !__np_deepEqual(parsed, expected)) {{
+              throw new Error("expected JSON body " + JSON.stringify(expected) + " got " + JSON.stringify(parsed));
+            }}
+            return respApi;
+          }}
+        }},
+        be: {{
+          get ok() {{ if (code < 200 || code >= 300) throw new Error("expected 2xx status got " + code); return respApi; }},
+          get success() {{ if (code < 200 || code >= 300) throw new Error("expected 2xx status got " + code); return respApi; }},
+          get redirection() {{ if (code < 300 || code >= 400) throw new Error("expected 3xx status got " + code); return respApi; }},
+          get clientError() {{ if (code < 400 || code >= 500) throw new Error("expected 4xx status got " + code); return respApi; }},
+          get serverError() {{ if (code < 500 || code >= 600) throw new Error("expected 5xx status got " + code); return respApi; }},
+          get error() {{ if (code < 400 || code >= 600) throw new Error("expected 4xx/5xx status got " + code); return respApi; }},
+          get json() {{
+            try {{ JSON.parse(bodyStr); }} catch (e) {{ throw new Error("expected JSON response body"); }}
+            return respApi;
+          }},
+          get accepted() {{ if (code !== 202) throw new Error("expected 202 got " + code); return respApi; }},
+          get badRequest() {{ if (code !== 400) throw new Error("expected 400 got " + code); return respApi; }},
+          get unauthorized() {{ if (code !== 401) throw new Error("expected 401 got " + code); return respApi; }},
+          get forbidden() {{ if (code !== 403) throw new Error("expected 403 got " + code); return respApi; }},
+          get notFound() {{ if (code !== 404) throw new Error("expected 404 got " + code); return respApi; }},
+          get rateLimited() {{ if (code !== 429) throw new Error("expected 429 got " + code); return respApi; }}
         }}
       }}
-    }}
-  }},
+    }};
+    return respApi;
+  }})(),
   test: function(name, fn) {{
     var ok = true;
     var msg = "passed";
@@ -603,6 +1153,16 @@ var pm = {{
 }};
 var blitz = pm;
 var epm = pm;
+var bru = pm;
+var bruno = pm;
+var insomnia = pm;
+pm.setEnvVar = function(k, v) {{ pm.environment.set(k, v); }};
+pm.getEnvVar = function(k) {{ return pm.environment.get(k); }};
+pm.setVar = function(k, v) {{ pm.variables.set(k, v); }};
+pm.getVar = function(k) {{ return pm.variables.get(k); }};
+pm.setGlobalEnvVar = function(k, v) {{ pm.globals.set(k, v); }};
+pm.getGlobalEnvVar = function(k) {{ return pm.globals.get(k); }};
+pm.setNextRequest = function(name) {{ pm.execution.setNextRequest(name); }};
 pm.expect = __expect;
 blitz.expect = __expect;
 blitz.expect = __expect;
@@ -610,7 +1170,7 @@ blitz.expect = __expect;
 pm.request.toString = function() {{ return String(__np.requestUrl || ""); }};
 blitz.request.toString = pm.request.toString;
 blitz.request.toString = pm.request.toString;
-"#
+"##
     );
 
     // IIFE keeps `var` / `function` off the reused realm. Newline before close so a trailing `//` comment cannot swallow it.
@@ -688,6 +1248,147 @@ fn np_hmac_sha256_b64_native(
     use base64::Engine;
     let b64 = base64::engine::general_purpose::STANDARD.encode(result);
     Ok(JsValue::from(js_string!(b64.as_str())))
+}
+
+fn np_hash_native(_this: &JsValue, args: &[JsValue], context: &mut Context) -> JsResult<JsValue> {
+    let alg = args
+        .get_or_undefined(0)
+        .to_string(context)?
+        .to_std_string_escaped()
+        .to_ascii_lowercase();
+    let msg = args
+        .get_or_undefined(1)
+        .to_string(context)?
+        .to_std_string_escaped();
+    let hex_out = match alg.as_str() {
+        "md5" => hex::encode(Md5::digest(msg.as_bytes())),
+        "sha1" => hex::encode(Sha1::digest(msg.as_bytes())),
+        "sha512" => hex::encode(Sha512::digest(msg.as_bytes())),
+        _ => hex::encode(Sha256::digest(msg.as_bytes())),
+    };
+    Ok(JsValue::from(js_string!(hex_out.as_str())))
+}
+
+fn np_hmac_native(_this: &JsValue, args: &[JsValue], context: &mut Context) -> JsResult<JsValue> {
+    let alg = args
+        .get_or_undefined(0)
+        .to_string(context)?
+        .to_std_string_escaped()
+        .to_ascii_lowercase();
+    let msg = args
+        .get_or_undefined(1)
+        .to_string(context)?
+        .to_std_string_escaped();
+    let key = args
+        .get_or_undefined(2)
+        .to_string(context)?
+        .to_std_string_escaped();
+    let hex_out = match alg.as_str() {
+        "sha1" => {
+            let mut mac = HmacSha1::new_from_slice(key.as_bytes())
+                .unwrap_or_else(|_| HmacSha1::new_from_slice(b"").expect("hmac empty key"));
+            mac.update(msg.as_bytes());
+            hex::encode(mac.finalize().into_bytes())
+        }
+        "sha512" => {
+            let mut mac = HmacSha512::new_from_slice(key.as_bytes())
+                .unwrap_or_else(|_| HmacSha512::new_from_slice(b"").expect("hmac empty key"));
+            mac.update(msg.as_bytes());
+            hex::encode(mac.finalize().into_bytes())
+        }
+        _ => {
+            let mut mac = HmacSha256::new_from_slice(key.as_bytes())
+                .unwrap_or_else(|_| HmacSha256::new_from_slice(b"").expect("hmac empty key"));
+            mac.update(msg.as_bytes());
+            hex::encode(mac.finalize().into_bytes())
+        }
+    };
+    Ok(JsValue::from(js_string!(hex_out.as_str())))
+}
+
+fn np_hex_to_b64_native(
+    _this: &JsValue,
+    args: &[JsValue],
+    context: &mut Context,
+) -> JsResult<JsValue> {
+    use base64::Engine;
+    let hex_str = args
+        .get_or_undefined(0)
+        .to_string(context)?
+        .to_std_string_escaped();
+    let bytes = hex::decode(hex_str.trim()).unwrap_or_default();
+    let b64 = base64::engine::general_purpose::STANDARD.encode(bytes);
+    Ok(JsValue::from(js_string!(b64.as_str())))
+}
+
+fn np_b64_to_hex_native(
+    _this: &JsValue,
+    args: &[JsValue],
+    context: &mut Context,
+) -> JsResult<JsValue> {
+    use base64::Engine;
+    let b64 = args
+        .get_or_undefined(0)
+        .to_string(context)?
+        .to_std_string_escaped();
+    let bytes = base64::engine::general_purpose::STANDARD
+        .decode(b64.trim())
+        .or_else(|_| base64::engine::general_purpose::URL_SAFE_NO_PAD.decode(b64.trim()))
+        .unwrap_or_default();
+    let hex_str = hex::encode(bytes);
+    Ok(JsValue::from(js_string!(hex_str.as_str())))
+}
+
+fn np_btoa_native(_this: &JsValue, args: &[JsValue], context: &mut Context) -> JsResult<JsValue> {
+    use base64::Engine;
+    let s = args
+        .get_or_undefined(0)
+        .to_string(context)?
+        .to_std_string_escaped();
+    let b64 = base64::engine::general_purpose::STANDARD.encode(s.as_bytes());
+    Ok(JsValue::from(js_string!(b64.as_str())))
+}
+
+fn np_atob_native(_this: &JsValue, args: &[JsValue], context: &mut Context) -> JsResult<JsValue> {
+    use base64::Engine;
+    let b64 = args
+        .get_or_undefined(0)
+        .to_string(context)?
+        .to_std_string_escaped();
+    let trimmed = b64.trim();
+    let bytes = base64::engine::general_purpose::STANDARD
+        .decode(trimmed)
+        .or_else(|_| base64::engine::general_purpose::URL_SAFE_NO_PAD.decode(trimmed))
+        .unwrap_or_default();
+    let s = String::from_utf8_lossy(&bytes).into_owned();
+    Ok(JsValue::from(js_string!(s.as_str())))
+}
+
+fn np_utf8_to_hex_native(
+    _this: &JsValue,
+    args: &[JsValue],
+    context: &mut Context,
+) -> JsResult<JsValue> {
+    let s = args
+        .get_or_undefined(0)
+        .to_string(context)?
+        .to_std_string_escaped();
+    let h = hex::encode(s.as_bytes());
+    Ok(JsValue::from(js_string!(h.as_str())))
+}
+
+fn np_hex_to_utf8_native(
+    _this: &JsValue,
+    args: &[JsValue],
+    context: &mut Context,
+) -> JsResult<JsValue> {
+    let h = args
+        .get_or_undefined(0)
+        .to_string(context)?
+        .to_std_string_escaped();
+    let bytes = hex::decode(h.trim()).unwrap_or_default();
+    let s = String::from_utf8_lossy(&bytes).into_owned();
+    Ok(JsValue::from(js_string!(s.as_str())))
 }
 
 /// Blocking nested HTTP for `blitz.sendRequest` (JSON in / JSON out).
@@ -818,11 +1519,14 @@ fn build_bridge_json(
         "cookies": map_to_json(&extras.cookies),
         "cookiesDirty": false,
         "requestUrl": extras.request_url,
+        "requestUrlOverride": JsonValue::Null,
         "requestMethod": extras.request_method,
         "requestHeaders": request_headers,
         "requestHeaderUpserts": [],
+        "requestHeaderRemovals": [],
         "requestBodyMode": extras.request_body_mode,
         "requestBodyRaw": extras.request_body_raw,
+        "requestBodyRawOverride": JsonValue::Null,
         "requestName": extras.request_name,
         "eventName": extras.event_name,
         "iteration": extras.iteration,
@@ -950,6 +1654,26 @@ fn apply_bridge(json_str: &str, ctx: &mut VariableContext, out: &mut SandboxOutc
         }
     }
 
+    if let Some(removals) = v.get("requestHeaderRemovals").and_then(|a| a.as_array()) {
+        for r in removals {
+            if let Some(s) = r.as_str() {
+                if !s.is_empty() {
+                    out.request_header_removals.push(s.to_string());
+                }
+            }
+        }
+    }
+
+    if let Some(url_ov) = v.get("requestUrlOverride").and_then(|u| u.as_str()) {
+        if !url_ov.is_empty() {
+            out.request_url_override = Some(url_ov.to_string());
+        }
+    }
+
+    if let Some(body_ov) = v.get("requestBodyRawOverride").and_then(|b| b.as_str()) {
+        out.request_body_raw_override = Some(body_ov.to_string());
+    }
+
     if v.get("cookiesDirty")
         .and_then(|b| b.as_bool())
         .unwrap_or(false)
@@ -974,6 +1698,21 @@ fn json_obj_to_map(
             (k.clone(), s)
         })
         .collect()
+}
+
+/// Remove headers requested via `blitz.request.headers.remove` / `.clear`.
+pub fn apply_request_header_removals(
+    draft: &mut crate::core::RequestDraft,
+    removals: &[String],
+) {
+    if removals.is_empty() {
+        return;
+    }
+    draft.headers.retain(|h| {
+        !removals
+            .iter()
+            .any(|rem| h.key.eq_ignore_ascii_case(rem))
+    });
 }
 
 /// Apply script header upserts onto a draft (case-insensitive key replace).
@@ -1348,5 +2087,194 @@ mod tests {
             None,
         );
         assert!(out.error.is_none(), "{:?}", out.error);
+    }
+
+    #[test]
+    fn advanced_crypto_encoding_and_url_search_params() {
+        let mut ctx = VariableContext::default();
+        let out = run_js_sandbox(
+            r#"
+            const hmacHex = CryptoJS.HmacSHA256("msg", "key").toString(CryptoJS.enc.Hex);
+            const hmacB64 = CryptoJS.HmacSHA256("msg", "key").toString(CryptoJS.enc.Base64);
+            if (hmacHex.length !== 64) throw new Error("hmacHex len " + hmacHex.length);
+            if (hmacHex === hmacB64) throw new Error("hex and b64 should differ");
+            const sha512 = CryptoJS.SHA512("abc").toString(CryptoJS.enc.Hex);
+            if (sha512.length !== 128) throw new Error("sha512 len " + sha512.length);
+            const md5 = CryptoJS.MD5("abc").toString(CryptoJS.enc.Hex);
+            if (md5 !== "900150983cd24fb0d6963f7d28e17f72") throw new Error("md5 mismatch " + md5);
+            const sha1 = CryptoJS.SHA1("abc").toString(CryptoJS.enc.Hex);
+            if (sha1 !== "a9993e364706816aba3e25717850c26c9cd0d89d") throw new Error("sha1 mismatch " + sha1);
+            const basic = CryptoJS.enc.Base64.stringify(CryptoJS.enc.Utf8.parse("user:pass"));
+            if (basic !== "dXNlcjpwYXNz") throw new Error("basic mismatch " + basic);
+            if (btoa("user:pass") !== "dXNlcjpwYXNz") throw new Error("btoa mismatch");
+            if (atob("dXNlcjpwYXNz") !== "user:pass") throw new Error("atob mismatch");
+            const usp = new URLSearchParams({ a: "1", b: "hello world" });
+            if (usp.get("b") !== "hello world") throw new Error("usp get");
+            if (usp.toString().indexOf("a=1") < 0) throw new Error("usp str " + usp.toString());
+            "#,
+            "pre-request",
+            &mut ctx,
+            None,
+        );
+        assert!(out.error.is_none(), "{:?}", out.error);
+    }
+
+    #[test]
+    fn advanced_request_mutation_headers_url_and_body() {
+        let mut ctx = VariableContext::default();
+        let extras = SandboxExtras {
+            request_url: "https://api.example.com/v1/orders?page=1".into(),
+            request_method: "POST".into(),
+            request_headers: vec![
+                ("X-Keep".into(), "1".into()),
+                ("X-Remove".into(), "drop".into()),
+            ],
+            request_body_mode: "raw".into(),
+            request_body_raw: r#"{"old":true}"#.into(),
+            ..Default::default()
+        };
+        let out = run_js_sandbox_ex(
+            r#"
+            if (pm.request.url.getHost() !== "api.example.com") throw new Error("host");
+            if (pm.request.url.getQueryString() !== "page=1") throw new Error("qs");
+            if (!pm.request.headers.has("x-remove")) throw new Error("has");
+            pm.request.headers.remove("X-Remove");
+            pm.request.headers.upsert({ key: "X-Added", value: "yes" });
+            if (pm.request.headers.has("X-Remove")) throw new Error("still has");
+            pm.request.url.addQueryParams({ sort: "desc" });
+            pm.request.body.update({ fresh: 42 });
+            "#,
+            "pre-request",
+            &mut ctx,
+            None,
+            &extras,
+        );
+        assert!(out.error.is_none(), "{:?}", out.error);
+        assert!(out
+            .request_header_removals
+            .iter()
+            .any(|h| h.eq_ignore_ascii_case("x-remove")));
+        assert!(out
+            .request_header_upserts
+            .iter()
+            .any(|(k, v)| k == "X-Added" && v == "yes"));
+        assert_eq!(
+            out.request_url_override.as_deref(),
+            Some("https://api.example.com/v1/orders?page=1&sort=desc")
+        );
+        assert_eq!(
+            out.request_body_raw_override.as_deref(),
+            Some(r#"{"fresh":42}"#)
+        );
+    }
+
+    #[test]
+    fn advanced_chai_bdd_response_and_lodash_tests() {
+        let mut ctx = VariableContext::default();
+        let resp = SandboxResponse {
+            status: 201,
+            status_text: "Created".into(),
+            body: r#"{"user":{"name":"Alice","roles":["admin","dev"],"active":true,"score":85,"notes":null},"tags":["api","v2"]}"#.into(),
+            headers: vec![
+                ("Content-Type".into(), "application/json".into()),
+                ("X-Request-Id".into(), "req-99".into()),
+            ],
+            response_time: 18,
+        };
+        let out = run_js_sandbox(
+            r#"
+            const _ = require("lodash");
+            pm.test("response status & headers", function () {
+                pm.response.to.be.ok;
+                pm.response.to.be.success;
+                pm.response.to.be.json;
+                pm.response.to.have.status(201);
+                pm.response.to.have.header("x-request-id", "req-99");
+                pm.response.to.have.body(/Alice/);
+                pm.expect(pm.response.reason()).to.equal("Created");
+                pm.expect(pm.response.headers.has("content-type")).to.be.true;
+            });
+            pm.test("chai BDD chains & matchers", function () {
+                const d = pm.response.json();
+                pm.expect(d.user.active).to.be.true;
+                pm.expect(d.user.notes).to.be.null;
+                pm.expect(d.user.missing).to.be.undefined;
+                pm.expect(d.user.name).to.be.a("string").and.not.be.empty.and.match(/^Al/);
+                pm.expect(d.user.score).to.be.at.least(80).and.be.at.most(90).and.be.within(0, 100);
+                pm.expect(d.user.roles).to.be.an("array").and.have.lengthOf(2).and.include("admin");
+                pm.expect(d).to.have.nested.property("user.roles[0]", "admin");
+                pm.expect(d.user.roles[0]).to.be.oneOf(["admin", "user"]);
+                pm.expect({ a: 1, b: 2 }).to.have.all.keys("a", "b");
+                pm.expect({ a: 1, b: 2 }).to.have.any.keys("b", "c");
+                pm.expect({ a: [1, 2] }).to.deep.equal({ a: [1, 2] });
+                pm.expect(function() { throw new Error("bad input"); }).to.throw(/bad/);
+            });
+            pm.test("lodash helpers", function () {
+                const d = pm.response.json();
+                pm.expect(_.get(d, "user.roles[1]")).to.equal("dev");
+                pm.expect(_.uniq([1, 1, 2, 3])).to.eql([1, 2, 3]);
+                pm.expect(_.chunk([1, 2, 3, 4], 2)).to.eql([[1, 2], [3, 4]]);
+                pm.expect(_.pick(d.user, ["name", "active"])).to.eql({ name: "Alice", active: true });
+                pm.expect(_.isEmpty({})).to.be.true;
+            });
+            "#,
+            "tests",
+            &mut ctx,
+            Some(&resp),
+        );
+        assert!(out.error.is_none(), "{:?}", out.error);
+        assert_eq!(out.tests.len(), 3);
+        for t in &out.tests {
+            assert!(t.passed, "test `{}` failed: {}", t.name, t.message);
+        }
+    }
+
+    #[test]
+    fn infinite_loop_is_aborted_safely() {
+        let mut ctx = VariableContext::default();
+        let out = run_js_sandbox(
+            "while (true) {}",
+            "pre-request",
+            &mut ctx,
+            None,
+        );
+        assert!(out.error.is_some(), "expected loop limit error");
+    }
+
+    #[test]
+    fn bruno_and_insomnia_runtime_aliases_and_normalized_scripts_execute() {
+        let mut ctx = VariableContext::default();
+        // 1. Raw un-normalized bru/bruno/insomnia script executes via runtime aliases
+        let raw_script = r#"
+            bru.setEnvVar("env_k", "ev1");
+            bruno.setVar("loc_k", "lv1");
+            bru.setGlobalEnvVar("glob_k", "gv1");
+            if (bru.getEnvVar("env_k") !== "ev1") throw new Error("getEnvVar");
+            if (bruno.getVar("loc_k") !== "lv1") throw new Error("getVar");
+            if (bru.getGlobalEnvVar("glob_k") !== "gv1") throw new Error("getGlobalEnvVar");
+            insomnia.environment.set("ins_k", "iv1");
+            bru.setNextRequest("Step2");
+        "#;
+        let out1 = run_js_sandbox(raw_script, "pre-request", &mut ctx, None);
+        assert!(out1.error.is_none(), "{:?}", out1.error);
+        assert_eq!(ctx.environment.get("env_k").map(String::as_str), Some("ev1"));
+        assert_eq!(ctx.local.get("loc_k").map(String::as_str), Some("lv1"));
+        assert_eq!(ctx.global.get("glob_k").map(String::as_str), Some("gv1"));
+        assert_eq!(ctx.environment.get("ins_k").map(String::as_str), Some("iv1"));
+        assert_eq!(out1.execution.next_request.as_deref(), Some("Step2"));
+
+        // 2. Normalized script (pm./bru./insomnia. -> blitz.) executes identically
+        let mut ctx2 = VariableContext::default();
+        let normalized = crate::core::normalize_script_to_blitz(raw_script);
+        assert!(!normalized.contains("bru."));
+        assert!(!normalized.contains("bruno."));
+        assert!(!normalized.contains("insomnia."));
+        let out2 = run_js_sandbox(&normalized, "pre-request", &mut ctx2, None);
+        assert!(out2.error.is_none(), "{:?}", out2.error);
+        assert_eq!(ctx2.environment.get("env_k").map(String::as_str), Some("ev1"));
+        assert_eq!(ctx2.local.get("loc_k").map(String::as_str), Some("lv1"));
+        assert_eq!(ctx2.global.get("glob_k").map(String::as_str), Some("gv1"));
+        assert_eq!(ctx2.environment.get("ins_k").map(String::as_str), Some("iv1"));
+        assert_eq!(out2.execution.next_request.as_deref(), Some("Step2"));
     }
 }

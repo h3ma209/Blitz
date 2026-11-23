@@ -1,5 +1,6 @@
 //! WebSocket client session (tokio-tungstenite).
 
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread::{self, JoinHandle};
 
@@ -56,6 +57,7 @@ pub struct WsSession {
     tx: mpsc::UnboundedSender<WsCmd>,
     events: Arc<Mutex<Vec<WsSessionEvent>>>,
     frames: Arc<Mutex<Vec<WsFrameItem>>>,
+    version: Arc<AtomicU64>,
     join: Option<JoinHandle<()>>,
 }
 
@@ -65,6 +67,10 @@ enum WsCmd {
 }
 
 impl WsSession {
+    pub fn version(&self) -> u64 {
+        self.version.load(Ordering::Relaxed)
+    }
+
     pub fn events_snapshot(&self) -> Vec<WsSessionEvent> {
         self.events.lock().map(|g| g.clone()).unwrap_or_default()
     }
@@ -80,6 +86,7 @@ impl WsSession {
         if let Ok(mut e) = self.events.lock() {
             e.clear();
         }
+        self.version.fetch_add(1, Ordering::Relaxed);
     }
 
     pub fn send_text(&self, text: impl Into<String>) -> Result<(), String> {
@@ -114,6 +121,8 @@ pub fn ws_connect_session_with_headers(
     let events_bg = Arc::clone(&events);
     let frames = Arc::new(Mutex::new(Vec::<WsFrameItem>::new()));
     let frames_bg = Arc::clone(&frames);
+    let version = Arc::new(AtomicU64::new(0));
+    let version_bg = Arc::clone(&version);
     let (tx, mut rx) = mpsc::unbounded_channel::<WsCmd>();
 
     let join = thread::Builder::new()
@@ -125,6 +134,7 @@ pub fn ws_connect_session_with_headers(
                     push_both(
                         &events_bg,
                         &frames_bg,
+                    &version_bg,
                         WsSessionEvent::Error(format!("runtime: {e}")),
                         WsFrameItem::new(WsDirection::System, format!("Runtime error: {e}"), false),
                     );
@@ -157,6 +167,7 @@ pub fn ws_connect_session_with_headers(
                             push_both(
                                 &events_bg,
                                 &frames_bg,
+                    &version_bg,
                                 WsSessionEvent::Error(format!("request build: {e}")),
                                 WsFrameItem::new(WsDirection::System, format!("Request error: {e}"), false),
                             );
@@ -171,6 +182,7 @@ pub fn ws_connect_session_with_headers(
                         push_both(
                             &events_bg,
                             &frames_bg,
+                    &version_bg,
                             WsSessionEvent::Error(format!("connect: {e}")),
                             WsFrameItem::new(WsDirection::System, format!("Connect error: {e}"), false),
                         );
@@ -180,6 +192,7 @@ pub fn ws_connect_session_with_headers(
                 push_both(
                     &events_bg,
                     &frames_bg,
+                    &version_bg,
                     WsSessionEvent::Opened,
                     WsFrameItem::new(WsDirection::System, format!("Connected to {url}"), false),
                 );
@@ -193,6 +206,7 @@ pub fn ws_connect_session_with_headers(
                                     push_both(
                                         &events_bg,
                                         &frames_bg,
+                    &version_bg,
                                         WsSessionEvent::Outbound(t.clone()),
                                         WsFrameItem::new(WsDirection::Outbound, t.clone(), false),
                                     );
@@ -200,6 +214,7 @@ pub fn ws_connect_session_with_headers(
                                         push_both(
                                             &events_bg,
                                             &frames_bg,
+                    &version_bg,
                                             WsSessionEvent::Error(format!("send: {e}")),
                                             WsFrameItem::new(WsDirection::System, format!("Send error: {e}"), false),
                                         );
@@ -211,6 +226,7 @@ pub fn ws_connect_session_with_headers(
                                     push_both(
                                         &events_bg,
                                         &frames_bg,
+                    &version_bg,
                                         WsSessionEvent::Closed("local close".into()),
                                         WsFrameItem::new(WsDirection::System, "Disconnected (local close)", false),
                                     );
@@ -224,6 +240,7 @@ pub fn ws_connect_session_with_headers(
                                     push_both(
                                         &events_bg,
                                         &frames_bg,
+                    &version_bg,
                                         WsSessionEvent::Message(t.to_string()),
                                         WsFrameItem::new(WsDirection::Inbound, t.to_string(), false),
                                     );
@@ -233,6 +250,7 @@ pub fn ws_connect_session_with_headers(
                                     push_both(
                                         &events_bg,
                                         &frames_bg,
+                    &version_bg,
                                         WsSessionEvent::Message(label.clone()),
                                         WsFrameItem::new(WsDirection::Inbound, label, true),
                                     );
@@ -243,6 +261,7 @@ pub fn ws_connect_session_with_headers(
                                     push_both(
                                         &events_bg,
                                         &frames_bg,
+                    &version_bg,
                                         WsSessionEvent::Closed(msg.clone()),
                                         WsFrameItem::new(WsDirection::System, format!("Closed by remote: {msg}"), false),
                                     );
@@ -253,6 +272,7 @@ pub fn ws_connect_session_with_headers(
                                     push_both(
                                         &events_bg,
                                         &frames_bg,
+                    &version_bg,
                                         WsSessionEvent::Error(msg.clone()),
                                         WsFrameItem::new(WsDirection::System, format!("Read error: {msg}"), false),
                                     );
@@ -262,6 +282,7 @@ pub fn ws_connect_session_with_headers(
                                     push_both(
                                         &events_bg,
                                         &frames_bg,
+                    &version_bg,
                                         WsSessionEvent::Closed("eof".into()),
                                         WsFrameItem::new(WsDirection::System, "Disconnected (remote EOF)", false),
                                     );
@@ -279,6 +300,7 @@ pub fn ws_connect_session_with_headers(
         tx,
         events,
         frames,
+        version,
         join: Some(join),
     })
 }
@@ -286,6 +308,7 @@ pub fn ws_connect_session_with_headers(
 fn push_both(
     events: &Arc<Mutex<Vec<WsSessionEvent>>>,
     frames: &Arc<Mutex<Vec<WsFrameItem>>>,
+    version: &Arc<AtomicU64>,
     ev: WsSessionEvent,
     frame: WsFrameItem,
 ) {
@@ -303,6 +326,7 @@ fn push_both(
             f.drain(0..drain);
         }
     }
+    version.fetch_add(1, Ordering::Relaxed);
 }
 
 #[cfg(test)]

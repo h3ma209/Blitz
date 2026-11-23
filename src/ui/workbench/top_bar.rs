@@ -982,6 +982,7 @@ pub fn TopBar(st: WorkbenchState) -> Element {
                                         }).await;
                                         match res {
                                             Ok(Ok(path)) => {
+                                                st.persist_now();
                                                 st.status_msg.set("installing update and restarting Blitz…".to_string());
                                                 let p_install = path.clone();
                                                 let install_res = tokio::task::spawn_blocking(move || {

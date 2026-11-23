@@ -115,10 +115,10 @@ pub use request::{
 };
 pub use response_diff::{diff_bodies, normalize_body_for_diff, DiffLine, DiffStats};
 pub use sandbox::{
-    apply_request_header_upserts, body_mode_label, run_js_sandbox_ex,
+    apply_request_header_removals, apply_request_header_upserts, body_mode_label, run_js_sandbox_ex,
     SandboxExecution, SandboxExtras, SandboxOutcome, SandboxResponse,
 };
-pub use scripts::{run_script_ex, ScriptRunOutcome};
+pub use scripts::{normalize_script_to_blitz, run_script_ex, ScriptRunOutcome};
 pub use cloud_sync::{
     branch_name_for_env, clone_or_ensure, detect_git_conflicts,
     get_conflict_file_versions, get_team_activity, is_noreply_user, link_folder,

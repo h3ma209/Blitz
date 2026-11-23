@@ -106,7 +106,9 @@ pub fn VarHoverInput(
     let mut editing = use_signal(|| false);
     let over_popover = use_signal(|| false);
     let mut dismiss_gen = use_signal(|| 0u64);
-    let mut hover_seq = use_signal(|| 0u64);
+    let hover_seq = use_hook(|| std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0)));
+    let hover_active = use_hook(|| std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)));
+    let hover_x = use_hook(|| std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0)));
     let mut var_suggest = use_signal(|| None::<VarSuggestMenu>);
     let mirror_html = render_var_highlight_html(&value, Some(&vars));
     let input_class = format!("{class} var-highlight-input");
@@ -119,9 +121,12 @@ pub fn VarHoverInput(
     rsx! {
         div {
             class: "{host_class}",
-            onmouseleave: move |_| {
-                hover_seq.set(hover_seq() + 1);
-                schedule_dismiss(popover, dismiss_gen, editing, over_popover);
+            onmouseleave: {
+                let hover_seq = hover_seq.clone();
+                move |_| {
+                    hover_seq.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                    schedule_dismiss(popover, dismiss_gen, editing, over_popover);
+                }
             },
             div {
                 class: "var-highlight-mirror",
@@ -281,28 +286,49 @@ pub fn VarHoverInput(
                     let input_id = input_id.clone();
                     let value = value.clone();
                     let vars = vars.clone();
+                    let hover_seq = hover_seq.clone();
+                    let hover_active = hover_active.clone();
+                    let hover_x = hover_x.clone();
                     move |evt: Event<MouseData>| {
+                        use std::sync::atomic::Ordering;
                         // Do not show hover popover while editing or when autocomplete suggestions are active
-                        if editing() || var_suggest.peek().is_some() {
+                        if *editing.peek() || var_suggest.peek().is_some() {
                             return;
                         }
                         let client_x = evt.client_coordinates().x;
-                        let next_seq = hover_seq() + 1;
-                        hover_seq.set(next_seq);
+                        hover_x.store(client_x.to_bits(), Ordering::Relaxed);
+                        hover_seq.fetch_add(1, Ordering::Relaxed);
+                        if hover_active.swap(true, Ordering::Relaxed) {
+                            return;
+                        }
                         let input_id = input_id.clone();
                         let value = value.clone();
                         let vars = vars.clone();
+                        let hover_seq = hover_seq.clone();
+                        let hover_active = hover_active.clone();
+                        let hover_x = hover_x.clone();
                         spawn(async move {
-                            let already_open = popover.peek().is_some();
-                            let dwell = if already_open { HOVER_SWITCH_MS } else { HOVER_DWELL_MS };
-                            tokio::time::sleep(Duration::from_millis(dwell)).await;
-                            if *hover_seq.peek() != next_seq || var_suggest.peek().is_some() {
+                            loop {
+                                let observed = hover_seq.load(Ordering::Relaxed);
+                                let already_open = popover.peek().is_some();
+                                let dwell = if already_open { HOVER_SWITCH_MS } else { HOVER_DWELL_MS };
+                                tokio::time::sleep(Duration::from_millis(dwell)).await;
+                                if hover_seq.load(Ordering::Relaxed) == observed {
+                                    break;
+                                }
+                            }
+                            hover_active.store(false, Ordering::Relaxed);
+                            if var_suggest.peek().is_some() {
                                 return;
                             }
+                            let cx = f64::from_bits(hover_x.load(Ordering::Relaxed));
+                            let seq_before = hover_seq.load(Ordering::Relaxed);
                             if let Some((idx, left, top)) =
-                                read_hover_index_and_anchor(&input_id, client_x).await
+                                read_hover_index_and_anchor(&input_id, cx).await
                             {
-                                if *hover_seq.peek() != next_seq || var_suggest.peek().is_some() {
+                                if hover_seq.load(Ordering::Relaxed) != seq_before
+                                    || var_suggest.peek().is_some()
+                                {
                                     return;
                                 }
                                 if find_var_at(&value, idx).is_some() {

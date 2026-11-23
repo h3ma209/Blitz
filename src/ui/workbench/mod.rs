@@ -188,15 +188,15 @@ pub fn Workbench() -> Element {
         let mut watch_st = st;
         spawn(async move {
             loop {
-                tokio::time::sleep(Duration::from_millis(1500)).await;
-                if (watch_st.cloud_busy)() {
+                tokio::time::sleep(Duration::from_millis(3000)).await;
+                if *watch_st.cloud_busy.peek() {
                     continue;
                 }
-                let root = (watch_st.data_root)();
+                let root = watch_st.data_root.peek().clone();
                 let store = if !root.trim().is_empty() {
                     JsonStore::open_path(&root)
                 } else {
-                    JsonStore::open_for_settings(&(watch_st.app_settings)())
+                    JsonStore::open_for_settings(&watch_st.app_settings.peek())
                 };
                 let Ok(store) = store else {
                     continue;

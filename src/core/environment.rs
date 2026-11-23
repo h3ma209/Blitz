@@ -104,8 +104,8 @@ pub fn ensure_default_environments(environments: &mut Vec<Environment>) -> bool 
             changed = true;
         }
     }
-    // Prefer canonical order for the three defaults (others keep relative order after).
-    if changed || environments.len() >= 3 {
+    // Only normalize default order when seeding missing defaults; preserve user drag-reorder.
+    if changed {
         let mut ordered = Vec::with_capacity(environments.len());
         for &name in DEFAULT_ENV_NAMES {
             if let Some(pos) = environments

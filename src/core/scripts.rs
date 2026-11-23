@@ -22,6 +22,9 @@ pub struct ScriptRunOutcome {
     pub execution: SandboxExecution,
     pub visualizer_html: String,
     pub request_header_upserts: Vec<(String, String)>,
+    pub request_header_removals: Vec<String>,
+    pub request_url_override: Option<String>,
+    pub request_body_raw_override: Option<String>,
     pub cookies: Option<HashMap<String, String>>,
 }
 
@@ -58,8 +61,120 @@ pub fn run_script_ex(
         execution: js.execution,
         visualizer_html: js.visualizer_html,
         request_header_upserts: js.request_header_upserts,
+        request_header_removals: js.request_header_removals,
+        request_url_override: js.request_url_override,
+        request_body_raw_override: js.request_body_raw_override,
         cookies: js.cookies,
     }
+}
+
+/// Normalize Postman / Bruno / Insomnia script globals (`pm.`, `bru.`, `bruno.`,
+/// `epm.`, `insomnia.`) to canonical `blitz.` outside strings and comments.
+pub fn normalize_script_to_blitz(script: &str) -> String {
+    if script.is_empty() {
+        return String::new();
+    }
+    let bytes = script.as_bytes();
+    let len = bytes.len();
+    let mut out = String::with_capacity(len);
+    let mut i = 0usize;
+
+    let is_ident_char = |b: u8| b.is_ascii_alphanumeric() || b == b'_' || b == b'$';
+
+    while i < len {
+        let b = bytes[i];
+        // Line comment
+        if b == b'/' && i + 1 < len && bytes[i + 1] == b'/' {
+            let start = i;
+            i += 2;
+            while i < len && bytes[i] != b'\n' {
+                i += 1;
+            }
+            out.push_str(&script[start..i]);
+            continue;
+        }
+        // Block comment
+        if b == b'/' && i + 1 < len && bytes[i + 1] == b'*' {
+            let start = i;
+            i += 2;
+            while i + 1 < len && !(bytes[i] == b'*' && bytes[i + 1] == b'/') {
+                i += 1;
+            }
+            i = (i + 2).min(len);
+            out.push_str(&script[start..i]);
+            continue;
+        }
+        // String literals ('...', "...", `...`)
+        if b == b'\'' || b == b'"' || b == b'`' {
+            let quote = b;
+            let start = i;
+            i += 1;
+            while i < len {
+                if bytes[i] == b'\\' && i + 1 < len {
+                    i += 2;
+                    continue;
+                }
+                if bytes[i] == quote {
+                    i += 1;
+                    break;
+                }
+                i += 1;
+            }
+            out.push_str(&script[start..i]);
+            continue;
+        }
+        // Identifier boundary check: must not be preceded by ident char or `.`
+        let prev_ok = i == 0 || (!is_ident_char(bytes[i - 1]) && bytes[i - 1] != b'.');
+        if prev_ok && is_ident_char(b) {
+            let start = i;
+            while i < len && is_ident_char(bytes[i]) {
+                i += 1;
+            }
+            let ident = &script[start..i];
+            if matches!(ident, "pm" | "bru" | "bruno" | "epm" | "insomnia") {
+                // Skip optional whitespace before `.`
+                let mut dot_pos = i;
+                while dot_pos < len && (bytes[dot_pos] == b' ' || bytes[dot_pos] == b'\t') {
+                    dot_pos += 1;
+                }
+                if dot_pos < len && bytes[dot_pos] == b'.' {
+                    // Check Bruno-specific method shorthands after `.`
+                    let after_dot = &script[dot_pos + 1..];
+                    let bruno_map = [
+                        ("setEnvVar(", "environment.set("),
+                        ("getEnvVar(", "environment.get("),
+                        ("setVar(", "variables.set("),
+                        ("getVar(", "variables.get("),
+                        ("setGlobalEnvVar(", "globals.set("),
+                        ("getGlobalEnvVar(", "globals.get("),
+                        ("setNextRequest(", "execution.setNextRequest("),
+                    ];
+                    if matches!(ident, "bru" | "bruno") {
+                        if let Some((from, to)) = bruno_map
+                            .iter()
+                            .find(|(from, _)| after_dot.starts_with(from))
+                        {
+                            out.push_str("blitz.");
+                            out.push_str(to);
+                            i = dot_pos + 1 + from.len();
+                            continue;
+                        }
+                    }
+                    out.push_str("blitz.");
+                    i = dot_pos + 1;
+                    continue;
+                }
+            }
+            out.push_str(ident);
+            continue;
+        }
+        // Copy UTF-8 char
+        let ch = script[i..].chars().next().unwrap();
+        out.push(ch);
+        i += ch.len_utf8();
+    }
+
+    out
 }
 
 /// Legacy regex helpers (kept for tests / tiny scripts without full JS needs).
@@ -204,5 +319,35 @@ mod tests {
             Some("http://localhost")
         );
         assert!(out.messages.iter().any(|m| m.contains("set environment")));
+    }
+
+    #[test]
+    fn normalize_script_replaces_pm_bru_bruno_insomnia_with_blitz() {
+        let input = r#"
+// pm.test("ignored in comment")
+const label = "pm.environment.get('ignored_in_string')";
+pm.test("ok", function() {
+  pm.expect(pm.response.code).to.equal(200);
+});
+bru.setEnvVar("tok", "abc");
+bruno.getVar("x");
+insomnia.environment.set("a", "1");
+epm.globals.set("g", "2");
+npm.install("keep");
+my_pm.foo();
+foo.pm.bar();
+"#;
+        let out = normalize_script_to_blitz(input);
+        assert!(out.contains(r#"// pm.test("ignored in comment")"#));
+        assert!(out.contains(r#""pm.environment.get('ignored_in_string')""#));
+        assert!(out.contains("blitz.test(\"ok\""));
+        assert!(out.contains("blitz.expect(blitz.response.code)"));
+        assert!(out.contains("blitz.environment.set(\"tok\", \"abc\")"));
+        assert!(out.contains("blitz.variables.get(\"x\")"));
+        assert!(out.contains("blitz.environment.set(\"a\", \"1\")"));
+        assert!(out.contains("blitz.globals.set(\"g\", \"2\")"));
+        assert!(out.contains("npm.install(\"keep\")"));
+        assert!(out.contains("my_pm.foo()"));
+        assert!(out.contains("foo.pm.bar()"));
     }
 }

@@ -359,24 +359,34 @@ pub fn MultilineCodeField(
     let mut editing_pop = use_signal(|| false);
     let over_popover = use_signal(|| false);
     let mut dismiss_gen = use_signal(|| 0u64);
-    let mut hover_seq = use_signal(|| 0u64);
+    let hover_seq = use_hook(|| std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0)));
+    let hover_active = use_hook(|| std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)));
+    let hover_x = use_hook(|| std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0)));
+    let hover_y = use_hook(|| std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0)));
 
     let highlight = (vars.is_some()
         || syntax == EditorSyntax::JavaScript
         || syntax == EditorSyntax::Json)
         && current_val().len() <= super::json_highlight::JSON_PAINT_CAP;
-    let mirror_html = if !highlight {
-        String::new()
-    } else {
-        match (syntax, vars.as_ref()) {
-            (EditorSyntax::JavaScript, v) => render_js_var_mirror_html(&current_val(), v),
+    let mirror_html = use_memo(move || {
+        let val = current_val();
+        let vars_guard = live_vars.read();
+        let has_highlight = (vars_guard.is_some()
+            || syntax == EditorSyntax::JavaScript
+            || syntax == EditorSyntax::Json)
+            && val.len() <= super::json_highlight::JSON_PAINT_CAP;
+        if !has_highlight {
+            return String::new();
+        }
+        match (syntax, vars_guard.as_ref()) {
+            (EditorSyntax::JavaScript, v) => render_js_var_mirror_html(&val, v),
             (EditorSyntax::Json, v) => {
-                super::json_highlight::render_json_var_mirror_html(&current_val(), v)
+                super::json_highlight::render_json_var_mirror_html(&val, v)
             }
-            (_, Some(v)) => render_var_mirror_html(&current_val(), v),
+            (_, Some(v)) => render_var_mirror_html(&val, v),
             _ => String::new(),
         }
-    };
+    });
     let ta_class = if highlight {
         format!("{class} var-highlight-input")
     } else {
@@ -455,50 +465,75 @@ pub fn MultilineCodeField(
                     });
                 }
             },
-            onmousemove: move |evt: Event<MouseData>| {
-                if on_var_edit.is_none()
-                    || !highlight
-                    || editing_pop()
-                    || var_menu.peek().is_some()
-                    || js_menu.peek().is_some()
-                {
-                    return;
-                }
-                let client_x = evt.client_coordinates().x;
-                let client_y = evt.client_coordinates().y;
-                let next_seq = hover_seq() + 1;
-                hover_seq.set(next_seq);
-                let id = field_id();
-                spawn(async move {
-                    let already_open = popover.peek().is_some();
-                    let dwell = if already_open { HOVER_SWITCH_MS } else { HOVER_DWELL_MS };
-                    tokio::time::sleep(std::time::Duration::from_millis(dwell)).await;
-                    if *hover_seq.peek() != next_seq
+            onmousemove: {
+                let hover_seq = hover_seq.clone();
+                let hover_active = hover_active.clone();
+                let hover_x = hover_x.clone();
+                let hover_y = hover_y.clone();
+                move |evt: Event<MouseData>| {
+                    use std::sync::atomic::Ordering;
+                    if on_var_edit.is_none()
+                        || !highlight
+                        || *editing_pop.peek()
                         || var_menu.peek().is_some()
                         || js_menu.peek().is_some()
                     {
                         return;
                     }
-                    if let Some((raw, left, top)) =
-                        read_multiline_hover_var_and_anchor(&id, client_x, client_y).await
-                    {
-                        if *hover_seq.peek() != next_seq {
+                    let client_x = evt.client_coordinates().x;
+                    let client_y = evt.client_coordinates().y;
+                    hover_x.store(client_x.to_bits(), Ordering::Relaxed);
+                    hover_y.store(client_y.to_bits(), Ordering::Relaxed);
+                    hover_seq.fetch_add(1, Ordering::Relaxed);
+                    if hover_active.swap(true, Ordering::Relaxed) {
+                        return;
+                    }
+                    let hover_seq = hover_seq.clone();
+                    let hover_active = hover_active.clone();
+                    let hover_x = hover_x.clone();
+                    let hover_y = hover_y.clone();
+                    let id = field_id();
+                    spawn(async move {
+                        loop {
+                            let observed = hover_seq.load(Ordering::Relaxed);
+                            let already_open = popover.peek().is_some();
+                            let dwell = if already_open { HOVER_SWITCH_MS } else { HOVER_DWELL_MS };
+                            tokio::time::sleep(std::time::Duration::from_millis(dwell)).await;
+                            if hover_seq.load(Ordering::Relaxed) == observed {
+                                break;
+                            }
+                        }
+                        hover_active.store(false, Ordering::Relaxed);
+                        if var_menu.peek().is_some() || js_menu.peek().is_some() {
                             return;
                         }
-                        if let Some(v) = live_vars.peek().as_ref() {
-                            cancel_dismiss(dismiss_gen);
-                            let info = v.inspect_var(&raw);
-                            pop_draft.set(info.value.clone());
-                            popover.set(Some(PopoverState { info, left, top }));
+                        let cx = f64::from_bits(hover_x.load(Ordering::Relaxed));
+                        let cy = f64::from_bits(hover_y.load(Ordering::Relaxed));
+                        let seq_before = hover_seq.load(Ordering::Relaxed);
+                        if let Some((raw, left, top)) =
+                            read_multiline_hover_var_and_anchor(&id, cx, cy).await
+                        {
+                            if hover_seq.load(Ordering::Relaxed) != seq_before {
+                                return;
+                            }
+                            if let Some(v) = live_vars.peek().as_ref() {
+                                cancel_dismiss(dismiss_gen);
+                                let info = v.inspect_var(&raw);
+                                pop_draft.set(info.value.clone());
+                                popover.set(Some(PopoverState { info, left, top }));
+                            }
+                        } else if popover.peek().is_some() {
+                            schedule_dismiss(popover, dismiss_gen, editing_pop, over_popover);
                         }
-                    } else if popover.peek().is_some() {
-                        schedule_dismiss(popover, dismiss_gen, editing_pop, over_popover);
-                    }
-                });
+                    });
+                }
             },
-            onmouseleave: move |_| {
-                hover_seq.set(hover_seq() + 1);
-                schedule_dismiss(popover, dismiss_gen, editing_pop, over_popover);
+            onmouseleave: {
+                let hover_seq = hover_seq.clone();
+                move |_| {
+                    hover_seq.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                    schedule_dismiss(popover, dismiss_gen, editing_pop, over_popover);
+                }
             },
             onscroll: move |_| {
                 if !highlight {

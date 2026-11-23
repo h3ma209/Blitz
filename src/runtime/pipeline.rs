@@ -17,7 +17,8 @@ use thiserror::Error;
 use crate::core::auth_extra::{auth_type_label, inject_extra_auth};
 use crate::core::pkcs12_util::load_client_identity_pem;
 use crate::core::{
-    apply_request_header_upserts, body_mode_label, build_digest_authorization, digest_uri,
+    apply_request_header_removals, apply_request_header_upserts, body_mode_label,
+    build_digest_authorization, digest_uri,
     run_script_ex, AuthConfig, AuthType, BodyMode, Cookie, CookieJar, DigestChallenge,
     FormDataField, HttpMethod, KeyValue, RequestDraft, RequestSettings, ResponseView,
     SandboxExtras, SandboxResponse, TestResult, TimingBreakdown, VariableContext,
@@ -576,14 +577,40 @@ fn script_cookie_host(url: &str) -> String {
         .to_lowercase()
 }
 
+#[derive(Default)]
+struct ScriptMutations {
+    header_upserts: Vec<(String, String)>,
+    header_removals: Vec<String>,
+    url_override: Option<String>,
+    body_raw_override: Option<String>,
+}
+
 fn absorb_script_side_effects(
     pre: &crate::core::ScriptRunOutcome,
     extras: &mut SandboxExtras,
-    header_upserts: &mut Vec<(String, String)>,
+    mutations: &mut ScriptMutations,
     cookie_jar: Option<&mut CookieJar>,
     draft_url: &str,
 ) {
+    for rem in &pre.request_header_removals {
+        extras
+            .request_headers
+            .retain(|(ek, _)| !ek.eq_ignore_ascii_case(rem));
+        mutations
+            .header_upserts
+            .retain(|(ek, _)| !ek.eq_ignore_ascii_case(rem));
+        if !mutations
+            .header_removals
+            .iter()
+            .any(|r| r.eq_ignore_ascii_case(rem))
+        {
+            mutations.header_removals.push(rem.clone());
+        }
+    }
     for (k, v) in &pre.request_header_upserts {
+        mutations
+            .header_removals
+            .retain(|r| !r.eq_ignore_ascii_case(k));
         if let Some((_, existing)) = extras
             .request_headers
             .iter_mut()
@@ -593,19 +620,28 @@ fn absorb_script_side_effects(
         } else {
             extras.request_headers.push((k.clone(), v.clone()));
         }
-        if let Some((_, existing)) = header_upserts
+        if let Some((_, existing)) = mutations
+            .header_upserts
             .iter_mut()
             .find(|(ek, _)| ek.eq_ignore_ascii_case(k))
         {
             *existing = v.clone();
         } else {
-            header_upserts.push((k.clone(), v.clone()));
+            mutations.header_upserts.push((k.clone(), v.clone()));
         }
+    }
+    if let Some(u) = &pre.request_url_override {
+        extras.request_url = u.clone();
+        mutations.url_override = Some(u.clone());
+    }
+    if let Some(b) = &pre.request_body_raw_override {
+        extras.request_body_raw = b.clone();
+        mutations.body_raw_override = Some(b.clone());
     }
     if let Some(cookies) = &pre.cookies {
         extras.cookies = cookies.clone();
         if let Some(jar) = cookie_jar {
-            let host = script_cookie_host(draft_url);
+            let host = script_cookie_host(mutations.url_override.as_deref().unwrap_or(draft_url));
             if cookies.is_empty() {
                 jar.cookies.retain(|c| c.domain != host);
             } else {
@@ -924,7 +960,7 @@ pub fn send_request_with_options(
         iteration: opts.iteration as u32,
     };
 
-    let mut header_upserts: Vec<(String, String)> = Vec::new();
+    let mut mutations = ScriptMutations::default();
 
     // 1. Pre-request: collection → folder → request
     let mut apply_exec = |exec: crate::core::SandboxExecution| {
@@ -954,7 +990,7 @@ pub fn send_request_with_options(
         absorb_script_side_effects(
             &pre,
             &mut extras,
-            &mut header_upserts,
+            &mut mutations,
             opts.cookie_jar.as_deref_mut(),
             &draft.url,
         );
@@ -975,7 +1011,7 @@ pub fn send_request_with_options(
     absorb_script_side_effects(
         &pre,
         &mut extras,
-        &mut header_upserts,
+        &mut mutations,
         opts.cookie_jar.as_deref_mut(),
         &draft.url,
     );
@@ -1006,6 +1042,14 @@ pub fn send_request_with_options(
 
     // 2. Inherit auth before {{…}} resolution so collection/folder token templates resolve.
     let mut draft_for_send = draft.clone();
+    if let Some(u) = mutations.url_override {
+        draft_for_send.url = u;
+        log.push("scripts: applied request.url override".into());
+    }
+    if let Some(b) = mutations.body_raw_override {
+        draft_for_send.body = b;
+        log.push("scripts: applied request.body override".into());
+    }
     resolve_inherit_auth(
         &mut draft_for_send,
         opts.ancestor_auth,
@@ -1017,12 +1061,19 @@ pub fn send_request_with_options(
     let mut resolved = resolve_draft(&draft_for_send, ctx, secrets_ref);
     log.push("vars: resolved {{…}} / {{vault:…}}".into());
 
-    // 2b. Headers from blitz.request.headers.upsert (pre-request scripts)
-    if !header_upserts.is_empty() {
-        apply_request_header_upserts(&mut resolved, &header_upserts);
+    // 2b. Headers from blitz.request.headers.remove / upsert (pre-request scripts)
+    if !mutations.header_removals.is_empty() {
+        apply_request_header_removals(&mut resolved, &mutations.header_removals);
+        log.push(format!(
+            "scripts: applied {} request header removal(s)",
+            mutations.header_removals.len()
+        ));
+    }
+    if !mutations.header_upserts.is_empty() {
+        apply_request_header_upserts(&mut resolved, &mutations.header_upserts);
         log.push(format!(
             "scripts: applied {} request header upsert(s)",
-            header_upserts.len()
+            mutations.header_upserts.len()
         ));
     }
 
@@ -1729,5 +1780,84 @@ mod tests {
         };
         d3.params.push(KeyValue::new("limit", "10"));
         assert_eq!(build_url(&d3).unwrap(), "https://api.com/items?sort=desc&limit=10");
+    }
+
+    #[test]
+    fn end_to_end_pre_and_post_scripts_mutate_and_verify_http_request() {
+        use std::io::{Read, Write};
+        use std::net::TcpListener;
+
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind local test server");
+        let addr = listener.local_addr().unwrap();
+
+        let server = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().expect("accept");
+            let mut buf = [0u8; 4096];
+            let n = stream.read(&mut buf).expect("read req");
+            let req_str = String::from_utf8_lossy(&buf[..n]).to_string();
+
+            let resp_body = r#"{"meta":{"ok":true},"token":"tok_e2e_999"}"#;
+            let resp = format!(
+                "HTTP/1.1 201 Created\r\nContent-Type: application/json\r\nX-Server: blitz-test\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                resp_body.len(),
+                resp_body
+            );
+            stream.write_all(resp.as_bytes()).expect("write resp");
+            req_str
+        });
+
+        let mut draft = RequestDraft {
+            name: "E2E Script Test".into(),
+            method: HttpMethod::Post,
+            url: format!("http://{addr}/v1/items"),
+            body_mode: BodyMode::Raw,
+            body: r#"{"placeholder":true}"#.into(),
+            pre_request_script: r#"
+                pm.environment.set("uname", "neo");
+                pm.request.headers.remove("X-Remove-Me");
+                const sig = CryptoJS.HmacSHA256("payload", "secret").toString(CryptoJS.enc.Hex);
+                pm.request.headers.upsert({ key: "X-Signed", value: sig });
+                pm.request.url.addQueryParams({ role: "admin" });
+                pm.request.body.update('{"user":"{{uname}}"}');
+            "#
+            .into(),
+            test_script: r#"
+                pm.test("e2e assertions", function () {
+                    pm.response.to.be.ok;
+                    pm.response.to.have.status(201);
+                    pm.response.to.have.header("x-server", "blitz-test");
+                    const json = pm.response.json();
+                    pm.expect(json).to.have.nested.property("meta.ok", true);
+                    pm.environment.set("session_token", json.token);
+                });
+            "#
+            .into(),
+            ..Default::default()
+        };
+        draft.headers.push(KeyValue::new("X-Remove-Me", "secret-leak"));
+        draft.headers.push(KeyValue::new("X-Keep", "stay"));
+
+        let mut ctx = VariableContext::default();
+        let res = send_request(&draft, &mut ctx).expect("send ok");
+        let raw_req = server.join().expect("server join");
+
+        assert!(raw_req.starts_with("POST /v1/items?role=admin HTTP/1.1"), "{raw_req}");
+        let lower_req = raw_req.to_ascii_lowercase();
+        assert!(!lower_req.contains("x-remove-me"), "removed header leaked: {raw_req}");
+        assert!(lower_req.contains("x-signed:"), "missing signed header: {raw_req}");
+        assert!(lower_req.contains("x-keep: stay"), "missing kept header: {raw_req}");
+        assert!(raw_req.ends_with(r#"{"user":"neo"}"#), "body mismatch: {raw_req}");
+
+        assert_eq!(res.status, 201, "log: {:?}", res.pipeline_log);
+        assert_eq!(res.test_results.len(), 1);
+        assert!(
+            res.test_results[0].passed,
+            "{}",
+            res.test_results[0].message
+        );
+        assert_eq!(
+            ctx.environment.get("session_token").map(String::as_str),
+            Some("tok_e2e_999")
+        );
     }
 }

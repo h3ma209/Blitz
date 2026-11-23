@@ -299,6 +299,10 @@ pub fn run_protocol_action(mut st: WorkbenchState, action: String) {
                                 "data": ev.data,
                             });
                             live_event_lines.push(format!("SSE_EVENT:{ev_json}"));
+                            if live_event_lines.len() > 1000 {
+                                let drain = live_event_lines.len() - 1000;
+                                live_event_lines.drain(0..drain);
+                            }
                             changed_live = true;
                         }
                         Ok(SseWorkerMsg::Done(res)) => {
@@ -496,7 +500,7 @@ pub fn run_protocol_action(mut st: WorkbenchState, action: String) {
                     break;
                 }
 
-                tokio::time::sleep(Duration::from_millis(45)).await;
+                tokio::time::sleep(Duration::from_millis(90)).await;
             }
         });
         return;
@@ -560,48 +564,71 @@ pub fn run_protocol_action(mut st: WorkbenchState, action: String) {
                     }
                     spawn(async move {
                         let mut auto_ping_ticks = 0usize;
+                        let mut last_version = u64::MAX;
                         loop {
                             tokio::time::sleep(Duration::from_millis(150)).await;
                             if crate::ui::workbench::state::WS_POLL_EPOCH
                                 .load(std::sync::atomic::Ordering::SeqCst)
                                 != my_epoch
-                                || !(st.ws_connected)()
+                                || !*st.ws_connected.peek()
                             {
                                 break;
                             }
-                            let (events, timeline, still_open) = {
+                            let snapshot = {
                                 let Ok(g) = WS_SESSION.lock() else { break; };
-                                if let Some(s) = g.as_ref() {
-                                    (s.events_snapshot(), s.timeline_snapshot(), true)
-                                } else {
-                                    (vec![], vec![], false)
+                                match g.as_ref() {
+                                    Some(s) => {
+                                        let ver = s.version();
+                                        if ver == last_version {
+                                            Some(None)
+                                        } else {
+                                            last_version = ver;
+                                            Some(Some((s.events_snapshot(), s.timeline_snapshot())))
+                                        }
+                                    }
+                                    None => None,
                                 }
                             };
-                            if !still_open {
+                            let Some(maybe_data) = snapshot else {
                                 st.ws_connected.set(false);
                                 break;
-                            }
+                            };
 
-                            // Classic lines format for Postman mode
-                            let lines: Vec<String> = events
-                                .iter()
-                                .map(|e| match e {
-                                    crate::core::WsSessionEvent::Opened => "⚡ Connected".into(),
-                                    crate::core::WsSessionEvent::Outbound(t) => format!("→ {t}"),
-                                    crate::core::WsSessionEvent::Message(t) => format!("← {t}"),
-                                    crate::core::WsSessionEvent::Closed(c) => format!("✗ Closed: {c}"),
-                                    crate::core::WsSessionEvent::Error(e) => format!("! Error: {e}"),
-                                })
-                                .collect();
-                            if *st.protocol_log.peek() != lines {
-                                st.protocol_log.set(lines);
-                            }
-                            if *st.ws_timeline.peek() != timeline {
-                                st.ws_timeline.set(timeline);
+                            if let Some((events, timeline)) = maybe_data {
+                                // Classic lines format for Postman mode
+                                let lines: Vec<String> = events
+                                    .iter()
+                                    .map(|e| match e {
+                                        crate::core::WsSessionEvent::Opened => "⚡ Connected".into(),
+                                        crate::core::WsSessionEvent::Outbound(t) => format!("→ {t}"),
+                                        crate::core::WsSessionEvent::Message(t) => format!("← {t}"),
+                                        crate::core::WsSessionEvent::Closed(c) => format!("✗ Closed: {c}"),
+                                        crate::core::WsSessionEvent::Error(e) => format!("! Error: {e}"),
+                                    })
+                                    .collect();
+                                if *st.protocol_log.peek() != lines {
+                                    st.protocol_log.set(lines);
+                                }
+                                if *st.ws_timeline.peek() != timeline {
+                                    st.ws_timeline.set(timeline);
+                                }
+
+                                // If closed or error occurred, finish loop
+                                if events.iter().any(|e| {
+                                    matches!(
+                                        e,
+                                        crate::core::WsSessionEvent::Closed(_)
+                                            | crate::core::WsSessionEvent::Error(_)
+                                    )
+                                }) {
+                                    tokio::time::sleep(Duration::from_millis(300)).await;
+                                    st.ws_connected.set(false);
+                                    break;
+                                }
                             }
 
                             // Auto-ping if enabled every 15s (100 * 150ms)
-                            if (st.ws_auto_ping)() {
+                            if *st.ws_auto_ping.peek() {
                                 auto_ping_ticks += 1;
                                 if auto_ping_ticks >= 100 {
                                     auto_ping_ticks = 0;
@@ -611,19 +638,6 @@ pub fn run_protocol_action(mut st: WorkbenchState, action: String) {
                                         }
                                     }
                                 }
-                            }
-
-                            // If closed or error occurred, finish loop
-                            if events.iter().any(|e| {
-                                matches!(
-                                    e,
-                                    crate::core::WsSessionEvent::Closed(_)
-                                        | crate::core::WsSessionEvent::Error(_)
-                                )
-                            }) {
-                                tokio::time::sleep(Duration::from_millis(300)).await;
-                                st.ws_connected.set(false);
-                                break;
                             }
                         }
                     });

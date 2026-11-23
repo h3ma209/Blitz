@@ -178,7 +178,7 @@ fn extract_headers(val: Option<&Value>) -> Vec<KeyValue> {
 }
 
 fn extract_script_exec(ev: &Value) -> String {
-    if let Some(lines) = ev.pointer("/script/exec").and_then(|v| v.as_array()) {
+    let raw = if let Some(lines) = ev.pointer("/script/exec").and_then(|v| v.as_array()) {
         lines.iter().filter_map(|l| l.as_str()).collect::<Vec<_>>().join("\n")
     } else if let Some(s) = ev.pointer("/script/exec").and_then(|v| v.as_str()) {
         s.to_string()
@@ -186,7 +186,8 @@ fn extract_script_exec(ev: &Value) -> String {
         s.to_string()
     } else {
         String::new()
-    }
+    };
+    crate::core::normalize_script_to_blitz(&raw)
 }
 
 fn import_items(
@@ -1920,7 +1921,7 @@ mod tests {
         let col = import_collection_v21(sample).unwrap();
         assert_eq!(col.name, "Comprehensive Collection");
         assert_eq!(col.pre_request_script, "console.log('col prerequest');");
-        assert_eq!(col.test_script, "pm.test('col test', () => {});");
+        assert_eq!(col.test_script, "blitz.test('col test', () => {});");
 
         assert_eq!(col.items.len(), 1);
         let folder = match &col.items[0] {
