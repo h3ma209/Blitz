@@ -10,12 +10,12 @@ use dioxus::prelude::*;
 
 use crate::core::{
     apply_collection_map, apply_environment_map, batch_move_items, detect_git_conflicts,
-    find_environment, find_request_across, generate_snippet_resolved, get_team_activity,
-    import_auto_bundle, limitations_blurb, pull_workspace, purge_from_trash, push_console,
-    push_workspace, reorder_environments, restore_from_trash, run_performance_with_cancel,
-    save_request_to_collections,
-    snippet_languages, valid_move_destinations, Collection, ConsoleLine, Cookie, EnvVar,
-    Environment, KeyValue, RequestDraft, VariableContext,
+    find_environment, find_request_across, generate_snippet_resolved, get_team_activity_ex,
+    import_auto_bundle, is_rebase_in_progress, limitations_blurb, pull_workspace, purge_from_trash,
+    push_console, push_workspace, reorder_environments, restore_from_trash,
+    run_performance_with_cancel, save_request_to_collections, snippet_languages,
+    valid_move_destinations, Collection, ConsoleLine, Cookie, EnvVar, Environment, KeyValue,
+    RequestDraft, VariableContext,
 };
 use crate::runtime::{
     run_collection_with_config, RunnerConfig, RunnerProgress, RunnerProgressSnapshot,
@@ -28,8 +28,7 @@ use crate::ui::workbench::state::{
     execute_batch_delete, execute_tree_delete, sync_env_vars, ImpexModal, WorkbenchState,
 };
 use crate::ui::{
-    CommentableTextarea, ConflictState, EnvDiffView, LintPanel, ModalShell, PerformanceModal,
-    TeamModal,
+    CommentableTextarea, EnvDiffView, LintPanel, ModalShell, PerformanceModal, TeamModal,
 };
 
 #[component]
@@ -551,7 +550,6 @@ pub fn WorkbenchModals(
     let mut active_collection_id = st.active_collection_id;
     let mut active_request_id = st.active_request_id;
     let mut editing_collection_id = st.editing_collection_id;
-    let mut conflict_state = st.conflict_state;
     let mut draft = st.draft;
     let mut trash = st.trash;
     let mut vars = st.vars;
@@ -559,8 +557,7 @@ pub fn WorkbenchModals(
     let mut console_lines = st.console_lines;
     let mut console_open = st.console_open;
     let mut status_msg = st.status_msg;
-    let mut fold_epoch = st.fold_epoch;
-    let mut app_settings = st.app_settings;
+    let app_settings = st.app_settings;
     let active_env_id = st.active_env_id;
 
     rsx! {
@@ -1389,106 +1386,164 @@ pub fn WorkbenchModals(
         if show_team() {
             TeamModal {
                 activity: team_activity(),
-                is_syncing: team_syncing(),
+                is_syncing: team_syncing() || (st.cloud_busy)(),
                 on_close: move |_| show_team.set(false),
                 on_refresh: move |_| {
+                    if (st.cloud_busy)() || team_syncing() {
+                        return;
+                    }
+                    let Ok(store) = JsonStore::open_default() else {
+                        status_msg.set("team: cannot open store".into());
+                        return;
+                    };
+                    let settings = app_settings();
+                    let clone_path = settings.cloud_sync.resolved_clone_path(store.root());
                     team_syncing.set(true);
+                    let mut st_busy = st;
+                    st_busy.cloud_busy.set(true);
                     spawn(async move {
-                        let Ok(store) = JsonStore::open_default() else {
-                            team_syncing.set(false);
-                            return;
-                        };
-                        let settings = app_settings();
-                        let clone_path = settings.cloud_sync.resolved_clone_path(store.root());
                         let res = tokio::task::spawn_blocking(move || {
-                            get_team_activity(&clone_path, 30)
-                        })
-                        .await;
-                        if let Ok(Ok(act)) = res {
-                            team_activity.set(act);
-                            status_msg.set("team: refreshed activity".into());
-                        }
-                        team_syncing.set(false);
-                    });
-                },
-                on_pull: move |_| {
-                    team_syncing.set(true);
-                    spawn(async move {
-                        let Ok(store) = JsonStore::open_default() else {
-                            team_syncing.set(false);
-                            return;
-                        };
-                        let root = store.root().to_path_buf();
-                        let mut settings = app_settings();
-                        let envs = environments();
-                        let res = tokio::task::spawn_blocking(move || {
-                            let r = pull_workspace(&root, &mut settings, &envs);
-                            let clone_path = settings.cloud_sync.resolved_clone_path(&root);
-                            let act = get_team_activity(&clone_path, 30).ok();
-                            let conflicts = if r.is_err() {
-                                detect_git_conflicts(&root).unwrap_or_default()
-                            } else {
-                                vec![]
-                            };
-                            (r, settings, act, conflicts)
+                            get_team_activity_ex(&clone_path, 30, true).map_err(|e| e.to_string())
                         })
                         .await;
                         match res {
-                            Ok((Ok((cols, envs, r)), updated_settings, act, _)) => {
-                                app_settings.set(updated_settings);
-                                if !cols.is_empty() {
-                                    collections.set(cols);
-                                    fold_epoch.set(fold_epoch() + 1);
+                            Ok(Ok(act)) => {
+                                team_activity.set(act);
+                                status_msg.set("team: refreshed activity".into());
+                            }
+                            Ok(Err(e)) => status_msg.set(format!("team refresh: {e}")),
+                            Err(e) => status_msg.set(format!("team join: {e}")),
+                        }
+                        team_syncing.set(false);
+                        st_busy.cloud_busy.set(false);
+                    });
+                },
+                on_pull: move |_| {
+                    if (st.cloud_busy)() || team_syncing() {
+                        return;
+                    }
+                    let Ok(store) = JsonStore::open_default() else {
+                        return;
+                    };
+                    let root = store.root().to_path_buf();
+                    let mut settings = app_settings();
+                    if settings.cloud_sync.remote_url.trim().is_empty() {
+                        status_msg.set("Configure Remote Git URL in Cloud Settings first".into());
+                        return;
+                    }
+                    settings.cloud_sync.enabled = true;
+                    let clone_path = settings.cloud_sync.resolved_clone_path(&root);
+                    let envs = environments();
+                    let cols = collections();
+                    let globals = vars().global;
+                    team_syncing.set(true);
+                    let mut st_busy = st;
+                    st_busy.cloud_busy.set(true);
+                    spawn(async move {
+                        let cp_bg = clone_path.clone();
+                        let res = tokio::task::spawn_blocking(move || {
+                            let r = pull_workspace(&root, &mut settings, &cols, &envs, &globals);
+                            let act = get_team_activity_ex(&cp_bg, 30, false).ok();
+                            let need_conflicts =
+                                r.is_err() || matches!(&r, Ok(sw) if !sw.result.ok);
+                            let (conflicts, rebasing) = if need_conflicts {
+                                (
+                                    detect_git_conflicts(&cp_bg).unwrap_or_default(),
+                                    is_rebase_in_progress(&cp_bg),
+                                )
+                            } else {
+                                (Vec::new(), false)
+                            };
+                            (r, settings, act, conflicts, rebasing)
+                        })
+                        .await;
+                        team_syncing.set(false);
+                        st_busy.cloud_busy.set(false);
+                        match res {
+                            Ok((Ok(synced), updated_settings, act, conflicts, rebasing)) => {
+                                if !synced.result.ok {
+                                    st_busy.patch_cloud_meta(
+                                        &updated_settings.cloud_sync.last_status,
+                                        &updated_settings.cloud_sync.last_branch,
+                                        Some(true),
+                                        None,
+                                        None,
+                                    );
+                                    if crate::ui::workbench::cloud::open_conflicts_if_any(
+                                        st_busy,
+                                        clone_path,
+                                        conflicts,
+                                        rebasing,
+                                    ) {
+                                        show_team.set(false);
+                                    } else {
+                                        status_msg.set(format!("pull: {}", synced.result.message));
+                                    }
+                                    return;
                                 }
-                                if !envs.is_empty() {
-                                    let mut v = vars();
-                                    sync_env_vars(&envs, active_env_id(), &mut v);
-                                    vars.set(v);
-                                    environments.set(envs);
-                                }
+                                st_busy.apply_synced_workspace(
+                                    synced.collections,
+                                    synced.environments,
+                                    synced.globals,
+                                    None,
+                                    &synced.result.message,
+                                    &synced.result.branch,
+                                );
+                                st_busy.patch_cloud_meta(
+                                    &synced.result.message,
+                                    &synced.result.branch,
+                                    Some(true),
+                                    None,
+                                    None,
+                                );
                                 if let Some(act) = act {
                                     team_activity.set(act);
                                 }
-                                status_msg.set(r.message);
-                                st.persist_local();
+                                status_msg.set(synced.result.message);
                             }
-                            Ok((Err(e), _, _, conflicts)) => {
-                                if !conflicts.is_empty() {
+                            Ok((Err(e), _, _, conflicts, rebasing)) => {
+                                if crate::ui::workbench::cloud::open_conflicts_if_any(
+                                    st_busy,
+                                    clone_path,
+                                    conflicts,
+                                    rebasing,
+                                ) {
                                     show_team.set(false);
-                                    conflict_state.set(Some(ConflictState {
-                                        files: conflicts,
-                                        selected_idx: 0,
-                                    }));
-                                    active_request_id.set(None);
-                                    editing_collection_id.set(None);
-                                    status_msg.set(
-                                        "⚔️ Merge conflicts detected — opened in main section".into(),
-                                    );
                                 } else {
                                     status_msg.set(format!("pull: {e}"));
                                 }
                             }
                             Err(e) => status_msg.set(format!("pull join: {e}")),
                         }
-                        team_syncing.set(false);
                     });
                 },
                 on_push: move |_| {
+                    if (st.cloud_busy)() || team_syncing() {
+                        return;
+                    }
+                    let Ok(store) = JsonStore::open_default() else {
+                        return;
+                    };
+                    let root = store.root().to_path_buf();
+                    let mut settings = app_settings();
+                    if settings.cloud_sync.remote_url.trim().is_empty() {
+                        status_msg.set("Configure Remote Git URL in Cloud Settings first".into());
+                        return;
+                    }
+                    settings.cloud_sync.enabled = true;
+                    let clone_path = settings.cloud_sync.resolved_clone_path(&root);
+                    let envs = environments();
+                    let cols = collections();
+                    let v = vars();
+                    let active_env_name = find_environment(&envs, active_env_id())
+                        .map(|e| e.name.clone())
+                        .unwrap_or_else(|| "No Environment".into());
+                    let commit = settings.cloud_sync.commit_message.clone();
                     team_syncing.set(true);
+                    let mut st_busy = st;
+                    st_busy.cloud_busy.set(true);
                     spawn(async move {
-                        let Ok(store) = JsonStore::open_default() else {
-                            team_syncing.set(false);
-                            return;
-                        };
-                        let root = store.root().to_path_buf();
-                        let mut settings = app_settings();
-                        let envs = environments();
-                        let cols = collections();
-                        let v = vars();
-                        let active_env_name = find_environment(&envs, active_env_id())
-                            .map(|e| e.name.clone())
-                            .unwrap_or_else(|| "No Environment".into());
-                        let commit = settings.cloud_sync.commit_message.clone();
+                        let cp_bg = clone_path.clone();
                         let res = tokio::task::spawn_blocking(move || {
                             let r = push_workspace(
                                 &root,
@@ -1499,20 +1554,45 @@ pub fn WorkbenchModals(
                                 Some(commit.as_str()),
                                 &v,
                             );
-                            let clone_path = settings.cloud_sync.resolved_clone_path(&root);
-                            let act = get_team_activity(&clone_path, 30).ok();
-                            (r, settings, act)
+                            let act = get_team_activity_ex(&cp_bg, 30, false).ok();
+                            let (conflicts, rebasing) = if !r.ok {
+                                (
+                                    detect_git_conflicts(&cp_bg).unwrap_or_default(),
+                                    is_rebase_in_progress(&cp_bg),
+                                )
+                            } else {
+                                (Vec::new(), false)
+                            };
+                            (r, settings, act, conflicts, rebasing)
                         })
                         .await;
-                        if let Ok((r, updated_settings, act)) = res {
-                            app_settings.set(updated_settings);
+                        team_syncing.set(false);
+                        st_busy.cloud_busy.set(false);
+                        if let Ok((r, updated_settings, act, conflicts, rebasing)) = res {
+                            st_busy.patch_cloud_meta(
+                                &updated_settings.cloud_sync.last_status,
+                                &updated_settings.cloud_sync.last_branch,
+                                Some(true),
+                                None,
+                                None,
+                            );
                             if let Some(act) = act {
                                 team_activity.set(act);
                             }
-                            status_msg.set(r.message);
-                            st.persist_local();
+                            if !r.ok
+                                && crate::ui::workbench::cloud::open_conflicts_if_any(
+                                    st_busy,
+                                    clone_path,
+                                    conflicts,
+                                    rebasing,
+                                )
+                            {
+                                show_team.set(false);
+                            } else {
+                                status_msg.set(r.message);
+                                st_busy.persist_local();
+                            }
                         }
-                        team_syncing.set(false);
                     });
                 },
             }

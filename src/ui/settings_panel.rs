@@ -65,6 +65,11 @@ pub fn SettingsPanel(
     let mut cloud_remote = use_signal(|| s_now.cloud_sync.remote_url.clone());
     let mut cloud_clone = use_signal(|| s_now.cloud_sync.clone_path.clone());
     let mut cloud_commit_msg = use_signal(|| s_now.cloud_sync.commit_message.clone());
+    let mut cloud_recent_repos = use_signal(|| {
+        let mut cs = s_now.cloud_sync.clone();
+        cs.record_recent_repo();
+        cs.recent_repos
+    });
 
     use_effect(move || {
         let s = settings();
@@ -161,6 +166,11 @@ pub fn SettingsPanel(
         }
         if s.cloud_sync.commit_message != prev.cloud_sync.commit_message {
             cloud_commit_msg.set(s.cloud_sync.commit_message.clone());
+        }
+        if s.cloud_sync.recent_repos != prev.cloud_sync.recent_repos {
+            let mut cs = s.cloud_sync.clone();
+            cs.record_recent_repo();
+            cloud_recent_repos.set(cs.recent_repos);
         }
         last_prop.set(s);
     });
@@ -818,11 +828,154 @@ pub fn SettingsPanel(
                                             r#type: "button",
                                             class: "btn btn-secondary btn-sm",
                                             title: "Fill default team repository URL",
-                                            onclick: move |_| cloud_remote.set(DEFAULT_CLOUD_REMOTE.to_string()),
+                                            onclick: move |_| {
+                                                if crate::core::normalize_remote_for_compare(&cloud_remote())
+                                                    != crate::core::normalize_remote_for_compare(DEFAULT_CLOUD_REMOTE)
+                                                {
+                                                    cloud_clone.set(String::new());
+                                                }
+                                                cloud_remote.set(DEFAULT_CLOUD_REMOTE.to_string());
+                                                cloud_enabled.set(true);
+                                            },
                                             "Default"
                                         }
                                     }
-                                    p { class: "hint", "HTTPS or SSH Git URL for your shared Blitz workspace." }
+                                    p { class: "hint", "HTTPS or SSH Git URL for your shared Blitz workspace. Switching repositories clears previous repo items and loads only the selected repo." }
+                                    {
+                                        let recents = cloud_recent_repos();
+                                        let cur_rem = cloud_remote();
+                                        let cur_cl = cloud_clone();
+                                        let live_rem = s_now.cloud_sync.remote_url.clone();
+                                        let live_cl = s_now.cloud_sync.clone_path.clone();
+                                        rsx! {
+                                            if !recents.is_empty() {
+                                                div { class: "cloud-recent-section",
+                                                    div { class: "cloud-preset-label", style: "margin-top: 8px; margin-bottom: 4px;", "Recent Git Repositories" }
+                                                    div { class: "settings-workspace-list",
+                                                        for (ri, entry) in recents.iter().enumerate() {
+                                                            {
+                                                                let short = entry.short_name();
+                                                                let target = entry.display_target();
+                                                                let branch = entry.last_branch.clone();
+                                                                let is_selected = entry.matches(&cur_rem, &cur_cl);
+                                                                let is_live = entry.matches(&live_rem, &live_cl);
+                                                                let rem_pick = entry.remote_url.clone();
+                                                                let cl_pick = entry.clone_path.clone();
+                                                                let rem_sw = entry.remote_url.clone();
+                                                                let cl_sw = entry.clone_path.clone();
+                                                                let rem_rm = entry.remote_url.clone();
+                                                                let cl_rm = entry.clone_path.clone();
+                                                                rsx! {
+                                                                    div {
+                                                                        key: "recent-git-{ri}-{target}",
+                                                                        class: if is_selected { "settings-workspace-row active" } else { "settings-workspace-row" },
+                                                                        button {
+                                                                            r#type: "button",
+                                                                            class: "btn btn-ghost btn-sm settings-workspace-pick",
+                                                                            title: "Select {target}",
+                                                                            onclick: move |_| {
+                                                                                cloud_remote.set(rem_pick.clone());
+                                                                                cloud_clone.set(cl_pick.clone());
+                                                                                cloud_enabled.set(true);
+                                                                            },
+                                                                            span {
+                                                                                style: "display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; text-align: left;",
+                                                                                super::icons::ActionIcon { name: "branch", size: 13 }
+                                                                                strong { "{short}" }
+                                                                                span { class: "hint", style: "margin: 0; font-size: 11px;", "{target}" }
+                                                                                if !branch.is_empty() {
+                                                                                    span { class: "cloud-branch-chip", style: "padding: 1px 6px; font-size: 10px;", "{branch}" }
+                                                                                }
+                                                                                if is_live {
+                                                                                    span { class: "cloud-status-pill on", style: "padding: 1px 6px; font-size: 10px;", "Active" }
+                                                                                }
+                                                                            }
+                                                                        }
+                                                                        if !is_live {
+                                                                            button {
+                                                                                r#type: "button",
+                                                                                class: "btn btn-secondary btn-sm",
+                                                                                title: "Switch immediately to this Git repository and load only its files",
+                                                                                onclick: move |_| {
+                                                                                    cloud_remote.set(rem_sw.clone());
+                                                                                    cloud_clone.set(cl_sw.clone());
+                                                                                    cloud_enabled.set(true);
+                                                                                    let cur = settings();
+                                                                                    let mut cs = CloudSyncSettings {
+                                                                                        enabled: true,
+                                                                                        remote_url: rem_sw.trim().to_string(),
+                                                                                        clone_path: cl_sw.trim().to_string(),
+                                                                                        commit_message: cloud_commit_msg().trim().to_string(),
+                                                                                        last_status: String::new(),
+                                                                                        last_branch: String::new(),
+                                                                                        recent_repos: cloud_recent_repos(),
+                                                                                    };
+                                                                                    cs.record_recent_repo();
+                                                                                    on_event.call(SettingsEvent::Save(AppSettings {
+                                                                                        proxy: ProxySettings {
+                                                                                            mode: proxy_mode(),
+                                                                                            host_port: host_port(),
+                                                                                        },
+                                                                                        client_cert: ClientCertSettings {
+                                                                                            cert_path: cert_path(),
+                                                                                            passphrase: cert_pass(),
+                                                                                            enabled: cert_enabled(),
+                                                                                        },
+                                                                                        ui: UiSettings {
+                                                                                            ui_font_size_px: ui_font(),
+                                                                                            input_font_size_px: input_font(),
+                                                                                            editor_font_size_px: editor_font(),
+                                                                                            response_font_size_px: response_font(),
+                                                                                            sidebar_width_px: sidebar_w(),
+                                                                                            request_pane_height_px: request_h(),
+                                                                                            console_height_px: console_h(),
+                                                                                            density: density(),
+                                                                                            wrap_editor_text: wrap_editor(),
+                                                                                            tab_size: tab_size(),
+                                                                                            theme: theme(),
+                                                                                            accent_intensity: accent(),
+                                                                                            reduce_motion: reduce_motion(),
+                                                                                            show_status_bar: show_status(),
+                                                                                            default_response_tab: default_resp_tab(),
+                                                                                            layout: workbench_layout(),
+                                                                                            splash_min_ms: splash_ms(),
+                                                                                            zoom_percent: zoom(),
+                                                                                            history_collapsed: cur.ui.history_collapsed,
+                                                                                            toolbar_height_px: toolbar_h(),
+                                                                                            console_log_error_payloads: cur.ui.console_log_error_payloads,
+                                                                                        }
+                                                                                        .clamped(),
+                                                                                        cloud_sync: cs,
+                                                                                        storage_root: {
+                                                                                            let r = storage_root().trim().to_string();
+                                                                                            if r.is_empty() { data_root() } else { r }
+                                                                                        },
+                                                                                        storage_roots: storage_roots(),
+                                                                                    }));
+                                                                                },
+                                                                                "Switch"
+                                                                            }
+                                                                        }
+                                                                        button {
+                                                                            r#type: "button",
+                                                                            class: "btn btn-ghost btn-sm",
+                                                                            title: "Remove from recent Git repositories",
+                                                                            onclick: move |_| {
+                                                                                let mut list = cloud_recent_repos();
+                                                                                list.retain(|e| !e.matches(&rem_rm, &cl_rm));
+                                                                                cloud_recent_repos.set(list);
+                                                                            },
+                                                                            "×"
+                                                                        }
+                                                                    }
+                                                                }
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
                                 }
                                 div { class: "settings-field",
                                     label { "Local Clone Directory" }
@@ -939,14 +1092,7 @@ pub fn SettingsPanel(
                     class: "btn btn-send",
                     onclick: move |_| {
                         let cur = settings();
-                        let remote = {
-                            let r = cloud_remote().trim().to_string();
-                            if r.is_empty() {
-                                DEFAULT_CLOUD_REMOTE.to_string()
-                            } else {
-                                r
-                            }
-                        };
+                        let remote = cloud_remote().trim().to_string();
                         on_event.call(SettingsEvent::Save(AppSettings {
                             proxy: ProxySettings {
                                 mode: proxy_mode(),
@@ -981,13 +1127,18 @@ pub fn SettingsPanel(
                                 console_log_error_payloads: cur.ui.console_log_error_payloads,
                             }
                             .clamped(),
-                            cloud_sync: CloudSyncSettings {
-                                enabled: cloud_enabled(),
-                                remote_url: remote,
-                                clone_path: cloud_clone().trim().to_string(),
-                                commit_message: cloud_commit_msg().trim().to_string(),
-                                last_status: cur.cloud_sync.last_status,
-                                last_branch: cur.cloud_sync.last_branch,
+                            cloud_sync: {
+                                let mut cs = CloudSyncSettings {
+                                    enabled: cloud_enabled(),
+                                    remote_url: remote,
+                                    clone_path: cloud_clone().trim().to_string(),
+                                    commit_message: cloud_commit_msg().trim().to_string(),
+                                    last_status: cur.cloud_sync.last_status,
+                                    last_branch: cur.cloud_sync.last_branch,
+                                    recent_repos: cloud_recent_repos(),
+                                };
+                                cs.record_recent_repo();
+                                cs
                             },
                             storage_root: {
                                 let r = storage_root().trim().to_string();

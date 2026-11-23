@@ -278,8 +278,12 @@ pub fn import_environment_json(text: &str) -> Result<Environment, String> {
             .to_string();
         let enabled = v.get("enabled").and_then(|e| e.as_bool()).unwrap_or(true);
         let mut ev = EnvVar::new(key, value);
-        // Postman sometimes has separate initial
-        if let Some(init) = v.get("initial").and_then(|x| x.as_str()) {
+        // Postman / Blitz redacted exports may supply separate `initialValue` or `initial`
+        if let Some(init) = v
+            .get("initialValue")
+            .or_else(|| v.get("initial"))
+            .and_then(|x| x.as_str())
+        {
             ev.initial_value = init.to_string();
         }
         ev.enabled = enabled;

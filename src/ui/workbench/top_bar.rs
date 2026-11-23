@@ -13,7 +13,7 @@ use crate::ui::env_selector::EnvSelector;
 use crate::ui::theme_selector::ThemeSelector;
 use crate::ui::workbench::cloud::{
     cloud_clone_or_link, cloud_link_folder, cloud_open_folder, cloud_pull, cloud_push,
-    cloud_sync_status, open_team_activity, switch_to_env, sync_selected_env,
+    cloud_switch_repo, cloud_sync_status, open_team_activity, switch_to_env, sync_selected_env,
 };
 use crate::ui::workbench::state::{ImpexModal, WorkbenchState, MOCK_HANDLE, PROXY_HANDLE};
 
@@ -781,6 +781,51 @@ pub fn TopBar(st: WorkbenchState) -> Element {
                                 },
                                 "Open Cloud Folder"
                             }
+                            {
+                                let cs = app_settings().cloud_sync;
+                                let recents = cs.recent_repos.clone();
+                                let cur_rem = cs.remote_url.clone();
+                                let cur_cl = cs.clone_path.clone();
+                                rsx! {
+                                    if !recents.is_empty() {
+                                        div { class: "menu-category-header", "Recent Git Repositories" }
+                                        for (ri, entry) in recents.iter().enumerate() {
+                                            {
+                                                let short = entry.short_name();
+                                                let target = entry.display_target();
+                                                let is_active = entry.matches(&cur_rem, &cur_cl);
+                                                let rem_sw = entry.remote_url.clone();
+                                                let cl_sw = entry.clone_path.clone();
+                                                rsx! {
+                                                    button {
+                                                        key: "top-recent-git-{ri}-{target}",
+                                                        class: "menu-item",
+                                                        disabled: cloud_busy() || is_active,
+                                                        title: if is_active { format!("Active: {target}") } else { format!("Switch to {target}") },
+                                                        onclick: move |_| {
+                                                            cloud_menu_open.set(false);
+                                                            let mut s = app_settings();
+                                                            s.cloud_sync.enabled = true;
+                                                            s.cloud_sync.remote_url = rem_sw.clone();
+                                                            s.cloud_sync.clone_path = cl_sw.clone();
+                                                            s.cloud_sync.last_status.clear();
+                                                            s.cloud_sync.last_branch.clear();
+                                                            s.cloud_sync.record_recent_repo();
+                                                            app_settings.set(s);
+                                                            cloud_switch_repo(st);
+                                                        },
+                                                        if is_active {
+                                                            "✓ {short}"
+                                                        } else {
+                                                            "{short}"
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
                             div { class: "menu-category-header", "Sync & Changes" }
                             button {
                                 class: "menu-item",
@@ -856,6 +901,7 @@ pub fn TopBar(st: WorkbenchState) -> Element {
                         onclick: move |_| {
                             active_request_id.set(None);
                             editing_collection_id.set(None);
+                            show_settings.set(false);
                         },
                         crate::ui::icons::ActionIcon { name: "git-merge", size: 15, style: "margin-right: 4px;".to_string() }
                         "{conf.files.len()} Conflicts"
@@ -930,35 +976,15 @@ pub fn TopBar(st: WorkbenchState) -> Element {
                     }
                 }
                 span { class: "top-nav-divider", aria_hidden: "true" }
-                if let Some(ref sess_name) = active_session_label {
-                    span {
-                        class: "live-chip live-mock",
-                        title: "Isolated window session (separate auth tokens, cookies, and WS connections)",
-                        "{sess_name}"
-                    }
-                }
                 div { class: "top-nav-cluster",
-                    button {
-                        class: "top-icon top-icon-only",
-                        title: "New isolated session window (separate auth tokens, cookies & WS for 2nd user)",
-                        aria_label: "New Session Window",
-                        onclick: move |_| {
-                            match spawn_new_blitz_window(true) {
-                                Ok(label) => status_msg.set(format!("opened isolated window: {label}")),
-                                Err(e) => status_msg.set(format!("new window error: {e}")),
-                            }
-                        },
-                        crate::ui::icons::ActionIcon { name: "users", size: 17 }
-                    }
                     ThemeSelector {
                         theme: app_settings().ui.theme,
                         on_change: move |t: UiTheme| {
-                            let mut st = st;
                             let mut s = app_settings();
                             s.ui.theme = t;
                             s.ui = s.ui.clamped();
                             app_settings.set(s);
-                            st.persist();
+                            st.persist_view_only();
                         },
                     }
                 if let Some(upd) = available_update() {

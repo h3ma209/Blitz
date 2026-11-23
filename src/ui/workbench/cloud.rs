@@ -1,117 +1,61 @@
-use std::time::Duration;
+use std::path::{Path, PathBuf};
 use uuid::Uuid;
 
 use dioxus::prelude::*;
 
 use crate::core::{
-    branch_name_for_env, clone_or_ensure, detect_git_conflicts, ensure_default_environments,
-    find_environment, get_team_activity, link_folder, open_in_file_manager, pull_workspace,
-    push_workspace, refresh_status, switch_env_branch, sync_environment, DEFAULT_CLOUD_REMOTE,
+    clone_or_ensure, detect_git_conflicts, find_environment, get_team_activity_ex, is_git_repo,
+    is_rebase_in_progress, link_folder, open_in_file_manager, pull_workspace, push_workspace,
+    refresh_status, switch_git_workspace, sync_environment,
 };
 use crate::storage::JsonStore;
 use crate::ui::workbench::state::{sync_env_vars, WorkbenchState};
-use crate::ui::ConflictState;
+use crate::ui::{ConflictState, ToastLevel};
+
+pub fn open_conflicts_if_any(
+    mut st: WorkbenchState,
+    clone_path: PathBuf,
+    conflicts: Vec<String>,
+    rebasing: bool,
+) -> bool {
+    if conflicts.is_empty() && !rebasing {
+        return false;
+    }
+    let count = conflicts.len();
+    st.conflict_state.set(Some(ConflictState {
+        clone_path,
+        files: conflicts,
+        selected_idx: 0,
+    }));
+    st.active_request_id.set(None);
+    st.editing_collection_id.set(None);
+    st.show_settings.set(false);
+    st.show_team.set(false);
+    let msg = if count > 0 {
+        format!("⚔️ Merge conflicts detected in {count} file(s)!")
+    } else {
+        "⚔️ Unfinished rebase in progress — resolve or abort rebase".into()
+    };
+    st.status_msg.set(msg.clone());
+    st.log_warn(format!("☁ [Cloud] {msg}"));
+    true
+}
+
+fn check_clone_conflicts(clone_path: &Path) -> (Vec<String>, bool) {
+    let conflicts = detect_git_conflicts(clone_path).unwrap_or_default();
+    let rebasing = is_rebase_in_progress(clone_path);
+    (conflicts, rebasing)
+}
 
 pub fn switch_to_env(mut st: WorkbenchState, new_id: Option<Uuid>) {
-    let cur = (st.active_env_id)();
     let envs = (st.environments)();
-    let from_name = find_environment(&envs, cur)
-        .map(|e| e.name.clone())
-        .unwrap_or_else(|| "No Environment".into());
-    let to_name = find_environment(&envs, new_id)
-        .map(|e| e.name.clone())
-        .unwrap_or_else(|| "No Environment".into());
-    let skip_overlay = new_id.is_none() || cur == new_id;
-    let settings = (st.app_settings)();
-
-    let finish = move |mut st: WorkbenchState, id: Option<Uuid>| {
-        st.active_env_id.set(id);
-        st.editing_env_id.set(id);
-        let mut v = (st.vars)();
-        sync_env_vars(&(st.environments)(), id, &mut v);
-        st.vars.set(v);
-        st.persist();
-        st.env_switch_overlay.set(None);
-    };
-
-    if !settings.cloud_sync.enabled || from_name == to_name {
-        finish(st, new_id);
-        return;
-    }
-
-    let Ok(store) = JsonStore::open_default() else {
-        finish(st, new_id);
-        return;
-    };
-
-    if !skip_overlay {
-        st.env_switch_overlay.set(Some(to_name.clone()));
-    }
-    st.cloud_busy.set(true);
-    st.log_cloud(format!("☁ [Cloud] Switching environment: {from_name} → {to_name}"));
-
-    let root = store.root().to_path_buf();
-    let mut settings_bg = settings;
-    let cols = (st.collections)();
-    let envs_bg = envs;
-    let vars_bg = (st.vars)();
-
-    spawn(async move {
-        if !skip_overlay {
-            tokio::time::sleep(Duration::from_millis(40)).await;
-        }
-        let res = tokio::task::spawn_blocking(move || {
-            let r = switch_env_branch(
-                &root,
-                &mut settings_bg,
-                &cols,
-                &envs_bg,
-                &from_name,
-                &to_name,
-                &vars_bg,
-            );
-            (r, settings_bg, to_name)
-        })
-        .await;
-
-        st.cloud_busy.set(false);
-        let picked_id = match res {
-            Ok((Ok((cols, loaded_envs)), updated_settings, to_name)) => {
-                st.app_settings.set(updated_settings);
-                if !cols.is_empty() {
-                    st.collections.set(cols);
-                    st.fold_epoch.set((st.fold_epoch)() + 1);
-                }
-                let pick = if loaded_envs.is_empty() {
-                    new_id
-                } else {
-                    let pick = loaded_envs
-                        .iter()
-                        .find(|e| e.name == to_name)
-                        .map(|e| e.id)
-                        .or(new_id);
-                    st.environments.set(loaded_envs);
-                    pick
-                };
-                st.status_msg
-                    .set(format!("cloud branch {}", branch_name_for_env(&to_name)));
-                st.log_cloud(format!("☁ [Cloud] Switched to branch {} (env: {to_name})", branch_name_for_env(&to_name)));
-                pick
-            }
-            Ok((Err(e), updated_settings, _)) => {
-                st.app_settings.set(updated_settings);
-                st.status_msg.set(format!("cloud env switch: {e}"));
-                st.log_error(format!("☁ [Cloud] Environment switch failed: {e}"));
-                new_id
-            }
-            Err(e) => {
-                st.status_msg.set(format!("cloud env switch join: {e}"));
-                st.log_error(format!("☁ [Cloud] Environment switch join error: {e}"));
-                new_id
-            }
-        };
-        finish(st, picked_id);
-    });
+    st.active_env_id.set(new_id);
+    st.editing_env_id.set(new_id);
+    let mut v = (st.vars)();
+    sync_env_vars(&envs, new_id, &mut v);
+    st.vars.set(v);
+    st.persist();
+    st.env_switch_overlay.set(None);
 }
 
 pub fn sync_selected_env(mut st: WorkbenchState, id: Uuid) {
@@ -126,12 +70,20 @@ pub fn sync_selected_env(mut st: WorkbenchState, id: Uuid) {
     let env_name = env.name.clone();
     if env_name.trim().eq_ignore_ascii_case("Local") {
         st.status_msg.set(
-            "Local branch ('local') is local-only — commits stay local and are not pushed to remote"
-                .into(),
+            "Local environment stays local-only — switch to a shared environment to Sync".into(),
         );
-        st.log_warn("☁ [Cloud] Local branch ('local') is local-only; skipping remote sync");
+        st.log_warn("☁ [Cloud] Local environment is local-only; skipping remote sync");
         return;
     }
+    let mut settings = (st.app_settings)();
+    if settings.cloud_sync.remote_url.trim().is_empty() {
+        let msg = "Configure Remote Git Repository URL in Cloud Settings first".to_string();
+        st.status_msg.set(msg.clone());
+        st.notify(msg, ToastLevel::Warn);
+        return;
+    }
+    settings.cloud_sync.enabled = true;
+
     // Activate this env first (UI + var map).
     st.active_env_id.set(Some(id));
     st.editing_env_id.set(Some(id));
@@ -143,21 +95,9 @@ pub fn sync_selected_env(mut st: WorkbenchState, id: Uuid) {
         st.status_msg.set("sync: cannot open store".into());
         return;
     };
-    let mut settings = (st.app_settings)();
-    if !settings.cloud_sync.enabled {
-        settings.cloud_sync.enabled = true;
-        if settings.cloud_sync.remote_url.trim().is_empty() {
-            settings.cloud_sync.remote_url = DEFAULT_CLOUD_REMOTE.to_string();
-        }
-        st.status_msg
-            .set(format!("cloud sync enabled → syncing {env_name}…"));
-    } else {
-        st.status_msg.set(format!("syncing {env_name}…"));
-    }
+    st.status_msg.set(format!("syncing {env_name}…"));
     st.log_cloud(format!("☁ [Cloud] Syncing environment '{env_name}' with remote…"));
-    let mut envs_mut = envs;
-    let _ = ensure_default_environments(&mut envs_mut);
-    st.environments.set(envs_mut.clone());
+    let envs_mut = envs;
 
     let root = store.root().to_path_buf();
     let cols = (st.collections)();
@@ -165,45 +105,67 @@ pub fn sync_selected_env(mut st: WorkbenchState, id: Uuid) {
 
     spawn(async move {
         let env_name_bg = env_name.clone();
+        let clone_path = settings.cloud_sync.resolved_clone_path(&root);
         let res = tokio::task::spawn_blocking(move || {
             let r = sync_environment(&root, &mut settings, &cols, &envs_mut, &env_name_bg, &v);
-            (r, settings)
+            let need_conflict_check =
+                r.is_err() || matches!(&r, Ok(sw) if !sw.result.ok);
+            let (conflicts, rebasing) = if need_conflict_check {
+                check_clone_conflicts(&clone_path)
+            } else {
+                (Vec::new(), false)
+            };
+            (r, settings, clone_path, conflicts, rebasing)
         })
         .await;
 
         st.cloud_busy.set(false);
         match res {
-            Ok((Ok((cols, loaded_envs, result)), updated_settings)) => {
-                st.app_settings.set(updated_settings.clone());
-                if !cols.is_empty() {
-                    st.collections.set(cols);
-                    st.fold_epoch.set((st.fold_epoch)() + 1);
+            Ok((Ok(synced), updated_settings, clone_path, conflicts, rebasing)) => {
+                if !synced.result.ok {
+                    st.patch_cloud_meta(
+                        &updated_settings.cloud_sync.last_status,
+                        &updated_settings.cloud_sync.last_branch,
+                        Some(updated_settings.cloud_sync.enabled),
+                        None,
+                        None,
+                    );
+                    if !open_conflicts_if_any(st, clone_path, conflicts, rebasing) {
+                        st.status_msg.set(synced.result.message.clone());
+                        st.log_error(format!("☁ [Cloud] Sync failed: {}", synced.result.message));
+                    }
+                    return;
                 }
-                if !loaded_envs.is_empty() {
-                    let pick = loaded_envs
-                        .iter()
-                        .find(|e| e.name == env_name)
-                        .map(|e| e.id)
-                        .unwrap_or(id);
-                    st.active_env_id.set(Some(pick));
-                    st.editing_env_id.set(Some(pick));
-                    let mut v = (st.vars)();
-                    sync_env_vars(&loaded_envs, Some(pick), &mut v);
-                    st.vars.set(v);
-                    st.environments.set(loaded_envs);
-                }
-                st.status_msg.set(result.message.clone());
-                if result.ok {
-                    st.log_cloud(format!("☁ [Cloud] Sync complete: {}", result.message));
-                } else {
-                    st.log_error(format!("☁ [Cloud] Sync failed: {}", result.message));
-                }
-                st.persist_local();
+                st.apply_synced_workspace(
+                    synced.collections,
+                    synced.environments,
+                    synced.globals,
+                    Some(&env_name),
+                    &synced.result.message,
+                    &synced.result.branch,
+                );
+                st.patch_cloud_meta(
+                    &synced.result.message,
+                    &synced.result.branch,
+                    Some(updated_settings.cloud_sync.enabled),
+                    None,
+                    None,
+                );
+                st.status_msg.set(synced.result.message.clone());
+                st.log_cloud(format!("☁ [Cloud] Sync complete: {}", synced.result.message));
             }
-            Ok((Err(e), updated_settings)) => {
-                st.app_settings.set(updated_settings);
-                st.status_msg.set(format!("sync: {e}"));
-                st.log_error(format!("☁ [Cloud] Sync failed: {e}"));
+            Ok((Err(e), updated_settings, clone_path, conflicts, rebasing)) => {
+                st.patch_cloud_meta(
+                    &updated_settings.cloud_sync.last_status,
+                    &updated_settings.cloud_sync.last_branch,
+                    None,
+                    None,
+                    None,
+                );
+                if !open_conflicts_if_any(st, clone_path, conflicts, rebasing) {
+                    st.status_msg.set(format!("sync: {e}"));
+                    st.log_error(format!("☁ [Cloud] Sync failed: {e}"));
+                }
             }
             Err(e) => {
                 st.status_msg.set(format!("sync join: {e}"));
@@ -213,7 +175,9 @@ pub fn sync_selected_env(mut st: WorkbenchState, id: Uuid) {
     });
 }
 
-pub fn cloud_clone_or_link(mut st: WorkbenchState) {
+/// Switch to the currently configured Git repository: immediately cleans all UI state
+/// from any previous Git repo and loads ONLY the files from the target repository.
+pub fn cloud_switch_repo(mut st: WorkbenchState) {
     if (st.cloud_busy)() {
         return;
     }
@@ -222,37 +186,117 @@ pub fn cloud_clone_or_link(mut st: WorkbenchState) {
         return;
     };
     let mut settings = (st.app_settings)();
-    if settings.cloud_sync.remote_url.trim().is_empty() {
-        settings.cloud_sync.remote_url = DEFAULT_CLOUD_REMOTE.to_string();
+    let has_remote = !settings.cloud_sync.remote_url.trim().is_empty();
+    let has_clone = !settings.cloud_sync.clone_path.trim().is_empty();
+
+    // Clean UI immediately so nothing from the previous Git repository lingers.
+    st.reset_for_git_switch();
+
+    if !has_remote && !has_clone {
+        st.status_msg.set("cleared git workspace".into());
+        st.persist_local();
+        return;
     }
+
     let root = store.root().to_path_buf();
+    let clone_path = settings.cloud_sync.resolved_clone_path(&root);
     st.cloud_busy.set(true);
-    st.status_msg.set("cloning / linking remote…".into());
-    st.log_cloud(format!("☁ [Cloud] Cloning or linking remote ({})…", settings.cloud_sync.remote_url));
+    st.is_loading.set(true);
+    st.status_msg.set("switching git repository…".into());
+    st.log_cloud(format!(
+        "☁ [Cloud] Switching Git repository ({})…",
+        if has_remote {
+            crate::core::cloud_sync::mask_remote_url(&settings.cloud_sync.remote_url)
+        } else {
+            settings.cloud_sync.clone_path.clone()
+        }
+    ));
     spawn(async move {
+        let clone_for_check = clone_path.clone();
         let res = tokio::task::spawn_blocking(move || {
-            let r = clone_or_ensure(&root, &mut settings);
-            (r, settings)
+            let r = switch_git_workspace(&root, &mut settings);
+            let need_conflict_check =
+                r.is_err() || matches!(&r, Ok(sw) if !sw.result.ok);
+            let (conflicts, rebasing) = if need_conflict_check {
+                check_clone_conflicts(&clone_for_check)
+            } else {
+                (Vec::new(), false)
+            };
+            (r, settings, conflicts, rebasing)
         })
         .await;
         st.cloud_busy.set(false);
+        st.is_loading.set(false);
         match res {
-            Ok((Ok(r), updated_settings)) => {
-                st.app_settings.set(updated_settings);
-                st.status_msg.set(r.message.clone());
-                st.log_cloud(format!("☁ [Cloud] Clone/link success: {}", r.message));
+            Ok((Ok(synced), updated_settings, conflicts, rebasing)) => {
+                if !synced.result.ok {
+                    st.patch_cloud_meta(
+                        &updated_settings.cloud_sync.last_status,
+                        &updated_settings.cloud_sync.last_branch,
+                        Some(updated_settings.cloud_sync.enabled),
+                        Some(&updated_settings.cloud_sync.remote_url),
+                        Some(&updated_settings.cloud_sync.clone_path),
+                    );
+                    if !open_conflicts_if_any(st, clone_path, conflicts, rebasing) {
+                        st.status_msg.set(synced.result.message.clone());
+                        st.log_error(format!(
+                            "☁ [Cloud] Switch git failed: {}",
+                            synced.result.message
+                        ));
+                    }
+                    return;
+                }
+                st.apply_switched_git_workspace(
+                    synced.collections,
+                    synced.environments,
+                    synced.globals,
+                    &synced.result.message,
+                    &synced.result.branch,
+                );
+                st.patch_cloud_meta(
+                    &updated_settings.cloud_sync.last_status,
+                    &updated_settings.cloud_sync.last_branch,
+                    Some(true),
+                    Some(&updated_settings.cloud_sync.remote_url),
+                    Some(&updated_settings.cloud_sync.clone_path),
+                );
+                st.status_msg.set(synced.result.message.clone());
+                st.log_cloud(format!("☁ [Cloud] {}", synced.result.message));
                 st.persist_local();
             }
-            Ok((Err(e), _)) => {
-                st.status_msg.set(format!("clone: {e}"));
-                st.log_error(format!("☁ [Cloud] Clone/link failed: {e}"));
+            Ok((Err(e), updated_settings, conflicts, rebasing)) => {
+                st.patch_cloud_meta(
+                    &updated_settings.cloud_sync.last_status,
+                    &updated_settings.cloud_sync.last_branch,
+                    None,
+                    None,
+                    None,
+                );
+                if !open_conflicts_if_any(st, clone_path, conflicts, rebasing) {
+                    st.status_msg.set(format!("git switch: {e}"));
+                    st.log_error(format!("☁ [Cloud] Switch git failed: {e}"));
+                }
             }
             Err(e) => {
-                st.status_msg.set(format!("clone join: {e}"));
-                st.log_error(format!("☁ [Cloud] Clone join error: {e}"));
+                st.status_msg.set(format!("git switch join: {e}"));
+                st.log_error(format!("☁ [Cloud] Switch git join error: {e}"));
             }
         }
     });
+}
+
+pub fn cloud_clone_or_link(mut st: WorkbenchState) {
+    if (st.cloud_busy)() {
+        return;
+    }
+    let settings = (st.app_settings)();
+    if settings.cloud_sync.remote_url.trim().is_empty() {
+        let msg = "Configure Remote Git Repository URL in Cloud Settings first".to_string();
+        st.status_msg.set(msg.clone());
+        st.notify(msg, ToastLevel::Warn);
+        return;
+    }
+    cloud_switch_repo(st);
 }
 
 pub fn cloud_link_folder(mut st: WorkbenchState) {
@@ -276,6 +320,8 @@ pub fn cloud_link_folder(mut st: WorkbenchState) {
         };
         let root = store.root().to_path_buf();
         let mut settings = (st.app_settings)();
+        // Clean UI immediately before loading linked folder so previous git state is wiped.
+        st.reset_for_git_switch();
         st.cloud_busy.set(true);
         st.log_cloud(format!("☁ [Cloud] Linking local folder '{}'", folder.display()));
         let res = tokio::task::spawn_blocking(move || {
@@ -286,15 +332,22 @@ pub fn cloud_link_folder(mut st: WorkbenchState) {
         st.cloud_busy.set(false);
         st.is_loading.set(false);
         match res {
-            Ok((Ok((cols, envs, r)), updated_settings)) => {
-                st.app_settings.set(updated_settings);
-                if !cols.is_empty() {
-                    st.collections.set(cols);
-                    st.fold_epoch.set((st.fold_epoch)() + 1);
-                }
-                if !envs.is_empty() {
-                    st.environments.set(envs);
-                }
+            Ok((Ok(synced), updated_settings)) => {
+                let (cols, envs, r) = (synced.collections, synced.environments, synced.result);
+                st.apply_switched_git_workspace(
+                    cols,
+                    envs,
+                    synced.globals,
+                    &r.message,
+                    &r.branch,
+                );
+                st.patch_cloud_meta(
+                    &updated_settings.cloud_sync.last_status,
+                    &updated_settings.cloud_sync.last_branch,
+                    Some(true),
+                    Some(&updated_settings.cloud_sync.remote_url),
+                    Some(&updated_settings.cloud_sync.clone_path),
+                );
                 st.status_msg.set(r.message.clone());
                 st.log_cloud(format!("☁ [Cloud] Linked folder success: {}", r.message));
                 st.persist_local();
@@ -321,7 +374,6 @@ pub fn cloud_sync_status(mut st: WorkbenchState) {
     };
     let root = store.root().to_path_buf();
     let mut settings = (st.app_settings)();
-    settings.cloud_sync.enabled = true;
     st.cloud_busy.set(true);
     spawn(async move {
         let res = tokio::task::spawn_blocking(move || {
@@ -331,7 +383,13 @@ pub fn cloud_sync_status(mut st: WorkbenchState) {
         .await;
         st.cloud_busy.set(false);
         if let Ok((r, updated_settings)) = res {
-            st.app_settings.set(updated_settings);
+            st.patch_cloud_meta(
+                &updated_settings.cloud_sync.last_status,
+                &updated_settings.cloud_sync.last_branch,
+                None,
+                None,
+                None,
+            );
             st.status_msg.set(r.message.clone());
             st.log_cloud(format!("☁ [Cloud] Status: {}", r.message));
             st.persist_local();
@@ -347,57 +405,74 @@ pub fn cloud_pull(mut st: WorkbenchState) {
         st.status_msg.set("cloud: cannot open store".into());
         return;
     };
-    let root = store.root().to_path_buf();
     let mut settings = (st.app_settings)();
+    if settings.cloud_sync.remote_url.trim().is_empty() {
+        let msg = "Configure Remote Git Repository URL in Cloud Settings first".to_string();
+        st.status_msg.set(msg.clone());
+        st.notify(msg, ToastLevel::Warn);
+        return;
+    }
     settings.cloud_sync.enabled = true;
+    let root = store.root().to_path_buf();
+    let clone_path = settings.cloud_sync.resolved_clone_path(&root);
     let envs = (st.environments)();
+    let cols = (st.collections)();
+    let globals = (st.vars)().global;
     st.is_loading.set(true);
     st.cloud_busy.set(true);
     st.log_cloud("☁ [Cloud] Pulling latest changes from remote…");
     spawn(async move {
-        let root_for_conflicts = root.clone();
+        let clone_for_check = clone_path.clone();
         let res = tokio::task::spawn_blocking(move || {
-            let r = pull_workspace(&root, &mut settings, &envs);
-            let conflicts = if r.is_err() {
-                detect_git_conflicts(&root).unwrap_or_default()
+            let r = pull_workspace(&root, &mut settings, &cols, &envs, &globals);
+            let need_conflict_check =
+                r.is_err() || matches!(&r, Ok(sw) if !sw.result.ok);
+            let (conflicts, rebasing) = if need_conflict_check {
+                check_clone_conflicts(&clone_for_check)
             } else {
-                vec![]
+                (Vec::new(), false)
             };
-            (r, settings, conflicts)
+            (r, settings, conflicts, rebasing)
         })
         .await;
         st.cloud_busy.set(false);
         st.is_loading.set(false);
         match res {
-            Ok((Ok((cols, envs, r)), updated_settings, _)) => {
-                st.app_settings.set(updated_settings);
-                if !cols.is_empty() {
-                    st.collections.set(cols);
-                    st.fold_epoch.set((st.fold_epoch)() + 1);
+            Ok((Ok(synced), updated_settings, conflicts, rebasing)) => {
+                if !synced.result.ok {
+                    st.patch_cloud_meta(
+                        &updated_settings.cloud_sync.last_status,
+                        &updated_settings.cloud_sync.last_branch,
+                        Some(true),
+                        None,
+                        None,
+                    );
+                    if !open_conflicts_if_any(st, clone_path, conflicts, rebasing) {
+                        st.status_msg.set(format!("pull: {}", synced.result.message));
+                        st.log_error(format!("☁ [Cloud] Pull failed: {}", synced.result.message));
+                    }
+                    return;
                 }
-                if !envs.is_empty() {
-                    let mut v = (st.vars)();
-                    sync_env_vars(&envs, (st.active_env_id)(), &mut v);
-                    st.vars.set(v);
-                    st.environments.set(envs);
-                }
-                st.status_msg.set(r.message.clone());
-                st.log_cloud(format!("☁ [Cloud] Pull complete: {}", r.message));
-                st.persist_local();
+                st.apply_synced_workspace(
+                    synced.collections,
+                    synced.environments,
+                    synced.globals,
+                    None,
+                    &synced.result.message,
+                    &synced.result.branch,
+                );
+                st.patch_cloud_meta(
+                    &synced.result.message,
+                    &synced.result.branch,
+                    Some(true),
+                    None,
+                    None,
+                );
+                st.status_msg.set(synced.result.message.clone());
+                st.log_cloud(format!("☁ [Cloud] Pull complete: {}", synced.result.message));
             }
-            Ok((Err(e), _, conflicts)) => {
-                let _ = root_for_conflicts;
-                if !conflicts.is_empty() {
-                    st.conflict_state.set(Some(ConflictState {
-                        files: conflicts.clone(),
-                        selected_idx: 0,
-                    }));
-                    st.active_request_id.set(None);
-                    st.editing_collection_id.set(None);
-                    let warn_msg = format!("⚔️ Merge conflicts detected in {} file(s)!", conflicts.len());
-                    st.status_msg.set(warn_msg.clone());
-                    st.log_warn(format!("☁ [Cloud] {warn_msg}"));
-                } else {
+            Ok((Err(e), _, conflicts, rebasing)) => {
+                if !open_conflicts_if_any(st, clone_path, conflicts, rebasing) {
                     st.status_msg.set(format!("pull: {e}"));
                     st.log_error(format!("☁ [Cloud] Pull failed: {e}"));
                 }
@@ -418,12 +493,16 @@ pub fn cloud_push(mut st: WorkbenchState) {
         st.status_msg.set("cloud: cannot open store".into());
         return;
     };
-    let root = store.root().to_path_buf();
     let mut settings = (st.app_settings)();
-    settings.cloud_sync.enabled = true;
     if settings.cloud_sync.remote_url.trim().is_empty() {
-        settings.cloud_sync.remote_url = DEFAULT_CLOUD_REMOTE.to_string();
+        let msg = "Configure Remote Git Repository URL in Cloud Settings first".to_string();
+        st.status_msg.set(msg.clone());
+        st.notify(msg, ToastLevel::Warn);
+        return;
     }
+    settings.cloud_sync.enabled = true;
+    let root = store.root().to_path_buf();
+    let clone_path = settings.cloud_sync.resolved_clone_path(&root);
     let envs = (st.environments)();
     let cols = (st.collections)();
     let vars = (st.vars)();
@@ -435,6 +514,7 @@ pub fn cloud_push(mut st: WorkbenchState) {
     st.cloud_busy.set(true);
     st.log_cloud(format!("☁ [Cloud] Pushing workspace (commit: \"{commit}\")…"));
     spawn(async move {
+        let clone_for_check = clone_path.clone();
         let res = tokio::task::spawn_blocking(move || {
             let r = push_workspace(
                 &root,
@@ -445,21 +525,33 @@ pub fn cloud_push(mut st: WorkbenchState) {
                 Some(commit.as_str()),
                 &vars,
             );
-            (r, settings)
+            let (conflicts, rebasing) = if !r.ok {
+                check_clone_conflicts(&clone_for_check)
+            } else {
+                (Vec::new(), false)
+            };
+            (r, settings, conflicts, rebasing)
         })
         .await;
         st.cloud_busy.set(false);
         st.is_loading.set(false);
         match res {
-            Ok((r, updated_settings)) => {
-                st.app_settings.set(updated_settings);
-                st.status_msg.set(r.message.clone());
+            Ok((r, updated_settings, conflicts, rebasing)) => {
+                st.patch_cloud_meta(
+                    &updated_settings.cloud_sync.last_status,
+                    &updated_settings.cloud_sync.last_branch,
+                    Some(true),
+                    None,
+                    None,
+                );
                 if r.ok {
+                    st.status_msg.set(r.message.clone());
                     st.log_cloud(format!("☁ [Cloud] Push complete: {}", r.message));
-                } else {
+                    st.persist_local();
+                } else if !open_conflicts_if_any(st, clone_path, conflicts, rebasing) {
+                    st.status_msg.set(r.message.clone());
                     st.log_warn(format!("☁ [Cloud] Push: {}", r.message));
                 }
-                st.persist_local();
             }
             Err(e) => {
                 st.status_msg.set(format!("push join: {e}"));
@@ -487,29 +579,47 @@ pub fn open_team_activity(mut st: WorkbenchState, toggle: bool) {
         st.show_team.set(false);
         return;
     }
+    if (st.cloud_busy)() {
+        return;
+    }
     let Ok(store) = JsonStore::open_default() else {
         st.status_msg.set("team: cannot open store".into());
         return;
     };
     let root = store.root().to_path_buf();
-    let mut settings = (st.app_settings)();
-    if settings.cloud_sync.remote_url.trim().is_empty() {
-        settings.cloud_sync.remote_url = DEFAULT_CLOUD_REMOTE.to_string();
+    let settings = (st.app_settings)();
+    let clone_path = settings.cloud_sync.resolved_clone_path(&root);
+    let has_repo = is_git_repo(&clone_path);
+
+    if !has_repo && (!settings.cloud_sync.enabled || settings.cloud_sync.remote_url.trim().is_empty()) {
+        st.show_team.set(true);
+        st.status_msg.set(
+            "Configure Remote Git URL and enable Cloud Sync in Settings to view team activity".into(),
+        );
+        return;
     }
+
     st.show_team.set(true);
     st.team_syncing.set(true);
     st.cloud_busy.set(true);
     spawn(async move {
+        let mut settings_bg = settings;
         let res = tokio::task::spawn_blocking(move || {
-            let _ = clone_or_ensure(&root, &mut settings);
-            let clone_path = settings.cloud_sync.resolved_clone_path(&root);
-            get_team_activity(&clone_path, 30)
+            if !is_git_repo(&clone_path) && !settings_bg.cloud_sync.remote_url.trim().is_empty() {
+                clone_or_ensure(&root, &mut settings_bg)?;
+            }
+            get_team_activity_ex(&clone_path, 30, true).map_err(|e| e.to_string())
         })
         .await;
         st.team_syncing.set(false);
         st.cloud_busy.set(false);
-        if let Ok(Ok(act)) = res {
-            st.team_activity.set(act);
+        match res {
+            Ok(Ok(act)) => st.team_activity.set(act),
+            Ok(Err(e)) => {
+                st.status_msg.set(format!("team activity: {e}"));
+                st.log_warn(format!("☁ [Cloud] Team activity: {e}"));
+            }
+            Err(e) => st.status_msg.set(format!("team join: {e}")),
         }
     });
 }

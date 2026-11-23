@@ -120,17 +120,21 @@ pub use sandbox::{
 };
 pub use scripts::{normalize_script_to_blitz, run_script_ex, ScriptRunOutcome};
 pub use cloud_sync::{
-    branch_name_for_env, clone_or_ensure, detect_git_conflicts,
-    get_conflict_file_versions, get_team_activity, is_noreply_user, link_folder,
-    open_in_file_manager, pull_workspace, push_workspace, refresh_status, resolve_git_conflicts,
-    status_summary, switch_env_branch, sync_environment, sync_on_save, ChangedFile,
-    CommitDiffLine, CommitDiffLineKind, CommitFileDiff, SyncResult, TeamActivity, TeamCommit,
-    TeamMember,
+    abort_git_rebase, branch_name_for_env, clone_or_ensure, default_branch, detect_git_conflicts,
+    get_conflict_file_versions, get_team_activity, get_team_activity_ex,
+    import_workspace_globals, import_workspace_tree, is_git_repo, is_merge_in_progress,
+    is_noreply_user, is_rebase_in_progress, link_folder, load_synced_tree_with_secrets,
+    merge_collection_secrets, merge_global_secrets, merge_secret_values,
+    normalize_remote_for_compare, open_in_file_manager, pull_workspace, push_workspace,
+    read_origin_url, refresh_status, remote_storage_dir_name, resolve_git_conflicts,
+    status_summary, switch_env_branch, switch_git_workspace, sync_environment, sync_on_save,
+    ChangedFile, CommitDiffLine, CommitDiffLineKind, CommitFileDiff, SyncResult, SyncedWorkspace,
+    TeamActivity, TeamCommit, TeamMember,
 };
 pub use settings::{
     default_zoom_percent, AccentIntensity, AppSettings, ClientCertSettings, CloudSyncSettings,
-    DefaultResponseTab, ProxyMode, ProxySettings, RequestSettings, ThemeGroup, UiDensity, UiSettings, UiTheme,
-    WorkbenchLayout, DEFAULT_CLOUD_REMOTE,
+    DefaultResponseTab, ProxyMode, ProxySettings, RecentGitRepo, RequestSettings, ThemeGroup,
+    UiDensity, UiSettings, UiTheme, WorkbenchLayout, DEFAULT_CLOUD_REMOTE,
 };
 pub use variables::{
     apply_collection_map, apply_collection_var_edit, apply_env_var_edit, apply_environment_map,

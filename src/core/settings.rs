@@ -539,16 +539,80 @@ impl UiSettings {
 /// Default GitHub remote for Blitz team sync.
 pub const DEFAULT_CLOUD_REMOTE: &str = "https://github.com/h3ma209/blitz-cloud.git";
 
+/// Recently used Git remote / local clone entry for quick switching in Cloud Settings.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub struct RecentGitRepo {
+    #[serde(default)]
+    pub remote_url: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub clone_path: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub last_branch: String,
+}
+
+impl RecentGitRepo {
+    /// Short repository label (e.g. `owner/repo` from Git URL or folder name for local-only repos).
+    pub fn short_name(&self) -> String {
+        let rem = self.remote_url.trim();
+        if !rem.is_empty() {
+            let masked = crate::core::cloud_sync::mask_remote_url(rem);
+            let cleaned = masked.trim_end_matches('/').trim_end_matches(".git");
+            let parts: Vec<&str> = cleaned
+                .rsplit(['/', ':'])
+                .filter(|s| !s.is_empty())
+                .take(2)
+                .collect();
+            if parts.len() == 2 {
+                return format!("{}/{}", parts[1], parts[0]);
+            }
+            if let Some(first) = parts.first() {
+                return (*first).to_string();
+            }
+        }
+        let cp = self.clone_path.trim();
+        if !cp.is_empty() {
+            return std::path::Path::new(cp)
+                .file_name()
+                .and_then(|s| s.to_str())
+                .unwrap_or(cp)
+                .to_string();
+        }
+        "git-repo".into()
+    }
+
+    /// Masked remote URL or local folder path for subtitle display.
+    pub fn display_target(&self) -> String {
+        let rem = self.remote_url.trim();
+        if !rem.is_empty() {
+            crate::core::cloud_sync::mask_remote_url(rem)
+        } else {
+            self.clone_path.trim().to_string()
+        }
+    }
+
+    pub fn matches(&self, remote_url: &str, clone_path: &str) -> bool {
+        let r1 = crate::core::cloud_sync::normalize_remote_for_compare(&self.remote_url);
+        let r2 = crate::core::cloud_sync::normalize_remote_for_compare(remote_url);
+        if !r1.is_empty() || !r2.is_empty() {
+            r1 == r2
+        } else {
+            let c1 = self.clone_path.trim();
+            let c2 = clone_path.trim();
+            !c1.is_empty() && c1 == c2
+        }
+    }
+}
+
 /// Git-backed cloud sync prefs (collections/envs → remote; secrets stay local).
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub struct CloudSyncSettings {
-    /// When true, Save also exports tree → local git commit (never push). Sync pulls+pushes.
+    /// When true, explicit Save exports tree → local git commit (never push). Sync pulls+pushes.
     #[serde(default)]
     pub enabled: bool,
     /// Remote URL (HTTPS or SSH).
-    #[serde(default = "default_cloud_remote")]
+    #[serde(default)]
     pub remote_url: String,
-    /// Override clone dir; empty = `{data_root}/cloud`.
+    /// Override clone dir; empty = `{data_root}/cloud` (or per-remote dir under `{data_root}/cloud-repos/`).
     #[serde(default)]
     pub clone_path: String,
     /// Optional commit message override; empty = auto from git name-status + UTC timestamp.
@@ -557,38 +621,102 @@ pub struct CloudSyncSettings {
     /// Last sync / git status message for UI.
     #[serde(default)]
     pub last_status: String,
-    /// Branch checked out after last env switch / sync (`env/<slug>`).
+    /// Branch checked out after last sync (`main` / `master`).
     #[serde(default)]
     pub last_branch: String,
-}
-
-fn default_cloud_remote() -> String {
-    DEFAULT_CLOUD_REMOTE.to_string()
-}
-
-impl Default for CloudSyncSettings {
-    fn default() -> Self {
-        Self {
-            // On by default so Sync is usable without hunting Settings first.
-            enabled: true,
-            remote_url: default_cloud_remote(),
-            clone_path: String::new(),
-            commit_message: String::new(),
-            last_status: String::new(),
-            last_branch: String::new(),
-        }
-    }
+    /// Recently used Git repositories (most-recently-used first, max 8).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub recent_repos: Vec<RecentGitRepo>,
 }
 
 impl CloudSyncSettings {
     /// Resolve working clone path under app data (or override).
+    /// When `clone_path` is empty and `{data_root}/cloud` belongs to a different remote,
+    /// isolates each remote under `{data_root}/cloud-repos/<slug>-<hash8>`.
     pub fn resolved_clone_path(&self, data_root: &std::path::Path) -> PathBuf {
         let custom = self.clone_path.trim();
-        if custom.is_empty() {
-            data_root.join("cloud")
-        } else {
-            PathBuf::from(custom)
+        if !custom.is_empty() {
+            return PathBuf::from(custom);
         }
+        let default_cloud = data_root.join("cloud");
+        let remote = self.remote_url.trim();
+        if remote.is_empty() || !default_cloud.exists() {
+            return default_cloud;
+        }
+        if crate::core::cloud_sync::is_git_repo(&default_cloud) {
+            if let Some(existing_origin) = crate::core::cloud_sync::read_origin_url(&default_cloud) {
+                if crate::core::cloud_sync::normalize_remote_for_compare(&existing_origin)
+                    == crate::core::cloud_sync::normalize_remote_for_compare(remote)
+                {
+                    return default_cloud;
+                }
+            }
+        }
+        data_root
+            .join("cloud-repos")
+            .join(crate::core::cloud_sync::remote_storage_dir_name(remote))
+    }
+
+    /// True if `(other_remote, other_clone)` points to the same Git repository as `self`.
+    pub fn is_same_repo(&self, other_remote: &str, other_clone: &str) -> bool {
+        let r1 = crate::core::cloud_sync::normalize_remote_for_compare(&self.remote_url);
+        let r2 = crate::core::cloud_sync::normalize_remote_for_compare(other_remote);
+        let c1 = self.clone_path.trim();
+        let c2 = other_clone.trim();
+        if !r1.is_empty() || !r2.is_empty() {
+            r1 == r2 && (c1 == c2 || c1.is_empty() || c2.is_empty())
+        } else {
+            c1 == c2
+        }
+    }
+
+    /// Record current `(remote_url, clone_path, last_branch)` at the front of `recent_repos` (max 8).
+    pub fn record_recent_repo(&mut self) {
+        self.record_recent_entry(&self.remote_url.clone(), &self.clone_path.clone(), &self.last_branch.clone());
+    }
+
+    /// Record a specific `(remote_url, clone_path, last_branch)` entry at the front of `recent_repos` (max 8).
+    pub fn record_recent_entry(&mut self, remote_url: &str, clone_path: &str, last_branch: &str) {
+        let rem = remote_url.trim();
+        let cp = clone_path.trim();
+        if rem.is_empty() && cp.is_empty() {
+            return;
+        }
+        let branch = if !last_branch.trim().is_empty() {
+            last_branch.trim().to_string()
+        } else {
+            self.recent_repos
+                .iter()
+                .find(|e| e.matches(rem, cp))
+                .map(|e| e.last_branch.clone())
+                .unwrap_or_default()
+        };
+        let preserved_cp = if !cp.is_empty() {
+            cp.to_string()
+        } else {
+            self.recent_repos
+                .iter()
+                .find(|e| e.matches(rem, cp))
+                .map(|e| e.clone_path.clone())
+                .unwrap_or_default()
+        };
+        self.recent_repos.retain(|e| !e.matches(rem, cp));
+        self.recent_repos.insert(
+            0,
+            RecentGitRepo {
+                remote_url: rem.to_string(),
+                clone_path: preserved_cp,
+                last_branch: branch,
+            },
+        );
+        self.recent_repos.truncate(8);
+    }
+
+    /// Remove a matching entry from `recent_repos`.
+    #[allow(dead_code)]
+    pub fn remove_recent_repo(&mut self, remote_url: &str, clone_path: &str) {
+        self.recent_repos
+            .retain(|e| !e.matches(remote_url, clone_path));
     }
 }
 
@@ -698,9 +826,9 @@ mod tests {
     fn app_settings_ui_serde_default() {
         let s: AppSettings = serde_json::from_str(r#"{"proxy":{"mode":"env","host_port":""},"client_cert":{"cert_path":"","passphrase":"","enabled":false}}"#).unwrap();
         assert_eq!(s.ui, UiSettings::default());
-        // Missing cloud_sync in JSON → Default (enabled true + canonical remote).
-        assert!(s.cloud_sync.enabled);
-        assert_eq!(s.cloud_sync.remote_url, DEFAULT_CLOUD_REMOTE);
+        // Missing cloud_sync in JSON → Default (disabled + empty remote URL).
+        assert!(!s.cloud_sync.enabled);
+        assert!(s.cloud_sync.remote_url.is_empty());
     }
 
     #[test]
@@ -768,5 +896,36 @@ mod tests {
         // Legacy theme keys fall back safely to Spotify
         let legacy: UiSettings = serde_json::from_str(r#"{"theme":"blueprint"}"#).unwrap();
         assert_eq!(legacy.theme, UiTheme::Spotify);
+    }
+
+    #[test]
+    fn recent_git_repos_mru_short_name_and_remove() {
+        let mut cs = CloudSyncSettings {
+            enabled: true,
+            remote_url: "https://github.com/acme/payments-api.git".into(),
+            clone_path: String::new(),
+            last_branch: "main".into(),
+            ..Default::default()
+        };
+        cs.record_recent_repo();
+        assert_eq!(cs.recent_repos.len(), 1);
+        assert_eq!(cs.recent_repos[0].short_name(), "acme/payments-api");
+
+        cs.remote_url = "git@github.com:acme/users-service.git".into();
+        cs.last_branch = "master".into();
+        cs.record_recent_repo();
+        assert_eq!(cs.recent_repos.len(), 2);
+        assert_eq!(cs.recent_repos[0].short_name(), "acme/users-service");
+        assert_eq!(cs.recent_repos[1].short_name(), "acme/payments-api");
+
+        // Re-selecting payments-api moves it to the front without duplicating
+        cs.remote_url = "https://github.com/acme/payments-api".into();
+        cs.record_recent_repo();
+        assert_eq!(cs.recent_repos.len(), 2);
+        assert_eq!(cs.recent_repos[0].short_name(), "acme/payments-api");
+
+        cs.remove_recent_repo("https://github.com/acme/payments-api.git", "");
+        assert_eq!(cs.recent_repos.len(), 1);
+        assert_eq!(cs.recent_repos[0].short_name(), "acme/users-service");
     }
 }

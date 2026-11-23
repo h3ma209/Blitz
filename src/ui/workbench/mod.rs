@@ -18,7 +18,8 @@ use crate::core::{
     export_collection_v21, find_environment, find_request_across, flatten_collections, import_curl,
     lint_collections, lint_error_count,
     generate_static_doc_html, generate_swagger_ui_html, grpc_unary_with_headers, insert_item_under,
-    is_draft_dirty, move_item_to, push_console, push_history, remint_pasted_item, remove_across,
+    is_draft_dirty, is_git_repo, is_rebase_in_progress, load_synced_tree_with_secrets,
+    move_item_to, push_console, push_history, remint_pasted_item, remove_across,
     rename_across, reorder_before, request_tab_display_name, resolve_ancestor_auth,
     save_example_to_request, save_request_to_collections, snapshot_tree_item, sort_collections,
     sort_collections_by, sort_parent_node_by, Collection, CollectionItem, ConsoleLine, Folder,
@@ -37,7 +38,7 @@ use crate::ui::sidebar::{Sidebar, SidebarAction, SidebarEvent};
 use crate::ui::workbench::modals::{VarsPage, WorkbenchModals};
 use crate::ui::workbench::protocol_actions::run_protocol_action;
 use crate::ui::workbench::state::{
-    apply_collection_env_pin, ensure_cloud_defaults, execute_tree_delete, sync_env_vars, ImpexModal,
+    apply_collection_env_pin, execute_tree_delete, sync_env_vars, ImpexModal,
     PaneDrag, PendingCloseTab, PendingDelete, TreeClipboard, WorkbenchState,
 };
 use crate::ui::workbench::top_bar::TopBar;
@@ -144,6 +145,38 @@ pub fn Workbench() -> Element {
         }
         fold_epoch.set(fold_epoch() + 1);
         loaded.set(true);
+
+        // Startup recovery: detect any abandoned rebase or unresolved conflicts in the cloud clone.
+        {
+            let s_now = app_settings();
+            let root_now = data_root();
+            if s_now.cloud_sync.enabled && !root_now.trim().is_empty() {
+                let clone_path = s_now
+                    .cloud_sync
+                    .resolved_clone_path(std::path::Path::new(&root_now));
+                let st_boot = st;
+                spawn(async move {
+                    let res = tokio::task::spawn_blocking(move || {
+                        if !is_git_repo(&clone_path) {
+                            return None;
+                        }
+                        let conflicts = detect_git_conflicts(&clone_path).unwrap_or_default();
+                        let rebasing = is_rebase_in_progress(&clone_path);
+                        if !conflicts.is_empty() || rebasing {
+                            Some((clone_path, conflicts, rebasing))
+                        } else {
+                            None
+                        }
+                    })
+                    .await;
+                    if let Ok(Some((cp, conflicts, rebasing))) = res {
+                        crate::ui::workbench::cloud::open_conflicts_if_any(
+                            st_boot, cp, conflicts, rebasing,
+                        );
+                    }
+                });
+            }
+        }
         if sidebar_drag().is_none() {
             sidebar_w.set(app_settings().ui.sidebar_width_px as f64);
         }
@@ -1902,7 +1935,32 @@ pub fn Workbench() -> Element {
                 show_settings.set(false);
             }
             SettingsEvent::Save(mut s) => {
-                let enabling_cloud = s.cloud_sync.enabled;
+                let prev_cloud = app_settings().cloud_sync;
+                if crate::core::normalize_remote_for_compare(&prev_cloud.remote_url)
+                    != crate::core::normalize_remote_for_compare(&s.cloud_sync.remote_url)
+                    && !s.cloud_sync.remote_url.trim().is_empty()
+                    && s.cloud_sync.clone_path.trim() == prev_cloud.clone_path.trim()
+                    && !s.cloud_sync.clone_path.trim().is_empty()
+                {
+                    let cp = std::path::Path::new(s.cloud_sync.clone_path.trim());
+                    if is_git_repo(cp) {
+                        if let Some(existing_origin) = crate::core::read_origin_url(cp) {
+                            if crate::core::normalize_remote_for_compare(&existing_origin)
+                                != crate::core::normalize_remote_for_compare(&s.cloud_sync.remote_url)
+                            {
+                                s.cloud_sync.clone_path.clear();
+                            }
+                        }
+                    }
+                }
+                let repo_switched =
+                    !prev_cloud.is_same_repo(&s.cloud_sync.remote_url, &s.cloud_sync.clone_path);
+                if repo_switched {
+                    s.cloud_sync.last_status.clear();
+                    s.cloud_sync.last_branch.clear();
+                }
+                s.cloud_sync.record_recent_repo();
+
                 let cur_root = data_root();
                 let target_root = if s.storage_root.trim().is_empty() {
                     JsonStore::open_default()
@@ -1913,9 +1971,6 @@ pub fn Workbench() -> Element {
                 };
                 s.storage_root = target_root.clone();
                 app_settings.set(s.clone());
-                if enabling_cloud {
-                    ensure_cloud_defaults(st);
-                }
                 let root_changed =
                     std::path::Path::new(&target_root) != std::path::Path::new(&cur_root);
                 if root_changed {
@@ -1928,6 +1983,9 @@ pub fn Workbench() -> Element {
                         }
                     }
                     st.reload_storage_root(&target_root);
+                } else if repo_switched {
+                    st.persist_local();
+                    cloud::cloud_switch_repo(st);
                 } else {
                     st.persist();
                     status_msg.set("settings saved".into());
@@ -2966,23 +3024,71 @@ pub fn Workbench() -> Element {
                         }
                     } else if let Some(conflict) = conflict_state() {
                         ConflictResolver {
-                            root: std::path::PathBuf::from(data_root()),
-                            conflict,
+                            conflict: conflict.clone(),
                             on_resolved: move |_| {
-                                let root = std::path::PathBuf::from(data_root());
-                                let remaining = detect_git_conflicts(&root).unwrap_or_default();
-                                if remaining.is_empty() {
-                                    conflict_state.set(None);
-                                    status_msg.set("Git conflicts resolved successfully".into());
-                                    if let Ok(store) = JsonStore::open_default() {
-                                        if let Ok(snap) = store.load() {
-                                            collections.set(snap.collections);
-                                            environments.set(snap.environments);
+                                let clone_path = conflict.clone_path.clone();
+                                let cur_cols = collections();
+                                let cur_envs = environments();
+                                let cur_globals = vars().global;
+                                let mut st_res = st;
+                                spawn(async move {
+                                    let res = tokio::task::spawn_blocking(move || {
+                                        let remaining =
+                                            detect_git_conflicts(&clone_path).unwrap_or_default();
+                                        let rebasing = is_rebase_in_progress(&clone_path);
+                                        if remaining.is_empty() && !rebasing {
+                                            let loaded = load_synced_tree_with_secrets(
+                                                &clone_path,
+                                                &cur_cols,
+                                                &cur_envs,
+                                                &cur_globals,
+                                            );
+                                            (clone_path, remaining, false, Some(loaded))
+                                        } else {
+                                            (clone_path, remaining, rebasing, None)
+                                        }
+                                    })
+                                    .await;
+                                    match res {
+                                        Ok((cp, _remaining, _rebasing, Some(Ok((cols, envs, globals))))) => {
+                                            conflict_state.set(None);
+                                            let _ = cp;
+                                            st_res.apply_synced_workspace(
+                                                cols,
+                                                envs,
+                                                globals,
+                                                None,
+                                                "conflicts resolved",
+                                                "",
+                                            );
+                                            status_msg.set(
+                                                "Git conflicts resolved & workspace reloaded".into(),
+                                            );
+                                        }
+                                        Ok((cp, _remaining, _rebasing, Some(Err(e)))) => {
+                                            let _ = cp;
+                                            conflict_state.set(None);
+                                            status_msg.set(format!(
+                                                "Conflicts resolved (reload note: {e})"
+                                            ));
+                                        }
+                                        Ok((cp, remaining, rebasing, None)) => {
+                                            conflict_state.set(Some(ConflictState {
+                                                clone_path: cp,
+                                                files: remaining,
+                                                selected_idx: 0,
+                                            }));
+                                            if rebasing {
+                                                status_msg.set(
+                                                    "Remaining rebase step conflicts detected".into(),
+                                                );
+                                            }
+                                        }
+                                        Err(e) => {
+                                            status_msg.set(format!("conflict reload join: {e}"));
                                         }
                                     }
-                                } else {
-                                    conflict_state.set(Some(ConflictState { files: remaining, selected_idx: 0 }));
-                                }
+                                });
                             },
                             on_close: move |_| conflict_state.set(None),
                         }

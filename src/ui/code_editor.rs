@@ -352,6 +352,17 @@ pub fn MultilineCodeField(
 
     let rows_attr = rows.unwrap_or("");
     let field_id = use_signal(|| format!("np-code-{}", uuid::Uuid::new_v4()));
+    let mut mounted_field_id = use_signal(String::new);
+    use_effect(move || {
+        let id = field_id();
+        if mounted_field_id() == id {
+            return;
+        }
+        mounted_field_id.set(id.clone());
+        spawn(async move {
+            install_sync_editor_key_handlers(&id).await;
+        });
+    });
     let mut var_menu = use_signal(|| None::<VarSuggestMenu>);
     let mut js_menu = use_signal(|| None::<JsSuggestMenu>);
     let mut popover = use_signal(|| None::<PopoverState>);
@@ -409,6 +420,7 @@ pub fn MultilineCodeField(
             oninput: {
                 let vars = vars.clone();
                 move |evt: Event<FormData>| {
+                    popover.set(None);
                     let raw_val = evt.value();
                     let new_val = crate::core::sandbox::normalize_smart_quotes(&raw_val);
                     let prev_val = current_val();
@@ -617,7 +629,11 @@ pub fn MultilineCodeField(
                             js_menu.set(None);
                             return;
                         }
-                        Key::Enter | Key::Tab => {
+                        Key::Enter => {
+                            // Never let JS autocomplete hijack Enter when user wants a newline.
+                            js_menu.set(None);
+                        }
+                        Key::Tab => {
                             if let Some((_, snippet)) = m.items.get(m.selected) {
                                 evt.prevent_default();
                                 let start = m.replace_start;
@@ -692,35 +708,19 @@ pub fn MultilineCodeField(
                     }
                 }
 
-                // Auto-indent on Enter (VS Code style block matching and indent preservation)
+                // Enter and Tab are handled synchronously in the DOM keydown listener
+                // (`install_sync_editor_key_handlers`) when no suggest menu is active,
+                // preventing WebKit scroll jumps and async typing races.
                 if evt.key() == Key::Enter
                     && !evt.modifiers().shift()
                     && !evt.modifiers().meta()
                     && !evt.modifiers().ctrl()
                     && !evt.modifiers().alt()
                 {
-                    evt.prevent_default();
-                    let id = field_id();
-                    let cur = current_val();
-                    spawn(async move {
-                        let caret = read_textarea_caret(&id).await;
-                        history.write().push_explicit_checkpoint(&cur, caret);
-                        auto_indent_on_enter(&id).await;
-                    });
                     return;
                 }
 
-                // Instant DOM-direct Tab indentation / Shift+Tab dedentation
                 if evt.key() == Key::Tab {
-                    evt.prevent_default();
-                    let shift = evt.modifiers().shift();
-                    let id = field_id();
-                    let cur = current_val();
-                    spawn(async move {
-                        let caret = read_textarea_caret(&id).await;
-                        history.write().push_explicit_checkpoint(&cur, caret);
-                        indent_tab_dom(&id, shift).await;
-                    });
                     return;
                 }
 
@@ -952,121 +952,6 @@ async fn sync_code_mirror_scroll(textarea_id: &str) {
     let _ = document::eval(&script).await;
 }
 
-async fn auto_indent_on_enter(textarea_id: &str) -> bool {
-    let script = format!(
-        r#"
-        const el = document.getElementById({id});
-        if (!el) return false;
-        const val = el.value || '';
-        const start = el.selectionStart ?? 0;
-        const end = el.selectionEnd ?? 0;
-        const before = val.slice(0, start);
-        const after = val.slice(end);
-
-        const lastNewline = before.lastIndexOf('\n');
-        const lineStart = lastNewline === -1 ? 0 : lastNewline + 1;
-        const currentLine = before.slice(lineStart);
-
-        const indentMatch = currentLine.match(/^[ \t]*/);
-        const baseIndent = indentMatch ? indentMatch[0] : '';
-
-        const trimmedBefore = currentLine.trimEnd();
-        const opensBlock = trimmedBefore.endsWith('{{') || trimmedBefore.endsWith('[');
-
-        const afterTrim = after.trimStart();
-        const nextChar = afterTrim.length > 0 ? afterTrim[0] : '';
-        const closesBlock = (trimmedBefore.endsWith('{{') && nextChar === '}}') ||
-                            (trimmedBefore.endsWith('[') && nextChar === ']');
-
-        let insert = '';
-        let caretOffset = 0;
-        if (opensBlock && closesBlock) {{
-            insert = '\n' + baseIndent + '  \n' + baseIndent;
-            caretOffset = 1 + baseIndent.length + 2;
-        }} else if (opensBlock) {{
-            insert = '\n' + baseIndent + '  ';
-            caretOffset = insert.length;
-        }} else {{
-            insert = '\n' + baseIndent;
-            caretOffset = insert.length;
-        }}
-
-        el.value = before + insert + after;
-        const newCaret = start + caretOffset;
-        el.setSelectionRange(newCaret, newCaret);
-        const host = el.closest('.code-editor-host, .var-highlight-host');
-        const mirror = host && host.querySelector('.code-editor-mirror, .var-highlight-mirror');
-        if (mirror) {{
-            mirror.scrollLeft = el.scrollLeft || 0;
-            mirror.scrollTop = el.scrollTop || 0;
-        }}
-        el.dispatchEvent(new Event('input', {{ bubbles: true }}));
-        return true;
-        "#,
-        id = serde_json::to_string(textarea_id).unwrap_or_else(|_| "\"\"".into())
-    );
-    document::eval(&script).await.ok().and_then(|v| v.as_bool()).unwrap_or(false)
-}
-
-async fn indent_tab_dom(textarea_id: &str, shift: bool) -> bool {
-    let script = format!(
-        r#"
-        const el = document.getElementById({id});
-        if (!el) return false;
-        const val = el.value || '';
-        const start = el.selectionStart ?? 0;
-        const end = el.selectionEnd ?? 0;
-        const shift = {shift};
-
-        if (start === end && !shift) {{
-            const before = val.slice(0, start);
-            const after = val.slice(end);
-            el.value = before + '  ' + after;
-            const newCaret = start + 2;
-            el.setSelectionRange(newCaret, newCaret);
-        }} else {{
-            const selStart = Math.min(start, end);
-            const selEnd = Math.max(start, end);
-            const lastNl = val.lastIndexOf('\n', selStart - 1);
-            const lineStart = lastNl === -1 ? 0 : lastNl + 1;
-            const nextNl = val.indexOf('\n', selEnd);
-            const lineEnd = nextNl === -1 ? val.length : nextNl;
-
-            const block = val.slice(lineStart, lineEnd);
-            const lines = block.split('\n');
-            let outLines = [];
-            if (shift) {{
-                for (const l of lines) {{
-                    if (l.startsWith('  ')) outLines.push(l.slice(2));
-                    else if (l.startsWith(' ')) outLines.push(l.slice(1));
-                    else if (l.startsWith('\t')) outLines.push(l.slice(1));
-                    else outLines.push(l);
-                }}
-            }} else {{
-                for (const l of lines) {{
-                    outLines.push('  ' + l);
-                }}
-            }}
-            const joined = outLines.join('\n');
-            el.value = val.slice(0, lineStart) + joined + val.slice(lineEnd);
-            const newEnd = lineStart + joined.length;
-            el.setSelectionRange(lineStart, newEnd);
-        }}
-        const host = el.closest('.code-editor-host, .var-highlight-host');
-        const mirror = host && host.querySelector('.code-editor-mirror, .var-highlight-mirror');
-        if (mirror) {{
-            mirror.scrollLeft = el.scrollLeft || 0;
-            mirror.scrollTop = el.scrollTop || 0;
-        }}
-        el.dispatchEvent(new Event('input', {{ bubbles: true }}));
-        return true;
-        "#,
-        id = serde_json::to_string(textarea_id).unwrap_or_else(|_| "\"\"".into()),
-        shift = shift
-    );
-    document::eval(&script).await.ok().and_then(|v| v.as_bool()).unwrap_or(false)
-}
-
 async fn read_textarea_caret_anchor(element_id: &str) -> Option<(usize, f64, f64, String)> {
     let script = format!(
         r#"
@@ -1193,11 +1078,126 @@ async fn read_textarea_caret(id: &str) -> usize {
     document::eval(&script).await.ok().and_then(|v| v.as_u64()).unwrap_or(0) as usize
 }
 
+async fn install_sync_editor_key_handlers(textarea_id: &str) {
+    let script = format!(
+        r#"
+        const el = document.getElementById({id});
+        if (!el || el.__blitzKeyHandlerInstalled) return;
+        el.__blitzKeyHandlerInstalled = true;
+
+        const syncMirrorAndKeepVisible = (el, prevTop, prevLeft) => {{
+            el.scrollTop = prevTop;
+            el.scrollLeft = prevLeft;
+            const val = el.value || '';
+            const caret = el.selectionStart ?? 0;
+            const lineIdx = val.slice(0, caret).split('\n').length - 1;
+            const cs = getComputedStyle(el);
+            const fs = parseFloat(cs.fontSize) || 14;
+            const lh = parseFloat(cs.lineHeight) || (fs * 1.5);
+            const padTop = parseFloat(cs.paddingTop) || 8;
+            const caretTop = padTop + lineIdx * lh;
+            const caretBottom = caretTop + lh;
+            if (caretBottom > el.scrollTop + el.clientHeight - 8) {{
+                el.scrollTop = caretBottom - el.clientHeight + 8;
+            }} else if (caretTop < el.scrollTop + 4) {{
+                el.scrollTop = Math.max(0, caretTop - 4);
+            }}
+            const host = el.closest('.code-editor-host, .var-highlight-host');
+            const mirror = host && host.querySelector('.code-editor-mirror, .var-highlight-mirror');
+            if (mirror) {{
+                mirror.scrollLeft = el.scrollLeft || 0;
+                mirror.scrollTop = el.scrollTop || 0;
+            }}
+        }};
+
+        el.addEventListener('keydown', (e) => {{
+            if (e.isComposing) return;
+            const host = el.closest('.code-editor-host, .var-highlight-host');
+            const suggestOpen = !!(host && host.querySelector('.var-suggest-menu'));
+
+            if (e.key === 'Enter' && !e.shiftKey && !e.metaKey && !e.ctrlKey && !e.altKey) {{
+                if (host && host.querySelector('.var-suggest-menu:not(.js-suggest-menu)')) return;
+                e.preventDefault();
+                const prevTop = el.scrollTop || 0;
+                const prevLeft = el.scrollLeft || 0;
+                const val = el.value || '';
+                const start = el.selectionStart ?? 0;
+                const end = el.selectionEnd ?? 0;
+                const before = val.slice(0, start);
+                const after = val.slice(end);
+                const lastNl = before.lastIndexOf('\n');
+                const currentLine = before.slice(lastNl === -1 ? 0 : lastNl + 1);
+                const indentMatch = currentLine.match(/^[ \t]*/);
+                const baseIndent = indentMatch ? indentMatch[0] : '';
+                const trimmedBefore = currentLine.trimEnd();
+                const opensBlock = trimmedBefore.endsWith('{{') || trimmedBefore.endsWith('[');
+                const nextChar = after.trimStart()[0] || '';
+                const closesBlock = (trimmedBefore.endsWith('{{') && nextChar === '}}') ||
+                                    (trimmedBefore.endsWith('[') && nextChar === ']');
+                let insert = '\n' + baseIndent;
+                let caretOffset = insert.length;
+                if (opensBlock && closesBlock) {{
+                    insert = '\n' + baseIndent + '  \n' + baseIndent;
+                    caretOffset = 1 + baseIndent.length + 2;
+                }} else if (opensBlock) {{
+                    insert = '\n' + baseIndent + '  ';
+                    caretOffset = insert.length;
+                }}
+                el.setRangeText(insert, start, end, 'end');
+                const newCaret = start + caretOffset;
+                el.setSelectionRange(newCaret, newCaret);
+                syncMirrorAndKeepVisible(el, prevTop, prevLeft);
+                el.dispatchEvent(new Event('input', {{ bubbles: true }}));
+                return;
+            }}
+
+            if (e.key === 'Tab') {{
+                if (suggestOpen) return;
+                e.preventDefault();
+                const prevTop = el.scrollTop || 0;
+                const prevLeft = el.scrollLeft || 0;
+                const val = el.value || '';
+                const start = el.selectionStart ?? 0;
+                const end = el.selectionEnd ?? 0;
+                if (start === end && !e.shiftKey) {{
+                    el.setRangeText('  ', start, end, 'end');
+                }} else {{
+                    const selStart = Math.min(start, end);
+                    const selEnd = Math.max(start, end);
+                    const lastNl = val.lastIndexOf('\n', selStart - 1);
+                    const lineStart = lastNl === -1 ? 0 : lastNl + 1;
+                    const nextNl = val.indexOf('\n', selEnd);
+                    const lineEnd = nextNl === -1 ? val.length : nextNl;
+                    const lines = val.slice(lineStart, lineEnd).split('\n');
+                    const outLines = lines.map((l) => {{
+                        if (e.shiftKey) {{
+                            if (l.startsWith('  ')) return l.slice(2);
+                            if (l.startsWith(' ') || l.startsWith('\t')) return l.slice(1);
+                            return l;
+                        }}
+                        return '  ' + l;
+                    }});
+                    const joined = outLines.join('\n');
+                    el.setRangeText(joined, lineStart, lineEnd, 'select');
+                    el.setSelectionRange(lineStart, lineStart + joined.length);
+                }}
+                syncMirrorAndKeepVisible(el, prevTop, prevLeft);
+                el.dispatchEvent(new Event('input', {{ bubbles: true }}));
+            }}
+        }});
+        "#,
+        id = serde_json::to_string(textarea_id).unwrap_or_else(|_| "\"\"".into())
+    );
+    let _ = document::eval(&script).await;
+}
+
 async fn apply_editor_undo_redo(textarea_id: &str, text: &str, byte_caret: usize) {
     let script = format!(
         r#"
         const el = document.getElementById({id});
         if (el) {{
+            const prevTop = el.scrollTop || 0;
+            const prevLeft = el.scrollLeft || 0;
             el.value = {text};
             const targetBytes = {byte_caret};
             const val = el.value || '';
@@ -1214,6 +1214,8 @@ async fn apply_editor_undo_redo(textarea_id: &str, text: &str, byte_caret: usize
             try {{
                 el.setSelectionRange(u16Pos, u16Pos);
             }} catch (_) {{}}
+            el.scrollTop = prevTop;
+            el.scrollLeft = prevLeft;
             const host = el.closest('.code-editor-host, .var-highlight-host');
             const mirror = host && host.querySelector('.code-editor-mirror, .var-highlight-mirror');
             if (mirror) {{

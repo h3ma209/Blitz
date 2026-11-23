@@ -1403,6 +1403,15 @@ pub fn send_request_with_options(
     let mut test_results: Vec<TestResult> = Vec::new();
     let mut visualizer_html = String::new();
     if has_post_scripts {
+        extras.request_url = resolved.url.clone();
+        extras.request_method = resolved.method.as_str().into();
+        extras.request_headers = resolved
+            .headers
+            .iter()
+            .filter(|h| h.enabled && !h.key.is_empty())
+            .map(|h| (h.key.clone(), h.value.clone()))
+            .collect();
+        extras.request_body_raw = resolved.body.clone();
         let sandbox_resp = SandboxResponse {
             status,
             status_text: status_text.clone(),
@@ -1858,6 +1867,50 @@ mod tests {
         assert_eq!(
             ctx.environment.get("session_token").map(String::as_str),
             Some("tok_e2e_999")
+        );
+    }
+
+    #[test]
+    fn post_script_sees_comment_stripped_and_resolved_request_body_and_headers() {
+        use std::io::{Read, Write};
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind");
+        let port = listener.local_addr().unwrap().port();
+        let server = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().expect("accept");
+            let mut buf = [0u8; 4096];
+            let _ = stream.read(&mut buf);
+            let resp = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 11\r\nConnection: close\r\n\r\n{\"ok\":true}";
+            stream.write_all(resp.as_bytes()).expect("write");
+        });
+
+        let mut draft = RequestDraft {
+            method: HttpMethod::Post,
+            url: format!("http://127.0.0.1:{port}/login"),
+            body_mode: BodyMode::Raw,
+            body: "{\n    \"phone\":\"{{msisdn}}\"\n    // scratch comment\n}".into(),
+            test_script: r#"
+                blitz.test("Barez", function () {
+                    var headerPhone = blitz.request.headers.get("x-sub-msisdn");
+                    var body = blitz.request.body.raw;
+                    var bodyPhone = JSON.parse(body).phone;
+                    blitz.expect(headerPhone).to.equal(bodyPhone);
+                });
+            "#
+            .into(),
+            ..Default::default()
+        };
+        draft.headers.push(KeyValue::new("x-sub-msisdn", "{{msisdn}}"));
+
+        let mut ctx = VariableContext::default();
+        ctx.environment.insert("msisdn".into(), "+9647771516197".into());
+        let res = send_request(&draft, &mut ctx).expect("send ok");
+        server.join().expect("server join");
+
+        assert_eq!(res.test_results.len(), 1);
+        assert!(
+            res.test_results[0].passed,
+            "{}",
+            res.test_results[0].message
         );
     }
 }

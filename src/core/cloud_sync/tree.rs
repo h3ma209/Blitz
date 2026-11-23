@@ -1,6 +1,6 @@
 //! Split workspace tree writer/reader (one file per request).
 
-use std::collections::HashSet;
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -9,12 +9,14 @@ use serde_json::{json, Value};
 use thiserror::Error;
 use uuid::Uuid;
 
-use crate::core::collection::{Collection, CollectionItem, Folder};
+use crate::core::collection::{
+    Collection, CollectionEnvOverrides, CollectionItem, Folder,
+};
 use crate::core::environment::{deduplicate_environments_by_id, import_environment_json, Environment};
 use crate::core::impex::{
     export_request_item, import_collection_v21, import_request_item, ImpexError,
 };
-use crate::core::request::{AuthConfig, AuthType, KeyValue};
+use crate::core::request::{AuthConfig, AuthType, KeyValue, RequestDraft};
 use crate::core::variables::VariableContext;
 
 #[derive(Debug, Error)]
@@ -34,7 +36,7 @@ pub enum CloudTreeError {
 pub struct ProjectMeta {
     pub schema_version: u32,
     pub name: String,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "String::is_empty")]
     pub default_env: String,
     #[serde(default)]
     pub remote: String,
@@ -93,6 +95,7 @@ pub fn sanitize_slug(name: &str) -> String {
 }
 
 /// Branch convention: `env/<slug>` (documented in design).
+#[allow(dead_code)]
 pub fn branch_name_for_env(env_name: &str) -> String {
     let slug = sanitize_slug(env_name);
     if slug.is_empty() || slug == "unnamed" {
@@ -102,18 +105,238 @@ pub fn branch_name_for_env(env_name: &str) -> String {
     }
 }
 
-fn unique_slug(base: &str, used: &mut HashSet<String>) -> String {
+fn unique_slug_with_id(base: &str, id: Uuid, used: &mut HashSet<String>) -> String {
     let slug = sanitize_slug(base);
     if used.insert(slug.clone()) {
         return slug;
     }
+    let hex_id = id.simple().to_string();
+    let short = &hex_id[..8.min(hex_id.len())];
+    let det = format!("{slug}-{short}");
+    if used.insert(det.clone()) {
+        return det;
+    }
     let mut n = 2u32;
     loop {
-        let candidate = format!("{slug}-{n}");
+        let candidate = format!("{det}-{n}");
         if used.insert(candidate.clone()) {
             return candidate;
         }
         n += 1;
+    }
+}
+
+fn write_if_changed(path: &Path, content: &str) -> Result<(), CloudTreeError> {
+    if let Ok(existing) = fs::read_to_string(path) {
+        if existing == content {
+            return Ok(());
+        }
+    }
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    fs::write(path, content)?;
+    Ok(())
+}
+
+fn prune_stale_files(dir: &Path, keep: &HashSet<PathBuf>) {
+    let Ok(entries) = fs::read_dir(dir) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let p = entry.path();
+        if p.is_dir() {
+            prune_stale_files(&p, keep);
+            let is_empty = fs::read_dir(&p)
+                .map(|mut it| it.next().is_none())
+                .unwrap_or(false);
+            if is_empty {
+                let _ = fs::remove_dir(&p);
+            }
+        } else if !keep.contains(&p) {
+            let _ = fs::remove_file(&p);
+        }
+    }
+}
+
+/// Redact only secret credential fields inside an [`AuthConfig`], keeping non-secret config
+/// (OAuth2 URLs/client_id/grant/scope, AWS region/service, Hawk algorithm, EdgeGrid host, usernames).
+pub fn redact_auth_config(auth: &AuthConfig) -> AuthConfig {
+    let mut out = auth.clone();
+    out.token.clear();
+    out.password.clear();
+    out.oauth2.client_secret.clear();
+    out.oauth2.access_token.clear();
+    out.oauth2.refresh_token.clear();
+    out.extra.secret.clear();
+    out.extra.token.clear();
+    if out.auth_type != AuthType::EdgeGrid {
+        out.extra.token_secret.clear();
+    }
+    if matches!(out.auth_type, AuthType::AwsSigV4 | AuthType::EdgeGrid) {
+        out.extra.key.clear();
+    }
+    out
+}
+
+fn merge_auth_secrets(imported: &mut AuthConfig, local: &AuthConfig) {
+    if imported.auth_type != local.auth_type {
+        return;
+    }
+    if imported.token.is_empty() && !local.token.is_empty() {
+        imported.token = local.token.clone();
+    }
+    if imported.password.is_empty() && !local.password.is_empty() {
+        imported.password = local.password.clone();
+    }
+    if imported.oauth2.client_secret.is_empty() && !local.oauth2.client_secret.is_empty() {
+        imported.oauth2.client_secret = local.oauth2.client_secret.clone();
+    }
+    if imported.oauth2.access_token.is_empty() && !local.oauth2.access_token.is_empty() {
+        imported.oauth2.access_token = local.oauth2.access_token.clone();
+    }
+    if imported.oauth2.refresh_token.is_empty() && !local.oauth2.refresh_token.is_empty() {
+        imported.oauth2.refresh_token = local.oauth2.refresh_token.clone();
+    }
+    if imported.extra.secret.is_empty() && !local.extra.secret.is_empty() {
+        imported.extra.secret = local.extra.secret.clone();
+    }
+    if imported.extra.token.is_empty() && !local.extra.token.is_empty() {
+        imported.extra.token = local.extra.token.clone();
+    }
+    if imported.extra.token_secret.is_empty() && !local.extra.token_secret.is_empty() {
+        imported.extra.token_secret = local.extra.token_secret.clone();
+    }
+    if imported.extra.key.is_empty() && !local.extra.key.is_empty() {
+        imported.extra.key = local.extra.key.clone();
+    }
+}
+
+fn redact_kv_secrets(vars: &[KeyValue]) -> Vec<KeyValue> {
+    vars.iter()
+        .map(|kv| {
+            let mut copy = kv.clone();
+            if looks_like_secret_key(&copy.key) {
+                copy.value.clear();
+            }
+            copy
+        })
+        .collect()
+}
+
+fn merge_kv_secrets(imported: &mut [KeyValue], local: &[KeyValue]) {
+    for kv in imported.iter_mut() {
+        if looks_like_secret_key(&kv.key) && kv.value.is_empty() {
+            if let Some(src) = local.iter().find(|l| l.key == kv.key && !l.value.is_empty()) {
+                kv.value = src.value.clone();
+            }
+        }
+    }
+}
+
+fn redact_env_overrides(ov: &CollectionEnvOverrides) -> CollectionEnvOverrides {
+    let mut out = ov.clone();
+    out.variables = redact_kv_secrets(&out.variables);
+    if let Some(ref mut a) = out.auth {
+        *a = redact_auth_config(a);
+    }
+    for req_ov in out.requests.values_mut() {
+        req_ov.variables = redact_kv_secrets(&req_ov.variables);
+        if let Some(ref mut a) = req_ov.auth {
+            *a = redact_auth_config(a);
+        }
+    }
+    out
+}
+
+fn merge_items_secrets(imported: &mut [CollectionItem], local: &[CollectionItem]) {
+    for item in imported.iter_mut() {
+        match item {
+            CollectionItem::Request(r) => {
+                if let Some(CollectionItem::Request(loc_r)) = local.iter().find(|li| match li {
+                    CollectionItem::Request(lr) => lr.id == r.id || lr.name == r.name,
+                    _ => false,
+                }) {
+                    merge_auth_secrets(&mut r.auth, &loc_r.auth);
+                }
+            }
+            CollectionItem::Folder(f) => {
+                if let Some(CollectionItem::Folder(loc_f)) = local.iter().find(|li| match li {
+                    CollectionItem::Folder(lf) => lf.id == f.id || lf.name == f.name,
+                    _ => false,
+                }) {
+                    merge_auth_secrets(&mut f.auth, &loc_f.auth);
+                    merge_items_secrets(&mut f.items, &loc_f.items);
+                }
+            }
+        }
+    }
+}
+
+/// Restore local secret auth credentials, secret variables, and machine-local metadata on
+/// collections after importing a redacted Git workspace tree.
+pub fn merge_collection_secrets(imported: &mut [Collection], local: &[Collection]) {
+    for col in imported.iter_mut() {
+        let Some(loc) = local.iter().find(|c| c.id == col.id || c.name == col.name) else {
+            continue;
+        };
+        merge_auth_secrets(&mut col.auth, &loc.auth);
+        merge_kv_secrets(&mut col.variables, &loc.variables);
+        if col.pinned_environment_id.is_none() {
+            col.pinned_environment_id = loc.pinned_environment_id;
+        }
+        if col.openapi_spec_path.is_empty() && !loc.openapi_spec_path.is_empty() {
+            col.openapi_spec_path = loc.openapi_spec_path.clone();
+            col.openapi_synced_mtime = loc.openapi_synced_mtime;
+        }
+        merge_kv_secrets(
+            &mut col.environment_overrides.variables,
+            &loc.environment_overrides.variables,
+        );
+        if let (Some(ref mut imp_auth), Some(ref loc_auth)) =
+            (&mut col.environment_overrides.auth, &loc.environment_overrides.auth)
+        {
+            merge_auth_secrets(imp_auth, loc_auth);
+        }
+        for (req_id, req_ov) in col.environment_overrides.requests.iter_mut() {
+            if let Some(loc_ov) = loc.environment_overrides.requests.get(req_id) {
+                merge_kv_secrets(&mut req_ov.variables, &loc_ov.variables);
+                if let (Some(ref mut ia), Some(ref la)) = (&mut req_ov.auth, &loc_ov.auth) {
+                    merge_auth_secrets(ia, la);
+                }
+            }
+        }
+        merge_items_secrets(&mut col.items, &loc.items);
+    }
+}
+
+/// Read synced workspace globals from `.blitz/globals.json`.
+pub fn import_workspace_globals(root: &Path) -> HashMap<String, String> {
+    let path = root.join(".blitz").join("globals.json");
+    let Ok(text) = fs::read_to_string(path) else {
+        return HashMap::new();
+    };
+    serde_json::from_str::<HashMap<String, String>>(&text).unwrap_or_default()
+}
+
+/// Restore local secret values for globals whose key looks like a secret.
+pub fn merge_global_secrets(
+    imported: &mut HashMap<String, String>,
+    local: &HashMap<String, String>,
+) {
+    for (k, v) in imported.iter_mut() {
+        if looks_like_secret_key(k) && v.is_empty() {
+            if let Some(lv) = local.get(k) {
+                if !lv.is_empty() {
+                    *v = lv.clone();
+                }
+            }
+        }
+    }
+    for (k, lv) in local {
+        if looks_like_secret_key(k) && !lv.is_empty() && !imported.contains_key(k) {
+            imported.insert(k.clone(), lv.clone());
+        }
     }
 }
 
@@ -192,6 +415,7 @@ fn export_env_redacted_json(env: &Environment) -> Result<String, CloudTreeError>
             json!({
                 "key": v.key,
                 "value": if is_secret { "" } else { v.current_value.as_str() },
+                "initialValue": if is_secret { "" } else { v.initial_value.as_str() },
                 "enabled": v.enabled,
                 "type": if is_secret { "secret" } else { "default" },
             })
@@ -214,15 +438,14 @@ fn export_env_redacted_json(env: &Environment) -> Result<String, CloudTreeError>
 
 /// Write full workspace tree under `root` (git working tree).
 ///
-/// Syncs collections, collection variables, and environments (secrets redacted).
-/// **Never** writes [`VariableContext::local`] — that map is machine/session only.
-/// Optional globals may be written to `.blitz/globals.json` when non-empty.
+/// Syncs collections, collection variables, globals, and shared environments (all secrets redacted).
+/// **Never** writes [`VariableContext::local`] or the machine-only `"Local"` environment.
 /// Any stale `.blitz/local.json` is removed so it cannot be committed.
 pub fn export_workspace_tree(
     root: &Path,
     project_name: &str,
     remote: &str,
-    default_env: &str,
+    _default_env: &str,
     collections: &[Collection],
     environments: &[Environment],
     variables: &VariableContext,
@@ -239,28 +462,38 @@ pub fn export_workspace_tree(
         fs::remove_file(&local_overlay)?;
     }
 
+    // Omit volatile per-user active env from project.json to avoid cross-teammate merge conflicts.
     let meta = ProjectMeta {
         schema_version: 1,
         name: project_name.to_string(),
-        default_env: default_env.to_string(),
+        default_env: String::new(),
         remote: super::git::mask_remote_url(remote),
     };
-    fs::write(
-        blitz.join("project.json"),
-        serde_json::to_string_pretty(&meta)?,
+    write_if_changed(
+        &blitz.join("project.json"),
+        &serde_json::to_string_pretty(&meta)?,
     )?;
 
-    // Globals may sync; local never does.
+    // Globals may sync with secret keys redacted; local never does.
     let globals_path = blitz.join("globals.json");
     if variables.global.is_empty() {
         if globals_path.exists() {
             fs::remove_file(&globals_path)?;
         }
     } else {
-        fs::write(
-            &globals_path,
-            serde_json::to_string_pretty(&variables.global)?,
-        )?;
+        let mut sorted_globals = BTreeMap::new();
+        for (k, v) in &variables.global {
+            if k.is_empty() {
+                continue;
+            }
+            let safe_val = if looks_like_secret_key(k) {
+                String::new()
+            } else {
+                v.clone()
+            };
+            sorted_globals.insert(k.clone(), safe_val);
+        }
+        write_if_changed(&globals_path, &serde_json::to_string_pretty(&sorted_globals)?)?;
     }
 
     let gi = root.join(".gitignore");
@@ -272,73 +505,82 @@ pub fn export_workspace_tree(
         fs::write(&readme, DEFAULT_README)?;
     }
 
-    // Wipe previous collection dirs for clean rewrite (same slug set).
+    // Differential write under collections/ + prune only removed files.
     let cols_dir = root.join("collections");
-    if cols_dir.is_dir() {
-        for entry in fs::read_dir(&cols_dir)? {
-            let entry = entry?;
-            if entry.file_type()?.is_dir() {
-                fs::remove_dir_all(entry.path())?;
-            }
-        }
-    }
-
+    let mut written_col_files = HashSet::new();
     let mut used_col_slugs = HashSet::new();
     for col in collections {
-        let slug = unique_slug(&col.name, &mut used_col_slugs);
-        write_collection_split(&cols_dir.join(&slug), col)?;
+        let slug = unique_slug_with_id(&col.name, col.id, &mut used_col_slugs);
+        write_collection_split(&cols_dir.join(&slug), col, &mut written_col_files)?;
+    }
+    if cols_dir.is_dir() {
+        prune_stale_files(&cols_dir, &written_col_files);
     }
 
-    // Environments
+    // Shared environments (skip machine-local "Local" env); prune stale .environment.json files.
     let env_dir = root.join("environments");
-    if env_dir.is_dir() {
-        for entry in fs::read_dir(&env_dir)? {
-            let entry = entry?;
-            let name = entry.file_name().to_string_lossy().to_string();
-            if name.ends_with(".environment.json") {
-                let _ = fs::remove_file(entry.path());
-            }
-        }
-    }
+    let mut written_env_files = HashSet::new();
     let mut used_env_slugs = HashSet::new();
     for env in environments {
-        let slug = unique_slug(&env.name, &mut used_env_slugs);
+        if env.name.trim().eq_ignore_ascii_case("Local") {
+            continue;
+        }
+        let slug = unique_slug_with_id(&env.name, env.id, &mut used_env_slugs);
         let path = env_dir.join(format!("{slug}.environment.json"));
-        fs::write(path, export_env_redacted_json(env)?)?;
+        write_if_changed(&path, &export_env_redacted_json(env)?)?;
+        written_env_files.insert(path);
+    }
+    if env_dir.is_dir() {
+        prune_stale_files(&env_dir, &written_env_files);
     }
 
     Ok(())
 }
 
-fn write_collection_split(dir: &Path, col: &Collection) -> Result<(), CloudTreeError> {
+fn write_collection_split(
+    dir: &Path,
+    col: &Collection,
+    written: &mut HashSet<PathBuf>,
+) -> Result<(), CloudTreeError> {
     fs::create_dir_all(dir)?;
     fs::create_dir_all(dir.join("folders"))?;
     fs::create_dir_all(dir.join("requests"))?;
 
     let mut used = HashSet::new();
-    let order = write_items(dir, &col.items, Path::new(""), &mut used)?;
+    let order = write_items(dir, &col.items, Path::new(""), &mut used, written)?;
 
     let variables: Vec<Value> = col
         .variables
         .iter()
         .filter(|v| !v.key.is_empty())
         .map(|v| {
+            let is_secret = looks_like_secret_key(&v.key);
             json!({
                 "key": v.key,
-                "value": v.value,
+                "value": if is_secret { "" } else { v.value.as_str() },
+                "type": if is_secret { "secret" } else { "default" },
                 "disabled": !v.enabled,
             })
         })
         .collect();
 
     let auth = export_auth_json(&col.auth);
-    let env_overrides = &col.environment_overrides;
-    let has_env_overrides = !env_overrides.is_empty();
+    let redacted_auth_cfg = redact_auth_config(&col.auth);
+    let redacted_ov = redact_env_overrides(&col.environment_overrides);
+    let has_env_overrides = !redacted_ov.is_empty();
     let mut blitz_meta = serde_json::Map::new();
     blitz_meta.insert("favorite".into(), json!(col.favorite));
     blitz_meta.insert("preRequestScript".into(), json!(col.pre_request_script));
     blitz_meta.insert("testScript".into(), json!(col.test_script));
     blitz_meta.insert("split".into(), json!(true));
+    if redacted_auth_cfg.auth_type != AuthType::Inherit {
+        if let Ok(v) = serde_json::to_value(&redacted_auth_cfg) {
+            blitz_meta.insert("auth".into(), v);
+        }
+    }
+    if let Some(pid) = col.pinned_environment_id {
+        blitz_meta.insert("pinnedEnvironmentId".into(), json!(pid.to_string()));
+    }
     if let Some(icon) = col.icon.as_deref().filter(|s| !s.trim().is_empty()) {
         blitz_meta.insert("icon".into(), json!(icon));
     }
@@ -359,10 +601,12 @@ fn write_collection_split(dir: &Path, col: &Collection) -> Result<(), CloudTreeE
     });
     if has_env_overrides {
         if let Some(obj) = doc.as_object_mut() {
-            obj.insert("environmentOverrides".into(), serde_json::to_value(env_overrides)?);
+            obj.insert("environmentOverrides".into(), serde_json::to_value(redacted_ov)?);
         }
     }
-    fs::write(dir.join("collection.json"), serde_json::to_string_pretty(&doc)?)?;
+    let col_path = dir.join("collection.json");
+    write_if_changed(&col_path, &serde_json::to_string_pretty(&doc)?)?;
+    written.insert(col_path);
     Ok(())
 }
 
@@ -480,12 +724,13 @@ fn write_items(
     items: &[CollectionItem],
     folder_rel: &Path,
     used: &mut HashSet<String>,
+    written: &mut HashSet<PathBuf>,
 ) -> Result<Vec<Value>, CloudTreeError> {
     let mut order = Vec::new();
     for item in items {
         match item {
             CollectionItem::Request(r) => {
-                let slug = unique_slug(&r.name, used);
+                let slug = unique_slug_with_id(&r.name, r.id, used);
                 let file_name = format!("{slug}.request.json");
                 let rel = if folder_rel.as_os_str().is_empty() {
                     PathBuf::from("requests").join(&file_name)
@@ -495,17 +740,28 @@ fn write_items(
                         .join(&file_name)
                 };
                 let abs = col_root.join(&rel);
-                if let Some(parent) = abs.parent() {
-                    fs::create_dir_all(parent)?;
-                }
                 let mut val = export_request_item(r);
-                // Redact auth secrets in request file
+                // Redact auth secrets in request file, while preserving non-secret AuthConfig fields
                 if let Some(req) = val.get_mut("request") {
                     if let Some(auth) = req.get_mut("auth") {
                         redact_auth_value(auth);
                     }
                 }
-                fs::write(abs, serde_json::to_string_pretty(&val)?)?;
+                if r.auth.auth_type != AuthType::Inherit {
+                    let redacted_cfg = redact_auth_config(&r.auth);
+                    if let Ok(auth_v) = serde_json::to_value(&redacted_cfg) {
+                        if let Some(obj) = val.as_object_mut() {
+                            let xb = obj
+                                .entry("x-blitz")
+                                .or_insert_with(|| json!({}));
+                            if let Some(xb_obj) = xb.as_object_mut() {
+                                xb_obj.insert("auth".into(), auth_v);
+                            }
+                        }
+                    }
+                }
+                write_if_changed(&abs, &serde_json::to_string_pretty(&val)?)?;
+                written.insert(abs);
                 order.push(json!({
                     "kind": "request",
                     "path": path_to_str(&rel),
@@ -514,7 +770,7 @@ fn write_items(
                 }));
             }
             CollectionItem::Folder(f) => {
-                let slug = unique_slug(&f.name, used);
+                let slug = unique_slug_with_id(&f.name, f.id, used);
                 let child_rel = if folder_rel.as_os_str().is_empty() {
                     PathBuf::from(&slug)
                 } else {
@@ -522,19 +778,29 @@ fn write_items(
                 };
                 let folder_dir = col_root.join("folders").join(&child_rel);
                 fs::create_dir_all(&folder_dir)?;
-                let meta = json!({
+                let redacted_folder_auth = redact_auth_config(&f.auth);
+                let mut meta = json!({
                     "id": f.id.to_string(),
                     "name": f.name,
+                    "description": f.description,
+                    "auth": export_auth_json(&redacted_folder_auth),
                     "preRequestScript": f.pre_request_script,
                     "testScript": f.test_script,
                     "sortKey": f.sort_key,
                 });
-                fs::write(
-                    folder_dir.join("_folder.json"),
-                    serde_json::to_string_pretty(&meta)?,
-                )?;
+                if redacted_folder_auth.auth_type != AuthType::Inherit {
+                    if let Ok(av) = serde_json::to_value(&redacted_folder_auth) {
+                        if let Some(obj) = meta.as_object_mut() {
+                            obj.insert("blitzAuth".into(), av);
+                        }
+                    }
+                }
+                let meta_path = folder_dir.join("_folder.json");
+                write_if_changed(&meta_path, &serde_json::to_string_pretty(&meta)?)?;
+                written.insert(meta_path);
                 let mut child_used = HashSet::new();
-                let children = write_items(col_root, &f.items, &child_rel, &mut child_used)?;
+                let children =
+                    write_items(col_root, &f.items, &child_rel, &mut child_used, written)?;
                 order.push(json!({
                     "kind": "folder",
                     "path": format!("folders/{}", path_to_str(&child_rel)),
@@ -699,18 +965,100 @@ fn read_collection_split(dir: &Path) -> Result<Collection, CloudTreeError> {
                 })
                 .collect();
         }
-        // Auth: import non-secret structure (auth type, username, header name, tokenUrl); secrets stay local
-        col.auth = import_auth_json(root.get("auth"));
+        // Auth: prefer rich structured `_blitz.auth`, else Postman `auth`
+        if let Some(b_auth) = root
+            .pointer("/_blitz/auth")
+            .and_then(|v| serde_json::from_value::<AuthConfig>(v.clone()).ok())
+        {
+            col.auth = b_auth;
+        } else {
+            col.auth = import_auth_json(root.get("auth"));
+        }
+        if let Some(pid) = root
+            .pointer("/_blitz/pinnedEnvironmentId")
+            .and_then(|v| v.as_str())
+            .and_then(|s| Uuid::parse_str(s).ok())
+        {
+            col.pinned_environment_id = Some(pid);
+        }
         // Import environment overrides if present
         if let Some(env_overrides) = root.get("environmentOverrides") {
             col.environment_overrides = serde_json::from_value(env_overrides.clone())
                 .unwrap_or_default();
         }
         col.items = read_order_items(dir, &item)?;
+        recover_orphaned_requests(dir, &mut col);
         Ok(col)
     } else {
         // Full embedded collection.json
         Ok(import_collection_v21(&text)?)
+    }
+}
+
+fn collect_request_ids(items: &[CollectionItem], ids: &mut HashSet<Uuid>) {
+    for item in items {
+        match item {
+            CollectionItem::Request(r) => {
+                ids.insert(r.id);
+            }
+            CollectionItem::Folder(f) => collect_request_ids(&f.items, ids),
+        }
+    }
+}
+
+fn parse_request_with_blitz_auth(text: &str) -> Result<RequestDraft, CloudTreeError> {
+    let mut req = import_request_item(text)?;
+    if let Ok(raw) = serde_json::from_str::<Value>(text) {
+        if let Some(b_auth) = raw
+            .pointer("/x-blitz/auth")
+            .and_then(|v| serde_json::from_value::<AuthConfig>(v.clone()).ok())
+        {
+            req.auth = b_auth;
+        }
+    }
+    Ok(req)
+}
+
+fn collect_request_files_recursive(dir: &Path, out: &mut Vec<PathBuf>) {
+    let Ok(entries) = fs::read_dir(dir) else {
+        return;
+    };
+    let mut list: Vec<_> = entries.flatten().map(|e| e.path()).collect();
+    list.sort();
+    for p in list {
+        if p.is_dir() {
+            collect_request_files_recursive(&p, out);
+        } else if p
+            .file_name()
+            .and_then(|s| s.to_str())
+            .is_some_and(|n| n.ends_with(".request.json"))
+        {
+            out.push(p);
+        }
+    }
+}
+
+/// Recover any `*.request.json` files on disk not listed in `collection.json` (e.g. after resolving
+/// a `collection.json` merge conflict) so neither teammate's newly added requests are orphaned.
+fn recover_orphaned_requests(col_root: &Path, col: &mut Collection) {
+    let mut seen_ids = HashSet::new();
+    collect_request_ids(&col.items, &mut seen_ids);
+
+    let mut disk_files = Vec::new();
+    collect_request_files_recursive(&col_root.join("requests"), &mut disk_files);
+    collect_request_files_recursive(&col_root.join("folders"), &mut disk_files);
+
+    for path in disk_files {
+        let Ok(text) = fs::read_to_string(&path) else {
+            continue;
+        };
+        let Ok(req) = parse_request_with_blitz_auth(&text) else {
+            continue;
+        };
+        if !seen_ids.insert(req.id) {
+            continue;
+        }
+        col.items.push(CollectionItem::Request(req));
     }
 }
 
@@ -749,7 +1097,7 @@ fn read_order_items(col_root: &Path, item: &Value) -> Result<Vec<CollectionItem>
                     .ok_or_else(|| CloudTreeError::Msg("request missing path".into()))?;
                 let req_path = safe_child_path(col_root, path)?;
                 let text = fs::read_to_string(req_path)?;
-                out.push(CollectionItem::Request(import_request_item(&text)?));
+                out.push(CollectionItem::Request(parse_request_with_blitz_auth(&text)?));
             }
             "folder" => {
                 let path = entry
@@ -782,6 +1130,19 @@ fn read_order_items(col_root: &Path, item: &Value) -> Result<Vec<CollectionItem>
                     }
                     if let Some(n) = meta.get("name").and_then(|v| v.as_str()) {
                         folder.name = n.to_string();
+                    }
+                    folder.description = meta
+                        .get("description")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("")
+                        .to_string();
+                    if let Some(b_auth) = meta
+                        .get("blitzAuth")
+                        .and_then(|v| serde_json::from_value::<AuthConfig>(v.clone()).ok())
+                    {
+                        folder.auth = b_auth;
+                    } else if let Some(auth_val) = meta.get("auth") {
+                        folder.auth = import_auth_json(Some(auth_val));
                     }
                     folder.pre_request_script = meta
                         .get("preRequestScript")

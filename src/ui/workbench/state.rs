@@ -8,7 +8,7 @@ use uuid::Uuid;
 use dioxus::prelude::*;
 
 use crate::core::{
-    collect_all_subtree_ids, compact_response_for_disk, ensure_default_environments,
+    collect_all_subtree_ids, compact_response_for_disk,
     find_environment, find_request_across, remove_across, resolve_ancestor_auth, sync_on_save,
     trash_collection, upsert_collection, upsert_environments, AncestorAuthOrigin, AppSettings,
     AuthConfig, AuthType, CaptureProxyHandle, Collection, CollectionItem, ConsoleLine, CookieJar,
@@ -475,8 +475,238 @@ impl WorkbenchState {
         self.schedule_save(false, false);
     }
 
+    pub fn persist_view_only(&self) {
+        self.schedule_save(false, false);
+    }
+
+    pub fn persist_collections_local(&mut self) {
+        self.schedule_save(false, true);
+    }
+
     pub fn persist(&mut self) {
-        self.schedule_save(true, true);
+        self.schedule_save(false, true);
+    }
+
+    /// Update only cloud status/branch metadata on live `app_settings` without overwriting
+    /// concurrent user edits to other settings fields.
+    pub fn patch_cloud_meta(&mut self, last_status: &str, last_branch: &str, enabled: Option<bool>, remote_url: Option<&str>, clone_path: Option<&str>) {
+        let mut live = (self.app_settings)();
+        live.cloud_sync.last_status = last_status.to_string();
+        if !last_branch.is_empty() {
+            live.cloud_sync.last_branch = last_branch.to_string();
+        }
+        if let Some(en) = enabled {
+            live.cloud_sync.enabled = en;
+        }
+        if let Some(rem) = remote_url {
+            live.cloud_sync.remote_url = rem.to_string();
+        }
+        if let Some(cp) = clone_path {
+            live.cloud_sync.clone_path = cp.to_string();
+        }
+        if live.cloud_sync.enabled {
+            live.cloud_sync.record_recent_repo();
+        }
+        self.app_settings.set(live);
+    }
+
+    /// Completely wipe all collections, open tabs, active draft, responses, environments,
+    /// globals, trash, history, and transient state from the previous Git repository.
+    pub fn reset_for_git_switch(&mut self) {
+        self.cleanup_closed_tabs(&[], None);
+        self.collections.set(Vec::new());
+        self.open_tabs.set(Vec::new());
+        self.active_request_id.set(None);
+        self.active_collection_id.set(None);
+        self.editing_collection_id.set(None);
+        self.draft.set(RequestDraft::default());
+        self.response.set(None);
+        self.responses.set(HashMap::new());
+        self.prev_responses.set(HashMap::new());
+        self.protocol_log.set(Vec::new());
+        self.protocol_logs.set(HashMap::new());
+        self.trash.set(Vec::new());
+        self.history.set(Vec::new());
+        self.team_activity.set(TeamActivity::default());
+        self.conflict_state.set(None);
+        self.runner_report.set(None);
+        self.perf_report.set(None);
+        self.pending_delete.set(None);
+        self.pending_batch_move.set(None);
+        self.pending_close_tab.set(None);
+        self.tree_clipboard.set(None);
+        self.custom_tab_groups.set(HashMap::new());
+        self.collapsed_tab_groups.set(std::collections::HashSet::new());
+        self.environments.set(Vec::new());
+        self.active_env_id.set(None);
+        self.editing_env_id.set(None);
+
+        let mut v = (self.vars)();
+        v.global.clear();
+        v.collection.clear();
+        v.environment.clear();
+        v.local.clear();
+        v.path.clear();
+        self.vars.set(v);
+
+        let ep = (self.fold_epoch)();
+        self.fold_epoch.set(ep + 1);
+        self.persist_collections_local();
+    }
+
+    /// Populate a freshly cleaned workbench strictly with the switched Git repository's files
+    /// (collections, environments, globals) without retaining anything from the previous repo.
+    pub fn apply_switched_git_workspace(
+        &mut self,
+        cols: Vec<Collection>,
+        envs: Vec<Environment>,
+        globals: HashMap<String, String>,
+        last_status: &str,
+        last_branch: &str,
+    ) {
+        self.cleanup_closed_tabs(&[], None);
+        self.open_tabs.set(Vec::new());
+        self.active_request_id.set(None);
+        self.editing_collection_id.set(None);
+        self.draft.set(RequestDraft::default());
+        self.response.set(None);
+        self.responses.set(HashMap::new());
+        self.prev_responses.set(HashMap::new());
+        self.protocol_log.set(Vec::new());
+        self.protocol_logs.set(HashMap::new());
+        self.trash.set(Vec::new());
+
+        let first_col_id = cols.first().map(|c| c.id);
+        let col_vars = cols
+            .first()
+            .map(|c| c.variables_map())
+            .unwrap_or_default();
+        self.collections.set(cols);
+        self.active_collection_id.set(first_col_id);
+
+        let picked_env = envs
+            .iter()
+            .find(|e| !e.name.trim().eq_ignore_ascii_case("Local"))
+            .or_else(|| envs.first())
+            .map(|e| e.id);
+        self.active_env_id.set(picked_env);
+        self.editing_env_id.set(picked_env);
+
+        let mut v = (self.vars)();
+        v.global = globals;
+        v.collection = col_vars;
+        v.local.clear();
+        v.path.clear();
+        sync_env_vars(&envs, picked_env, &mut v);
+        self.environments.set(envs);
+        self.vars.set(v);
+
+        let ep = (self.fold_epoch)();
+        self.fold_epoch.set(ep + 1);
+        self.patch_cloud_meta(last_status, last_branch, Some(true), None, None);
+        self.persist_collections_local();
+    }
+
+    /// Apply freshly synced / pulled / resolved collections, environments, and globals into state,
+    /// refreshing non-dirty open tabs & active draft (while protecting dirty tabs with a warning)
+    /// and persisting collections locally so synced changes survive restart.
+    pub fn apply_synced_workspace(
+        &mut self,
+        cols: Vec<Collection>,
+        envs: Vec<Environment>,
+        globals: HashMap<String, String>,
+        prefer_env_name: Option<&str>,
+        last_status: &str,
+        last_branch: &str,
+    ) {
+        let prev_cols = (self.collections)();
+        self.collections.set(cols.clone());
+        let ep = (self.fold_epoch)();
+        self.fold_epoch.set(ep + 1);
+
+        // Refresh open tabs & active draft safely; close non-dirty tabs whose request was removed.
+        let mut active_id = (self.active_request_id)();
+        let mut stale_warnings: Vec<String> = Vec::new();
+        let mut updated_active_draft: Option<RequestDraft> = None;
+        let mut active_removed = false;
+        self.open_tabs.with_mut(|tabs| {
+            tabs.retain_mut(|tab| {
+                let prev_saved = find_request_across(&prev_cols, tab.id).map(|(_, r)| r);
+                let next_saved = find_request_across(&cols, tab.id).map(|(_, r)| r);
+                let is_dirty = prev_saved.is_some_and(|old| old != tab);
+                match next_saved {
+                    Some(new_req) => {
+                        if !is_dirty {
+                            *tab = new_req.clone();
+                            if active_id == Some(tab.id) {
+                                updated_active_draft = Some(new_req.clone());
+                            }
+                        } else if prev_saved != Some(new_req) {
+                            stale_warnings.push(tab.name.clone());
+                        }
+                        true
+                    }
+                    None => {
+                        if is_dirty {
+                            stale_warnings.push(tab.name.clone());
+                            true
+                        } else {
+                            if active_id == Some(tab.id) {
+                                active_removed = true;
+                            }
+                            false
+                        }
+                    }
+                }
+            });
+            if active_removed {
+                if let Some(last) = tabs.last() {
+                    active_id = Some(last.id);
+                    updated_active_draft = Some(last.clone());
+                } else {
+                    active_id = None;
+                    updated_active_draft = Some(RequestDraft::default());
+                }
+            }
+        });
+        if active_removed {
+            self.active_request_id.set(active_id);
+        }
+        if let Some(d) = updated_active_draft {
+            self.draft.set(d);
+        }
+        if !cols.iter().any(|c| Some(c.id) == (self.active_collection_id)()) {
+            self.active_collection_id.set(cols.first().map(|c| c.id));
+        }
+        for name in stale_warnings {
+            self.notify(
+                format!("Tab '{name}' has unsaved local edits; remote also updated"),
+                ToastLevel::Warn,
+            );
+        }
+
+        let picked_env = prefer_env_name
+            .and_then(|n| envs.iter().find(|e| e.name == n).map(|e| e.id))
+            .or_else(|| {
+                let cur = (self.active_env_id)();
+                cur.filter(|id| envs.iter().any(|e| e.id == *id))
+            })
+            .or_else(|| {
+                envs.iter()
+                    .find(|e| !e.name.trim().eq_ignore_ascii_case("Local"))
+                    .or_else(|| envs.first())
+                    .map(|e| e.id)
+            });
+        self.active_env_id.set(picked_env);
+        self.editing_env_id.set(picked_env);
+
+        let mut v = (self.vars)();
+        v.global = globals;
+        sync_env_vars(&envs, picked_env, &mut v);
+        self.environments.set(envs);
+        self.vars.set(v);
+        self.patch_cloud_meta(last_status, last_branch, None, None, None);
+        self.persist_collections_local();
     }
 
     /// Apply a categorized [`ImportBundle`] (collections, environments, globals, vault secrets)
@@ -640,7 +870,13 @@ impl WorkbenchState {
                             .await;
                             st.cloud_busy.set(false);
                             if let Ok((result, updated_settings)) = res {
-                                st.app_settings.set(updated_settings);
+                                st.patch_cloud_meta(
+                                    &updated_settings.cloud_sync.last_status,
+                                    &updated_settings.cloud_sync.last_branch,
+                                    None,
+                                    None,
+                                    None,
+                                );
                                 st.status_msg.set(format!("{base} · {}", result.message));
                                 st.write_snapshot(false, false);
                             }
@@ -1065,13 +1301,6 @@ pub fn execute_batch_delete(
     }
 
     total_deleted
-}
-
-pub fn ensure_cloud_defaults(mut st: WorkbenchState) {
-    let mut envs = (st.environments)();
-    if ensure_default_environments(&mut envs) {
-        st.environments.set(envs);
-    }
 }
 
 const MAX_CACHED_RESPONSES: usize = 32;

@@ -1,7 +1,11 @@
 //! Shell-out to system `git` (P1 Native-Git shaped path).
 
-use std::path::Path;
+use std::collections::HashMap;
+use std::fs::OpenOptions;
+use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::sync::{Arc, Mutex, OnceLock};
+use std::time::{Duration, Instant, SystemTime};
 
 use chrono::{SecondsFormat, Utc};
 use serde::{Deserialize, Serialize};
@@ -40,6 +44,9 @@ fn run_git(cwd: &Path, args: &[&str]) -> Result<String, CloudGitError> {
     let output = Command::new("git")
         .args(args)
         .current_dir(cwd)
+        .env("GIT_TERMINAL_PROMPT", "0")
+        .env("GIT_EDITOR", "true")
+        .env("GIT_SEQUENCE_EDITOR", "true")
         .output()
         .map_err(|e| {
             if e.kind() == std::io::ErrorKind::NotFound {
@@ -68,7 +75,14 @@ fn run_git(cwd: &Path, args: &[&str]) -> Result<String, CloudGitError> {
 fn classify_git_error(raw: &str) -> String {
     let masked = mask_remote_url(raw);
     let lower = masked.to_lowercase();
-    if lower.contains("authentication")
+    if lower.contains("author identity unknown")
+        || lower.contains("please tell me who you are")
+        || lower.contains("unable to auto-detect email")
+    {
+        format!(
+            "git author identity not configured — set `git config --global user.name` and `git config --global user.email`. Detail: {masked}"
+        )
+    } else if lower.contains("authentication")
         || lower.contains("permission denied")
         || lower.contains("could not read username")
         || lower.contains("403")
@@ -77,6 +91,14 @@ fn classify_git_error(raw: &str) -> String {
     {
         format!(
             "auth failure — use SSH agent or `gh auth login` / credential helper. Detail: {masked}"
+        )
+    } else if lower.contains("unrelated histories") {
+        format!(
+            "remote repository has unrelated history — pick a fresh Local Clone Directory in Cloud Settings. Detail: {masked}"
+        )
+    } else if lower.contains("index.lock") {
+        format!(
+            "git repo is locked by another process (`index.lock`) — retry in a moment. Detail: {masked}"
         )
     } else if lower.contains("conflict")
         || lower.contains("non-fast-forward")
@@ -91,11 +113,155 @@ fn classify_git_error(raw: &str) -> String {
     }
 }
 
-/// Clone `remote` into `path` if missing; otherwise verify `.git` exists.
+/// True for standard repos (`.git` dir) as well as worktrees / submodules (`.git` file).
+pub fn is_git_repo(path: &Path) -> bool {
+    path.join(".git").exists()
+}
+
+/// Read configured `origin` remote URL, if any.
+pub fn read_origin_url(cwd: &Path) -> Option<String> {
+    if !is_git_repo(cwd) {
+        return None;
+    }
+    run_git(cwd, &["remote", "get-url", "origin"])
+        .ok()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+}
+
+pub fn normalize_remote_for_compare(url: &str) -> String {
+    let mut s = url.trim().trim_end_matches('/').to_ascii_lowercase();
+    if let Some(stripped) = s.strip_suffix(".git") {
+        s = stripped.to_string();
+    }
+    s
+}
+
+/// Deterministic, filesystem-safe directory name for a remote URL (`<repo-slug>-<fnv32_hex8>`).
+pub fn remote_storage_dir_name(url: &str) -> String {
+    let norm = normalize_remote_for_compare(url);
+    let tail = norm
+        .rsplit(['/', ':'])
+        .find(|seg| !seg.is_empty())
+        .unwrap_or("repo");
+    let mut slug = String::new();
+    for ch in tail.chars() {
+        if ch.is_ascii_alphanumeric() || ch == '-' || ch == '_' {
+            slug.push(ch);
+        } else {
+            slug.push('-');
+        }
+    }
+    let slug = slug.trim_matches('-');
+    let slug = if slug.is_empty() { "repo" } else { slug };
+    let mut hash: u64 = 0xcbf29ce484222325;
+    for b in norm.as_bytes() {
+        hash ^= *b as u64;
+        hash = hash.wrapping_mul(0x100000001b3);
+    }
+    format!("{slug}-{:08x}", (hash & 0xffff_ffff) as u32)
+}
+
+static REPO_LOCKS: OnceLock<Mutex<HashMap<PathBuf, Arc<Mutex<()>>>>> = OnceLock::new();
+
+struct FileLockGuard {
+    path: Option<PathBuf>,
+}
+
+impl Drop for FileLockGuard {
+    fn drop(&mut self) {
+        if let Some(p) = self.path.take() {
+            let _ = std::fs::remove_file(p);
+        }
+    }
+}
+
+fn git_path(cwd: &Path, rel: &str) -> Option<PathBuf> {
+    let out = run_git(cwd, &["rev-parse", "--git-path", rel]).ok()?;
+    let p = PathBuf::from(out.trim());
+    Some(if p.is_absolute() { p } else { cwd.join(p) })
+}
+
+/// Serialize mutating git commands per repository across threads and concurrent Blitz windows.
+pub fn with_repo_lock<T>(
+    cwd: &Path,
+    f: impl FnOnce() -> Result<T, CloudGitError>,
+) -> Result<T, CloudGitError> {
+    let key = std::fs::canonicalize(cwd).unwrap_or_else(|_| cwd.to_path_buf());
+    let arc = {
+        let map = REPO_LOCKS.get_or_init(|| Mutex::new(HashMap::new()));
+        let mut guard = map.lock().unwrap_or_else(|e| e.into_inner());
+        guard
+            .entry(key)
+            .or_insert_with(|| Arc::new(Mutex::new(())))
+            .clone()
+    };
+    let _in_proc = arc.lock().unwrap_or_else(|e| e.into_inner());
+
+    let mut file_guard = FileLockGuard { path: None };
+    if let Some(lock_path) = git_path(cwd, "blitz-sync.lock") {
+        let deadline = Instant::now() + Duration::from_secs(3);
+        loop {
+            match OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .open(&lock_path)
+            {
+                Ok(_) => {
+                    file_guard.path = Some(lock_path);
+                    break;
+                }
+                Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
+                    // Clean up stale lock older than 120s (crashed process).
+                    if let Ok(meta) = std::fs::metadata(&lock_path) {
+                        if let Ok(mtime) = meta.modified() {
+                            if SystemTime::now()
+                                .duration_since(mtime)
+                                .unwrap_or_default()
+                                > Duration::from_secs(120)
+                            {
+                                let _ = std::fs::remove_file(&lock_path);
+                                continue;
+                            }
+                        }
+                    }
+                    if Instant::now() >= deadline {
+                        return Err(CloudGitError::Cmd(
+                            "git repo is busy (another Blitz window is syncing) — try again in a moment"
+                                .into(),
+                        ));
+                    }
+                    std::thread::sleep(Duration::from_millis(50));
+                }
+                Err(_) => break, // Best-effort in sandboxes that disallow writing to .git/
+            }
+        }
+    }
+
+    f()
+}
+
+/// Clone `remote` into `path` if missing; otherwise verify existing repo's `origin` matches `remote`.
 pub fn ensure_clone(remote: &str, path: &Path) -> Result<(), CloudGitError> {
-    if path.join(".git").is_dir() {
-        // Keep origin URL in sync when user changes remote in settings.
-        let _ = run_git(path, &["remote", "set-url", "origin", remote]);
+    if is_git_repo(path) {
+        if !remote.trim().is_empty() {
+            match read_origin_url(path) {
+                Some(existing) => {
+                    if normalize_remote_for_compare(&existing)
+                        != normalize_remote_for_compare(remote)
+                    {
+                        return Err(CloudGitError::Cmd(format!(
+                            "clone folder already belongs to a different remote ({}) than configured ({}) — choose a new Local Clone Directory in Cloud Settings to avoid mixing histories",
+                            mask_remote_url(&existing),
+                            mask_remote_url(remote)
+                        )));
+                    }
+                }
+                None => {
+                    run_git(path, &["remote", "add", "origin", remote])?;
+                }
+            }
+        }
         return Ok(());
     }
     if path.exists() {
@@ -120,6 +286,9 @@ pub fn ensure_clone(remote: &str, path: &Path) -> Result<(), CloudGitError> {
     let output = Command::new("git")
         .args(["clone", "--", remote, name])
         .current_dir(parent)
+        .env("GIT_TERMINAL_PROMPT", "0")
+        .env("GIT_EDITOR", "true")
+        .env("GIT_SEQUENCE_EDITOR", "true")
         .output()
         .map_err(|e| {
             if e.kind() == std::io::ErrorKind::NotFound {
@@ -135,7 +304,7 @@ pub fn ensure_clone(remote: &str, path: &Path) -> Result<(), CloudGitError> {
     Ok(())
 }
 
-fn default_branch(cwd: &Path) -> String {
+pub fn default_branch(cwd: &Path) -> String {
     if let Ok(s) = run_git(
         cwd,
         &[
@@ -169,11 +338,32 @@ fn default_branch(cwd: &Path) -> String {
             return candidate.to_string();
         }
     }
+    if let Ok(out) = run_git(cwd, &["ls-remote", "--symref", "origin", "HEAD"]) {
+        for line in out.lines() {
+            if let Some(rest) = line.strip_prefix("ref: refs/heads/") {
+                if let Some((branch, _)) = rest.split_once('\t') {
+                    let branch = branch.trim();
+                    if !branch.is_empty() {
+                        return branch.to_string();
+                    }
+                }
+            }
+        }
+    }
+    if let Ok(s) = run_git(cwd, &["symbolic-ref", "--short", "HEAD"]) {
+        if !s.is_empty() && s != "HEAD" {
+            return s;
+        }
+    }
     "main".into()
 }
 
 /// Checkout `branch`, creating from default branch if it does not exist locally/remotely.
 pub fn checkout_env_branch(cwd: &Path, branch: &str) -> Result<(), CloudGitError> {
+    with_repo_lock(cwd, || checkout_env_branch_inner(cwd, branch))
+}
+
+fn checkout_env_branch_inner(cwd: &Path, branch: &str) -> Result<(), CloudGitError> {
     // Already on it?
     if let Ok(cur) = run_git(cwd, &["rev-parse", "--abbrev-ref", "HEAD"]) {
         if cur == branch {
@@ -239,6 +429,11 @@ pub fn checkout_env_branch(cwd: &Path, branch: &str) -> Result<(), CloudGitError
         let _ = run_git(cwd, &["checkout", &base]);
     }
 
+    if let Ok(cur) = run_git(cwd, &["rev-parse", "--abbrev-ref", "HEAD"]) {
+        if cur == branch {
+            return Ok(());
+        }
+    }
     run_git(cwd, &["checkout", "-b", branch])?;
     Ok(())
 }
@@ -720,6 +915,13 @@ pub fn commit_local_changes(
     cwd: &Path,
     message_override: Option<&str>,
 ) -> Result<SyncResult, CloudGitError> {
+    with_repo_lock(cwd, || commit_local_changes_inner(cwd, message_override))
+}
+
+fn commit_local_changes_inner(
+    cwd: &Path,
+    message_override: Option<&str>,
+) -> Result<SyncResult, CloudGitError> {
     let branch = run_git(cwd, &["rev-parse", "--abbrev-ref", "HEAD"]).unwrap_or_default();
 
     run_git(cwd, &["add", "-A"])?;
@@ -767,83 +969,88 @@ pub fn commit_local_changes(
 }
 
 /// Commit local changes then push (never force). Used by Cloud → Push.
+#[allow(dead_code)]
 pub fn push_commit(cwd: &Path, message: &str) -> Result<SyncResult, CloudGitError> {
-    let override_msg = if message.trim().is_empty() {
-        None
-    } else {
-        Some(message)
-    };
-    let commit = commit_local_changes(cwd, override_msg)?;
-    if !commit.ok {
-        return Ok(commit);
-    }
-    let branch = commit.branch.clone();
-    match run_git(cwd, &["push", "-u", "origin", "HEAD"]) {
-        Ok(_) => {
-            let detail = if commit.skipped {
-                format!("cloud pushed · {branch} (nothing new to commit)")
-            } else {
-                format!("cloud pushed · {branch}")
-            };
-            Ok(SyncResult {
-                ok: true,
-                skipped: commit.skipped,
-                message: detail,
-                branch,
-            })
+    with_repo_lock(cwd, || {
+        let override_msg = if message.trim().is_empty() {
+            None
+        } else {
+            Some(message)
+        };
+        let commit = commit_local_changes_inner(cwd, override_msg)?;
+        if !commit.ok {
+            return Ok(commit);
         }
-        Err(e) => {
-            let msg = e.to_string();
-            let lower = msg.to_lowercase();
-            if commit.skipped
-                && (lower.contains("up-to-date")
-                    || lower.contains("no upstream")
-                    || lower.contains("does not have")
-                    || lower.contains("src refspec")
-                    || lower.contains("no commits yet"))
-            {
-                return Ok(SyncResult {
+        let branch = commit.branch.clone();
+        match run_git(cwd, &["push", "-u", "origin", "HEAD"]) {
+            Ok(_) => {
+                let detail = if commit.skipped {
+                    format!("cloud pushed · {branch} (nothing new to commit)")
+                } else {
+                    format!("cloud pushed · {branch}")
+                };
+                Ok(SyncResult {
                     ok: true,
-                    skipped: true,
-                    message: format!("cloud · {branch} clean"),
+                    skipped: commit.skipped,
+                    message: detail,
                     branch,
-                });
+                })
             }
-            Ok(SyncResult {
-                ok: false,
-                skipped: false,
-                message: format!("cloud push: {msg}"),
-                branch,
-            })
+            Err(e) => {
+                let msg = e.to_string();
+                let lower = msg.to_lowercase();
+                if commit.skipped
+                    && (lower.contains("up-to-date")
+                        || lower.contains("no upstream")
+                        || lower.contains("does not have")
+                        || lower.contains("src refspec")
+                        || lower.contains("no commits yet"))
+                {
+                    return Ok(SyncResult {
+                        ok: true,
+                        skipped: true,
+                        message: format!("cloud · {branch} clean"),
+                        branch,
+                    });
+                }
+                Ok(SyncResult {
+                    ok: false,
+                    skipped: false,
+                    message: format!("cloud push: {msg}"),
+                    branch,
+                })
+            }
         }
-    }
+    })
 }
 
 /// Pull --rebase, then push current HEAD (never force). Caller handles export/commit/import.
 #[allow(dead_code)]
 pub fn sync_pull_push(cwd: &Path) -> Result<SyncResult, CloudGitError> {
-    let pull = pull_rebase(cwd)?;
-    if !pull.ok {
-        return Ok(pull);
-    }
-    let push = push_only(cwd)?;
-    let branch = if push.branch.is_empty() {
-        pull.branch.clone()
-    } else {
-        push.branch.clone()
-    };
-    let status = status_detail(cwd)
-        .map(|s| s.summary_line())
-        .unwrap_or_else(|_| branch.clone());
-    Ok(SyncResult {
-        ok: push.ok,
-        skipped: false,
-        message: if push.ok {
-            format!("synced · {status}")
+    with_repo_lock(cwd, || {
+        let pull = pull_rebase_inner(cwd)?;
+        if !pull.ok {
+            return Ok(pull);
+        }
+        let push = push_only_inner(cwd)?;
+        let branch = if push.branch.is_empty() {
+            pull.branch.clone()
         } else {
-            format!("{} · then {}", pull.message, push.message)
-        },
-        branch,
+            push.branch.clone()
+        };
+        let status = status_detail(cwd)
+            .map(|s| s.summary_line())
+            .unwrap_or_else(|_| branch.clone());
+        Ok(SyncResult {
+            ok: push.ok,
+            skipped: false,
+            message: if push.ok {
+                format!("synced · {status}")
+            } else {
+                format!("{} · then {}", pull.message, push.message)
+            },
+            branch,
+        })
     })
 }
 
@@ -876,6 +1083,7 @@ impl GitStatus {
 }
 
 /// Short branch + dirty summary for status bar.
+#[allow(dead_code)]
 pub fn status_summary(cwd: &Path) -> Result<String, CloudGitError> {
     Ok(status_detail(cwd)?.summary_line())
 }
@@ -915,13 +1123,68 @@ pub fn status_detail(cwd: &Path) -> Result<GitStatus, CloudGitError> {
     })
 }
 
-/// `git pull --rebase` (never force). Caller should reload tree after success.
+/// `git pull --rebase` (never force). Handles empty remote repos cleanly.
 pub fn pull_rebase(cwd: &Path) -> Result<SyncResult, CloudGitError> {
-    let branch = run_git(cwd, &["rev-parse", "--abbrev-ref", "HEAD"]).unwrap_or_default();
+    with_repo_lock(cwd, || pull_rebase_inner(cwd))
+}
+
+fn pull_rebase_inner(cwd: &Path) -> Result<SyncResult, CloudGitError> {
+    if is_rebase_in_progress(cwd) || is_merge_in_progress(cwd) {
+        let branch = default_branch(cwd);
+        return Ok(SyncResult {
+            ok: false,
+            skipped: false,
+            message: "unfinished merge/rebase conflicts — resolve or abort before pulling".into(),
+            branch,
+        });
+    }
+    let raw_branch = run_git(cwd, &["rev-parse", "--abbrev-ref", "HEAD"]).unwrap_or_default();
+    let branch = if raw_branch.is_empty() || raw_branch == "HEAD" {
+        default_branch(cwd)
+    } else {
+        raw_branch
+    };
     let _ = run_git(cwd, &["fetch", "origin"]);
-    // Prefer explicit branch; fall back to configured upstream.
-    let result = run_git(cwd, &["pull", "--rebase", "origin", &branch])
-        .or_else(|_| run_git(cwd, &["pull", "--rebase"]));
+    let has_remote_branch = run_git(
+        cwd,
+        &[
+            "show-ref",
+            "--verify",
+            "--quiet",
+            &format!("refs/remotes/origin/{branch}"),
+        ],
+    )
+    .is_ok();
+    if !has_remote_branch {
+        return Ok(SyncResult {
+            ok: true,
+            skipped: true,
+            message: format!("remote branch '{branch}' not created yet — ready to push"),
+            branch,
+        });
+    }
+    let has_local_head = run_git(cwd, &["rev-parse", "--verify", "HEAD"]).is_ok();
+    if !has_local_head {
+        // Fresh clone with empty local HEAD but remote branch now exists
+        return match run_git(
+            cwd,
+            &["checkout", "-B", &branch, &format!("origin/{branch}")],
+        ) {
+            Ok(_) => Ok(SyncResult {
+                ok: true,
+                skipped: false,
+                message: format!("pulled · {branch}"),
+                branch,
+            }),
+            Err(e) => Ok(SyncResult {
+                ok: false,
+                skipped: false,
+                message: format!("cloud pull: {e}"),
+                branch,
+            }),
+        };
+    }
+    let result = run_git(cwd, &["pull", "--rebase", "origin", &branch]);
     match result {
         Ok(out) => Ok(SyncResult {
             ok: true,
@@ -944,6 +1207,10 @@ pub fn pull_rebase(cwd: &Path) -> Result<SyncResult, CloudGitError> {
 
 /// Push current HEAD without committing (never force).
 pub fn push_only(cwd: &Path) -> Result<SyncResult, CloudGitError> {
+    with_repo_lock(cwd, || push_only_inner(cwd))
+}
+
+fn push_only_inner(cwd: &Path) -> Result<SyncResult, CloudGitError> {
     let branch = run_git(cwd, &["rev-parse", "--abbrev-ref", "HEAD"]).unwrap_or_default();
     match run_git(cwd, &["push", "-u", "origin", "HEAD"]) {
         Ok(_) => Ok(SyncResult {
@@ -998,43 +1265,110 @@ pub fn open_in_file_manager(path: &Path) -> Result<(), CloudGitError> {
     Ok(())
 }
 
-/// Detects if there are active unmerged Git conflicts in the workspace.
+/// True when git has an active unfinished rebase (`rebase-merge` or `rebase-apply`).
+pub fn is_rebase_in_progress(cwd: &Path) -> bool {
+    if !is_git_repo(cwd) {
+        return false;
+    }
+    git_path(cwd, "rebase-merge").is_some_and(|p| p.exists())
+        || git_path(cwd, "rebase-apply").is_some_and(|p| p.exists())
+}
+
+/// True when git has an active unfinished merge (`MERGE_HEAD`).
+pub fn is_merge_in_progress(cwd: &Path) -> bool {
+    if !is_git_repo(cwd) {
+        return false;
+    }
+    git_path(cwd, "MERGE_HEAD").is_some_and(|p| p.exists())
+}
+
+/// Abort an in-progress rebase or merge so the working tree returns to a clean state.
+pub fn abort_git_rebase(cwd: &Path) -> Result<(), CloudGitError> {
+    with_repo_lock(cwd, || {
+        if is_rebase_in_progress(cwd) {
+            run_git(cwd, &["rebase", "--abort"])?;
+        } else if is_merge_in_progress(cwd) {
+            run_git(cwd, &["merge", "--abort"])?;
+        }
+        Ok(())
+    })
+}
+
+/// Detects active unmerged Git conflicts in the workspace (handles `UU|AA|DD|AU|UA|UD|DU`).
 /// Returns list of conflicting file paths relative to `cwd`.
 pub fn detect_git_conflicts(cwd: &Path) -> Result<Vec<String>, CloudGitError> {
     let out = run_git(cwd, &["status", "--porcelain"])?;
     let mut conflicts = Vec::new();
     for line in out.lines() {
-        let trimmed = line.trim_start();
-        if trimmed.starts_with("UU ")
-            || trimmed.starts_with("AA ")
-            || trimmed.starts_with("UD ")
-            || trimmed.starts_with("DU ")
-        {
+        let Some(code) = line.get(..2) else {
+            continue;
+        };
+        if matches!(code, "UU" | "AA" | "DD" | "AU" | "UA" | "UD" | "DU") {
             if let Some(path) = line.get(3..) {
-                conflicts.push(path.trim().to_string());
+                let clean = path.trim().trim_matches('"').to_string();
+                if !clean.is_empty() {
+                    conflicts.push(clean);
+                }
             }
         }
     }
     Ok(conflicts)
 }
 
-/// Resolves conflicting files by choosing either `--ours` or `--theirs` and staging the result.
-pub fn resolve_git_conflicts(cwd: &Path, paths: &[String], keep_local: bool) -> Result<(), CloudGitError> {
-    let flag = if keep_local { "--ours" } else { "--theirs" };
-    for path in paths {
-        let _ = run_git(cwd, &["checkout", flag, path]);
-        let _ = run_git(cwd, &["add", path]);
-    }
-    // Complete the rebase or commit if applicable
-    let _ = run_git(cwd, &["rebase", "--continue"]);
-    Ok(())
+/// Resolves conflicting files by keeping either the local workstation version (`keep_local=true`)
+/// or the incoming team version (`keep_local=false`). Handles rebase `--ours`/`--theirs` inversion
+/// as well as delete/modify (`DU`/`UD`/`DD`) conflicts, then finishes `rebase --continue` or merge commit.
+/// Returns any remaining conflicts (e.g., if the next commit in a multi-commit rebase also conflicts).
+pub fn resolve_git_conflicts(
+    cwd: &Path,
+    paths: &[String],
+    keep_local: bool,
+) -> Result<Vec<String>, CloudGitError> {
+    with_repo_lock(cwd, || {
+        let rebasing = is_rebase_in_progress(cwd);
+        // During `git pull --rebase`, HEAD (`--ours` / `:2:`) is upstream remote commits,
+        // while `--theirs` (`:3:`) is the user's local commit being replayed!
+        let use_ours = if rebasing { !keep_local } else { keep_local };
+        let (flag, stage) = if use_ours { ("--ours", "2") } else { ("--theirs", "3") };
+
+        for path in paths {
+            let has_stage =
+                run_git(cwd, &["cat-file", "-e", &format!(":{stage}:{path}")]).is_ok();
+            if has_stage {
+                run_git(cwd, &["checkout", flag, "--", path])?;
+                run_git(cwd, &["add", "--", path])?;
+            } else {
+                // Chosen side deleted this file (UD/DU/DD conflict).
+                run_git(cwd, &["rm", "-f", "--", path])?;
+            }
+        }
+
+        let remaining = detect_git_conflicts(cwd)?;
+        if remaining.is_empty() {
+            if is_rebase_in_progress(cwd) {
+                if let Err(e) = run_git(cwd, &["rebase", "--continue"]) {
+                    let next = detect_git_conflicts(cwd).unwrap_or_default();
+                    if !next.is_empty() {
+                        return Ok(next);
+                    }
+                    return Err(e);
+                }
+            } else if is_merge_in_progress(cwd) {
+                run_git(cwd, &["commit", "--no-edit"])?;
+            }
+        }
+        detect_git_conflicts(cwd)
+    })
 }
 
-/// Retrieve the conflicting versions (:2: local / ours, :3: remote / theirs) from git index.
+/// Retrieve `(local_version, remote_version)` for a conflicted file from the git index.
+/// Accounts for `:2:`/`:3:` stage inversion during `git pull --rebase`.
 pub fn get_conflict_file_versions(cwd: &Path, file_path: &str) -> (String, String) {
-    let ours = run_git(cwd, &["show", &format!(":2:{file_path}")]).unwrap_or_default();
-    let theirs = run_git(cwd, &["show", &format!(":3:{file_path}")]).unwrap_or_default();
-    (ours, theirs)
+    let rebasing = is_rebase_in_progress(cwd);
+    let (local_stage, remote_stage) = if rebasing { (":3:", ":2:") } else { (":2:", ":3:") };
+    let local = run_git(cwd, &["show", &format!("{local_stage}{file_path}")]).unwrap_or_default();
+    let remote = run_git(cwd, &["show", &format!("{remote_stage}{file_path}")]).unwrap_or_default();
+    (local, remote)
 }
 
 /// Team member contributor summary from git log.
@@ -1134,12 +1468,29 @@ pub fn mask_remote_url(raw: &str) -> String {
     raw.to_string()
 }
 
-/// Returns true if an author/committer appears to be an automated or no-reply account.
-/// Filters out GitHub / GitLab / generic noreply patterns and bots so team member lists
-/// only reflect actual human teammates.
+/// Returns true if an author/committer appears to be an automated bot or generic service account.
+/// Keeps real human teammates using `@users.noreply.github.com` / `@users.noreply.gitlab.com`.
 pub fn is_noreply_user(email: &str, name: &str) -> bool {
     let email_lower = email.trim().to_ascii_lowercase();
     let name_lower = name.trim().to_ascii_lowercase();
+
+    if name_lower.ends_with("[bot]")
+        || name_lower == "web-flow"
+        || name_lower == "github-actions"
+        || name_lower.contains("dependabot")
+        || name_lower.contains("renovate")
+        || name_lower == "noreply"
+        || name_lower == "no-reply"
+    {
+        return true;
+    }
+
+    // Real human privacy emails on GitHub/GitLab look like `<id>+<user>@users.noreply.github.com`.
+    if email_lower.ends_with("@users.noreply.github.com")
+        || email_lower.ends_with("@users.noreply.gitlab.com")
+    {
+        return false;
+    }
 
     email_lower.contains("noreply")
         || email_lower.contains("no-reply")
@@ -1147,26 +1498,50 @@ pub fn is_noreply_user(email: &str, name: &str) -> bool {
         || name_lower.contains("noreply")
         || name_lower.contains("no-reply")
         || name_lower.contains("no.reply")
-        || name_lower.ends_with("[bot]")
-        || name_lower == "web-flow"
-        || name_lower == "github-actions"
+}
+
+/// Query team contributors, recent commits with file diffs, and local modified files (no network fetch).
+#[allow(dead_code)]
+pub fn get_team_activity(cwd: &Path, limit_commits: usize) -> Result<TeamActivity, CloudGitError> {
+    get_team_activity_ex(cwd, limit_commits, false)
 }
 
 /// Query team contributors, recent commits with file diffs, and local modified files.
-pub fn get_team_activity(cwd: &Path, limit_commits: usize) -> Result<TeamActivity, CloudGitError> {
-    let branch = run_git(cwd, &["rev-parse", "--abbrev-ref", "HEAD"]).unwrap_or_else(|_| "main".into());
+/// When `fetch_remote` is true, runs a best-effort `git fetch origin --quiet` first so remote
+/// teammate commits appear immediately.
+pub fn get_team_activity_ex(
+    cwd: &Path,
+    limit_commits: usize,
+    fetch_remote: bool,
+) -> Result<TeamActivity, CloudGitError> {
+    if !is_git_repo(cwd) {
+        return Err(CloudGitError::Cmd(format!(
+            "not a git workspace: {}",
+            cwd.display()
+        )));
+    }
+    if fetch_remote {
+        let _ = run_git(cwd, &["fetch", "origin", "--quiet"]);
+    }
+
+    let raw_branch = run_git(cwd, &["rev-parse", "--abbrev-ref", "HEAD"]).unwrap_or_default();
+    let branch = if raw_branch.is_empty() || raw_branch == "HEAD" {
+        default_branch(cwd)
+    } else {
+        raw_branch
+    };
     let raw_remote_url = run_git(cwd, &["remote", "get-url", "origin"]).unwrap_or_default();
     let remote_url = mask_remote_url(&raw_remote_url);
 
-    // 1. Members via `git log --all --format=%an|%ae|%cr` (works even without a TTY on Windows CI)
+    // 1. Members via `git log --all -n 500 --format=%an\x1f%ae\x1f%cr` (unit-separator safe).
     let mut members: Vec<TeamMember> = Vec::new();
-    if let Ok(authors_log) = run_git(cwd, &["log", "--all", "--format=%an|%ae|%cr"]) {
+    if let Ok(authors_log) = run_git(cwd, &["log", "--all", "-n", "500", "--format=%an%x1f%ae%x1f%cr"]) {
         for line in authors_log.lines() {
             let line = line.trim();
             if line.is_empty() {
                 continue;
             }
-            let parts: Vec<&str> = line.splitn(3, '|').collect();
+            let parts: Vec<&str> = line.splitn(3, '\x1f').collect();
             if parts.len() < 3 {
                 continue;
             }
@@ -1192,96 +1567,109 @@ pub fn get_team_activity(cwd: &Path, limit_commits: usize) -> Result<TeamActivit
         members.sort_by_key(|b| std::cmp::Reverse(b.commit_count));
     }
 
-    // 2. Recent commits via `git log -n {limit} --name-status --format=...`
+    // 2. Recent commits (include HEAD + remote tracking branch if present)
     let mut recent_commits = Vec::new();
     let limit_str = limit_commits.max(5).to_string();
-    if let Ok(log_out) = run_git(
-        cwd,
-        &[
-            "log",
+    let remote_ref = format!("refs/remotes/origin/{branch}");
+    let has_remote_ref = run_git(cwd, &["show-ref", "--verify", "--quiet", &remote_ref]).is_ok();
+    let has_head = run_git(cwd, &["rev-parse", "--verify", "HEAD"]).is_ok();
+    let rev_range: Vec<String> = match (has_head, has_remote_ref) {
+        (true, true) => vec!["HEAD".into(), format!("origin/{branch}")],
+        (true, false) => vec!["HEAD".into()],
+        (false, true) => vec![format!("origin/{branch}")],
+        (false, false) => vec![],
+    };
+
+    if !rev_range.is_empty() {
+        let mut log_args: Vec<&str> = vec!["log"];
+        for r in &rev_range {
+            log_args.push(r.as_str());
+        }
+        log_args.extend_from_slice(&[
             "-n",
             &limit_str,
             "--name-status",
-            "--format=COMMIT_DELIM%H|%an|%ae|%cr|%s%nBODY_DELIM%n%b%nFILES_DELIM",
-        ],
-    ) {
-        let commit_blocks = log_out.split("COMMIT_DELIM");
-        for block in commit_blocks {
-            let block = block.trim();
-            if block.is_empty() {
-                continue;
-            }
-            let (header_and_body, files_part) = block
-                .split_once("FILES_DELIM")
-                .unwrap_or((block, ""));
-            let (header_raw, body_raw) = header_and_body
-                .split_once("BODY_DELIM")
-                .unwrap_or((header_and_body, ""));
-            let header = header_raw.lines().next().unwrap_or("").trim();
-            let parts: Vec<&str> = header.splitn(5, '|').collect();
-            if parts.len() >= 5 {
-                let hash = parts[0].chars().take(7).collect();
-                let author_name = parts[1].to_string();
-                let author_email = parts[2].to_string();
-                let date = parts[3].to_string();
-                let message = parts[4].to_string();
-                let body = body_raw.trim().to_string();
-
-                let mut files = Vec::new();
-                let mut file_changes = Vec::new();
-                for l in files_part.lines() {
-                    let l = l.trim();
-                    if l.is_empty() {
-                        continue;
-                    }
-                    if let Some((st, p)) = l.split_once('\t') {
-                        let status = st.trim().chars().next().unwrap_or('M').to_string();
-                        let path = if status == "R" {
-                            p.replace('\t', " -> ")
-                        } else {
-                            p.trim().to_string()
-                        };
-                        files.push(path.clone());
-                        file_changes.push(ChangedFile { path, status });
-                    } else {
-                        files.push(l.to_string());
-                        file_changes.push(ChangedFile {
-                            path: l.to_string(),
-                            status: "M".to_string(),
-                        });
-                    }
+            "--format=COMMIT_DELIM%H%x1f%an%x1f%ae%x1f%cr%x1f%s%nBODY_DELIM%n%b%nFILES_DELIM",
+        ]);
+        if let Ok(log_out) = run_git(cwd, &log_args) {
+            for block in log_out.split("COMMIT_DELIM") {
+                let block = block.trim();
+                if block.is_empty() {
+                    continue;
                 }
+                let (header_and_body, files_part) = block
+                    .split_once("FILES_DELIM")
+                    .unwrap_or((block, ""));
+                let (header_raw, body_raw) = header_and_body
+                    .split_once("BODY_DELIM")
+                    .unwrap_or((header_and_body, ""));
+                let header = header_raw.lines().next().unwrap_or("").trim();
+                let parts: Vec<&str> = header.splitn(5, '\x1f').collect();
+                if parts.len() >= 5 {
+                    let hash = parts[0].chars().take(7).collect();
+                    let author_name = parts[1].to_string();
+                    let author_email = parts[2].to_string();
+                    let date = parts[3].to_string();
+                    let message = parts[4].to_string();
+                    let body = body_raw.trim().to_string();
 
-                recent_commits.push(TeamCommit {
-                    hash,
-                    author_name,
-                    author_email,
-                    date,
-                    message,
-                    body,
-                    files,
-                    file_changes,
-                    file_diffs: Vec::new(),
-                });
+                    let mut files = Vec::new();
+                    let mut file_changes = Vec::new();
+                    for l in files_part.lines() {
+                        let l = l.trim();
+                        if l.is_empty() {
+                            continue;
+                        }
+                        if let Some((st, p)) = l.split_once('\t') {
+                            let status = st.trim().chars().next().unwrap_or('M').to_string();
+                            let path = if status == "R" {
+                                p.replace('\t', " -> ")
+                            } else {
+                                p.trim().to_string()
+                            };
+                            files.push(path.clone());
+                            file_changes.push(ChangedFile { path, status });
+                        } else {
+                            files.push(l.to_string());
+                            file_changes.push(ChangedFile {
+                                path: l.to_string(),
+                                status: "M".to_string(),
+                            });
+                        }
+                    }
+
+                    recent_commits.push(TeamCommit {
+                        hash,
+                        author_name,
+                        author_email,
+                        date,
+                        message,
+                        body,
+                        files,
+                        file_changes,
+                        file_diffs: Vec::new(),
+                    });
+                }
             }
         }
     }
 
-    // 2b. Parse clean per-file before -> after diffs for recent commits (capped for speed).
-    if !recent_commits.is_empty() {
+    // 2b. Parse clean per-file before -> after diffs for recent commits (capped for speed & RAM).
+    if !recent_commits.is_empty() && !rev_range.is_empty() {
         let patch_limit = recent_commits.len().min(15).to_string();
-        if let Ok(patch_out) = run_git(
-            cwd,
-            &[
-                "log",
-                "-n",
-                &patch_limit,
-                "--patch",
-                "--unified=2",
-                "--no-color",
-                "--format=PATCH_COMMIT%H",
-            ],
-        ) {
+        let mut patch_args: Vec<&str> = vec!["log"];
+        for r in &rev_range {
+            patch_args.push(r.as_str());
+        }
+        patch_args.extend_from_slice(&[
+            "-n",
+            &patch_limit,
+            "--patch",
+            "--unified=2",
+            "--no-color",
+            "--format=PATCH_COMMIT%H",
+        ]);
+        if let Ok(patch_out) = run_git(cwd, &patch_args) {
             for commit_patch in patch_out.split("PATCH_COMMIT") {
                 let commit_patch = commit_patch.trim();
                 if commit_patch.is_empty() {
@@ -1299,11 +1687,15 @@ pub fn get_team_activity(cwd: &Path, limit_commits: usize) -> Result<TeamActivit
                 let mut parsed_diffs: Vec<CommitFileDiff> = Vec::new();
                 let mut current: Option<CommitFileDiff> = None;
                 const MAX_LINES_PER_FILE: usize = 80;
+                const MAX_FILES_PER_COMMIT: usize = 20;
 
                 for line in p_lines {
                     if let Some(rest) = line.strip_prefix("diff --git ") {
                         if let Some(prev) = current.take() {
                             parsed_diffs.push(prev);
+                        }
+                        if parsed_diffs.len() >= MAX_FILES_PER_COMMIT {
+                            break;
                         }
                         let path = rest
                             .split(" b/")
@@ -1346,7 +1738,6 @@ pub fn get_team_activity(cwd: &Path, limit_commits: usize) -> Result<TeamActivit
 
                     if line.starts_with("@@") {
                         if cur.lines.len() < MAX_LINES_PER_FILE {
-                            // Keep only compact line-range summary, strip trailing context noise
                             let hunk_header = line
                                 .split("@@")
                                 .nth(1)
@@ -1549,11 +1940,15 @@ mod tests {
 
     #[test]
     fn test_is_noreply_user() {
-        assert!(is_noreply_user("12345+user@users.noreply.github.com", "User"));
+        // Real human GitHub/GitLab privacy accounts must remain visible
+        assert!(!is_noreply_user("12345+user@users.noreply.github.com", "User"));
+        assert!(!is_noreply_user("999-alice@users.noreply.gitlab.com", "Alice"));
+        // Bots & generic system noreply accounts must be excluded
         assert!(is_noreply_user("bot@no-reply.com", "Bot"));
         assert!(is_noreply_user("test@no.reply.org", "Tester"));
         assert!(is_noreply_user("noreply@github.com", "web-flow"));
         assert!(is_noreply_user("actions@github.com", "github-actions[bot]"));
+        assert!(is_noreply_user("123+dependabot[bot]@users.noreply.github.com", "dependabot[bot]"));
         assert!(is_noreply_user("general@domain.com", "noreply"));
         assert!(!is_noreply_user("alice@example.com", "Alice"));
         assert!(!is_noreply_user("hema.omer007@gmail.com", "Hema Omer"));
