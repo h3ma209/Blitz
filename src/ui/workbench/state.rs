@@ -154,6 +154,7 @@ pub struct WorkbenchState {
     pub trash: Signal<Vec<Collection>>,
     pub open_tabs: Signal<Vec<RequestDraft>>,
     pub show_vars: Signal<bool>,
+    pub vars_tab_open: Signal<bool>,
     pub vars_active_tab: Signal<usize>,
     pub show_palette: Signal<bool>,
     pub show_trash: Signal<bool>,
@@ -256,6 +257,7 @@ impl WorkbenchState {
             trash: use_signal(Vec::<Collection>::new),
             open_tabs: use_signal(Vec::<RequestDraft>::new),
             show_vars: use_signal(|| false),
+            vars_tab_open: use_signal(|| false),
             vars_active_tab: use_signal(|| 0usize),
             show_palette: use_signal(|| false),
             show_trash: use_signal(|| false),
@@ -1106,6 +1108,7 @@ impl WorkbenchState {
                 .collect(),
         );
         self.show_vars.set(false);
+        self.vars_tab_open.set(false);
         self.show_settings.set(snap.show_settings);
         self.settings_tab_open.set(snap.show_settings);
         self.show_runner.set(false);

@@ -871,6 +871,7 @@ pub fn TopBar(st: WorkbenchState) -> Element {
                                     let mut settings_tab = st.settings_tab;
                                     settings_tab.set(crate::ui::settings_panel::SettingsTab::CloudSync);
                                     st.settings_tab_open.set(true);
+                                    show_vars.set(false);
                                     show_settings.set(true);
                                 },
                                 "Cloud Settings…"
@@ -945,6 +946,8 @@ pub fn TopBar(st: WorkbenchState) -> Element {
                                 show_vars.set(false);
                             } else {
                                 vars_active_tab.set(1);
+                                st.vars_tab_open.set(true);
+                                show_settings.set(false);
                                 show_vars.set(true);
                             }
                         },
@@ -967,10 +970,14 @@ pub fn TopBar(st: WorkbenchState) -> Element {
                         on_manage: move |_| {
                             vars_active_tab.set(0);
                             editing_env_id.set(active_env_id());
+                            st.vars_tab_open.set(true);
+                            show_settings.set(false);
                             show_vars.set(true);
                         },
                         on_compare: move |_| {
                             vars_active_tab.set(2);
+                            st.vars_tab_open.set(true);
+                            show_settings.set(false);
                             show_vars.set(true);
                         },
                     }
@@ -1020,6 +1027,7 @@ pub fn TopBar(st: WorkbenchState) -> Element {
                             show_settings.set(false);
                         } else {
                             st.settings_tab_open.set(true);
+                            show_vars.set(false);
                             show_settings.set(true);
                         }
                     },

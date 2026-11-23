@@ -7,6 +7,7 @@ pub fn ModalShell(
     title: String,
     on_close: EventHandler<()>,
     #[props(default)] class: String,
+    #[props(default = 2000)] z_index: i32,
     children: Element,
 ) -> Element {
     let modal_class = if class.is_empty() {
@@ -14,9 +15,11 @@ pub fn ModalShell(
     } else {
         format!("modal {class}")
     };
+    let backdrop_style = format!("z-index: {z_index};");
     rsx! {
         div {
             class: "modal-backdrop",
+            style: "{backdrop_style}",
             onclick: move |_| on_close.call(()),
             div {
                 class: "{modal_class}",

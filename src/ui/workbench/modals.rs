@@ -34,6 +34,7 @@ use crate::ui::{
 #[component]
 pub fn VarsPage(st: WorkbenchState) -> Element {
     let mut show_vars = st.show_vars;
+    let mut vars_tab_open = st.vars_tab_open;
     let mut vars_active_tab = st.vars_active_tab;
     let mut environments = st.environments;
     let mut active_env_id = st.active_env_id;
@@ -83,6 +84,7 @@ pub fn VarsPage(st: WorkbenchState) -> Element {
                     title: "Close (Esc)",
                     onclick: move |_| {
                         let mut st = st;
+                        vars_tab_open.set(false);
                         show_vars.set(false);
                         st.persist();
                     },
@@ -615,6 +617,7 @@ pub fn WorkbenchModals(
                 rsx! {
                     ModalShell {
                         title,
+                        z_index: 2400,
                         on_close: move |_| pending_delete.set(None),
                         div { class: "modal-body",
                             p { "{prompt}" }
@@ -686,6 +689,7 @@ pub fn WorkbenchModals(
                 rsx! {
                     ModalShell {
                         title,
+                        z_index: 2400,
                         on_close: move |_| pending_batch_move.set(None),
                         div { class: "modal-body move-modal-body",
                             if destinations.is_empty() {
@@ -751,6 +755,7 @@ pub fn WorkbenchModals(
                 rsx! {
                     ModalShell {
                         title: "Save Changes?".to_string(),
+                        z_index: 2400,
                         on_close: move |_| pending_close_tab.set(None),
                         div { class: "modal-body",
                             p {
@@ -1766,6 +1771,7 @@ fn UpdateAvailableModal(st: WorkbenchState, info: crate::core::UpdateInfo) -> El
     rsx! {
         ModalShell {
             title: format!("Update Available — Blitz v{}", info.latest_version),
+            z_index: 2400,
             on_close: move |_| {
                 if !(st.installing_update)() {
                     show_update_modal.set(false);

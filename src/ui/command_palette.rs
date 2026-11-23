@@ -485,14 +485,19 @@ pub fn CommandPalette(
             PaletteAction::ToggleConsole => st.console_open.set(!(st.console_open)()),
             PaletteAction::OpenVariables => {
                 st.vars_active_tab.set(0);
+                st.vars_tab_open.set(true);
+                st.show_settings.set(false);
                 st.show_vars.set(true);
             }
             PaletteAction::OpenVariablesDiff => {
                 st.vars_active_tab.set(2);
+                st.vars_tab_open.set(true);
+                st.show_settings.set(false);
                 st.show_vars.set(true);
             }
             PaletteAction::OpenSettings => {
                 st.settings_tab_open.set(true);
+                st.show_vars.set(false);
                 st.show_settings.set(true);
             }
             PaletteAction::OpenCookies => st.show_cookies.set(true),
@@ -560,6 +565,7 @@ pub fn CommandPalette(
         ModalShell {
             title: "Command Palette".to_string(),
             class: "palette-modal".to_string(),
+            z_index: 2200,
             on_close: move |_| on_close.call(()),
             div {
                 class: "palette-container",

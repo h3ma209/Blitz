@@ -134,6 +134,16 @@ pub fn normalize_remote_for_compare(url: &str) -> String {
     if let Some(stripped) = s.strip_suffix(".git") {
         s = stripped.to_string();
     }
+    // Strip embedded credentials (`https://user:token@host/org/repo` → `https://host/org/repo`)
+    if let Some(scheme_end) = s.find("://") {
+        let after_scheme = scheme_end + 3;
+        if let Some(at_rel) = s[after_scheme..].find('@') {
+            let slash_rel = s[after_scheme..].find('/');
+            if slash_rel.is_none_or(|sl| at_rel < sl) {
+                s = format!("{}{}", &s[..after_scheme], &s[after_scheme + at_rel + 1..]);
+            }
+        }
+    }
     s
 }
 
@@ -2018,6 +2028,15 @@ mod tests {
         let classified = classify_git_error("fatal: Authentication failed for 'https://user:secrettoken@github.com/org/repo.git'");
         assert!(!classified.contains("secrettoken"));
         assert!(classified.contains("user:***"));
+
+        assert_eq!(
+            normalize_remote_for_compare("https://h3ma209:ghp_secret@github.com/h3ma209/blitz-cloud.git"),
+            normalize_remote_for_compare("https://github.com/h3ma209/blitz-cloud.git")
+        );
+        assert_eq!(
+            normalize_remote_for_compare("https://token@github.com/org/repo/"),
+            normalize_remote_for_compare("https://github.com/org/repo.git")
+        );
     }
 
     #[test]
