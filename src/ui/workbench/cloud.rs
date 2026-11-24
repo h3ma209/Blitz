@@ -4,9 +4,10 @@ use uuid::Uuid;
 use dioxus::prelude::*;
 
 use crate::core::{
-    clone_or_ensure, detect_git_conflicts, find_environment, get_team_activity_ex, is_git_repo,
-    is_rebase_in_progress, link_folder, open_in_file_manager, pull_workspace, push_workspace,
-    refresh_status, switch_git_workspace, sync_environment,
+    clone_or_ensure, detect_git_conflicts, find_environment, find_request_across,
+    get_team_activity_ex, is_git_repo, is_rebase_in_progress, link_folder, open_in_file_manager,
+    pull_workspace, push_workspace, refresh_status, switch_git_workspace, sync_environment,
+    AppSettings,
 };
 use crate::storage::JsonStore;
 use crate::ui::workbench::state::{sync_env_vars, WorkbenchState};
@@ -173,6 +174,48 @@ pub fn sync_selected_env(mut st: WorkbenchState, id: Uuid) {
             }
         }
     });
+}
+
+/// Guarded Git repository switch: warns if dirty open tabs or uncommitted clone changes exist
+/// before wiping state and switching to `next_settings`.
+pub fn request_git_switch(mut st: WorkbenchState, next_settings: AppSettings) {
+    let cols = (st.collections)();
+    let dirty_tabs: Vec<String> = (st.open_tabs)()
+        .iter()
+        .filter(|tab| {
+            find_request_across(&cols, tab.id).is_some_and(|(_, saved)| saved != *tab)
+        })
+        .map(|tab| tab.name.clone())
+        .collect();
+
+    let mut reasons = Vec::new();
+    if !dirty_tabs.is_empty() {
+        reasons.push(format!("{} unsaved tab(s)", dirty_tabs.len()));
+    }
+
+    let cur_settings = (st.app_settings)();
+    if let Ok(store) = JsonStore::open_default() {
+        let cur_clone = cur_settings.cloud_sync.resolved_clone_path(store.root());
+        if is_git_repo(&cur_clone) {
+            if let Ok(detail) = crate::core::cloud_sync::status_detail(&cur_clone) {
+                if detail.dirty > 0 {
+                    reasons.push(format!("{} uncommitted file(s) in current Git clone", detail.dirty));
+                } else if detail.ahead > 0 {
+                    reasons.push(format!("{} unpushed commit(s) in current Git clone", detail.ahead));
+                }
+            }
+        }
+    }
+
+    if !reasons.is_empty() {
+        st.pending_git_switch
+            .set(Some((next_settings, reasons.join(" and "))));
+        return;
+    }
+
+    st.app_settings.set(next_settings);
+    st.persist_local();
+    cloud_switch_repo(st);
 }
 
 /// Switch to the currently configured Git repository: immediately cleans all UI state

@@ -32,6 +32,7 @@ pub fn EnvDiffView(
     let mut split_pct = use_signal(|| 50.0_f64);
     let mut split_drag = use_signal(|| None::<(f64, f64, f64)>); // (start_x, start_pct, table_px)
     let mut table_width_px = use_signal(|| 800.0_f64);
+    let mut diff_scroll_row = use_signal(|| 0usize);
 
     if envs.len() < 2 {
         return rsx! {
@@ -261,7 +262,21 @@ pub fn EnvDiffView(
             }
 
             // Comparison Table
-            div { class: "env-diff-table-wrap",
+            {
+                let d_len = filtered_rows.len();
+                rsx! {
+                    div {
+                        class: "env-diff-table-wrap",
+                        onscroll: move |evt: Event<ScrollData>| {
+                            if d_len <= 100 {
+                                return;
+                            }
+                            let row = (evt.data().scroll_top() / 34.0) as usize;
+                            let bucket = (row / 30) * 30;
+                            if diff_scroll_row() != bucket {
+                                diff_scroll_row.set(bucket);
+                            }
+                        },
                 table {
                     id: "np-env-diff-table",
                     class: "env-diff-table",
@@ -326,7 +341,17 @@ pub fn EnvDiffView(
                                 }
                             }
                         } else {
-                            for (ri, row) in filtered_rows.into_iter().enumerate() {
+                            {
+                                let d_len = filtered_rows.len();
+                                let (d_start, d_end) = crate::ui::list_window(d_len, diff_scroll_row(), 100, 120);
+                                let top_pad = d_start * 34;
+                                let bot_pad = d_len.saturating_sub(d_end) * 34;
+                                let slice: Vec<_> = filtered_rows.into_iter().skip(d_start).take(d_end - d_start).collect();
+                                rsx! {
+                                    if top_pad > 0 {
+                                        tr { style: "height: {top_pad}px;", td { colspan: "5", style: "padding: 0; border: none;" } }
+                                    }
+                                    for (ri, row) in slice.into_iter().enumerate() {
                                 {
                                     let key = row.key.clone();
                                     let status = row.status;
@@ -438,11 +463,18 @@ pub fn EnvDiffView(
                                             }
                                         }
                                     }
+                                    }
+                                    }
+                                    if bot_pad > 0 {
+                                        tr { style: "height: {bot_pad}px;", td { colspan: "5", style: "padding: 0; border: none;" } }
+                                    }
                                 }
                             }
                         }
                     }
                 }
+                }
+            }
             }
 
             div { class: "env-diff-footer",

@@ -148,6 +148,7 @@ pub fn RunnerPanel(
     let mut stop_on_error = use_signal(|| false);
     let mut persist_vars = use_signal(|| true);
     let mut right_tab = use_signal(|| 0usize); // 0 = Sequence, 1 = Results
+    let mut queue_scroll_row = use_signal(|| 0usize);
 
     let active_col = sel_col().and_then(|id| collections.iter().find(|c| c.id == id));
     let mut folder_paths = Vec::new();
@@ -655,154 +656,184 @@ pub fn RunnerPanel(
                                 }
                             }
 
-                            div { class: "runner-req-checklist",
-                                if displayed_queue.is_empty() {
-                                    div { class: "runner-queue-empty", "No matching requests in scope." }
-                                } else {
-                                    for (pos, fp, req) in displayed_queue {
-                                        {
-                                            let rid = req.id;
-                                            let checked = !excluded_ids().contains(&rid);
-                                            let is_drag = dragging_id() == Some(rid);
-                                            let is_drop = drop_target_id() == Some(rid) && dragging_id() != Some(rid);
-                                            let badge = if req.protocol == RequestProtocol::Http {
-                                                req.method.as_str()
-                                            } else {
-                                                req.protocol.badge_label()
-                                            };
-                                            let m_cls = method_badge_class(badge);
-                                            let has_tests = !req.test_script.trim().is_empty();
-                                            let has_pre = !req.pre_request_script.trim().is_empty();
-                                            let total_len = ordered_ids.len();
-                                            let row_cls = match (checked, is_drag, is_drop) {
-                                                (_, true, _) => "runner-req-row is-dragging",
-                                                (_, _, true) => "runner-req-row is-drop-target",
-                                                (false, _, _) => "runner-req-row is-dim",
-                                                (true, false, false) => "runner-req-row",
-                                            };
-                                            let move_up = {
-                                                let mut move_fn = move_in_order.clone();
-                                                move |evt: Event<MouseData>| {
-                                                    evt.stop_propagation();
-                                                    evt.prevent_default();
-                                                    if pos > 0 {
-                                                        move_fn(rid, pos - 1);
+                            {
+                                let q_len = displayed_queue.len();
+                                let (q_start, q_end) = crate::ui::list_window(q_len, queue_scroll_row(), 100, 120);
+                                let top_pad = q_start * 30;
+                                let bot_pad = q_len.saturating_sub(q_end) * 30;
+                                rsx! {
+                                    div {
+                                        class: "runner-req-checklist",
+                                        onscroll: move |evt: Event<ScrollData>| {
+                                            if q_len <= 100 {
+                                                return;
+                                            }
+                                            let row = (evt.data().scroll_top() / 30.0) as usize;
+                                            let bucket = (row / 30) * 30;
+                                            if queue_scroll_row() != bucket {
+                                                queue_scroll_row.set(bucket);
+                                            }
+                                        },
+                                        if displayed_queue.is_empty() {
+                                            div { class: "runner-queue-empty", "No matching requests in scope." }
+                                        } else {
+                                            {
+                                                let slice: Vec<_> = displayed_queue.into_iter().skip(q_start).take(q_end - q_start).collect();
+                                                rsx! {
+                                                    if top_pad > 0 {
+                                                        div { style: "height: {top_pad}px; flex-shrink: 0;" }
                                                     }
-                                                }
-                                            };
-                                            let move_dn = {
-                                                let mut move_fn = move_in_order.clone();
-                                                move |evt: Event<MouseData>| {
-                                                    evt.stop_propagation();
-                                                    evt.prevent_default();
-                                                    if pos + 1 < total_len {
-                                                        move_fn(rid, pos + 1);
-                                                    }
-                                                }
-                                            };
-                                            let handle_drop = {
-                                                let mut move_fn = move_in_order.clone();
-                                                move |evt: Event<DragData>| {
-                                                    evt.prevent_default();
-                                                    evt.stop_propagation();
-                                                    if let Some(src) = dragging_id() {
-                                                        if src != rid {
-                                                            move_fn(src, pos);
-                                                        }
-                                                    }
-                                                    dragging_id.set(None);
-                                                    drop_target_id.set(None);
-                                                }
-                                            };
-                                            let cur_col_id = sel_col().unwrap_or_default();
-                                            rsx! {
-                                                div {
-                                                    key: "{rid}-{pos}",
-                                                    class: "{row_cls}",
-                                                    draggable: "true",
-                                                    ondragstart: move |evt| {
-                                                        evt.stop_propagation();
-                                                        dragging_id.set(Some(rid));
-                                                        let _ = evt.data.data_transfer().set_data(
-                                                            "text/plain",
-                                                            &rid.to_string(),
-                                                        );
-                                                    },
-                                                    ondragover: move |evt| {
-                                                        if dragging_id().is_some_and(|s| s != rid) {
+                                            for (pos, fp, req) in slice {
+                                                {
+                                                    let rid = req.id;
+                                                    let checked = !excluded_ids().contains(&rid);
+                                                    let is_drag = dragging_id() == Some(rid);
+                                                    let is_drop = drop_target_id() == Some(rid) && dragging_id() != Some(rid);
+                                                    let badge = if req.protocol == RequestProtocol::Http {
+                                                        req.method.as_str()
+                                                    } else {
+                                                        req.protocol.badge_label()
+                                                    };
+                                                    let m_cls = method_badge_class(badge);
+                                                    let has_tests = !req.test_script.trim().is_empty();
+                                                    let has_pre = !req.pre_request_script.trim().is_empty();
+                                                    let total_len = ordered_ids.len();
+                                                    let row_cls = match (checked, is_drag, is_drop) {
+                                                        (_, true, _) => "runner-req-row is-dragging",
+                                                        (_, _, true) => "runner-req-row is-drop-target",
+                                                        (false, _, _) => "runner-req-row is-dim",
+                                                        (true, false, false) => "runner-req-row",
+                                                    };
+                                                    let move_up = {
+                                                        let mut move_fn = move_in_order.clone();
+                                                        move |evt: Event<MouseData>| {
+                                                            evt.stop_propagation();
                                                             evt.prevent_default();
-                                                            drop_target_id.set(Some(rid));
+                                                            if pos > 0 {
+                                                                move_fn(rid, pos - 1);
+                                                            }
                                                         }
-                                                    },
-                                                    ondragleave: move |_| {
-                                                        if drop_target_id() == Some(rid) {
+                                                    };
+                                                    let move_dn = {
+                                                        let mut move_fn = move_in_order.clone();
+                                                        move |evt: Event<MouseData>| {
+                                                            evt.stop_propagation();
+                                                            evt.prevent_default();
+                                                            if pos + 1 < total_len {
+                                                                move_fn(rid, pos + 1);
+                                                            }
+                                                        }
+                                                    };
+                                                    let handle_drop = {
+                                                        let mut move_fn = move_in_order.clone();
+                                                        move |evt: Event<DragData>| {
+                                                            evt.prevent_default();
+                                                            evt.stop_propagation();
+                                                            if let Some(src) = dragging_id() {
+                                                                if src != rid {
+                                                                    move_fn(src, pos);
+                                                                }
+                                                            }
+                                                            dragging_id.set(None);
                                                             drop_target_id.set(None);
                                                         }
-                                                    },
-                                                    ondragend: move |_| {
-                                                        dragging_id.set(None);
-                                                        drop_target_id.set(None);
-                                                    },
-                                                    ondrop: handle_drop,
-                                                    span { class: "runner-drag-handle", title: "Drag to reorder", "⋮⋮" }
-                                                    input {
-                                                        r#type: "checkbox",
-                                                        checked,
-                                                        onclick: move |evt| evt.stop_propagation(),
-                                                        onchange: move |evt| {
-                                                            let mut set = excluded_ids();
-                                                            if evt.checked() {
-                                                                set.remove(&rid);
-                                                            } else {
-                                                                set.insert(rid);
-                                                            }
-                                                            excluded_ids.set(set);
-                                                        }
-                                                    }
-                                                    span { class: "runner-req-idx", "{pos + 1}" }
-                                                    span { class: "method-badge method-{m_cls}", "{badge}" }
-                                                    span { class: "runner-req-label",
-                                                        if !fp.is_empty() {
-                                                            span { class: "runner-req-folder", "{fp} / " }
-                                                        }
-                                                        "{req.name}"
-                                                    }
-                                                    if has_pre {
-                                                        span { class: "runner-mini-tag", "pre" }
-                                                    }
-                                                    if has_tests {
-                                                        span { class: "runner-mini-tag test", "tests" }
-                                                    }
-                                                    div { class: "runner-row-actions",
-                                                        button {
-                                                            class: "runner-row-btn",
-                                                            r#type: "button",
-                                                            title: "Move up",
-                                                            disabled: pos == 0,
-                                                            onclick: move_up,
-                                                            "↑"
-                                                        }
-                                                        button {
-                                                            class: "runner-row-btn",
-                                                            r#type: "button",
-                                                            title: "Move down",
-                                                            disabled: pos + 1 >= total_len,
-                                                            onclick: move_dn,
-                                                            "↓"
-                                                        }
-                                                        button {
-                                                            class: "runner-row-btn",
-                                                            r#type: "button",
-                                                            title: "Open request in workbench",
-                                                            onclick: move |evt| {
+                                                    };
+                                                    let cur_col_id = sel_col().unwrap_or_default();
+                                                    rsx! {
+                                                        div {
+                                                            key: "{rid}-{pos}",
+                                                            class: "{row_cls}",
+                                                            draggable: "true",
+                                                            ondragstart: move |evt| {
                                                                 evt.stop_propagation();
-                                                                on_event.call(RunnerEvent::OpenRequest {
-                                                                    collection_id: cur_col_id,
-                                                                    request_id: rid,
-                                                                });
+                                                                dragging_id.set(Some(rid));
+                                                                let _ = evt.data.data_transfer().set_data(
+                                                                    "text/plain",
+                                                                    &rid.to_string(),
+                                                                );
                                                             },
-                                                            "↗"
+                                                            ondragover: move |evt| {
+                                                                if dragging_id().is_some_and(|s| s != rid) {
+                                                                    evt.prevent_default();
+                                                                    drop_target_id.set(Some(rid));
+                                                                }
+                                                            },
+                                                            ondragleave: move |_| {
+                                                                if drop_target_id() == Some(rid) {
+                                                                    drop_target_id.set(None);
+                                                                }
+                                                            },
+                                                            ondragend: move |_| {
+                                                                dragging_id.set(None);
+                                                                drop_target_id.set(None);
+                                                            },
+                                                            ondrop: handle_drop,
+                                                            span { class: "runner-drag-handle", title: "Drag to reorder", "⋮⋮" }
+                                                            input {
+                                                                r#type: "checkbox",
+                                                                checked,
+                                                                onclick: move |evt| evt.stop_propagation(),
+                                                                onchange: move |evt| {
+                                                                    let mut set = excluded_ids();
+                                                                    if evt.checked() {
+                                                                        set.remove(&rid);
+                                                                    } else {
+                                                                        set.insert(rid);
+                                                                    }
+                                                                    excluded_ids.set(set);
+                                                                }
+                                                            }
+                                                            span { class: "runner-req-idx", "{pos + 1}" }
+                                                            span { class: "method-badge method-{m_cls}", "{badge}" }
+                                                            span { class: "runner-req-label",
+                                                                if !fp.is_empty() {
+                                                                    span { class: "runner-req-folder", "{fp} / " }
+                                                                }
+                                                                "{req.name}"
+                                                            }
+                                                            if has_pre {
+                                                                span { class: "runner-mini-tag", "pre" }
+                                                            }
+                                                            if has_tests {
+                                                                span { class: "runner-mini-tag test", "tests" }
+                                                            }
+                                                            div { class: "runner-row-actions",
+                                                                button {
+                                                                    class: "runner-row-btn",
+                                                                    r#type: "button",
+                                                                    title: "Move up",
+                                                                    disabled: pos == 0,
+                                                                    onclick: move_up,
+                                                                    "↑"
+                                                                }
+                                                                button {
+                                                                    class: "runner-row-btn",
+                                                                    r#type: "button",
+                                                                    title: "Move down",
+                                                                    disabled: pos + 1 >= total_len,
+                                                                    onclick: move_dn,
+                                                                    "↓"
+                                                                }
+                                                                button {
+                                                                    class: "runner-row-btn",
+                                                                    r#type: "button",
+                                                                    title: "Open request in workbench",
+                                                                    onclick: move |evt| {
+                                                                        evt.stop_propagation();
+                                                                        on_event.call(RunnerEvent::OpenRequest {
+                                                                            collection_id: cur_col_id,
+                                                                            request_id: rid,
+                                                                        });
+                                                                    },
+                                                                    "↗"
+                                                                }
+                                                            }
                                                         }
+                                                    }
+                                                }
+                                            }
+                                                    if bot_pad > 0 {
+                                                        div { style: "height: {bot_pad}px; flex-shrink: 0;" }
                                                     }
                                                 }
                                             }

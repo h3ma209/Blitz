@@ -1051,6 +1051,7 @@ pub fn WorkbenchModals(
     let mut pending_delete = st.pending_delete;
     let mut pending_batch_move = st.pending_batch_move;
     let mut pending_close_tab = st.pending_close_tab;
+    let mut pending_git_switch = st.pending_git_switch;
     let mut show_trash = st.show_trash;
     let mut show_snippets = st.show_snippets;
     let mut snippet_lang = st.snippet_lang;
@@ -1102,6 +1103,51 @@ pub fn WorkbenchModals(
                         let _ = document::eval(script).await;
                     });
                 },
+            }
+        }
+
+        if let Some((next_settings, reason)) = pending_git_switch() {
+            {
+                let target_label = if !next_settings.cloud_sync.remote_url.trim().is_empty() {
+                    crate::core::cloud_sync::mask_remote_url(&next_settings.cloud_sync.remote_url)
+                } else if !next_settings.cloud_sync.clone_path.trim().is_empty() {
+                    next_settings.cloud_sync.clone_path.clone()
+                } else {
+                    "(cleared)".into()
+                };
+                rsx! {
+                    ModalShell {
+                        title: "Switch Git Repository?".to_string(),
+                        z_index: 2400,
+                        on_close: move |_| pending_git_switch.set(None),
+                        div { class: "modal-body",
+                            p {
+                                "Switching to "
+                                strong { "{target_label}" }
+                                " will clear the current workspace UI."
+                            }
+                            p { class: "hint", "Detected {reason}." }
+                        }
+                        div { class: "modal-actions",
+                            button {
+                                class: "btn btn-ghost",
+                                onclick: move |_| pending_git_switch.set(None),
+                                "Cancel"
+                            }
+                            button {
+                                class: "btn btn-ghost danger",
+                                onclick: move |_| {
+                                    let mut st = st;
+                                    pending_git_switch.set(None);
+                                    st.app_settings.set(next_settings.clone());
+                                    st.persist_local();
+                                    crate::ui::workbench::cloud::cloud_switch_repo(st);
+                                },
+                                "Discard & Switch"
+                            }
+                        }
+                    }
+                }
             }
         }
 

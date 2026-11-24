@@ -1,7 +1,9 @@
 use dioxus::prelude::*;
 use std::path::PathBuf;
 
-use crate::core::{abort_git_rebase, get_conflict_file_versions, resolve_git_conflicts};
+use crate::core::{
+    abort_git_rebase, diff_bodies, get_conflict_file_versions, resolve_git_conflicts, DiffLine,
+};
 use super::icons::ActionIcon;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -21,6 +23,7 @@ pub fn ConflictResolver(
     let mut selected_idx = use_signal(|| conflict.selected_idx);
     let mut status_msg = use_signal(String::new);
     let mut busy = use_signal(|| false);
+    let mut line_diff_mode = use_signal(|| true);
 
     let clamped_idx = selected_idx().min(conflict.files.len().saturating_sub(1));
     let active_file = conflict.files.get(clamped_idx).cloned().unwrap_or_default();
@@ -174,9 +177,25 @@ pub fn ConflictResolver(
 
             // Active file action bar
             div { style: "padding: 8px 20px; display: flex; justify-content: space-between; align-items: center; background: var(--bg-surface); border-bottom: var(--glass-border); font-size: 12px;",
-                span { class: "hint",
-                    "Active File: "
-                    code { style: "color: var(--text-primary); font-weight: 600;", "{active_file}" }
+                div { style: "display: flex; align-items: center; gap: 12px;",
+                    span { class: "hint",
+                        "Active File: "
+                        code { style: "color: var(--text-primary); font-weight: 600;", "{active_file}" }
+                    }
+                    div { class: "vars-tabs",
+                        button {
+                            class: if line_diff_mode() { "vars-tab active" } else { "vars-tab" },
+                            r#type: "button",
+                            onclick: move |_| line_diff_mode.set(true),
+                            "Line Diff"
+                        }
+                        button {
+                            class: if !line_diff_mode() { "vars-tab active" } else { "vars-tab" },
+                            r#type: "button",
+                            onclick: move |_| line_diff_mode.set(false),
+                            "Side-by-Side"
+                        }
+                    }
                 }
                 div { style: "display: flex; gap: 8px;",
                     button {
@@ -244,36 +263,75 @@ pub fn ConflictResolver(
                 }
             }
 
-            // Side-by-side diff comparison
-            div { style: "flex: 1; display: grid; grid-template-columns: 1fr 1fr; gap: 1px; background: var(--border-color); overflow: hidden;",
-                // Local Column
-                div { style: "display: flex; flex-direction: column; background: var(--bg-surface); height: 100%; overflow: hidden;",
-                    div { style: "padding: 8px 16px; background: rgba(30, 215, 96, 0.08); border-bottom: var(--glass-border); font-size: 12px; font-weight: 700; color: #1ed760; display: flex; justify-content: space-between;",
-                        span { "Your Local Changes" }
-                        span { class: "hint", "{ours.lines().count()} lines" }
-                    }
-                    pre {
-                        style: "flex: 1; margin: 0; padding: 12px 16px; overflow: auto; font-family: var(--mono); font-size: 12px; line-height: 1.5; color: var(--text-primary); background: transparent;",
-                        if ours.is_empty() {
-                            "(empty or deleted locally)"
-                        } else {
-                            "{ours}"
+            // Diff comparison (Line-level highlighted diff or Side-by-side)
+            if line_diff_mode() {
+                {
+                    let (diff_lines, stats) = diff_bodies(&theirs, &ours);
+                    rsx! {
+                        div { style: "flex: 1; display: flex; flex-direction: column; overflow: hidden; background: var(--bg-surface);",
+                            div { style: "padding: 6px 16px; display: flex; gap: 12px; align-items: center; border-bottom: var(--glass-border); font-size: 11px;",
+                                span { style: "color: #1ed760; font-weight: 700;", "+{stats.added} local" }
+                                span { style: "color: #60a5fa; font-weight: 700;", "-{stats.removed} remote" }
+                                span { class: "hint", "{stats.unchanged} unchanged" }
+                            }
+                            div { style: "flex: 1; overflow: auto; padding: 8px 0; font-family: var(--mono); font-size: 12px; line-height: 1.5;",
+                                if diff_lines.is_empty() {
+                                    div { class: "hint", style: "padding: 16px;", "(no content)" }
+                                } else {
+                                    for (li, dl) in diff_lines.into_iter().enumerate() {
+                                        {
+                                            let (prefix, bg, fg, text) = match dl {
+                                                DiffLine::Add(s) => ("+", "rgba(30, 215, 96, 0.14)", "#4ade80", s),
+                                                DiffLine::Del(s) => ("-", "rgba(59, 130, 246, 0.14)", "#60a5fa", s),
+                                                DiffLine::Same(s) => (" ", "transparent", "var(--text-primary)", s),
+                                            };
+                                            rsx! {
+                                                div {
+                                                    key: "cdiff-{li}",
+                                                    style: "display: flex; gap: 10px; padding: 1px 16px; background: {bg}; color: {fg}; white-space: pre-wrap; word-break: break-word;",
+                                                    span { style: "width: 34px; text-align: right; opacity: 0.45; user-select: none; flex-shrink: 0;", "{li + 1}" }
+                                                    span { style: "width: 12px; font-weight: 700; user-select: none; flex-shrink: 0;", "{prefix}" }
+                                                    span { style: "flex: 1; min-width: 0;", "{text}" }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
                         }
                     }
                 }
-
-                // Remote Column
-                div { style: "display: flex; flex-direction: column; background: var(--bg-surface); height: 100%; overflow: hidden;",
-                    div { style: "padding: 8px 16px; background: rgba(59, 130, 246, 0.08); border-bottom: var(--glass-border); font-size: 12px; font-weight: 700; color: #60a5fa; display: flex; justify-content: space-between;",
-                        span { "Incoming Team (Remote)" }
-                        span { class: "hint", "{theirs.lines().count()} lines" }
+            } else {
+                div { style: "flex: 1; display: grid; grid-template-columns: 1fr 1fr; gap: 1px; background: var(--border-color); overflow: hidden;",
+                    // Local Column
+                    div { style: "display: flex; flex-direction: column; background: var(--bg-surface); height: 100%; overflow: hidden;",
+                        div { style: "padding: 8px 16px; background: rgba(30, 215, 96, 0.08); border-bottom: var(--glass-border); font-size: 12px; font-weight: 700; color: #1ed760; display: flex; justify-content: space-between;",
+                            span { "Your Local Changes" }
+                            span { class: "hint", "{ours.lines().count()} lines" }
+                        }
+                        pre {
+                            style: "flex: 1; margin: 0; padding: 12px 16px; overflow: auto; font-family: var(--mono); font-size: 12px; line-height: 1.5; color: var(--text-primary); background: transparent;",
+                            if ours.is_empty() {
+                                "(empty or deleted locally)"
+                            } else {
+                                "{ours}"
+                            }
+                        }
                     }
-                    pre {
-                        style: "flex: 1; margin: 0; padding: 12px 16px; overflow: auto; font-family: var(--mono); font-size: 12px; line-height: 1.5; color: var(--text-primary); background: transparent;",
-                        if theirs.is_empty() {
-                            "(empty or deleted remotely)"
-                        } else {
-                            "{theirs}"
+
+                    // Remote Column
+                    div { style: "display: flex; flex-direction: column; background: var(--bg-surface); height: 100%; overflow: hidden;",
+                        div { style: "padding: 8px 16px; background: rgba(59, 130, 246, 0.08); border-bottom: var(--glass-border); font-size: 12px; font-weight: 700; color: #60a5fa; display: flex; justify-content: space-between;",
+                            span { "Incoming Team (Remote)" }
+                            span { class: "hint", "{theirs.lines().count()} lines" }
+                        }
+                        pre {
+                            style: "flex: 1; margin: 0; padding: 12px 16px; overflow: auto; font-family: var(--mono); font-size: 12px; line-height: 1.5; color: var(--text-primary); background: transparent;",
+                            if theirs.is_empty() {
+                                "(empty or deleted remotely)"
+                            } else {
+                                "{theirs}"
+                            }
                         }
                     }
                 }

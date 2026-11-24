@@ -910,8 +910,12 @@ mod multi_user_tests {
     }
 
     fn init_user_wt(base: &Path, name: &str, email: &str, remote: &Path, branch: &str) -> PathBuf {
-        let wt = base.join(format!("{name}-wt"));
-        let meta = base.join(format!("{name}-meta"));
+        let dir_slug: String = name
+            .chars()
+            .map(|c| if c.is_ascii_alphanumeric() || c == '-' || c == '_' { c } else { '_' })
+            .collect();
+        let wt = base.join(format!("{dir_slug}-wt"));
+        let meta = base.join(format!("{dir_slug}-meta"));
         fs::create_dir_all(&wt).unwrap();
         let sep = format!("--separate-git-dir={}", meta.display());
         let out = git(&wt, &["init", "--template=", &sep]);

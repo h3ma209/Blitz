@@ -13,7 +13,7 @@ use crate::ui::env_selector::EnvSelector;
 use crate::ui::theme_selector::ThemeSelector;
 use crate::ui::workbench::cloud::{
     cloud_clone_or_link, cloud_link_folder, cloud_open_folder, cloud_pull, cloud_push,
-    cloud_switch_repo, cloud_sync_status, open_team_activity, switch_to_env, sync_selected_env,
+    cloud_sync_status, open_team_activity, request_git_switch, switch_to_env, sync_selected_env,
 };
 use crate::ui::workbench::state::{ImpexModal, WorkbenchState, MOCK_HANDLE, PROXY_HANDLE};
 
@@ -820,8 +820,7 @@ pub fn TopBar(st: WorkbenchState) -> Element {
                                                             s.cloud_sync.last_status.clear();
                                                             s.cloud_sync.last_branch.clear();
                                                             s.cloud_sync.record_recent_repo();
-                                                            app_settings.set(s);
-                                                            cloud_switch_repo(st);
+                                                            request_git_switch(st, s);
                                                         },
                                                         if is_active {
                                                             "✓ {short}"
@@ -922,6 +921,35 @@ pub fn TopBar(st: WorkbenchState) -> Element {
                         class: "live-chip live-mock",
                         title: "Isolated window session (separate auth tokens, cookies, and WS connections)",
                         "{sess_name}"
+                    }
+                }
+                {
+                    let cs = app_settings().cloud_sync;
+                    if cs.enabled && (!cs.remote_url.trim().is_empty() || !cs.clone_path.trim().is_empty()) {
+                        let repo_entry = crate::core::RecentGitRepo {
+                            remote_url: cs.remote_url.clone(),
+                            clone_path: cs.clone_path.clone(),
+                            last_branch: cs.last_branch.clone(),
+                        };
+                        let repo_name = repo_entry.short_name();
+                        let target_desc = repo_entry.display_target();
+                        let branch = if cs.last_branch.trim().is_empty() {
+                            String::new()
+                        } else {
+                            format!(" · {}", cs.last_branch.trim())
+                        };
+                        rsx! {
+                            button {
+                                class: "cloud-branch-chip",
+                                style: "cursor: pointer; border: 1px solid rgba(56, 189, 248, 0.35);",
+                                title: "Active Git repo: {target_desc}{branch} — click for Team Activity",
+                                onclick: move |_| open_team_activity(st, false),
+                                crate::ui::icons::ActionIcon { name: "branch", size: 13 }
+                                span { "{repo_name}{branch}" }
+                            }
+                        }
+                    } else {
+                        rsx! {}
                     }
                 }
                 div { class: "top-nav-cluster",

@@ -48,3 +48,28 @@ pub(crate) use perf_modal::PerformanceModal;
 pub(crate) use code_editor::ScriptCodeEditor;
 pub(crate) use line_comments::CommentableTextarea;
 pub use workbench::Workbench;
+
+/// Compute a `[start, end)` visible slice for virtualized lists when `len > threshold`.
+pub(crate) fn list_window(len: usize, anchor: usize, threshold: usize, span: usize) -> (usize, usize) {
+    if len <= threshold || span == 0 {
+        return (0, len);
+    }
+    let anchor = anchor.min(len - 1);
+    let end = (anchor.saturating_sub(24) + span).min(len);
+    let start = end.saturating_sub(span);
+    (start, end)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::list_window;
+
+    #[test]
+    fn list_window_keeps_short_and_slices_long_lists() {
+        assert_eq!(list_window(40, 20, 100, 120), (0, 40));
+        let (s, e) = list_window(500, 250, 100, 120);
+        assert!(s <= 250 && 250 < e);
+        assert_eq!(e - s, 120);
+        assert_eq!(list_window(500, 999, 100, 120), (380, 500));
+    }
+}

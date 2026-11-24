@@ -1986,8 +1986,13 @@ pub fn Workbench() -> Element {
                     }
                     st.reload_storage_root(&target_root);
                 } else if repo_switched {
-                    st.persist_local();
-                    cloud::cloud_switch_repo(st);
+                    let prev_app = app_settings();
+                    let _ = prev_app;
+                    // Restore previous settings while confirmation is pending; request_git_switch commits on confirm.
+                    let mut restored = s.clone();
+                    restored.cloud_sync = prev_cloud;
+                    app_settings.set(restored);
+                    cloud::request_git_switch(st, s);
                 } else {
                     st.persist();
                     status_msg.set("settings saved".into());
