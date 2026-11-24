@@ -439,7 +439,7 @@ pub fn VarsPage(st: WorkbenchState) -> Element {
                         }
                     }
                 }
-            } else {
+            } else if vars_active_tab() == 1 {
                 div { class: "vars-page-inner",
                     div { class: "vars-scope-banner",
                         div { class: "vars-scope-banner-title",
@@ -513,6 +513,534 @@ pub fn VarsPage(st: WorkbenchState) -> Element {
 }
 
 #[component]
+pub fn StageToolPages(st: WorkbenchState) -> Element {
+    let mut show_lint = st.show_lint;
+    let mut lint_tab_open = st.lint_tab_open;
+    let mut show_runner = st.show_runner;
+    let mut runner_tab_open = st.runner_tab_open;
+    let mut runner_running = st.runner_running;
+    let mut runner_report = st.runner_report;
+    let mut runner_cancel = use_signal(|| None::<Arc<AtomicBool>>);
+    let mut runner_progress = use_signal(|| None::<RunnerProgressSnapshot>);
+    let mut show_perf = st.show_perf;
+    let mut perf_tab_open = st.perf_tab_open;
+    let mut perf_running = st.perf_running;
+    let mut perf_report = st.perf_report;
+    let mut perf_vus = st.perf_vus;
+    let mut perf_secs = st.perf_secs;
+    let mut perf_cancel = use_signal(|| None::<Arc<AtomicBool>>);
+    let mut show_team = st.show_team;
+    let mut team_tab_open = st.team_tab_open;
+    let mut team_syncing = st.team_syncing;
+    let mut team_activity = st.team_activity;
+
+    let mut collections = st.collections;
+    let mut environments = st.environments;
+    let mut active_collection_id = st.active_collection_id;
+    let mut active_request_id = st.active_request_id;
+    let mut editing_collection_id = st.editing_collection_id;
+    let mut draft = st.draft;
+    let mut vars = st.vars;
+    let mut cookies = st.cookies;
+    let mut console_lines = st.console_lines;
+    let mut console_open = st.console_open;
+    let mut status_msg = st.status_msg;
+    let app_settings = st.app_settings;
+    let active_env_id = st.active_env_id;
+
+    rsx! {
+        if show_runner() {
+            RunnerPanel {
+                collections: collections(),
+                environments: environments(),
+                active_env_id: active_env_id(),
+                selected_id: active_collection_id(),
+                running: runner_running(),
+                progress: runner_progress(),
+                report: runner_report(),
+                on_event: move |evt| match evt {
+                    RunnerEvent::Close => {
+                        runner_tab_open.set(false);
+                        show_runner.set(false);
+                    }
+                    RunnerEvent::Cancel => {
+                        if let Some(flag) = runner_cancel() {
+                            flag.store(true, Ordering::SeqCst);
+                            status_msg.set("stopping collection run…".into());
+                        }
+                    }
+                    RunnerEvent::OpenRequest {
+                        collection_id,
+                        request_id,
+                    } => {
+                        let cols = collections();
+                        if let Some((col_id, req)) = find_request_across(&cols, request_id) {
+                            active_collection_id.set(Some(col_id));
+                            active_request_id.set(Some(req.id));
+                            editing_collection_id.set(None);
+                            draft.set(req.clone());
+                            let mut tabs = (st.open_tabs)();
+                            if !tabs.iter().any(|t| t.id == req.id) {
+                                tabs.push(req.clone());
+                                st.open_tabs.set(tabs);
+                            }
+                            let cached = (st.responses)().get(&req.id).cloned();
+                            let mut resp_sig = st.response;
+                            resp_sig.set(cached);
+                            show_runner.set(false);
+                        } else {
+                            active_collection_id.set(Some(collection_id));
+                            show_runner.set(false);
+                        }
+                    }
+                    RunnerEvent::Run {
+                        collection_id,
+                        folder_filter,
+                        selected_request_ids,
+                        environment_id,
+                        iterations,
+                        delay_ms,
+                        data_file,
+                        stop_on_error,
+                        persist_vars,
+                    } => {
+                        if runner_running() {
+                            return;
+                        }
+                        let cancel_flag = Arc::new(AtomicBool::new(false));
+                        let progress_tracker = Arc::new(RunnerProgress::default());
+                        runner_cancel.set(Some(cancel_flag.clone()));
+                        runner_progress.set(Some(RunnerProgressSnapshot::default()));
+                        runner_running.set(true);
+                        runner_report.set(None);
+                        let cols = collections();
+                        let Some(col) = cols.into_iter().find(|c| c.id == collection_id) else {
+                            runner_running.set(false);
+                            runner_cancel.set(None);
+                            runner_progress.set(None);
+                            status_msg.set("collection not found".into());
+                            return;
+                        };
+                        let mut ctx = vars();
+                        ctx.collection = col.variables_map();
+                        if let Some(env) = find_environment(&environments(), environment_id) {
+                            ctx.environment = env.to_map();
+                        } else {
+                            ctx.environment.clear();
+                        }
+                        let env_id = environment_id;
+                        let col_id = col.id;
+                        let mut jar = cookies();
+                        let settings = app_settings();
+                        let cfg = RunnerConfig {
+                            iterations,
+                            delay_ms,
+                            data_file,
+                            folder_filter,
+                            selected_request_ids,
+                            stop_on_error,
+                            cancel: Some(cancel_flag),
+                            progress: Some(progress_tracker.clone()),
+                        };
+                        let mut st = st;
+                        spawn(async move {
+                            while runner_running() {
+                                runner_progress.set(Some(progress_tracker.snapshot()));
+                                tokio::time::sleep(Duration::from_millis(75)).await;
+                            }
+                        });
+                        spawn(async move {
+                            let report = tokio::task::spawn_blocking(move || {
+                                let rep = run_collection_with_config(
+                                    &col,
+                                    &mut ctx,
+                                    &mut jar,
+                                    Some(&settings),
+                                    None,
+                                    &cfg,
+                                );
+                                (rep, jar, ctx)
+                            })
+                            .await;
+                            match report {
+                                Ok((rep, jar, mut ctx)) => {
+                                    if persist_vars {
+                                        cookies.set(jar);
+                                        if let Some(id) = env_id {
+                                            let mut envs = environments();
+                                            if let Some(env) =
+                                                envs.iter_mut().find(|e| e.id == id)
+                                            {
+                                                apply_environment_map(env, &ctx.environment);
+                                            }
+                                            environments.set(envs);
+                                        } else if !ctx.environment.is_empty() {
+                                            status_msg.set(
+                                                "no active environment — blitz.environment.set ignored"
+                                                    .into(),
+                                            );
+                                            ctx.environment.clear();
+                                        }
+                                        let mut cols = collections();
+                                        if let Some(c) = cols.iter_mut().find(|c| c.id == col_id) {
+                                            apply_collection_map(c, &ctx.collection);
+                                        }
+                                        collections.set(cols);
+                                        let vault = vars().vault.clone();
+                                        ctx.vault = vault;
+                                        vars.set(ctx);
+                                    }
+                                    let mut lines = console_lines();
+                                    for m in &rep.console {
+                                        push_console(&mut lines, ConsoleLine::info(m.clone()));
+                                    }
+                                    console_lines.set(lines);
+                                    console_open.set(true);
+                                    status_msg.set(format!(
+                                        "runner: pass={} fail={}",
+                                        rep.passed_count(),
+                                        rep.failed_count()
+                                    ));
+                                    runner_report.set(Some(rep));
+                                }
+                                Err(e) => {
+                                    status_msg.set(format!("runner join: {e}"));
+                                }
+                            }
+                            runner_running.set(false);
+                            runner_cancel.set(None);
+                            runner_progress.set(None);
+                            if persist_vars {
+                                st.persist();
+                            }
+                        });
+                    }
+                },
+            }
+        } else if show_lint() {
+            LintPanel {
+                collections: collections(),
+                vars: vars(),
+                on_close: move |_| {
+                    lint_tab_open.set(false);
+                    show_lint.set(false);
+                },
+            }
+        } else if show_perf() {
+            PerformanceModal {
+                collections: collections(),
+                active_collection_id: active_collection_id(),
+                active_request_id: active_request_id(),
+                running: perf_running(),
+                report: perf_report(),
+                initial_vus: perf_vus(),
+                initial_secs: perf_secs(),
+                on_close: move |_| {
+                    perf_tab_open.set(false);
+                    show_perf.set(false);
+                },
+                on_cancel: move |_| {
+                    if let Some(flag) = perf_cancel() {
+                        flag.store(true, Ordering::SeqCst);
+                        status_msg.set("stopping benchmark…".into());
+                    }
+                },
+                on_run: move |(col_id, req_id, vus, secs)| {
+                    if perf_running() {
+                        return;
+                    }
+                    let cancel_flag = Arc::new(AtomicBool::new(false));
+                    perf_cancel.set(Some(cancel_flag.clone()));
+                    perf_vus.set(vus);
+                    perf_secs.set(secs);
+                    perf_running.set(true);
+                    perf_report.set(None);
+
+                    let cols = collections();
+                    let Some(col) = cols.into_iter().find(|c| c.id == col_id) else {
+                        perf_running.set(false);
+                        perf_cancel.set(None);
+                        status_msg.set("collection not found".into());
+                        return;
+                    };
+
+                    let target_col = if let Some(r_id) = req_id {
+                        let reqs = crate::runtime::ordered_requests(&col);
+                        if let Some(target_req) = reqs.into_iter().find(|r| r.id == r_id) {
+                            Collection {
+                                id: Uuid::new_v4(),
+                                name: format!("Perf: {}", target_req.name),
+                                auth: col.auth.clone(),
+                                items: vec![crate::core::CollectionItem::Request(target_req)],
+                                ..Collection::new("PerfTarget")
+                            }
+                        } else {
+                            col.clone()
+                        }
+                    } else {
+                        col.clone()
+                    };
+
+                    let mut ctx = vars();
+                    ctx.collection = col.variables_map();
+                    if let Some(env) = find_environment(&environments(), active_env_id()) {
+                        ctx.environment = env.to_map();
+                    } else {
+                        ctx.environment.clear();
+                    }
+
+                    spawn(async move {
+                        let report = tokio::task::spawn_blocking(move || {
+                            run_performance_with_cancel(
+                                &target_col,
+                                &ctx,
+                                vus,
+                                Duration::from_secs(secs),
+                                Some(cancel_flag),
+                            )
+                        })
+                        .await;
+
+                        perf_running.set(false);
+                        perf_cancel.set(None);
+                        match report {
+                            Ok(r) => {
+                                status_msg.set(format!(
+                                    "perf completed: {} reqs, {} errs, avg {:.1}ms (p95 {}ms), {:.1} rps",
+                                    r.total_requests,
+                                    r.errors,
+                                    r.avg_latency_ms(),
+                                    r.p95_latency_ms,
+                                    r.rps(),
+                                ));
+                                perf_report.set(Some(r));
+                            }
+                            Err(e) => status_msg.set(format!("perf failed: {e}")),
+                        }
+                    });
+                },
+            }
+        } else if show_team() {
+            TeamModal {
+                activity: team_activity(),
+                is_syncing: team_syncing() || (st.cloud_busy)(),
+                on_close: move |_| {
+                    team_tab_open.set(false);
+                    show_team.set(false);
+                },
+                on_refresh: move |_| {
+                    if (st.cloud_busy)() || team_syncing() {
+                        return;
+                    }
+                    let Ok(store) = JsonStore::open_default() else {
+                        status_msg.set("team: cannot open store".into());
+                        return;
+                    };
+                    let settings = app_settings();
+                    let clone_path = settings.cloud_sync.resolved_clone_path(store.root());
+                    team_syncing.set(true);
+                    let mut st_busy = st;
+                    st_busy.cloud_busy.set(true);
+                    spawn(async move {
+                        let res = tokio::task::spawn_blocking(move || {
+                            get_team_activity_ex(&clone_path, 30, true).map_err(|e| e.to_string())
+                        })
+                        .await;
+                        match res {
+                            Ok(Ok(act)) => {
+                                team_activity.set(act);
+                                status_msg.set("team: refreshed activity".into());
+                            }
+                            Ok(Err(e)) => status_msg.set(format!("team refresh: {e}")),
+                            Err(e) => status_msg.set(format!("team join: {e}")),
+                        }
+                        team_syncing.set(false);
+                        st_busy.cloud_busy.set(false);
+                    });
+                },
+                on_pull: move |_| {
+                    if (st.cloud_busy)() || team_syncing() {
+                        return;
+                    }
+                    let Ok(store) = JsonStore::open_default() else {
+                        return;
+                    };
+                    let root = store.root().to_path_buf();
+                    let mut settings = app_settings();
+                    if settings.cloud_sync.remote_url.trim().is_empty() {
+                        status_msg.set("Configure Remote Git URL in Cloud Settings first".into());
+                        return;
+                    }
+                    settings.cloud_sync.enabled = true;
+                    let clone_path = settings.cloud_sync.resolved_clone_path(&root);
+                    let envs = environments();
+                    let cols = collections();
+                    let globals = vars().global;
+                    team_syncing.set(true);
+                    let mut st_busy = st;
+                    st_busy.cloud_busy.set(true);
+                    spawn(async move {
+                        let cp_bg = clone_path.clone();
+                        let res = tokio::task::spawn_blocking(move || {
+                            let r = pull_workspace(&root, &mut settings, &cols, &envs, &globals);
+                            let act = get_team_activity_ex(&cp_bg, 30, false).ok();
+                            let need_conflicts =
+                                r.is_err() || matches!(&r, Ok(sw) if !sw.result.ok);
+                            let (conflicts, rebasing) = if need_conflicts {
+                                (
+                                    detect_git_conflicts(&cp_bg).unwrap_or_default(),
+                                    is_rebase_in_progress(&cp_bg),
+                                )
+                            } else {
+                                (Vec::new(), false)
+                            };
+                            (r, settings, act, conflicts, rebasing)
+                        })
+                        .await;
+                        team_syncing.set(false);
+                        st_busy.cloud_busy.set(false);
+                        match res {
+                            Ok((Ok(synced), updated_settings, act, conflicts, rebasing)) => {
+                                if !synced.result.ok {
+                                    st_busy.patch_cloud_meta(
+                                        &updated_settings.cloud_sync.last_status,
+                                        &updated_settings.cloud_sync.last_branch,
+                                        Some(true),
+                                        None,
+                                        None,
+                                    );
+                                    if crate::ui::workbench::cloud::open_conflicts_if_any(
+                                        st_busy,
+                                        clone_path,
+                                        conflicts,
+                                        rebasing,
+                                    ) {
+                                        show_team.set(false);
+                                    } else {
+                                        status_msg.set(format!("pull: {}", synced.result.message));
+                                    }
+                                    return;
+                                }
+                                st_busy.apply_synced_workspace(
+                                    synced.collections,
+                                    synced.environments,
+                                    synced.globals,
+                                    None,
+                                    &synced.result.message,
+                                    &synced.result.branch,
+                                );
+                                st_busy.patch_cloud_meta(
+                                    &synced.result.message,
+                                    &synced.result.branch,
+                                    Some(true),
+                                    None,
+                                    None,
+                                );
+                                if let Some(act) = act {
+                                    team_activity.set(act);
+                                }
+                                status_msg.set(synced.result.message);
+                            }
+                            Ok((Err(e), _, _, conflicts, rebasing)) => {
+                                if crate::ui::workbench::cloud::open_conflicts_if_any(
+                                    st_busy,
+                                    clone_path,
+                                    conflicts,
+                                    rebasing,
+                                ) {
+                                    show_team.set(false);
+                                } else {
+                                    status_msg.set(format!("pull: {e}"));
+                                }
+                            }
+                            Err(e) => status_msg.set(format!("pull join: {e}")),
+                        }
+                    });
+                },
+                on_push: move |_| {
+                    if (st.cloud_busy)() || team_syncing() {
+                        return;
+                    }
+                    let Ok(store) = JsonStore::open_default() else {
+                        return;
+                    };
+                    let root = store.root().to_path_buf();
+                    let mut settings = app_settings();
+                    if settings.cloud_sync.remote_url.trim().is_empty() {
+                        status_msg.set("Configure Remote Git URL in Cloud Settings first".into());
+                        return;
+                    }
+                    settings.cloud_sync.enabled = true;
+                    let clone_path = settings.cloud_sync.resolved_clone_path(&root);
+                    let envs = environments();
+                    let cols = collections();
+                    let v = vars();
+                    let active_env_name = find_environment(&envs, active_env_id())
+                        .map(|e| e.name.clone())
+                        .unwrap_or_else(|| "No Environment".into());
+                    let commit = settings.cloud_sync.commit_message.clone();
+                    team_syncing.set(true);
+                    let mut st_busy = st;
+                    st_busy.cloud_busy.set(true);
+                    spawn(async move {
+                        let cp_bg = clone_path.clone();
+                        let res = tokio::task::spawn_blocking(move || {
+                            let r = push_workspace(
+                                &root,
+                                &mut settings,
+                                &cols,
+                                &envs,
+                                &active_env_name,
+                                Some(commit.as_str()),
+                                &v,
+                            );
+                            let act = get_team_activity_ex(&cp_bg, 30, false).ok();
+                            let (conflicts, rebasing) = if !r.ok {
+                                (
+                                    detect_git_conflicts(&cp_bg).unwrap_or_default(),
+                                    is_rebase_in_progress(&cp_bg),
+                                )
+                            } else {
+                                (Vec::new(), false)
+                            };
+                            (r, settings, act, conflicts, rebasing)
+                        })
+                        .await;
+                        team_syncing.set(false);
+                        st_busy.cloud_busy.set(false);
+                        if let Ok((r, updated_settings, act, conflicts, rebasing)) = res {
+                            st_busy.patch_cloud_meta(
+                                &updated_settings.cloud_sync.last_status,
+                                &updated_settings.cloud_sync.last_branch,
+                                Some(true),
+                                None,
+                                None,
+                            );
+                            if let Some(act) = act {
+                                team_activity.set(act);
+                            }
+                            if !r.ok
+                                && crate::ui::workbench::cloud::open_conflicts_if_any(
+                                    st_busy,
+                                    clone_path,
+                                    conflicts,
+                                    rebasing,
+                                )
+                            {
+                                show_team.set(false);
+                            } else {
+                                status_msg.set(r.message);
+                                st_busy.persist_local();
+                            }
+                        }
+                    });
+                },
+            }
+        }
+    }
+}
+
+#[component]
 pub fn WorkbenchModals(
     st: WorkbenchState,
     on_send: EventHandler<()>,
@@ -527,40 +1055,19 @@ pub fn WorkbenchModals(
     let mut show_snippets = st.show_snippets;
     let mut snippet_lang = st.snippet_lang;
     let mut snippet_resolve_vars = st.snippet_resolve_vars;
-    let mut show_lint = st.show_lint;
-    let mut show_runner = st.show_runner;
-    let mut runner_running = st.runner_running;
-    let mut runner_report = st.runner_report;
-    let mut runner_cancel = use_signal(|| None::<Arc<AtomicBool>>);
-    let mut runner_progress = use_signal(|| None::<RunnerProgressSnapshot>);
-    let mut show_perf = st.show_perf;
-    let mut perf_running = st.perf_running;
-    let mut perf_report = st.perf_report;
-    let mut perf_vus = st.perf_vus;
-    let mut perf_secs = st.perf_secs;
-    let mut perf_cancel = use_signal(|| None::<Arc<AtomicBool>>);
     let mut show_cookies = st.show_cookies;
-    let mut show_team = st.show_team;
-    let mut team_syncing = st.team_syncing;
-    let mut team_activity = st.team_activity;
     let mut show_col_vars = st.show_col_vars;
     let mut col_vars_all = st.col_vars_all;
     let mut col_vars_open_id = st.col_vars_open_id;
     let mut impex_modal = st.impex_modal;
     let mut collections = st.collections;
-    let mut environments = st.environments;
     let mut active_collection_id = st.active_collection_id;
     let mut active_request_id = st.active_request_id;
-    let mut editing_collection_id = st.editing_collection_id;
     let mut draft = st.draft;
     let mut trash = st.trash;
-    let mut vars = st.vars;
+    let vars = st.vars;
     let mut cookies = st.cookies;
-    let mut console_lines = st.console_lines;
-    let mut console_open = st.console_open;
     let mut status_msg = st.status_msg;
-    let app_settings = st.app_settings;
-    let active_env_id = st.active_env_id;
 
     rsx! {
         if show_palette() {
@@ -991,274 +1498,6 @@ pub fn WorkbenchModals(
             }
         }
 
-        if show_runner() {
-            RunnerPanel {
-                collections: collections(),
-                environments: environments(),
-                active_env_id: active_env_id(),
-                selected_id: active_collection_id(),
-                running: runner_running(),
-                progress: runner_progress(),
-                report: runner_report(),
-                on_event: move |evt| match evt {
-                    RunnerEvent::Close => show_runner.set(false),
-                    RunnerEvent::Cancel => {
-                        if let Some(flag) = runner_cancel() {
-                            flag.store(true, Ordering::SeqCst);
-                            status_msg.set("stopping collection run…".into());
-                        }
-                    }
-                    RunnerEvent::OpenRequest {
-                        collection_id,
-                        request_id,
-                    } => {
-                        let cols = collections();
-                        if let Some((col_id, req)) = find_request_across(&cols, request_id) {
-                            active_collection_id.set(Some(col_id));
-                            active_request_id.set(Some(req.id));
-                            editing_collection_id.set(None);
-                            draft.set(req.clone());
-                            let mut tabs = (st.open_tabs)();
-                            if !tabs.iter().any(|t| t.id == req.id) {
-                                tabs.push(req.clone());
-                                st.open_tabs.set(tabs);
-                            }
-                            let cached = (st.responses)().get(&req.id).cloned();
-                            let mut resp_sig = st.response;
-                            resp_sig.set(cached);
-                            show_runner.set(false);
-                        } else {
-                            active_collection_id.set(Some(collection_id));
-                            show_runner.set(false);
-                        }
-                    }
-                    RunnerEvent::Run {
-                        collection_id,
-                        folder_filter,
-                        selected_request_ids,
-                        environment_id,
-                        iterations,
-                        delay_ms,
-                        data_file,
-                        stop_on_error,
-                        persist_vars,
-                    } => {
-                        if runner_running() {
-                            return;
-                        }
-                        let cancel_flag = Arc::new(AtomicBool::new(false));
-                        let progress_tracker = Arc::new(RunnerProgress::default());
-                        runner_cancel.set(Some(cancel_flag.clone()));
-                        runner_progress.set(Some(RunnerProgressSnapshot::default()));
-                        runner_running.set(true);
-                        runner_report.set(None);
-                        let cols = collections();
-                        let Some(col) = cols.into_iter().find(|c| c.id == collection_id) else {
-                            runner_running.set(false);
-                            runner_cancel.set(None);
-                            runner_progress.set(None);
-                            status_msg.set("collection not found".into());
-                            return;
-                        };
-                        let mut ctx = vars();
-                        ctx.collection = col.variables_map();
-                        if let Some(env) = find_environment(&environments(), environment_id) {
-                            ctx.environment = env.to_map();
-                        } else {
-                            ctx.environment.clear();
-                        }
-                        let env_id = environment_id;
-                        let col_id = col.id;
-                        let mut jar = cookies();
-                        let settings = app_settings();
-                        let cfg = RunnerConfig {
-                            iterations,
-                            delay_ms,
-                            data_file,
-                            folder_filter,
-                            selected_request_ids,
-                            stop_on_error,
-                            cancel: Some(cancel_flag),
-                            progress: Some(progress_tracker.clone()),
-                        };
-                        let mut st = st;
-                        spawn(async move {
-                            while runner_running() {
-                                runner_progress.set(Some(progress_tracker.snapshot()));
-                                tokio::time::sleep(Duration::from_millis(75)).await;
-                            }
-                        });
-                        spawn(async move {
-                            let report = tokio::task::spawn_blocking(move || {
-                                let rep = run_collection_with_config(
-                                    &col,
-                                    &mut ctx,
-                                    &mut jar,
-                                    Some(&settings),
-                                    None,
-                                    &cfg,
-                                );
-                                (rep, jar, ctx)
-                            })
-                            .await;
-                            match report {
-                                Ok((rep, jar, mut ctx)) => {
-                                    if persist_vars {
-                                        cookies.set(jar);
-                                        if let Some(id) = env_id {
-                                            let mut envs = environments();
-                                            if let Some(env) =
-                                                envs.iter_mut().find(|e| e.id == id)
-                                            {
-                                                apply_environment_map(env, &ctx.environment);
-                                            }
-                                            environments.set(envs);
-                                        } else if !ctx.environment.is_empty() {
-                                            status_msg.set(
-                                                "no active environment — blitz.environment.set ignored"
-                                                    .into(),
-                                            );
-                                            ctx.environment.clear();
-                                        }
-                                        let mut cols = collections();
-                                        if let Some(c) = cols.iter_mut().find(|c| c.id == col_id) {
-                                            apply_collection_map(c, &ctx.collection);
-                                        }
-                                        collections.set(cols);
-                                        let vault = vars().vault.clone();
-                                        ctx.vault = vault;
-                                        vars.set(ctx);
-                                    }
-                                    let mut lines = console_lines();
-                                    for m in &rep.console {
-                                        push_console(&mut lines, ConsoleLine::info(m.clone()));
-                                    }
-                                    console_lines.set(lines);
-                                    console_open.set(true);
-                                    status_msg.set(format!(
-                                        "runner: pass={} fail={}",
-                                        rep.passed_count(),
-                                        rep.failed_count()
-                                    ));
-                                    runner_report.set(Some(rep));
-                                }
-                                Err(e) => {
-                                    status_msg.set(format!("runner join: {e}"));
-                                }
-                            }
-                            runner_running.set(false);
-                            runner_cancel.set(None);
-                            runner_progress.set(None);
-                            if persist_vars {
-                                st.persist();
-                            }
-                        });
-                    }
-                },
-            }
-        }
-
-        if show_lint() {
-            LintPanel {
-                collections: collections(),
-                vars: vars(),
-                on_close: move |_| show_lint.set(false),
-            }
-        }
-
-        if show_perf() {
-            PerformanceModal {
-                collections: collections(),
-                active_collection_id: active_collection_id(),
-                active_request_id: active_request_id(),
-                running: perf_running(),
-                report: perf_report(),
-                initial_vus: perf_vus(),
-                initial_secs: perf_secs(),
-                on_close: move |_| show_perf.set(false),
-                on_cancel: move |_| {
-                    if let Some(flag) = perf_cancel() {
-                        flag.store(true, Ordering::SeqCst);
-                        status_msg.set("stopping benchmark…".into());
-                    }
-                },
-                on_run: move |(col_id, req_id, vus, secs)| {
-                    if perf_running() {
-                        return;
-                    }
-                    let cancel_flag = Arc::new(AtomicBool::new(false));
-                    perf_cancel.set(Some(cancel_flag.clone()));
-                    perf_vus.set(vus);
-                    perf_secs.set(secs);
-                    perf_running.set(true);
-                    perf_report.set(None);
-
-                    let cols = collections();
-                    let Some(col) = cols.into_iter().find(|c| c.id == col_id) else {
-                        perf_running.set(false);
-                        perf_cancel.set(None);
-                        status_msg.set("collection not found".into());
-                        return;
-                    };
-
-                    let target_col = if let Some(r_id) = req_id {
-                        let reqs = crate::runtime::ordered_requests(&col);
-                        if let Some(target_req) = reqs.into_iter().find(|r| r.id == r_id) {
-                            Collection {
-                                id: Uuid::new_v4(),
-                                name: format!("Perf: {}", target_req.name),
-                                auth: col.auth.clone(),
-                                items: vec![crate::core::CollectionItem::Request(target_req)],
-                                ..Collection::new("PerfTarget")
-                            }
-                        } else {
-                            col.clone()
-                        }
-                    } else {
-                        col.clone()
-                    };
-
-                    let mut ctx = vars();
-                    ctx.collection = col.variables_map();
-                    if let Some(env) = find_environment(&environments(), active_env_id()) {
-                        ctx.environment = env.to_map();
-                    } else {
-                        ctx.environment.clear();
-                    }
-
-                    spawn(async move {
-                        let report = tokio::task::spawn_blocking(move || {
-                            run_performance_with_cancel(
-                                &target_col,
-                                &ctx,
-                                vus,
-                                Duration::from_secs(secs),
-                                Some(cancel_flag),
-                            )
-                        })
-                        .await;
-
-                        perf_running.set(false);
-                        perf_cancel.set(None);
-                        match report {
-                            Ok(r) => {
-                                status_msg.set(format!(
-                                    "perf completed: {} reqs, {} errs, avg {:.1}ms (p95 {}ms), {:.1} rps",
-                                    r.total_requests,
-                                    r.errors,
-                                    r.avg_latency_ms(),
-                                    r.p95_latency_ms,
-                                    r.rps(),
-                                ));
-                                perf_report.set(Some(r));
-                            }
-                            Err(e) => status_msg.set(format!("perf failed: {e}")),
-                        }
-                    });
-                },
-            }
-        }
-
         if show_cookies() {
             ModalShell {
                 title: "Cookie manager".to_string(),
@@ -1385,221 +1624,6 @@ pub fn WorkbenchModals(
                         }
                     }
                 }
-            }
-        }
-
-        if show_team() {
-            TeamModal {
-                activity: team_activity(),
-                is_syncing: team_syncing() || (st.cloud_busy)(),
-                on_close: move |_| show_team.set(false),
-                on_refresh: move |_| {
-                    if (st.cloud_busy)() || team_syncing() {
-                        return;
-                    }
-                    let Ok(store) = JsonStore::open_default() else {
-                        status_msg.set("team: cannot open store".into());
-                        return;
-                    };
-                    let settings = app_settings();
-                    let clone_path = settings.cloud_sync.resolved_clone_path(store.root());
-                    team_syncing.set(true);
-                    let mut st_busy = st;
-                    st_busy.cloud_busy.set(true);
-                    spawn(async move {
-                        let res = tokio::task::spawn_blocking(move || {
-                            get_team_activity_ex(&clone_path, 30, true).map_err(|e| e.to_string())
-                        })
-                        .await;
-                        match res {
-                            Ok(Ok(act)) => {
-                                team_activity.set(act);
-                                status_msg.set("team: refreshed activity".into());
-                            }
-                            Ok(Err(e)) => status_msg.set(format!("team refresh: {e}")),
-                            Err(e) => status_msg.set(format!("team join: {e}")),
-                        }
-                        team_syncing.set(false);
-                        st_busy.cloud_busy.set(false);
-                    });
-                },
-                on_pull: move |_| {
-                    if (st.cloud_busy)() || team_syncing() {
-                        return;
-                    }
-                    let Ok(store) = JsonStore::open_default() else {
-                        return;
-                    };
-                    let root = store.root().to_path_buf();
-                    let mut settings = app_settings();
-                    if settings.cloud_sync.remote_url.trim().is_empty() {
-                        status_msg.set("Configure Remote Git URL in Cloud Settings first".into());
-                        return;
-                    }
-                    settings.cloud_sync.enabled = true;
-                    let clone_path = settings.cloud_sync.resolved_clone_path(&root);
-                    let envs = environments();
-                    let cols = collections();
-                    let globals = vars().global;
-                    team_syncing.set(true);
-                    let mut st_busy = st;
-                    st_busy.cloud_busy.set(true);
-                    spawn(async move {
-                        let cp_bg = clone_path.clone();
-                        let res = tokio::task::spawn_blocking(move || {
-                            let r = pull_workspace(&root, &mut settings, &cols, &envs, &globals);
-                            let act = get_team_activity_ex(&cp_bg, 30, false).ok();
-                            let need_conflicts =
-                                r.is_err() || matches!(&r, Ok(sw) if !sw.result.ok);
-                            let (conflicts, rebasing) = if need_conflicts {
-                                (
-                                    detect_git_conflicts(&cp_bg).unwrap_or_default(),
-                                    is_rebase_in_progress(&cp_bg),
-                                )
-                            } else {
-                                (Vec::new(), false)
-                            };
-                            (r, settings, act, conflicts, rebasing)
-                        })
-                        .await;
-                        team_syncing.set(false);
-                        st_busy.cloud_busy.set(false);
-                        match res {
-                            Ok((Ok(synced), updated_settings, act, conflicts, rebasing)) => {
-                                if !synced.result.ok {
-                                    st_busy.patch_cloud_meta(
-                                        &updated_settings.cloud_sync.last_status,
-                                        &updated_settings.cloud_sync.last_branch,
-                                        Some(true),
-                                        None,
-                                        None,
-                                    );
-                                    if crate::ui::workbench::cloud::open_conflicts_if_any(
-                                        st_busy,
-                                        clone_path,
-                                        conflicts,
-                                        rebasing,
-                                    ) {
-                                        show_team.set(false);
-                                    } else {
-                                        status_msg.set(format!("pull: {}", synced.result.message));
-                                    }
-                                    return;
-                                }
-                                st_busy.apply_synced_workspace(
-                                    synced.collections,
-                                    synced.environments,
-                                    synced.globals,
-                                    None,
-                                    &synced.result.message,
-                                    &synced.result.branch,
-                                );
-                                st_busy.patch_cloud_meta(
-                                    &synced.result.message,
-                                    &synced.result.branch,
-                                    Some(true),
-                                    None,
-                                    None,
-                                );
-                                if let Some(act) = act {
-                                    team_activity.set(act);
-                                }
-                                status_msg.set(synced.result.message);
-                            }
-                            Ok((Err(e), _, _, conflicts, rebasing)) => {
-                                if crate::ui::workbench::cloud::open_conflicts_if_any(
-                                    st_busy,
-                                    clone_path,
-                                    conflicts,
-                                    rebasing,
-                                ) {
-                                    show_team.set(false);
-                                } else {
-                                    status_msg.set(format!("pull: {e}"));
-                                }
-                            }
-                            Err(e) => status_msg.set(format!("pull join: {e}")),
-                        }
-                    });
-                },
-                on_push: move |_| {
-                    if (st.cloud_busy)() || team_syncing() {
-                        return;
-                    }
-                    let Ok(store) = JsonStore::open_default() else {
-                        return;
-                    };
-                    let root = store.root().to_path_buf();
-                    let mut settings = app_settings();
-                    if settings.cloud_sync.remote_url.trim().is_empty() {
-                        status_msg.set("Configure Remote Git URL in Cloud Settings first".into());
-                        return;
-                    }
-                    settings.cloud_sync.enabled = true;
-                    let clone_path = settings.cloud_sync.resolved_clone_path(&root);
-                    let envs = environments();
-                    let cols = collections();
-                    let v = vars();
-                    let active_env_name = find_environment(&envs, active_env_id())
-                        .map(|e| e.name.clone())
-                        .unwrap_or_else(|| "No Environment".into());
-                    let commit = settings.cloud_sync.commit_message.clone();
-                    team_syncing.set(true);
-                    let mut st_busy = st;
-                    st_busy.cloud_busy.set(true);
-                    spawn(async move {
-                        let cp_bg = clone_path.clone();
-                        let res = tokio::task::spawn_blocking(move || {
-                            let r = push_workspace(
-                                &root,
-                                &mut settings,
-                                &cols,
-                                &envs,
-                                &active_env_name,
-                                Some(commit.as_str()),
-                                &v,
-                            );
-                            let act = get_team_activity_ex(&cp_bg, 30, false).ok();
-                            let (conflicts, rebasing) = if !r.ok {
-                                (
-                                    detect_git_conflicts(&cp_bg).unwrap_or_default(),
-                                    is_rebase_in_progress(&cp_bg),
-                                )
-                            } else {
-                                (Vec::new(), false)
-                            };
-                            (r, settings, act, conflicts, rebasing)
-                        })
-                        .await;
-                        team_syncing.set(false);
-                        st_busy.cloud_busy.set(false);
-                        if let Ok((r, updated_settings, act, conflicts, rebasing)) = res {
-                            st_busy.patch_cloud_meta(
-                                &updated_settings.cloud_sync.last_status,
-                                &updated_settings.cloud_sync.last_branch,
-                                Some(true),
-                                None,
-                                None,
-                            );
-                            if let Some(act) = act {
-                                team_activity.set(act);
-                            }
-                            if !r.ok
-                                && crate::ui::workbench::cloud::open_conflicts_if_any(
-                                    st_busy,
-                                    clone_path,
-                                    conflicts,
-                                    rebasing,
-                                )
-                            {
-                                show_team.set(false);
-                            } else {
-                                status_msg.set(r.message);
-                                st_busy.persist_local();
-                            }
-                        }
-                    });
-                },
             }
         }
 

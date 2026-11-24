@@ -28,6 +28,10 @@ pub fn EnvDiffView(
     let mut diffs_only = use_signal(|| false);
     let mut copied_report = use_signal(|| false);
     let mut action_flash = use_signal(|| None::<String>);
+    // Percentage share of the combined Baseline+Target value columns (50.0 = 50/50 split)
+    let mut split_pct = use_signal(|| 50.0_f64);
+    let mut split_drag = use_signal(|| None::<(f64, f64, f64)>); // (start_x, start_pct, table_px)
+    let mut table_width_px = use_signal(|| 800.0_f64);
 
     if envs.len() < 2 {
         return rsx! {
@@ -66,8 +70,35 @@ pub fn EnvDiffView(
         matches_search && matches_diff
     }).collect();
 
+    let baseline_col_pct = (64.0 * (split_pct() / 100.0)).clamp(12.0, 52.0);
+    let target_col_pct = (64.0 - baseline_col_pct).clamp(12.0, 52.0);
+    let view_class = if split_drag().is_some() {
+        "env-diff-view env-diff-resizing"
+    } else {
+        "env-diff-view"
+    };
+
     rsx! {
-        div { class: "env-diff-view",
+        div {
+            class: "{view_class}",
+            onmousemove: move |evt| {
+                if let Some((start_x, start_pct, tbl_w)) = split_drag() {
+                    let combined_w = (tbl_w * 0.64).max(240.0);
+                    let dx = evt.client_coordinates().x - start_x;
+                    let next = (start_pct + (dx / combined_w) * 100.0).clamp(20.0, 80.0);
+                    split_pct.set(next);
+                }
+            },
+            onmouseup: move |_| {
+                if split_drag().is_some() {
+                    split_drag.set(None);
+                }
+            },
+            onmouseleave: move |_| {
+                if split_drag().is_some() {
+                    split_drag.set(None);
+                }
+            },
             // Toolbar: Dropdowns & Action Buttons
             div { class: "env-diff-toolbar",
                 div { class: "env-diff-select-group",
@@ -231,14 +262,56 @@ pub fn EnvDiffView(
 
             // Comparison Table
             div { class: "env-diff-table-wrap",
-                table { class: "env-diff-table",
+                table {
+                    id: "np-env-diff-table",
+                    class: "env-diff-table",
+                    colgroup {
+                        col { style: "width: 90px;" }
+                        col { style: "width: 22%;" }
+                        col { style: "width: {baseline_col_pct:.2}%;" }
+                        col { style: "width: {target_col_pct:.2}%;" }
+                        col { style: "width: 14%;" }
+                    }
                     thead {
                         tr {
-                            th { style: "width: 90px;", "Status" }
-                            th { style: "width: 22%;", "Variable" }
-                            th { style: "width: 32%;", "{baseline.name} (Baseline)" }
-                            th { style: "width: 32%;", "{target.name} (Target)" }
-                            th { style: "width: 14%; text-align: right;", "Action" }
+                            th { "Status" }
+                            th { "Variable" }
+                            th {
+                                class: "env-diff-th-resizable",
+                                "{baseline.name} (Baseline)"
+                                div {
+                                    class: if split_drag().is_some() { "env-diff-col-resizer active" } else { "env-diff-col-resizer" },
+                                    title: "Drag to resize Baseline / Target columns (double-click to reset 50/50)",
+                                    onmousedown: move |evt| {
+                                        evt.prevent_default();
+                                        evt.stop_propagation();
+                                        let start_x = evt.client_coordinates().x;
+                                        let start_pct = split_pct();
+                                        split_drag.set(Some((start_x, start_pct, table_width_px())));
+                                        spawn(async move {
+                                            if let Ok(v) = document::eval(
+                                                "const t = document.getElementById('np-env-diff-table'); return t ? t.getBoundingClientRect().width : 800;",
+                                            )
+                                            .await
+                                            {
+                                                if let Some(w) = v.as_f64().filter(|w| *w > 100.0) {
+                                                    table_width_px.set(w);
+                                                    if let Some((sx, sp, _)) = split_drag() {
+                                                        split_drag.set(Some((sx, sp, w)));
+                                                    }
+                                                }
+                                            }
+                                        });
+                                    },
+                                    ondoubleclick: move |evt| {
+                                        evt.stop_propagation();
+                                        split_pct.set(50.0);
+                                        split_drag.set(None);
+                                    },
+                                }
+                            }
+                            th { "{target.name} (Target)" }
+                            th { style: "text-align: right;", "Action" }
                         }
                     }
                     tbody {

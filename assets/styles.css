@@ -7231,7 +7231,8 @@ details.json-fold:not([open]) > summary .json-fold-close-comma {
 }
 
 /* —— Vars & Environments full page (Postman-style) —— */
-.vars-page {
+.vars-page,
+.stage-page {
   display: flex;
   flex-direction: column;
   flex: 1 1 0%;
@@ -7242,6 +7243,98 @@ details.json-fold:not([open]) > summary .json-fold-close-comma {
   box-sizing: border-box;
   background: var(--bg);
   overflow: hidden;
+}
+
+.stage-page-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-5);
+  border-bottom: 1px solid var(--border);
+  background: var(--glass-bg);
+  flex-shrink: 0;
+}
+
+.stage-page-head h2 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.stage-page-body {
+  flex: 1 1 0%;
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--space-4) var(--space-5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  box-sizing: border-box;
+}
+
+/* Runner in main stage: full-bleed 2-pane split */
+.runner-stage-page .stage-page-body.runner-modal-body {
+  padding: 0;
+  overflow: hidden;
+}
+
+.runner-stage-page .runner-workspace-grid {
+  flex: 1 1 0%;
+  min-height: 0;
+  max-height: none;
+  width: 100%;
+  height: 100%;
+  grid-template-columns: minmax(340px, 380px) minmax(0, 1fr);
+}
+
+.runner-stage-page .runner-req-checklist {
+  flex: 1 1 0%;
+  min-height: 0;
+  max-height: none;
+}
+
+.runner-stage-page .runner-output-pane {
+  min-height: 0;
+  gap: 10px;
+}
+
+.runner-right-tabs {
+  display: inline-flex;
+  align-self: flex-start;
+  gap: 4px;
+  background: var(--bg-hover);
+  padding: 3px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+/* Team in main stage: full-bleed meta bar + split diff panes */
+.team-stage-page .stage-page-body.team-modal-content {
+  padding: 0;
+  overflow: hidden;
+}
+
+/* Performance & Lint in main stage: full width of parent stage */
+.perf-stage-page .stage-page-body,
+.lint-stage-page .stage-page-body {
+  width: 100%;
+  max-width: none;
+  margin: 0;
+}
+
+.lint-stage-page .lint-summary {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 4px;
+}
+
+.lint-stage-page .lint-list {
+  max-height: none;
+  flex: 1 1 0%;
 }
 
 .vars-page-head {
@@ -12539,8 +12632,47 @@ kbd,
 
 .env-diff-table {
   width: 100%;
+  table-layout: fixed;
   border-collapse: collapse;
   font-size: 12px;
+}
+
+.env-diff-view.env-diff-resizing {
+  user-select: none;
+  cursor: col-resize;
+}
+
+.env-diff-th-resizable {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+}
+
+.env-diff-col-resizer {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 12px;
+  height: 100%;
+  cursor: col-resize;
+  z-index: 6;
+}
+
+.env-diff-col-resizer::after {
+  content: "";
+  position: absolute;
+  top: 5px;
+  bottom: 5px;
+  right: 2px;
+  width: 3px;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.28);
+  transition: background 120ms ease;
+}
+
+.env-diff-col-resizer:hover::after,
+.env-diff-col-resizer.active::after {
+  background: var(--accent, #1ed760);
 }
 
 .env-diff-table th {
@@ -12616,7 +12748,8 @@ kbd,
   overflow: hidden;
   text-overflow: ellipsis;
   display: block;
-  max-width: 320px;
+  width: 100%;
+  max-width: 100%;
 }
 
 .env-diff-val.val-present {

@@ -481,27 +481,35 @@ pub fn CommandPalette(
             PaletteAction::SendRequest => on_send.call(()),
             PaletteAction::SaveRequest => on_save.call(()),
             PaletteAction::NewTab => on_new_tab.call(()),
-            PaletteAction::OpenRunner => st.show_runner.set(true),
+            PaletteAction::OpenRunner => {
+                st.hide_stage_pages();
+                st.runner_tab_open.set(true);
+                st.show_runner.set(true);
+            }
             PaletteAction::ToggleConsole => st.console_open.set(!(st.console_open)()),
             PaletteAction::OpenVariables => {
+                st.hide_stage_pages();
                 st.vars_active_tab.set(0);
                 st.vars_tab_open.set(true);
-                st.show_settings.set(false);
                 st.show_vars.set(true);
             }
             PaletteAction::OpenVariablesDiff => {
+                st.hide_stage_pages();
                 st.vars_active_tab.set(2);
                 st.vars_tab_open.set(true);
-                st.show_settings.set(false);
                 st.show_vars.set(true);
             }
             PaletteAction::OpenSettings => {
+                st.hide_stage_pages();
                 st.settings_tab_open.set(true);
-                st.show_vars.set(false);
                 st.show_settings.set(true);
             }
             PaletteAction::OpenCookies => st.show_cookies.set(true),
-            PaletteAction::OpenPerformance => st.show_perf.set(true),
+            PaletteAction::OpenPerformance => {
+                st.hide_stage_pages();
+                st.perf_tab_open.set(true);
+                st.show_perf.set(true);
+            }
             PaletteAction::OpenTrash => st.show_trash.set(true),
             PaletteAction::OpenSnippets => st.show_snippets.set(true),
             PaletteAction::SwitchTheme(t) => {

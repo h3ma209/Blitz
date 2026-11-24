@@ -456,6 +456,9 @@ pub fn TopBar(st: WorkbenchState) -> Element {
                                 class: "menu-item",
                                 onclick: move |_| {
                                     tools_menu_open.set(false);
+                                    let mut st = st;
+                                    st.hide_stage_pages();
+                                    st.runner_tab_open.set(true);
                                     show_runner.set(true);
                                 },
                                 "Collection Runner…"
@@ -464,6 +467,9 @@ pub fn TopBar(st: WorkbenchState) -> Element {
                                 class: "menu-item",
                                 onclick: move |_| {
                                     tools_menu_open.set(false);
+                                    let mut st = st;
+                                    st.hide_stage_pages();
+                                    st.lint_tab_open.set(true);
                                     show_lint.set(true);
                                 },
                                 "Collection lint…"
@@ -472,6 +478,9 @@ pub fn TopBar(st: WorkbenchState) -> Element {
                                 class: "menu-item",
                                 onclick: move |_| {
                                     tools_menu_open.set(false);
+                                    let mut st = st;
+                                    st.hide_stage_pages();
+                                    st.perf_tab_open.set(true);
                                     show_perf.set(true);
                                 },
                                 "Performance…"

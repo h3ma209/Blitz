@@ -4,7 +4,6 @@
 use dioxus::prelude::*;
 use crate::core::{CommitDiffLineKind, TeamActivity};
 use crate::ui::loading::{SkeletonBars, Spinner};
-use super::ModalShell;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum TeamTab {
@@ -36,12 +35,18 @@ pub fn TeamModal(
     let display_remote_url = crate::core::cloud_sync::mask_remote_url(&activity.remote_url);
 
     rsx! {
-        ModalShell {
-            title: "Team Collaboration & Workspace Activity".to_string(),
-            on_close: move |_| on_close.call(()),
-            class: "team-modal".to_string(),
-
-            div { class: "team-modal-content",
+        div { class: "stage-page team-stage-page",
+            div { class: "stage-page-head",
+                h2 { "Team Collaboration & Workspace Activity" }
+                button {
+                    class: "btn btn-ghost vars-close-btn",
+                    r#type: "button",
+                    title: "Close (Esc)",
+                    onclick: move |_| on_close.call(()),
+                    "✕ Close (Esc)"
+                }
+            }
+            div { class: "stage-page-body team-modal-content",
                 // Top Meta & Actions Bar
                 div { class: "team-meta-bar",
                     div { class: "team-repo-info",

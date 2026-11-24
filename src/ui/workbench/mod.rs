@@ -35,7 +35,7 @@ use crate::ui::request_builder::{RequestBuilder, RequestVarEditEvent};
 use crate::ui::response_viewer::ResponseViewer;
 use crate::ui::settings_panel::{SettingsEvent, SettingsPanel};
 use crate::ui::sidebar::{Sidebar, SidebarAction, SidebarEvent};
-use crate::ui::workbench::modals::{VarsPage, WorkbenchModals};
+use crate::ui::workbench::modals::{StageToolPages, VarsPage, WorkbenchModals};
 use crate::ui::workbench::protocol_actions::run_protocol_action;
 use crate::ui::workbench::state::{
     apply_collection_env_pin, execute_tree_delete, sync_env_vars, ImpexModal,
@@ -485,8 +485,7 @@ pub fn Workbench() -> Element {
         open_tabs.set(tabs);
         draft.set(req);
         active_request_id.set(None);
-        show_settings.set(false);
-        show_vars.set(false);
+        st.hide_stage_pages();
         response.set(None);
         status_msg.set("new tab (unsaved)".into());
     });
@@ -568,8 +567,7 @@ pub fn Workbench() -> Element {
             draft.set(found.clone());
             active_request_id.set(Some(tid));
             editing_collection_id.set(None);
-            show_settings.set(false);
-            show_vars.set(false);
+            st.hide_stage_pages();
             if let Some((col_id, _)) = find_request_across(&collections(), tid) {
                 active_collection_id.set(Some(col_id));
                 if let Some(col) = collections().iter().find(|c| c.id == col_id) {
@@ -1312,8 +1310,7 @@ pub fn Workbench() -> Element {
                         active_request_id.set(Some(id));
                         active_collection_id.set(Some(col_id));
                         editing_collection_id.set(None);
-                        show_settings.set(false);
-                        show_vars.set(false);
+                        st.hide_stage_pages();
                         if let Some(col) = cols_snap.iter().find(|c| c.id == col_id) {
                             let mut v = vars();
                             v.collection = col.variables_map();
@@ -1350,8 +1347,7 @@ pub fn Workbench() -> Element {
                 active_collection_id.set(col_id);
                 editing_collection_id.set(col_id);
                 active_request_id.set(None);
-                show_settings.set(false);
-                show_vars.set(false);
+                st.hide_stage_pages();
                 if let Some(id) = col_id {
                     let cols = collections();
                     if let Some(col) = cols.iter().find(|c| c.id == id) {
@@ -1377,8 +1373,7 @@ pub fn Workbench() -> Element {
                 active_collection_id.set(Some(id));
                 editing_collection_id.set(Some(id));
                 active_request_id.set(None);
-                show_settings.set(false);
-                show_vars.set(false);
+                st.hide_stage_pages();
                 st.persist();
             }
             SidebarAction::NewFolder => {
@@ -2106,6 +2101,22 @@ pub fn Workbench() -> Element {
                             vars_tab_open.set(false);
                             show_vars.set(false);
                             st.persist();
+                        } else if show_runner() {
+                            let mut st = st;
+                            st.runner_tab_open.set(false);
+                            show_runner.set(false);
+                        } else if (st.show_perf)() {
+                            let mut st = st;
+                            st.perf_tab_open.set(false);
+                            st.show_perf.set(false);
+                        } else if (st.show_team)() {
+                            let mut st = st;
+                            st.team_tab_open.set(false);
+                            st.show_team.set(false);
+                        } else if (st.show_lint)() {
+                            let mut st = st;
+                            st.lint_tab_open.set(false);
+                            st.show_lint.set(false);
                         } else {
                             do_close_tab(draft().id);
                         }
@@ -2115,8 +2126,9 @@ pub fn Workbench() -> Element {
                         if show_settings() {
                             show_settings.set(false);
                         } else {
+                            let mut st = st;
+                            st.hide_stage_pages();
                             settings_tab_open.set(true);
-                            show_vars.set(false);
                             show_settings.set(true);
                         }
                     }
@@ -2127,9 +2139,10 @@ pub fn Workbench() -> Element {
                             show_vars.set(false);
                             st.persist();
                         } else {
+                            let mut st = st;
+                            st.hide_stage_pages();
                             st.vars_active_tab.set(0);
                             vars_tab_open.set(true);
-                            show_settings.set(false);
                             show_vars.set(true);
                         }
                     }
@@ -2708,7 +2721,8 @@ pub fn Workbench() -> Element {
                                     tabindex: "0",
                                     title: "Environments & Variables",
                                     onclick: move |_| {
-                                        show_settings.set(false);
+                                        let mut st = st;
+                                        st.hide_stage_pages();
                                         show_vars.set(true);
                                     },
                                     onmouseup: move |evt: MouseEvent| {
@@ -2741,6 +2755,150 @@ pub fn Workbench() -> Element {
                                     }
                                 }
                             }
+                            if (st.runner_tab_open)() {
+                                div {
+                                    class: if show_runner() { "tab active tab-settings" } else { "tab tab-settings" },
+                                    role: "button",
+                                    tabindex: "0",
+                                    title: "Collection Runner",
+                                    onclick: move |_| {
+                                        let mut st = st;
+                                        st.hide_stage_pages();
+                                        show_runner.set(true);
+                                    },
+                                    onmouseup: move |evt: MouseEvent| {
+                                        if evt.trigger_button() == Some(dioxus::html::input_data::MouseButton::Auxiliary) {
+                                            evt.prevent_default();
+                                            evt.stop_propagation();
+                                            let mut st = st;
+                                            st.runner_tab_open.set(false);
+                                            show_runner.set(false);
+                                        }
+                                    },
+                                    span { class: "tab-method method-settings", "▶" }
+                                    span { class: "tab-label", "Runner" }
+                                    button {
+                                        class: "tab-close",
+                                        r#type: "button",
+                                        title: "Close tab",
+                                        onclick: move |evt: MouseEvent| {
+                                            evt.stop_propagation();
+                                            let mut st = st;
+                                            st.runner_tab_open.set(false);
+                                            show_runner.set(false);
+                                        },
+                                        "×"
+                                    }
+                                }
+                            }
+                            if (st.perf_tab_open)() {
+                                div {
+                                    class: if (st.show_perf)() { "tab active tab-settings" } else { "tab tab-settings" },
+                                    role: "button",
+                                    tabindex: "0",
+                                    title: "Performance Benchmark & Load Tester",
+                                    onclick: move |_| {
+                                        let mut st = st;
+                                        st.hide_stage_pages();
+                                        st.show_perf.set(true);
+                                    },
+                                    onmouseup: move |evt: MouseEvent| {
+                                        if evt.trigger_button() == Some(dioxus::html::input_data::MouseButton::Auxiliary) {
+                                            evt.prevent_default();
+                                            evt.stop_propagation();
+                                            let mut st = st;
+                                            st.perf_tab_open.set(false);
+                                            st.show_perf.set(false);
+                                        }
+                                    },
+                                    span { class: "tab-method method-settings", "⚡" }
+                                    span { class: "tab-label", "Performance" }
+                                    button {
+                                        class: "tab-close",
+                                        r#type: "button",
+                                        title: "Close tab",
+                                        onclick: move |evt: MouseEvent| {
+                                            evt.stop_propagation();
+                                            let mut st = st;
+                                            st.perf_tab_open.set(false);
+                                            st.show_perf.set(false);
+                                        },
+                                        "×"
+                                    }
+                                }
+                            }
+                            if (st.team_tab_open)() {
+                                div {
+                                    class: if (st.show_team)() { "tab active tab-settings" } else { "tab tab-settings" },
+                                    role: "button",
+                                    tabindex: "0",
+                                    title: "Team Collaboration & Git Activity",
+                                    onclick: move |_| {
+                                        let mut st = st;
+                                        st.hide_stage_pages();
+                                        st.show_team.set(true);
+                                    },
+                                    onmouseup: move |evt: MouseEvent| {
+                                        if evt.trigger_button() == Some(dioxus::html::input_data::MouseButton::Auxiliary) {
+                                            evt.prevent_default();
+                                            evt.stop_propagation();
+                                            let mut st = st;
+                                            st.team_tab_open.set(false);
+                                            st.show_team.set(false);
+                                        }
+                                    },
+                                    span { class: "tab-method method-settings", "☁" }
+                                    span { class: "tab-label", "Team" }
+                                    button {
+                                        class: "tab-close",
+                                        r#type: "button",
+                                        title: "Close tab",
+                                        onclick: move |evt: MouseEvent| {
+                                            evt.stop_propagation();
+                                            let mut st = st;
+                                            st.team_tab_open.set(false);
+                                            st.show_team.set(false);
+                                        },
+                                        "×"
+                                    }
+                                }
+                            }
+                            if (st.lint_tab_open)() {
+                                div {
+                                    class: if (st.show_lint)() { "tab active tab-settings" } else { "tab tab-settings" },
+                                    role: "button",
+                                    tabindex: "0",
+                                    title: "Collection Lint & API Audit",
+                                    onclick: move |_| {
+                                        let mut st = st;
+                                        st.hide_stage_pages();
+                                        st.show_lint.set(true);
+                                    },
+                                    onmouseup: move |evt: MouseEvent| {
+                                        if evt.trigger_button() == Some(dioxus::html::input_data::MouseButton::Auxiliary) {
+                                            evt.prevent_default();
+                                            evt.stop_propagation();
+                                            let mut st = st;
+                                            st.lint_tab_open.set(false);
+                                            st.show_lint.set(false);
+                                        }
+                                    },
+                                    span { class: "tab-method method-settings", "✓" }
+                                    span { class: "tab-label", "Lint" }
+                                    button {
+                                        class: "tab-close",
+                                        r#type: "button",
+                                        title: "Close tab",
+                                        onclick: move |evt: MouseEvent| {
+                                            evt.stop_propagation();
+                                            let mut st = st;
+                                            st.lint_tab_open.set(false);
+                                            st.show_lint.set(false);
+                                        },
+                                        "×"
+                                    }
+                                }
+                            }
                             if settings_tab_open() {
                                 div {
                                     class: if show_settings() { "tab active tab-settings" } else { "tab tab-settings" },
@@ -2748,7 +2906,8 @@ pub fn Workbench() -> Element {
                                     tabindex: "0",
                                     title: "Settings & Preferences",
                                     onclick: move |_| {
-                                        show_vars.set(false);
+                                        let mut st = st;
+                                        st.hide_stage_pages();
                                         show_settings.set(true);
                                     },
                                     onmouseup: move |evt: MouseEvent| {
@@ -3079,6 +3238,8 @@ pub fn Workbench() -> Element {
                         }
                     } else if show_vars() {
                         VarsPage { st }
+                    } else if show_runner() || (st.show_perf)() || (st.show_team)() || (st.show_lint)() {
+                        StageToolPages { st }
                     } else if let Some(conflict) = conflict_state() {
                         ConflictResolver {
                             conflict: conflict.clone(),
@@ -3237,7 +3398,12 @@ pub fn Workbench() -> Element {
 
                                             div {
                                                 class: "workbench-empty-card",
-                                                onclick: move |_| show_runner.set(true),
+                                                onclick: move |_| {
+                                                    let mut st = st;
+                                                    st.hide_stage_pages();
+                                                    st.runner_tab_open.set(true);
+                                                    show_runner.set(true);
+                                                },
                                                 div { class: "empty-card-head",
                                                     span { class: "empty-card-tag", "AUTOMATION" }
                                                     kbd { class: "empty-card-kbd", "{m_pfx}⇧R" }
@@ -3249,8 +3415,10 @@ pub fn Workbench() -> Element {
                                             div {
                                                 class: "workbench-empty-card",
                                                 onclick: move |_| {
-                                                    let mut sig = st.show_perf;
-                                                    sig.set(true);
+                                                    let mut st = st;
+                                                    st.hide_stage_pages();
+                                                    st.perf_tab_open.set(true);
+                                                    st.show_perf.set(true);
                                                 },
                                                 div { class: "empty-card-head",
                                                     span { class: "empty-card-tag", "LOAD TEST" }

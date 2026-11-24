@@ -592,6 +592,8 @@ pub fn open_team_activity(mut st: WorkbenchState, toggle: bool) {
     let has_repo = is_git_repo(&clone_path);
 
     if !has_repo && (!settings.cloud_sync.enabled || settings.cloud_sync.remote_url.trim().is_empty()) {
+        st.hide_stage_pages();
+        st.team_tab_open.set(true);
         st.show_team.set(true);
         st.status_msg.set(
             "Configure Remote Git URL and enable Cloud Sync in Settings to view team activity".into(),
@@ -599,6 +601,8 @@ pub fn open_team_activity(mut st: WorkbenchState, toggle: bool) {
         return;
     }
 
+    st.hide_stage_pages();
+    st.team_tab_open.set(true);
     st.show_team.set(true);
     st.team_syncing.set(true);
     st.cloud_busy.set(true);

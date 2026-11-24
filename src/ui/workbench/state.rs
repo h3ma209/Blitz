@@ -149,6 +149,7 @@ pub struct WorkbenchState {
     pub settings_tab_open: Signal<bool>,
     pub settings_tab: Signal<crate::ui::settings_panel::SettingsTab>,
     pub show_runner: Signal<bool>,
+    pub runner_tab_open: Signal<bool>,
     pub runner_running: Signal<bool>,
     pub runner_report: Signal<Option<RunnerReport>>,
     pub trash: Signal<Vec<Collection>>,
@@ -169,7 +170,9 @@ pub struct WorkbenchState {
     pub protocol_logs: Signal<HashMap<Uuid, Vec<String>>>,
     pub proxy_port: Signal<Option<u16>>,
     pub show_lint: Signal<bool>,
+    pub lint_tab_open: Signal<bool>,
     pub show_perf: Signal<bool>,
+    pub perf_tab_open: Signal<bool>,
     pub perf_running: Signal<bool>,
     pub perf_report: Signal<Option<PerfReport>>,
     pub perf_vus: Signal<u32>,
@@ -180,6 +183,7 @@ pub struct WorkbenchState {
     pub cloud_menu_open: Signal<bool>,
     pub show_cookies: Signal<bool>,
     pub show_team: Signal<bool>,
+    pub team_tab_open: Signal<bool>,
     pub team_activity: Signal<TeamActivity>,
     pub show_col_vars: Signal<bool>,
     pub col_vars_all: Signal<bool>,
@@ -252,6 +256,7 @@ impl WorkbenchState {
             settings_tab_open: use_signal(|| false),
             settings_tab: use_signal(crate::ui::settings_panel::SettingsTab::default),
             show_runner: use_signal(|| false),
+            runner_tab_open: use_signal(|| false),
             runner_running: use_signal(|| false),
             runner_report: use_signal(|| None::<RunnerReport>),
             trash: use_signal(Vec::<Collection>::new),
@@ -272,7 +277,9 @@ impl WorkbenchState {
             protocol_logs: use_signal(HashMap::<Uuid, Vec<String>>::new),
             proxy_port: use_signal(|| None::<u16>),
             show_lint: use_signal(|| false),
+            lint_tab_open: use_signal(|| false),
             show_perf: use_signal(|| false),
+            perf_tab_open: use_signal(|| false),
             perf_running: use_signal(|| false),
             perf_report: use_signal(|| None::<PerfReport>),
             perf_vus: use_signal(|| 5u32),
@@ -283,6 +290,7 @@ impl WorkbenchState {
             cloud_menu_open: use_signal(|| false),
             show_cookies: use_signal(|| false),
             show_team: use_signal(|| false),
+            team_tab_open: use_signal(|| false),
             team_activity: use_signal(TeamActivity::default),
             show_col_vars: use_signal(|| false),
             col_vars_all: use_signal(|| false),
@@ -487,6 +495,16 @@ impl WorkbenchState {
 
     pub fn persist(&mut self) {
         self.schedule_save(false, true);
+    }
+
+    /// Hide all main-section tool/settings pages without closing their open tab chips.
+    pub fn hide_stage_pages(&mut self) {
+        self.show_settings.set(false);
+        self.show_vars.set(false);
+        self.show_runner.set(false);
+        self.show_perf.set(false);
+        self.show_team.set(false);
+        self.show_lint.set(false);
     }
 
     /// Update only cloud status/branch metadata on live `app_settings` without overwriting
@@ -1112,7 +1130,13 @@ impl WorkbenchState {
         self.show_settings.set(snap.show_settings);
         self.settings_tab_open.set(snap.show_settings);
         self.show_runner.set(false);
+        self.runner_tab_open.set(false);
         self.show_perf.set(false);
+        self.perf_tab_open.set(false);
+        self.show_team.set(false);
+        self.team_tab_open.set(false);
+        self.show_lint.set(false);
+        self.lint_tab_open.set(false);
         self.show_env_manager.set(false);
         self.show_col_vars.set(false);
         self.active_collection_id.set(active_col_id);

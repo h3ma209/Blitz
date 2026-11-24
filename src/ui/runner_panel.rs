@@ -9,7 +9,7 @@ use crate::runtime::{
     RunnerProgressSnapshot, RunnerReport,
 };
 use crate::ui::loading::{SkeletonBars, Spinner};
-use crate::ui::{EmptyState, ModalShell};
+use crate::ui::EmptyState;
 
 #[derive(Clone, PartialEq)]
 pub enum RunnerEvent {
@@ -147,6 +147,7 @@ pub fn RunnerPanel(
     let mut data_file = use_signal(String::new);
     let mut stop_on_error = use_signal(|| false);
     let mut persist_vars = use_signal(|| true);
+    let mut right_tab = use_signal(|| 0usize); // 0 = Sequence, 1 = Results
 
     let active_col = sel_col().and_then(|id| collections.iter().find(|c| c.id == id));
     let mut folder_paths = Vec::new();
@@ -234,11 +235,18 @@ pub fn RunnerPanel(
     };
 
     rsx! {
-        ModalShell {
-            title: "Collection Runner".to_string(),
-            class: "runner-modal".to_string(),
-            on_close: move |_| on_event.call(RunnerEvent::Close),
-            div { class: "modal-body runner-modal-body",
+        div { class: "stage-page runner-stage-page",
+            div { class: "stage-page-head",
+                h2 { "Collection Runner" }
+                button {
+                    class: "btn btn-ghost vars-close-btn",
+                    r#type: "button",
+                    title: "Close (Esc)",
+                    onclick: move |_| on_event.call(RunnerEvent::Close),
+                    "✕ Close (Esc)"
+                }
+            }
+            div { class: "stage-page-body runner-modal-body",
                 div { class: "runner-workspace-grid",
                     // Left Pane: Target, Flow Options & Interactive Drag-Drop Queue
                     div { class: "runner-setup-pane",
@@ -446,306 +454,7 @@ pub fn RunnerPanel(
                             }
                         }
 
-                        // Execution Queue Header + Quick Filter & Presets
-                        div { class: "runner-queue-header",
-                            span { class: "runner-section-title", style: "margin: 0;",
-                                "Execution Sequence ({selected_ids.len()}/{ordered_queue.len()}) · Drag to Reorder"
-                            }
-                        }
-
-                        div { class: "runner-queue-toolbar",
-                            input {
-                                class: "runner-queue-search",
-                                r#type: "text",
-                                placeholder: "Filter requests by name, folder, method…",
-                                value: "{queue_search()}",
-                                oninput: move |evt| queue_search.set(evt.value()),
-                            }
-                            div { class: "runner-preset-bar",
-                                button {
-                                    class: "runner-preset-chip",
-                                    r#type: "button",
-                                    onclick: move |_| excluded_ids.set(HashSet::new()),
-                                    "All"
-                                }
-                                button {
-                                    class: "runner-preset-chip",
-                                    r#type: "button",
-                                    onclick: {
-                                        let all_vis = ordered_ids.clone();
-                                        move |_| excluded_ids.set(all_vis.iter().copied().collect())
-                                    },
-                                    "None"
-                                }
-                                button {
-                                    class: "runner-preset-chip",
-                                    r#type: "button",
-                                    title: "Invert checked selection",
-                                    onclick: {
-                                        let all_vis = ordered_ids.clone();
-                                        move |_| {
-                                            let cur = excluded_ids();
-                                            let next: HashSet<Uuid> = all_vis
-                                                .iter()
-                                                .copied()
-                                                .filter(|id| !cur.contains(id))
-                                                .collect();
-                                            excluded_ids.set(next);
-                                        }
-                                    },
-                                    "Invert"
-                                }
-                                button {
-                                    class: "runner-preset-chip",
-                                    r#type: "button",
-                                    title: "Select safe read-only GET requests only",
-                                    onclick: {
-                                        let items = ordered_queue.clone();
-                                        move |_| {
-                                            let next: HashSet<Uuid> = items
-                                                .iter()
-                                                .filter(|(_, r)| r.method != HttpMethod::Get)
-                                                .map(|(_, r)| r.id)
-                                                .collect();
-                                            excluded_ids.set(next);
-                                        }
-                                    },
-                                    "GET Only"
-                                }
-                                button {
-                                    class: "runner-preset-chip",
-                                    r#type: "button",
-                                    title: "Select requests that have test assertions",
-                                    onclick: {
-                                        let items = ordered_queue.clone();
-                                        move |_| {
-                                            let next: HashSet<Uuid> = items
-                                                .iter()
-                                                .filter(|(_, r)| r.test_script.trim().is_empty())
-                                                .map(|(_, r)| r.id)
-                                                .collect();
-                                            excluded_ids.set(next);
-                                        }
-                                    },
-                                    "Has Tests"
-                                }
-                                span { class: "runner-preset-sep" }
-                                button {
-                                    class: "runner-preset-chip",
-                                    r#type: "button",
-                                    title: "Sort queue A → Z",
-                                    onclick: {
-                                        let mut items = ordered_queue.clone();
-                                        move |_| {
-                                            items.sort_by_key(|a| a.1.name.to_lowercase());
-                                            custom_order.set(items.iter().map(|(_, r)| r.id).collect());
-                                        }
-                                    },
-                                    "A→Z"
-                                }
-                                button {
-                                    class: "runner-preset-chip",
-                                    r#type: "button",
-                                    title: "Sort queue by HTTP method",
-                                    onclick: {
-                                        let mut items = ordered_queue.clone();
-                                        move |_| {
-                                            items.sort_by(|a, b| {
-                                                request_method_rank(&a.1)
-                                                    .cmp(&request_method_rank(&b.1))
-                                                    .then_with(|| a.1.name.to_lowercase().cmp(&b.1.name.to_lowercase()))
-                                            });
-                                            custom_order.set(items.iter().map(|(_, r)| r.id).collect());
-                                        }
-                                    },
-                                    "Method"
-                                }
-                                button {
-                                    class: "runner-preset-chip",
-                                    r#type: "button",
-                                    title: "Reverse current queue order",
-                                    onclick: {
-                                        let mut ids = ordered_ids.clone();
-                                        move |_| {
-                                            ids.reverse();
-                                            custom_order.set(ids.clone());
-                                        }
-                                    },
-                                    "Reverse"
-                                }
-                                button {
-                                    class: "runner-preset-chip",
-                                    r#type: "button",
-                                    title: "Reset queue back to collection tree order",
-                                    onclick: move |_| custom_order.set(Vec::new()),
-                                    "Reset"
-                                }
-                            }
-                        }
-
-                        div { class: "runner-req-checklist",
-                            if displayed_queue.is_empty() {
-                                div { class: "runner-queue-empty", "No matching requests in scope." }
-                            } else {
-                                for (pos, fp, req) in displayed_queue {
-                                    {
-                                        let rid = req.id;
-                                        let checked = !excluded_ids().contains(&rid);
-                                        let is_drag = dragging_id() == Some(rid);
-                                        let is_drop = drop_target_id() == Some(rid) && dragging_id() != Some(rid);
-                                        let badge = if req.protocol == RequestProtocol::Http {
-                                            req.method.as_str()
-                                        } else {
-                                            req.protocol.badge_label()
-                                        };
-                                        let m_cls = method_badge_class(badge);
-                                        let has_tests = !req.test_script.trim().is_empty();
-                                        let has_pre = !req.pre_request_script.trim().is_empty();
-                                        let total_len = ordered_ids.len();
-                                        let row_cls = match (checked, is_drag, is_drop) {
-                                            (_, true, _) => "runner-req-row is-dragging",
-                                            (_, _, true) => "runner-req-row is-drop-target",
-                                            (false, _, _) => "runner-req-row is-dim",
-                                            (true, false, false) => "runner-req-row",
-                                        };
-                                        let move_up = {
-                                            let mut move_fn = move_in_order.clone();
-                                            move |evt: Event<MouseData>| {
-                                                evt.stop_propagation();
-                                                evt.prevent_default();
-                                                if pos > 0 {
-                                                    move_fn(rid, pos - 1);
-                                                }
-                                            }
-                                        };
-                                        let move_dn = {
-                                            let mut move_fn = move_in_order.clone();
-                                            move |evt: Event<MouseData>| {
-                                                evt.stop_propagation();
-                                                evt.prevent_default();
-                                                if pos + 1 < total_len {
-                                                    move_fn(rid, pos + 1);
-                                                }
-                                            }
-                                        };
-                                        let handle_drop = {
-                                            let mut move_fn = move_in_order.clone();
-                                            move |evt: Event<DragData>| {
-                                                evt.prevent_default();
-                                                evt.stop_propagation();
-                                                if let Some(src) = dragging_id() {
-                                                    if src != rid {
-                                                        move_fn(src, pos);
-                                                    }
-                                                }
-                                                dragging_id.set(None);
-                                                drop_target_id.set(None);
-                                            }
-                                        };
-                                        let cur_col_id = sel_col().unwrap_or_default();
-                                        rsx! {
-                                            div {
-                                                key: "{rid}-{pos}",
-                                                class: "{row_cls}",
-                                                draggable: "true",
-                                                ondragstart: move |evt| {
-                                                    evt.stop_propagation();
-                                                    dragging_id.set(Some(rid));
-                                                    let _ = evt.data.data_transfer().set_data(
-                                                        "text/plain",
-                                                        &rid.to_string(),
-                                                    );
-                                                },
-                                                ondragover: move |evt| {
-                                                    if dragging_id().is_some_and(|s| s != rid) {
-                                                        evt.prevent_default();
-                                                        drop_target_id.set(Some(rid));
-                                                    }
-                                                },
-                                                ondragleave: move |_| {
-                                                    if drop_target_id() == Some(rid) {
-                                                        drop_target_id.set(None);
-                                                    }
-                                                },
-                                                ondragend: move |_| {
-                                                    dragging_id.set(None);
-                                                    drop_target_id.set(None);
-                                                },
-                                                ondrop: handle_drop,
-                                                span { class: "runner-drag-handle", title: "Drag to reorder", "⋮⋮" }
-                                                input {
-                                                    r#type: "checkbox",
-                                                    checked,
-                                                    onclick: move |evt| evt.stop_propagation(),
-                                                    onchange: move |evt| {
-                                                        let mut set = excluded_ids();
-                                                        if evt.checked() {
-                                                            set.remove(&rid);
-                                                        } else {
-                                                            set.insert(rid);
-                                                        }
-                                                        excluded_ids.set(set);
-                                                    }
-                                                }
-                                                span { class: "runner-req-idx", "{pos + 1}" }
-                                                span { class: "method-badge method-{m_cls}", "{badge}" }
-                                                span { class: "runner-req-label",
-                                                    if !fp.is_empty() {
-                                                        span { class: "runner-req-folder", "{fp} / " }
-                                                    }
-                                                    "{req.name}"
-                                                }
-                                                if has_pre {
-                                                    span { class: "runner-mini-tag", "pre" }
-                                                }
-                                                if has_tests {
-                                                    span { class: "runner-mini-tag test", "tests" }
-                                                }
-                                                div { class: "runner-row-actions",
-                                                    button {
-                                                        class: "runner-row-btn",
-                                                        r#type: "button",
-                                                        title: "Move up",
-                                                        disabled: pos == 0,
-                                                        onclick: move_up,
-                                                        "↑"
-                                                    }
-                                                    button {
-                                                        class: "runner-row-btn",
-                                                        r#type: "button",
-                                                        title: "Move down",
-                                                        disabled: pos + 1 >= total_len,
-                                                        onclick: move_dn,
-                                                        "↓"
-                                                    }
-                                                    button {
-                                                        class: "runner-row-btn",
-                                                        r#type: "button",
-                                                        title: "Open request in workbench",
-                                                        onclick: move |evt| {
-                                                            evt.stop_propagation();
-                                                            on_event.call(RunnerEvent::OpenRequest {
-                                                                collection_id: cur_col_id,
-                                                                request_id: rid,
-                                                            });
-                                                        },
-                                                        "↗"
-                                                    }
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-
                         div { class: "runner-run-footer",
-                            button {
-                                class: "btn btn-ghost",
-                                r#type: "button",
-                                onclick: move |_| on_event.call(RunnerEvent::Close),
-                                "Close"
-                            }
                             if running {
                                 button {
                                     class: "btn btn-ghost btn-cancel",
@@ -765,6 +474,7 @@ pub fn RunnerPanel(
                                         let sel_vec = selected_ids.clone();
                                         move |_| {
                                             if let Some(id) = sel_col() {
+                                                right_tab.set(1);
                                                 on_event.call(RunnerEvent::Run {
                                                     collection_id: id,
                                                     folder_filter: folder_filter(),
@@ -785,9 +495,322 @@ pub fn RunnerPanel(
                         }
                     }
 
-                    // Right Pane: Analytics Dashboard & Expandable Results Inspector
+                    // Right Pane: Execution Sequence (pre-run) & Live Results Inspector (during/post-run)
                     div { class: "runner-output-pane",
-                        if running && report.is_none() {
+                        if running || report.is_some() {
+                            div { class: "runner-right-tabs",
+                                button {
+                                    class: if right_tab() == 1 { "vars-tab active" } else { "vars-tab" },
+                                    r#type: "button",
+                                    onclick: move |_| right_tab.set(1),
+                                    if running && report.is_none() {
+                                        "Live Run"
+                                    } else {
+                                        "Results"
+                                    }
+                                }
+                                button {
+                                    class: if right_tab() == 0 { "vars-tab active" } else { "vars-tab" },
+                                    r#type: "button",
+                                    onclick: move |_| right_tab.set(0),
+                                    "Execution Sequence ({selected_ids.len()}/{ordered_queue.len()})"
+                                }
+                            }
+                        }
+
+                        if (!running && report.is_none()) || right_tab() == 0 {
+                            div { class: "runner-queue-header",
+                                span { class: "runner-section-title", style: "margin: 0;",
+                                    "Execution Sequence ({selected_ids.len()}/{ordered_queue.len()}) · Drag to Reorder"
+                                }
+                            }
+
+                            div { class: "runner-queue-toolbar",
+                                input {
+                                    class: "runner-queue-search",
+                                    r#type: "text",
+                                    placeholder: "Filter requests by name, folder, method…",
+                                    value: "{queue_search()}",
+                                    oninput: move |evt| queue_search.set(evt.value()),
+                                }
+                                div { class: "runner-preset-bar",
+                                    button {
+                                        class: "runner-preset-chip",
+                                        r#type: "button",
+                                        onclick: move |_| excluded_ids.set(HashSet::new()),
+                                        "All"
+                                    }
+                                    button {
+                                        class: "runner-preset-chip",
+                                        r#type: "button",
+                                        onclick: {
+                                            let all_vis = ordered_ids.clone();
+                                            move |_| excluded_ids.set(all_vis.iter().copied().collect())
+                                        },
+                                        "None"
+                                    }
+                                    button {
+                                        class: "runner-preset-chip",
+                                        r#type: "button",
+                                        title: "Invert checked selection",
+                                        onclick: {
+                                            let all_vis = ordered_ids.clone();
+                                            move |_| {
+                                                let cur = excluded_ids();
+                                                let next: HashSet<Uuid> = all_vis
+                                                    .iter()
+                                                    .copied()
+                                                    .filter(|id| !cur.contains(id))
+                                                    .collect();
+                                                excluded_ids.set(next);
+                                            }
+                                        },
+                                        "Invert"
+                                    }
+                                    button {
+                                        class: "runner-preset-chip",
+                                        r#type: "button",
+                                        title: "Select safe read-only GET requests only",
+                                        onclick: {
+                                            let items = ordered_queue.clone();
+                                            move |_| {
+                                                let next: HashSet<Uuid> = items
+                                                    .iter()
+                                                    .filter(|(_, r)| r.method != HttpMethod::Get)
+                                                    .map(|(_, r)| r.id)
+                                                    .collect();
+                                                excluded_ids.set(next);
+                                            }
+                                        },
+                                        "GET Only"
+                                    }
+                                    button {
+                                        class: "runner-preset-chip",
+                                        r#type: "button",
+                                        title: "Select requests that have test assertions",
+                                        onclick: {
+                                            let items = ordered_queue.clone();
+                                            move |_| {
+                                                let next: HashSet<Uuid> = items
+                                                    .iter()
+                                                    .filter(|(_, r)| r.test_script.trim().is_empty())
+                                                    .map(|(_, r)| r.id)
+                                                    .collect();
+                                                excluded_ids.set(next);
+                                            }
+                                        },
+                                        "Has Tests"
+                                    }
+                                    span { class: "runner-preset-sep" }
+                                    button {
+                                        class: "runner-preset-chip",
+                                        r#type: "button",
+                                        title: "Sort queue A → Z",
+                                        onclick: {
+                                            let mut items = ordered_queue.clone();
+                                            move |_| {
+                                                items.sort_by_key(|a| a.1.name.to_lowercase());
+                                                custom_order.set(items.iter().map(|(_, r)| r.id).collect());
+                                            }
+                                        },
+                                        "A→Z"
+                                    }
+                                    button {
+                                        class: "runner-preset-chip",
+                                        r#type: "button",
+                                        title: "Sort queue by HTTP method",
+                                        onclick: {
+                                            let mut items = ordered_queue.clone();
+                                            move |_| {
+                                                items.sort_by(|a, b| {
+                                                    request_method_rank(&a.1)
+                                                        .cmp(&request_method_rank(&b.1))
+                                                        .then_with(|| a.1.name.to_lowercase().cmp(&b.1.name.to_lowercase()))
+                                                });
+                                                custom_order.set(items.iter().map(|(_, r)| r.id).collect());
+                                            }
+                                        },
+                                        "Method"
+                                    }
+                                    button {
+                                        class: "runner-preset-chip",
+                                        r#type: "button",
+                                        title: "Reverse current queue order",
+                                        onclick: {
+                                            let mut ids = ordered_ids.clone();
+                                            move |_| {
+                                                ids.reverse();
+                                                custom_order.set(ids.clone());
+                                            }
+                                        },
+                                        "Reverse"
+                                    }
+                                    button {
+                                        class: "runner-preset-chip",
+                                        r#type: "button",
+                                        title: "Reset queue back to collection tree order",
+                                        onclick: move |_| custom_order.set(Vec::new()),
+                                        "Reset"
+                                    }
+                                }
+                            }
+
+                            div { class: "runner-req-checklist",
+                                if displayed_queue.is_empty() {
+                                    div { class: "runner-queue-empty", "No matching requests in scope." }
+                                } else {
+                                    for (pos, fp, req) in displayed_queue {
+                                        {
+                                            let rid = req.id;
+                                            let checked = !excluded_ids().contains(&rid);
+                                            let is_drag = dragging_id() == Some(rid);
+                                            let is_drop = drop_target_id() == Some(rid) && dragging_id() != Some(rid);
+                                            let badge = if req.protocol == RequestProtocol::Http {
+                                                req.method.as_str()
+                                            } else {
+                                                req.protocol.badge_label()
+                                            };
+                                            let m_cls = method_badge_class(badge);
+                                            let has_tests = !req.test_script.trim().is_empty();
+                                            let has_pre = !req.pre_request_script.trim().is_empty();
+                                            let total_len = ordered_ids.len();
+                                            let row_cls = match (checked, is_drag, is_drop) {
+                                                (_, true, _) => "runner-req-row is-dragging",
+                                                (_, _, true) => "runner-req-row is-drop-target",
+                                                (false, _, _) => "runner-req-row is-dim",
+                                                (true, false, false) => "runner-req-row",
+                                            };
+                                            let move_up = {
+                                                let mut move_fn = move_in_order.clone();
+                                                move |evt: Event<MouseData>| {
+                                                    evt.stop_propagation();
+                                                    evt.prevent_default();
+                                                    if pos > 0 {
+                                                        move_fn(rid, pos - 1);
+                                                    }
+                                                }
+                                            };
+                                            let move_dn = {
+                                                let mut move_fn = move_in_order.clone();
+                                                move |evt: Event<MouseData>| {
+                                                    evt.stop_propagation();
+                                                    evt.prevent_default();
+                                                    if pos + 1 < total_len {
+                                                        move_fn(rid, pos + 1);
+                                                    }
+                                                }
+                                            };
+                                            let handle_drop = {
+                                                let mut move_fn = move_in_order.clone();
+                                                move |evt: Event<DragData>| {
+                                                    evt.prevent_default();
+                                                    evt.stop_propagation();
+                                                    if let Some(src) = dragging_id() {
+                                                        if src != rid {
+                                                            move_fn(src, pos);
+                                                        }
+                                                    }
+                                                    dragging_id.set(None);
+                                                    drop_target_id.set(None);
+                                                }
+                                            };
+                                            let cur_col_id = sel_col().unwrap_or_default();
+                                            rsx! {
+                                                div {
+                                                    key: "{rid}-{pos}",
+                                                    class: "{row_cls}",
+                                                    draggable: "true",
+                                                    ondragstart: move |evt| {
+                                                        evt.stop_propagation();
+                                                        dragging_id.set(Some(rid));
+                                                        let _ = evt.data.data_transfer().set_data(
+                                                            "text/plain",
+                                                            &rid.to_string(),
+                                                        );
+                                                    },
+                                                    ondragover: move |evt| {
+                                                        if dragging_id().is_some_and(|s| s != rid) {
+                                                            evt.prevent_default();
+                                                            drop_target_id.set(Some(rid));
+                                                        }
+                                                    },
+                                                    ondragleave: move |_| {
+                                                        if drop_target_id() == Some(rid) {
+                                                            drop_target_id.set(None);
+                                                        }
+                                                    },
+                                                    ondragend: move |_| {
+                                                        dragging_id.set(None);
+                                                        drop_target_id.set(None);
+                                                    },
+                                                    ondrop: handle_drop,
+                                                    span { class: "runner-drag-handle", title: "Drag to reorder", "⋮⋮" }
+                                                    input {
+                                                        r#type: "checkbox",
+                                                        checked,
+                                                        onclick: move |evt| evt.stop_propagation(),
+                                                        onchange: move |evt| {
+                                                            let mut set = excluded_ids();
+                                                            if evt.checked() {
+                                                                set.remove(&rid);
+                                                            } else {
+                                                                set.insert(rid);
+                                                            }
+                                                            excluded_ids.set(set);
+                                                        }
+                                                    }
+                                                    span { class: "runner-req-idx", "{pos + 1}" }
+                                                    span { class: "method-badge method-{m_cls}", "{badge}" }
+                                                    span { class: "runner-req-label",
+                                                        if !fp.is_empty() {
+                                                            span { class: "runner-req-folder", "{fp} / " }
+                                                        }
+                                                        "{req.name}"
+                                                    }
+                                                    if has_pre {
+                                                        span { class: "runner-mini-tag", "pre" }
+                                                    }
+                                                    if has_tests {
+                                                        span { class: "runner-mini-tag test", "tests" }
+                                                    }
+                                                    div { class: "runner-row-actions",
+                                                        button {
+                                                            class: "runner-row-btn",
+                                                            r#type: "button",
+                                                            title: "Move up",
+                                                            disabled: pos == 0,
+                                                            onclick: move_up,
+                                                            "↑"
+                                                        }
+                                                        button {
+                                                            class: "runner-row-btn",
+                                                            r#type: "button",
+                                                            title: "Move down",
+                                                            disabled: pos + 1 >= total_len,
+                                                            onclick: move_dn,
+                                                            "↓"
+                                                        }
+                                                        button {
+                                                            class: "runner-row-btn",
+                                                            r#type: "button",
+                                                            title: "Open request in workbench",
+                                                            onclick: move |evt| {
+                                                                evt.stop_propagation();
+                                                                on_event.call(RunnerEvent::OpenRequest {
+                                                                    collection_id: cur_col_id,
+                                                                    request_id: rid,
+                                                                });
+                                                            },
+                                                            "↗"
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        } else if running && report.is_none() {
                             div { class: "runner-running-state",
                                 {
                                     let snap = progress.clone().unwrap_or_default();

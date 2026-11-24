@@ -3,7 +3,7 @@ use uuid::Uuid;
 
 use crate::core::{Collection, PerfReport};
 use crate::runtime::ordered_requests;
-use crate::ui::{icons::ActionIcon, loading::Spinner, ModalShell};
+use crate::ui::{icons::ActionIcon, loading::Spinner};
 
 #[component]
 pub fn PerformanceModal(
@@ -30,11 +30,18 @@ pub fn PerformanceModal(
     let requests = current_col.map(ordered_requests).unwrap_or_default();
 
     rsx! {
-        ModalShell {
-            title: "Performance Benchmark & Load Tester".to_string(),
-            class: "perf-runner-modal".to_string(),
-            on_close: move |_| on_close.call(()),
-            div { class: "modal-body perf-modal-body",
+        div { class: "stage-page perf-stage-page",
+            div { class: "stage-page-head",
+                h2 { "Performance Benchmark & Load Tester" }
+                button {
+                    class: "btn btn-ghost vars-close-btn",
+                    r#type: "button",
+                    title: "Close (Esc)",
+                    onclick: move |_| on_close.call(()),
+                    "✕ Close (Esc)"
+                }
+            }
+            div { class: "stage-page-body perf-modal-body",
                 p { class: "hint",
                     "Simulate concurrent virtual users (VUs) hitting your endpoints. Pure native Tokio/Rust threads with sub-millisecond telemetry."
                 }
