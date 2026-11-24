@@ -20,6 +20,7 @@ pub enum PaletteAction {
     OpenVariables,
     OpenVariablesDiff,
     OpenSettings,
+    OpenWhatsNew,
     OpenCookies,
     OpenPerformance,
     OpenTrash,
@@ -282,6 +283,14 @@ fn build_entries(st: &WorkbenchState) -> Vec<PaletteEntry> {
         },
         PaletteEntry {
             category: "Action",
+            title: "What's New / Release Notes".into(),
+            subtitle: "View recent updates, new features, and release changelog".into(),
+            shortcut: None,
+            badge: None,
+            action: PaletteAction::OpenWhatsNew,
+        },
+        PaletteEntry {
+            category: "Action",
             title: "Open Cookie Jar".into(),
             subtitle: "Inspect or clear stored HTTP cookies".into(),
             shortcut: None,
@@ -503,6 +512,11 @@ pub fn CommandPalette(
                 st.hide_stage_pages();
                 st.settings_tab_open.set(true);
                 st.show_settings.set(true);
+            }
+            PaletteAction::OpenWhatsNew => {
+                st.hide_stage_pages();
+                st.whats_new_tab_open.set(true);
+                st.show_whats_new.set(true);
             }
             PaletteAction::OpenCookies => st.show_cookies.set(true),
             PaletteAction::OpenPerformance => {

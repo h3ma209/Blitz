@@ -735,6 +735,9 @@ pub struct AppSettings {
     /// Bookmarked storage roots (project `.blitz` dirs, etc.).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub storage_roots: Vec<String>,
+    /// Last app version whose "What's New" tab was shown to the user.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub last_seen_version: String,
 }
 
 impl AppSettings {

@@ -951,6 +951,7 @@ pub fn SettingsPanel(
                                                                                             if r.is_empty() { data_root() } else { r }
                                                                                         },
                                                                                         storage_roots: storage_roots(),
+                                                                                        last_seen_version: cur.last_seen_version,
                                                                                     }));
                                                                                 },
                                                                                 "Switch"
@@ -1145,6 +1146,7 @@ pub fn SettingsPanel(
                                 if r.is_empty() { data_root() } else { r }
                             },
                             storage_roots: storage_roots(),
+                            last_seen_version: cur.last_seen_version,
                         }));
                     },
                     "Save Changes"

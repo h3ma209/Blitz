@@ -171,6 +171,9 @@ pub struct WorkbenchState {
     pub proxy_port: Signal<Option<u16>>,
     pub show_lint: Signal<bool>,
     pub lint_tab_open: Signal<bool>,
+    pub show_whats_new: Signal<bool>,
+    pub whats_new_tab_open: Signal<bool>,
+    pub upgraded_from_version: Signal<Option<String>>,
     pub show_perf: Signal<bool>,
     pub perf_tab_open: Signal<bool>,
     pub perf_running: Signal<bool>,
@@ -279,6 +282,9 @@ impl WorkbenchState {
             proxy_port: use_signal(|| None::<u16>),
             show_lint: use_signal(|| false),
             lint_tab_open: use_signal(|| false),
+            show_whats_new: use_signal(|| false),
+            whats_new_tab_open: use_signal(|| false),
+            upgraded_from_version: use_signal(|| None::<String>),
             show_perf: use_signal(|| false),
             perf_tab_open: use_signal(|| false),
             perf_running: use_signal(|| false),
@@ -507,6 +513,7 @@ impl WorkbenchState {
         self.show_perf.set(false);
         self.show_team.set(false);
         self.show_lint.set(false);
+        self.show_whats_new.set(false);
     }
 
     /// Update only cloud status/branch metadata on live `app_settings` without overwriting
@@ -1139,6 +1146,8 @@ impl WorkbenchState {
         self.team_tab_open.set(false);
         self.show_lint.set(false);
         self.lint_tab_open.set(false);
+        self.show_whats_new.set(false);
+        self.whats_new_tab_open.set(false);
         self.show_env_manager.set(false);
         self.show_col_vars.set(false);
         self.active_collection_id.set(active_col_id);

@@ -480,6 +480,17 @@ pub fn TopBar(st: WorkbenchState) -> Element {
                                     tools_menu_open.set(false);
                                     let mut st = st;
                                     st.hide_stage_pages();
+                                    st.whats_new_tab_open.set(true);
+                                    st.show_whats_new.set(true);
+                                },
+                                "What's New…"
+                            }
+                            button {
+                                class: "menu-item",
+                                onclick: move |_| {
+                                    tools_menu_open.set(false);
+                                    let mut st = st;
+                                    st.hide_stage_pages();
                                     st.perf_tab_open.set(true);
                                     show_perf.set(true);
                                 },

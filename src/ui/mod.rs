@@ -30,6 +30,7 @@ mod sidebar_shortcuts;
 mod team_modal;
 mod toast;
 mod var_hover;
+mod whats_new_panel;
 pub(crate) mod workbench;
 
 pub(crate) use assertions_editor::AssertionsEditor;
@@ -44,6 +45,7 @@ pub(crate) use empty_state::EmptyState;
 pub(crate) use modal_shell::ModalShell;
 pub(crate) use env_diff_view::EnvDiffView;
 pub(crate) use perf_modal::PerformanceModal;
+pub(crate) use whats_new_panel::{WhatsNewAction, WhatsNewPanel};
 
 pub(crate) use code_editor::ScriptCodeEditor;
 pub(crate) use line_comments::CommentableTextarea;

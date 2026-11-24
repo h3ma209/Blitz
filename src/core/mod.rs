@@ -38,6 +38,7 @@ pub mod scripts;
 pub mod settings;
 pub mod variables;
 pub mod vault;
+pub mod whats_new;
 pub mod updater;
 
 pub use auth_extra::base64_encode;
@@ -151,4 +152,8 @@ pub use updater::{
     install_update_and_restart, is_newer_version, open_browser_url, platform_asset_name,
     reveal_or_open_installer, verify_sha256_manifest, UpdateInfo, UpdateProgress, UpdateStage,
     CURRENT_VERSION,
+};
+pub use whats_new::{
+    fetch_github_release_notes, release_notes, should_open_whats_new, ReleaseEntry,
+    ReleaseSection, RemoteReleaseNote,
 };

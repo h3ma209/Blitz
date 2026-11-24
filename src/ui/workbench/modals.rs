@@ -29,6 +29,7 @@ use crate::ui::workbench::state::{
 };
 use crate::ui::{
     CommentableTextarea, EnvDiffView, LintPanel, ModalShell, PerformanceModal, TeamModal,
+    WhatsNewAction, WhatsNewPanel,
 };
 
 #[component]
@@ -714,6 +715,39 @@ pub fn StageToolPages(st: WorkbenchState) -> Element {
                                 st.persist();
                             }
                         });
+                    }
+                },
+            }
+        } else if (st.show_whats_new)() {
+            WhatsNewPanel {
+                upgraded_from: (st.upgraded_from_version)(),
+                on_action: move |act| {
+                    let mut st_m = st;
+                    match act {
+                        WhatsNewAction::Close => {
+                            st_m.whats_new_tab_open.set(false);
+                            st_m.show_whats_new.set(false);
+                        }
+                        WhatsNewAction::OpenSettings => {
+                            st_m.hide_stage_pages();
+                            st_m.settings_tab_open.set(true);
+                            st_m.show_settings.set(true);
+                        }
+                        WhatsNewAction::OpenEnvironments => {
+                            st_m.hide_stage_pages();
+                            st_m.vars_tab_open.set(true);
+                            st_m.show_vars.set(true);
+                        }
+                        WhatsNewAction::OpenRunner => {
+                            st_m.hide_stage_pages();
+                            st_m.runner_tab_open.set(true);
+                            st_m.show_runner.set(true);
+                        }
+                        WhatsNewAction::OpenLint => {
+                            st_m.hide_stage_pages();
+                            st_m.lint_tab_open.set(true);
+                            st_m.show_lint.set(true);
+                        }
                     }
                 },
             }

@@ -186,7 +186,26 @@ pub fn Workbench() -> Element {
             pane_h.set(app_settings().ui.request_pane_height_px as f64);
             console_h.set(app_settings().ui.console_height_px as f64);
         }
-        let splash_hold = app_settings().ui.clamped().splash_min_ms as u64;
+            let splash_hold = app_settings().ui.clamped().splash_min_ms as u64;
+        // Open "What's New" stage tab once per updated app version.
+        {
+            let mut cur_settings = app_settings();
+            if crate::core::should_open_whats_new(
+                &cur_settings.last_seen_version,
+                crate::core::CURRENT_VERSION,
+            ) {
+                let prev = cur_settings.last_seen_version.clone();
+                let mut st_wn = st;
+                st_wn.upgraded_from_version.set(if prev.is_empty() { None } else { Some(prev) });
+                st_wn.hide_stage_pages();
+                st_wn.whats_new_tab_open.set(true);
+                st_wn.show_whats_new.set(true);
+                cur_settings.last_seen_version = crate::core::CURRENT_VERSION.to_string();
+                let mut app_settings_sig = app_settings;
+                app_settings_sig.set(cur_settings);
+                st_wn.persist_now();
+            }
+        }
         spawn(async move {
             tokio::time::sleep(Duration::from_millis(splash_hold)).await;
             splash_leaving.set(true);
@@ -2122,6 +2141,10 @@ pub fn Workbench() -> Element {
                             let mut st = st;
                             st.lint_tab_open.set(false);
                             st.show_lint.set(false);
+                        } else if (st.show_whats_new)() {
+                            let mut st = st;
+                            st.whats_new_tab_open.set(false);
+                            st.show_whats_new.set(false);
                         } else {
                             do_close_tab(draft().id);
                         }
@@ -2319,6 +2342,9 @@ pub fn Workbench() -> Element {
                             sig.set(false);
                         } else if (st.show_lint)() {
                             let mut sig = st.show_lint;
+                            sig.set(false);
+                        } else if (st.show_whats_new)() {
+                            let mut sig = st.show_whats_new;
                             sig.set(false);
                         } else if (st.show_trash)() {
                             let mut sig = st.show_trash;
@@ -2665,6 +2691,9 @@ pub fn Workbench() -> Element {
                         } else if (st.show_lint)() {
                             let mut sig = st.show_lint;
                             sig.set(false);
+                        } else if (st.show_whats_new)() {
+                            let mut sig = st.show_whats_new;
+                            sig.set(false);
                         } else if (st.show_trash)() {
                             let mut sig = st.show_trash;
                             sig.set(false);
@@ -2899,6 +2928,42 @@ pub fn Workbench() -> Element {
                                             let mut st = st;
                                             st.lint_tab_open.set(false);
                                             st.show_lint.set(false);
+                                        },
+                                        "×"
+                                    }
+                                }
+                            }
+                            if (st.whats_new_tab_open)() {
+                                div {
+                                    class: if (st.show_whats_new)() { "tab active tab-settings" } else { "tab tab-settings" },
+                                    role: "button",
+                                    tabindex: "0",
+                                    title: "What's New in Blitz",
+                                    onclick: move |_| {
+                                        let mut st = st;
+                                        st.hide_stage_pages();
+                                        st.show_whats_new.set(true);
+                                    },
+                                    onmouseup: move |evt: MouseEvent| {
+                                        if evt.trigger_button() == Some(dioxus::html::input_data::MouseButton::Auxiliary) {
+                                            evt.prevent_default();
+                                            evt.stop_propagation();
+                                            let mut st = st;
+                                            st.whats_new_tab_open.set(false);
+                                            st.show_whats_new.set(false);
+                                        }
+                                    },
+                                    span { class: "tab-method method-settings", "★" }
+                                    span { class: "tab-label", "What's New" }
+                                    button {
+                                        class: "tab-close",
+                                        r#type: "button",
+                                        title: "Close tab",
+                                        onclick: move |evt: MouseEvent| {
+                                            evt.stop_propagation();
+                                            let mut st = st;
+                                            st.whats_new_tab_open.set(false);
+                                            st.show_whats_new.set(false);
                                         },
                                         "×"
                                     }
@@ -3243,7 +3308,7 @@ pub fn Workbench() -> Element {
                         }
                     } else if show_vars() {
                         VarsPage { st }
-                    } else if show_runner() || (st.show_perf)() || (st.show_team)() || (st.show_lint)() {
+                    } else if show_runner() || (st.show_perf)() || (st.show_team)() || (st.show_lint)() || (st.show_whats_new)() {
                         StageToolPages { st }
                     } else if let Some(conflict) = conflict_state() {
                         ConflictResolver {
