@@ -14,7 +14,9 @@ use uuid::Uuid;
 use crate::core::assertions::{assertions_to_script, suggest_from_response};
 use crate::core::codegen::{generate_snippet_resolved, snippet_languages};
 use crate::core::collection::{
-    find_request_across, flatten_collections, remove_across, Collection, CollectionItem, Folder,
+    duplicate_across, find_request_across, flatten_collections, move_item_to, remove_across,
+    rename_across, reorder_before, reorder_to_index, sort_collections_by, sort_parent_node_by,
+    Collection, CollectionItem, CollectionSortMode, Folder,
 };
 use crate::core::collection_lint::{lint_collections, lint_error_count, LintSeverity};
 use crate::core::cookies::Cookie;
@@ -955,9 +957,51 @@ fn list_mcp_tools() -> Vec<JsonValue> {
                     "description": {
                         "type": "string",
                         "description": "Optional description of the folder's purpose."
+                    },
+                    "position": {
+                        "type": "integer",
+                        "description": "Optional 0-based index within the parent's items list (appends to end if omitted)."
                     }
                 },
                 "required": ["collection", "name"]
+            }
+        }),
+        json!({
+            "name": "blitz_update_folder",
+            "description": "Updates an existing folder's name, description, scripts, or inherited auth configuration.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "collection": {
+                        "type": "string",
+                        "description": "UUID or name of the collection containing the folder."
+                    },
+                    "folder": {
+                        "type": "string",
+                        "description": "UUID, name, or slash-separated path of the folder (e.g. 'Users' or 'Users/Auth')."
+                    },
+                    "name": {
+                        "type": "string",
+                        "description": "Optional new name for the folder."
+                    },
+                    "description": {
+                        "type": "string",
+                        "description": "Optional new description."
+                    },
+                    "pre_request_script": {
+                        "type": "string",
+                        "description": "Optional JavaScript pre-request script for all requests in this folder."
+                    },
+                    "test_script": {
+                        "type": "string",
+                        "description": "Optional JavaScript post-response test script for all requests in this folder."
+                    },
+                    "auth": {
+                        "type": "object",
+                        "description": "Optional auth config: { type: 'inherit'|'no_auth'|'bearer'|'basic'|'api_key', token?, username?, password?, header? }."
+                    }
+                },
+                "required": ["collection", "folder"]
             }
         }),
         json!({
@@ -976,6 +1020,194 @@ fn list_mcp_tools() -> Vec<JsonValue> {
                     }
                 },
                 "required": ["collection", "folder"]
+            }
+        }),
+        json!({
+            "name": "blitz_create_collection",
+            "description": "Creates a new empty Blitz collection with optional description, scripts, auth, icon, color, and favorite flag.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "name": {
+                        "type": "string",
+                        "description": "Name of the new collection."
+                    },
+                    "description": {
+                        "type": "string",
+                        "description": "Optional collection description."
+                    },
+                    "favorite": {
+                        "type": "boolean",
+                        "description": "Optional favorite flag (pins collection near top)."
+                    },
+                    "icon": {
+                        "type": "string",
+                        "description": "Optional Lucide icon key."
+                    },
+                    "color": {
+                        "type": "string",
+                        "description": "Optional hex color (e.g. '#3b82f6')."
+                    },
+                    "pre_request_script": {
+                        "type": "string",
+                        "description": "Optional collection-level JavaScript pre-request script."
+                    },
+                    "test_script": {
+                        "type": "string",
+                        "description": "Optional collection-level JavaScript test script."
+                    },
+                    "auth": {
+                        "type": "object",
+                        "description": "Optional collection-level auth config."
+                    }
+                },
+                "required": ["name"]
+            }
+        }),
+        json!({
+            "name": "blitz_update_collection",
+            "description": "Updates an existing Blitz collection's name, description, favorite flag, icon, color, scripts, or auth.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "collection": {
+                        "type": "string",
+                        "description": "UUID or name of the collection to update."
+                    },
+                    "name": {
+                        "type": "string",
+                        "description": "Optional new collection name."
+                    },
+                    "description": {
+                        "type": "string",
+                        "description": "Optional new description."
+                    },
+                    "favorite": {
+                        "type": "boolean",
+                        "description": "Optional favorite flag."
+                    },
+                    "icon": {
+                        "type": "string",
+                        "description": "Optional Lucide icon key (empty string clears)."
+                    },
+                    "color": {
+                        "type": "string",
+                        "description": "Optional hex color (empty string clears)."
+                    },
+                    "pre_request_script": {
+                        "type": "string",
+                        "description": "Optional collection-level JavaScript pre-request script."
+                    },
+                    "test_script": {
+                        "type": "string",
+                        "description": "Optional collection-level JavaScript test script."
+                    },
+                    "auth": {
+                        "type": "object",
+                        "description": "Optional collection-level auth config."
+                    }
+                },
+                "required": ["collection"]
+            }
+        }),
+        json!({
+            "name": "blitz_rename_item",
+            "description": "Renames any collection, folder, or request in-place.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "item": {
+                        "type": "string",
+                        "description": "UUID of the collection/folder/request, or name/slash-path (e.g. 'Auth', 'Users/Auth', 'Login')."
+                    },
+                    "new_name": {
+                        "type": "string",
+                        "description": "New display name."
+                    },
+                    "collection": {
+                        "type": "string",
+                        "description": "Optional UUID or name of the collection to scope name/path lookup."
+                    }
+                },
+                "required": ["item", "new_name"]
+            }
+        }),
+        json!({
+            "name": "blitz_move_item",
+            "description": "Moves, reparents, or reorders a folder or request (within or across collections), or reorders a collection.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "item": {
+                        "type": "string",
+                        "description": "UUID of the item to move, or name/slash-path (use 'collection' to scope)."
+                    },
+                    "collection": {
+                        "type": "string",
+                        "description": "Optional UUID or name of the source collection containing 'item'."
+                    },
+                    "target_parent": {
+                        "type": "string",
+                        "description": "Optional destination folder UUID/name/path (or collection UUID/name for root). Omit to reorder within current parent."
+                    },
+                    "target_collection": {
+                        "type": "string",
+                        "description": "Optional destination collection UUID or name (used for cross-collection moves or resolving 'target_parent')."
+                    },
+                    "before": {
+                        "type": "string",
+                        "description": "Optional sibling item UUID/name/path to insert immediately before."
+                    },
+                    "position": {
+                        "type": "integer",
+                        "description": "Optional 0-based index in the destination list (used if 'before' is omitted)."
+                    }
+                },
+                "required": ["item"]
+            }
+        }),
+        json!({
+            "name": "blitz_duplicate_item",
+            "description": "Duplicates a collection, folder (deep clone with new IDs), or request in-place.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "item": {
+                        "type": "string",
+                        "description": "UUID of the collection/folder/request, or name/slash-path."
+                    },
+                    "collection": {
+                        "type": "string",
+                        "description": "Optional UUID or name of the collection to scope name/path lookup."
+                    },
+                    "new_name": {
+                        "type": "string",
+                        "description": "Optional custom name for the duplicated item."
+                    }
+                },
+                "required": ["item"]
+            }
+        }),
+        json!({
+            "name": "blitz_sort_collection",
+            "description": "Sorts items inside a folder, a collection, or all collections and persists sort order.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "collection": {
+                        "type": "string",
+                        "description": "Optional UUID or name of collection to sort. Omit to sort all collections."
+                    },
+                    "folder": {
+                        "type": "string",
+                        "description": "Optional UUID, name, or path of folder within 'collection' to sort only that folder."
+                    },
+                    "mode": {
+                        "type": "string",
+                        "enum": ["folders_first_asc", "folders_first_desc", "name_asc", "name_desc", "requests_first_asc", "method_order", "item_count_desc"],
+                        "description": "Sort mode (default 'folders_first_asc')."
+                    }
+                }
             }
         }),
         json!({
@@ -3183,6 +3415,9 @@ fn execute_mcp_tool_with_store(
             };
 
             let col_name = col.name.clone();
+            if let Some(pos) = args.get("position").and_then(|v| v.as_u64()) {
+                reorder_to_index(&mut snapshot.collections, new_folder_id, pos as usize);
+            }
             store.save(&snapshot).map_err(|e| format!("Save snapshot: {e}"))?;
 
             let res = json!({
@@ -3191,6 +3426,362 @@ fn execute_mcp_tool_with_store(
                 "name": folder_name,
                 "collection": col_name,
                 "path": path_result
+            });
+            serde_json::to_string_pretty(&res).map_err(|e| e.to_string())
+        }
+        "blitz_update_folder" => {
+            let col_query = args
+                .get("collection")
+                .and_then(|c| c.as_str())
+                .ok_or_else(|| "Missing required parameter 'collection'".to_string())?;
+            let folder_query = args
+                .get("folder")
+                .and_then(|f| f.as_str())
+                .ok_or_else(|| "Missing required parameter 'folder'".to_string())?;
+
+            let mut snapshot = snapshot;
+            let col = snapshot
+                .collections
+                .iter_mut()
+                .find(|c| c.name.eq_ignore_ascii_case(col_query) || c.id.to_string() == col_query)
+                .ok_or_else(|| format!("Collection '{col_query}' not found"))?;
+            let col_name = col.name.clone();
+
+            let folder = find_folder_by_path_or_name_mut(&mut col.items, folder_query)
+                .ok_or_else(|| format!("Folder '{folder_query}' not found in collection '{col_name}'"))?;
+
+            if let Some(new_name) = args.get("name").and_then(|v| v.as_str()) {
+                let trimmed = new_name.trim();
+                if trimmed.is_empty() {
+                    return Err("Folder 'name' cannot be empty".to_string());
+                }
+                folder.name = trimmed.to_string();
+            }
+            if let Some(desc) = args.get("description").and_then(|v| v.as_str()) {
+                folder.description = desc.to_string();
+            }
+            if let Some(pre) = args.get("pre_request_script").and_then(|v| v.as_str()) {
+                folder.pre_request_script = pre.to_string();
+            }
+            if let Some(test) = args.get("test_script").and_then(|v| v.as_str()) {
+                folder.test_script = test.to_string();
+            }
+            if let Some(auth_val) = args.get("auth") {
+                if let Some(cfg) = parse_auth_arg(auth_val) {
+                    folder.auth = cfg;
+                } else {
+                    return Err("Invalid 'auth' configuration".to_string());
+                }
+            }
+
+            let folder_id = folder.id.to_string();
+            let folder_name = folder.name.clone();
+            store.save(&snapshot).map_err(|e| format!("Save snapshot: {e}"))?;
+
+            let res = json!({
+                "status": "ok",
+                "id": folder_id,
+                "name": folder_name,
+                "collection": col_name
+            });
+            serde_json::to_string_pretty(&res).map_err(|e| e.to_string())
+        }
+        "blitz_create_collection" => {
+            let name = args
+                .get("name")
+                .and_then(|n| n.as_str())
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .ok_or_else(|| "Missing required non-empty parameter 'name'".to_string())?;
+
+            let mut snapshot = snapshot;
+            let mut col = Collection::new(name);
+            if let Some(desc) = args.get("description").and_then(|v| v.as_str()) {
+                col.description = desc.to_string();
+            }
+            if let Some(fav) = args.get("favorite").and_then(|v| v.as_bool()) {
+                col.favorite = fav;
+            }
+            if let Some(icon) = args.get("icon").and_then(|v| v.as_str()) {
+                let s = icon.trim();
+                col.icon = if s.is_empty() { None } else { Some(s.to_string()) };
+            }
+            if let Some(color) = args.get("color").and_then(|v| v.as_str()) {
+                let s = color.trim();
+                col.color = if s.is_empty() { None } else { Some(s.to_string()) };
+            }
+            if let Some(pre) = args.get("pre_request_script").and_then(|v| v.as_str()) {
+                col.pre_request_script = pre.to_string();
+            }
+            if let Some(test) = args.get("test_script").and_then(|v| v.as_str()) {
+                col.test_script = test.to_string();
+            }
+            if let Some(auth_val) = args.get("auth") {
+                if let Some(cfg) = parse_auth_arg(auth_val) {
+                    col.auth = cfg;
+                } else {
+                    return Err("Invalid 'auth' configuration".to_string());
+                }
+            }
+
+            let col_id = col.id.to_string();
+            let col_name = col.name.clone();
+            snapshot.collections.push(col);
+            store.save(&snapshot).map_err(|e| format!("Save snapshot: {e}"))?;
+
+            let res = json!({
+                "status": "ok",
+                "id": col_id,
+                "name": col_name
+            });
+            serde_json::to_string_pretty(&res).map_err(|e| e.to_string())
+        }
+        "blitz_update_collection" => {
+            let col_query = args
+                .get("collection")
+                .and_then(|c| c.as_str())
+                .ok_or_else(|| "Missing required parameter 'collection'".to_string())?;
+
+            let mut snapshot = snapshot;
+            let col = snapshot
+                .collections
+                .iter_mut()
+                .find(|c| c.name.eq_ignore_ascii_case(col_query) || c.id.to_string() == col_query)
+                .ok_or_else(|| format!("Collection '{col_query}' not found"))?;
+
+            if let Some(new_name) = args.get("name").and_then(|v| v.as_str()) {
+                let trimmed = new_name.trim();
+                if trimmed.is_empty() {
+                    return Err("Collection 'name' cannot be empty".to_string());
+                }
+                col.name = trimmed.to_string();
+            }
+            if let Some(desc) = args.get("description").and_then(|v| v.as_str()) {
+                col.description = desc.to_string();
+            }
+            if let Some(fav) = args.get("favorite").and_then(|v| v.as_bool()) {
+                col.favorite = fav;
+            }
+            if let Some(icon) = args.get("icon").and_then(|v| v.as_str()) {
+                let s = icon.trim();
+                col.icon = if s.is_empty() { None } else { Some(s.to_string()) };
+            }
+            if let Some(color) = args.get("color").and_then(|v| v.as_str()) {
+                let s = color.trim();
+                col.color = if s.is_empty() { None } else { Some(s.to_string()) };
+            }
+            if let Some(pre) = args.get("pre_request_script").and_then(|v| v.as_str()) {
+                col.pre_request_script = pre.to_string();
+            }
+            if let Some(test) = args.get("test_script").and_then(|v| v.as_str()) {
+                col.test_script = test.to_string();
+            }
+            if let Some(auth_val) = args.get("auth") {
+                if let Some(cfg) = parse_auth_arg(auth_val) {
+                    col.auth = cfg;
+                } else {
+                    return Err("Invalid 'auth' configuration".to_string());
+                }
+            }
+
+            let col_id = col.id.to_string();
+            let col_name = col.name.clone();
+            store.save(&snapshot).map_err(|e| format!("Save snapshot: {e}"))?;
+
+            let res = json!({
+                "status": "ok",
+                "id": col_id,
+                "name": col_name
+            });
+            serde_json::to_string_pretty(&res).map_err(|e| e.to_string())
+        }
+        "blitz_rename_item" => {
+            let item_query = args
+                .get("item")
+                .and_then(|v| v.as_str())
+                .ok_or_else(|| "Missing required parameter 'item'".to_string())?;
+            let new_name = args
+                .get("new_name")
+                .and_then(|v| v.as_str())
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .ok_or_else(|| "Missing required non-empty parameter 'new_name'".to_string())?;
+            let col_query = args.get("collection").and_then(|v| v.as_str());
+
+            let mut snapshot = snapshot;
+            let (item_id, kind) = resolve_item_id(&snapshot.collections, item_query, col_query)?;
+            if !rename_across(&mut snapshot.collections, item_id, new_name.to_string()) {
+                return Err(format!("Failed to rename item '{item_query}'"));
+            }
+            store.save(&snapshot).map_err(|e| format!("Save snapshot: {e}"))?;
+
+            let res = json!({
+                "status": "ok",
+                "id": item_id.to_string(),
+                "kind": kind,
+                "new_name": new_name
+            });
+            serde_json::to_string_pretty(&res).map_err(|e| e.to_string())
+        }
+        "blitz_move_item" => {
+            let item_query = args
+                .get("item")
+                .and_then(|v| v.as_str())
+                .ok_or_else(|| "Missing required parameter 'item'".to_string())?;
+            let col_query = args.get("collection").and_then(|v| v.as_str());
+            let target_parent = args.get("target_parent").and_then(|v| v.as_str());
+            let target_collection = args.get("target_collection").and_then(|v| v.as_str());
+            let before_query = args.get("before").and_then(|v| v.as_str());
+            let position_opt = args.get("position").and_then(|v| v.as_u64());
+
+            if target_parent.is_none()
+                && target_collection.is_none()
+                && before_query.is_none()
+                && position_opt.is_none()
+            {
+                return Err(
+                    "Provide at least one of 'target_parent', 'target_collection', 'before', or 'position'"
+                        .to_string(),
+                );
+            }
+
+            let mut snapshot = snapshot;
+            let (item_id, kind) = resolve_item_id(&snapshot.collections, item_query, col_query)?;
+
+            if kind == "collection" {
+                let pos = position_opt.ok_or_else(|| {
+                    "Collections can only be reordered with 'position'".to_string()
+                })? as usize;
+                let from = snapshot
+                    .collections
+                    .iter()
+                    .position(|c| c.id == item_id)
+                    .ok_or_else(|| format!("Collection '{item_query}' not found"))?;
+                let col = snapshot.collections.remove(from);
+                let to = pos.min(snapshot.collections.len());
+                snapshot.collections.insert(to, col);
+                store.save(&snapshot).map_err(|e| format!("Save snapshot: {e}"))?;
+
+                let res = json!({
+                    "status": "ok",
+                    "id": item_id.to_string(),
+                    "kind": kind,
+                    "position": to
+                });
+                return serde_json::to_string_pretty(&res).map_err(|e| e.to_string());
+            }
+
+            let dest_scope_col = target_collection.or(col_query);
+            if let Some(tp) = target_parent {
+                let (target_id, target_kind) =
+                    resolve_item_id(&snapshot.collections, tp, dest_scope_col)?;
+                if target_kind == "request" {
+                    return Err(format!("Cannot move '{item_query}' into request '{tp}'"));
+                }
+                if !move_item_to(&mut snapshot.collections, item_id, target_id) {
+                    return Err(format!(
+                        "Cannot move '{item_query}' into '{tp}' (check for cycle or invalid target)"
+                    ));
+                }
+            } else if let Some(tc) = target_collection {
+                let (target_id, _) = resolve_item_id(&snapshot.collections, tc, None)?;
+                if !move_item_to(&mut snapshot.collections, item_id, target_id) {
+                    return Err(format!("Cannot move '{item_query}' into collection '{tc}'"));
+                }
+            }
+
+            if let Some(bq) = before_query {
+                let (before_id, before_kind) =
+                    resolve_item_id(&snapshot.collections, bq, dest_scope_col)?;
+                if before_kind == "collection" {
+                    return Err(format!("'before' target '{bq}' must be a folder or request"));
+                }
+                if !reorder_before(&mut snapshot.collections, item_id, Some(before_id)) {
+                    return Err(format!("Failed to reorder '{item_query}' before '{bq}'"));
+                }
+            } else if let Some(pos) = position_opt {
+                if !reorder_to_index(&mut snapshot.collections, item_id, pos as usize) {
+                    return Err(format!("Failed to reorder '{item_query}' to position {pos}"));
+                }
+            } else {
+                // Ensure destination sort_key reflects appended position.
+                reorder_to_index(&mut snapshot.collections, item_id, usize::MAX);
+            }
+
+            store.save(&snapshot).map_err(|e| format!("Save snapshot: {e}"))?;
+            let res = json!({
+                "status": "ok",
+                "id": item_id.to_string(),
+                "kind": kind
+            });
+            serde_json::to_string_pretty(&res).map_err(|e| e.to_string())
+        }
+        "blitz_duplicate_item" => {
+            let item_query = args
+                .get("item")
+                .and_then(|v| v.as_str())
+                .ok_or_else(|| "Missing required parameter 'item'".to_string())?;
+            let col_query = args.get("collection").and_then(|v| v.as_str());
+            let new_name_opt = args
+                .get("new_name")
+                .and_then(|v| v.as_str())
+                .map(str::trim)
+                .filter(|s| !s.is_empty());
+
+            let mut snapshot = snapshot;
+            let (item_id, kind) = resolve_item_id(&snapshot.collections, item_query, col_query)?;
+            let new_id = duplicate_across(&mut snapshot.collections, item_id)
+                .ok_or_else(|| format!("Failed to duplicate '{item_query}'"))?;
+            if let Some(new_name) = new_name_opt {
+                rename_across(&mut snapshot.collections, new_id, new_name.to_string());
+            }
+            store.save(&snapshot).map_err(|e| format!("Save snapshot: {e}"))?;
+
+            let res = json!({
+                "status": "ok",
+                "source_id": item_id.to_string(),
+                "id": new_id.to_string(),
+                "kind": kind
+            });
+            serde_json::to_string_pretty(&res).map_err(|e| e.to_string())
+        }
+        "blitz_sort_collection" => {
+            let col_query = args.get("collection").and_then(|v| v.as_str());
+            let folder_query = args.get("folder").and_then(|v| v.as_str());
+            let mode = parse_sort_mode_arg(args.get("mode").and_then(|v| v.as_str()))?;
+
+            let mut snapshot = snapshot;
+            let scope = if let Some(fq) = folder_query {
+                let cq = col_query.ok_or_else(|| {
+                    "Parameter 'collection' is required when 'folder' is specified".to_string()
+                })?;
+                let (folder_id, kind) = resolve_item_id(&snapshot.collections, fq, Some(cq))?;
+                if kind != "folder" {
+                    return Err(format!("'{fq}' is not a folder"));
+                }
+                if !sort_parent_node_by(&mut snapshot.collections, folder_id, mode) {
+                    return Err(format!("Failed to sort folder '{fq}'"));
+                }
+                format!("folder:{fq}")
+            } else if let Some(cq) = col_query {
+                let (col_id, kind) = resolve_item_id(&snapshot.collections, cq, None)?;
+                if kind != "collection" {
+                    return Err(format!("'{cq}' is not a collection"));
+                }
+                if !sort_parent_node_by(&mut snapshot.collections, col_id, mode) {
+                    return Err(format!("Failed to sort collection '{cq}'"));
+                }
+                format!("collection:{cq}")
+            } else {
+                sort_collections_by(&mut snapshot.collections, mode);
+                "all".to_string()
+            };
+
+            store.save(&snapshot).map_err(|e| format!("Save snapshot: {e}"))?;
+            let res = json!({
+                "status": "ok",
+                "scope": scope,
+                "mode": mode.label()
             });
             serde_json::to_string_pretty(&res).map_err(|e| e.to_string())
         }
@@ -4658,7 +5249,7 @@ fn find_folder_by_path_or_name_mut<'a>(
     }
     for item in items.iter_mut() {
         if let CollectionItem::Folder(f) = item {
-            if f.name.eq_ignore_ascii_case(query) {
+            if f.name.eq_ignore_ascii_case(query) || f.id.to_string() == query {
                 return Some(f);
             }
             if let Some(child) = find_folder_by_path_or_name_mut(&mut f.items, query) {
@@ -4667,6 +5258,118 @@ fn find_folder_by_path_or_name_mut<'a>(
         }
     }
     None
+}
+
+fn find_item_in_items_by_query(
+    items: &[CollectionItem],
+    query: &str,
+) -> Option<(Uuid, &'static str)> {
+    let clean = query.trim().trim_matches('/');
+    if clean.is_empty() {
+        return None;
+    }
+    if clean.contains('/') {
+        let segments: Vec<&str> = clean
+            .split('/')
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .collect();
+        let mut cur = items;
+        for (idx, seg) in segments.iter().enumerate() {
+            if idx + 1 == segments.len() {
+                for item in cur {
+                    match item {
+                        CollectionItem::Folder(f)
+                            if f.name.eq_ignore_ascii_case(seg) || f.id.to_string() == *seg =>
+                        {
+                            return Some((f.id, "folder"));
+                        }
+                        CollectionItem::Request(r)
+                            if r.name.eq_ignore_ascii_case(seg) || r.id.to_string() == *seg =>
+                        {
+                            return Some((r.id, "request"));
+                        }
+                        _ => {}
+                    }
+                }
+                return None;
+            }
+            cur = cur.iter().find_map(|item| match item {
+                CollectionItem::Folder(f)
+                    if f.name.eq_ignore_ascii_case(seg) || f.id.to_string() == *seg =>
+                {
+                    Some(f.items.as_slice())
+                }
+                _ => None,
+            })?;
+        }
+        return None;
+    }
+    for item in items {
+        match item {
+            CollectionItem::Folder(f) => {
+                if f.name.eq_ignore_ascii_case(clean) || f.id.to_string() == clean {
+                    return Some((f.id, "folder"));
+                }
+                if let Some(found) = find_item_in_items_by_query(&f.items, clean) {
+                    return Some(found);
+                }
+            }
+            CollectionItem::Request(r) => {
+                if r.name.eq_ignore_ascii_case(clean) || r.id.to_string() == clean {
+                    return Some((r.id, "request"));
+                }
+            }
+        }
+    }
+    None
+}
+
+fn resolve_item_id(
+    collections: &[Collection],
+    item_query: &str,
+    col_query: Option<&str>,
+) -> Result<(Uuid, &'static str), String> {
+    let q = item_query.trim();
+    if q.is_empty() {
+        return Err("Item query cannot be empty".to_string());
+    }
+    if let Some(cq) = col_query {
+        let col = collections
+            .iter()
+            .find(|c| c.name.eq_ignore_ascii_case(cq) || c.id.to_string() == cq)
+            .ok_or_else(|| format!("Collection '{cq}' not found"))?;
+        if col.name.eq_ignore_ascii_case(q) || col.id.to_string() == q {
+            return Ok((col.id, "collection"));
+        }
+        return find_item_in_items_by_query(&col.items, q)
+            .ok_or_else(|| format!("Item '{q}' not found in collection '{}'", col.name));
+    }
+    if let Some(col) = collections
+        .iter()
+        .find(|c| c.name.eq_ignore_ascii_case(q) || c.id.to_string() == q)
+    {
+        return Ok((col.id, "collection"));
+    }
+    for col in collections {
+        if let Some(found) = find_item_in_items_by_query(&col.items, q) {
+            return Ok(found);
+        }
+    }
+    Err(format!("Item '{q}' not found"))
+}
+
+fn parse_sort_mode_arg(mode: Option<&str>) -> Result<CollectionSortMode, String> {
+    match mode.map(|s| s.trim().to_ascii_lowercase()).as_deref() {
+        None | Some("") | Some("folders_first_asc") => Ok(CollectionSortMode::FoldersFirstAsc),
+        Some("folders_first_desc") => Ok(CollectionSortMode::FoldersFirstDesc),
+        Some("name_asc") => Ok(CollectionSortMode::NameAsc),
+        Some("name_desc") => Ok(CollectionSortMode::NameDesc),
+        Some("requests_first_asc") => Ok(CollectionSortMode::RequestsFirstAsc),
+        Some("method_order") => Ok(CollectionSortMode::MethodOrder),
+        Some("item_count_desc") => Ok(CollectionSortMode::ItemCountDesc),
+        Some(other) => Err(format!("Unsupported sort mode '{other}'")),
+    }
 }
 
 fn count_requests_in_items(items: &[CollectionItem]) -> usize {
@@ -5116,7 +5819,191 @@ mod tests {
         assert!(tools.iter().any(|t| t["name"] == "blitz_set_collection_var"));
         assert!(tools.iter().any(|t| t["name"] == "blitz_import_collection"));
         assert!(tools.iter().any(|t| t["name"] == "blitz_mcp_call"));
-        assert_eq!(tools.len(), 46);
+        assert!(tools.iter().any(|t| t["name"] == "blitz_create_collection"));
+        assert!(tools.iter().any(|t| t["name"] == "blitz_update_collection"));
+        assert!(tools.iter().any(|t| t["name"] == "blitz_update_folder"));
+        assert!(tools.iter().any(|t| t["name"] == "blitz_rename_item"));
+        assert!(tools.iter().any(|t| t["name"] == "blitz_move_item"));
+        assert!(tools.iter().any(|t| t["name"] == "blitz_duplicate_item"));
+        assert!(tools.iter().any(|t| t["name"] == "blitz_sort_collection"));
+        assert_eq!(tools.len(), 53);
+    }
+
+    #[test]
+    fn test_tool_folder_file_crud_move_rename_sort_duplicate() {
+        let temp = TempMcpStore::new("folder_file_crud");
+
+        // 1. Create & update collection
+        let c1 = execute_mcp_tool_with_store(
+            &temp.store,
+            "blitz_create_collection",
+            &json!({
+                "name": "Alpha API",
+                "description": "Initial",
+                "favorite": true,
+                "icon": "globe",
+                "color": "#3b82f6"
+            }),
+        )
+        .expect("create_collection");
+        let c1_json: JsonValue = serde_json::from_str(&c1).unwrap();
+        assert_eq!(c1_json["status"], "ok");
+
+        execute_mcp_tool_with_store(
+            &temp.store,
+            "blitz_update_collection",
+            &json!({
+                "collection": "Alpha API",
+                "name": "Core API",
+                "description": "Updated desc"
+            }),
+        )
+        .expect("update_collection");
+
+        execute_mcp_tool_with_store(
+            &temp.store,
+            "blitz_create_collection",
+            &json!({ "name": "Other API" }),
+        )
+        .expect("create second collection");
+
+        // 2. Create folders & update folder
+        execute_mcp_tool_with_store(
+            &temp.store,
+            "blitz_create_folder",
+            &json!({ "collection": "Core API", "name": "Users" }),
+        )
+        .expect("create Users");
+        execute_mcp_tool_with_store(
+            &temp.store,
+            "blitz_create_folder",
+            &json!({ "collection": "Core API", "name": "Auth", "position": 0 }),
+        )
+        .expect("create Auth at position 0");
+        execute_mcp_tool_with_store(
+            &temp.store,
+            "blitz_update_folder",
+            &json!({
+                "collection": "Core API",
+                "folder": "Auth",
+                "description": "Auth endpoints",
+                "pre_request_script": "// auth pre",
+                "auth": { "type": "bearer", "token": "tok123" }
+            }),
+        )
+        .expect("update_folder");
+
+        // 3. Upsert request at root, then move it into Auth
+        execute_mcp_tool_with_store(
+            &temp.store,
+            "blitz_upsert_request",
+            &json!({
+                "collection": "Core API",
+                "name": "Login",
+                "method": "POST",
+                "url": "https://example.com/login"
+            }),
+        )
+        .expect("upsert Login");
+
+        execute_mcp_tool_with_store(
+            &temp.store,
+            "blitz_move_item",
+            &json!({
+                "collection": "Core API",
+                "item": "Login",
+                "target_parent": "Auth"
+            }),
+        )
+        .expect("move Login into Auth");
+
+        // 4. Rename folder Auth -> Authentication, and request Login -> Sign In
+        execute_mcp_tool_with_store(
+            &temp.store,
+            "blitz_rename_item",
+            &json!({
+                "collection": "Core API",
+                "item": "Auth",
+                "new_name": "Authentication"
+            }),
+        )
+        .expect("rename folder");
+        execute_mcp_tool_with_store(
+            &temp.store,
+            "blitz_rename_item",
+            &json!({
+                "collection": "Core API",
+                "item": "Authentication/Login",
+                "new_name": "Sign In"
+            }),
+        )
+        .expect("rename request by path");
+
+        // 5. Duplicate folder Authentication -> Auth Copy
+        execute_mcp_tool_with_store(
+            &temp.store,
+            "blitz_duplicate_item",
+            &json!({
+                "collection": "Core API",
+                "item": "Authentication",
+                "new_name": "Auth Copy"
+            }),
+        )
+        .expect("duplicate folder");
+
+        // 6. Reorder Users before Authentication, then sort name_desc
+        execute_mcp_tool_with_store(
+            &temp.store,
+            "blitz_move_item",
+            &json!({
+                "collection": "Core API",
+                "item": "Users",
+                "before": "Authentication"
+            }),
+        )
+        .expect("reorder Users before Authentication");
+
+        let snap = temp.store.load().unwrap();
+        let core = snap.collections.iter().find(|c| c.name == "Core API").unwrap();
+        assert_eq!(core.description, "Updated desc");
+        assert_eq!(core.items[0].name(), "Users");
+        assert_eq!(core.items[1].name(), "Authentication");
+        match &core.items[1] {
+            CollectionItem::Folder(f) => {
+                assert_eq!(f.description, "Auth endpoints");
+                assert_eq!(f.pre_request_script, "// auth pre");
+                assert_eq!(f.items.len(), 1);
+                assert_eq!(f.items[0].name(), "Sign In");
+            }
+            _ => panic!("expected folder"),
+        }
+
+        // 7. Sort Core API name_desc -> Users, Authentication, Auth Copy
+        execute_mcp_tool_with_store(
+            &temp.store,
+            "blitz_sort_collection",
+            &json!({ "collection": "Core API", "mode": "name_desc" }),
+        )
+        .expect("sort_collection");
+        let snap2 = temp.store.load().unwrap();
+        let core2 = snap2.collections.iter().find(|c| c.name == "Core API").unwrap();
+        let names: Vec<&str> = core2.items.iter().map(|i| i.name()).collect();
+        assert_eq!(names, vec!["Users", "Authentication", "Auth Copy"]);
+
+        // 8. Cross-collection move: move Users into Other API
+        execute_mcp_tool_with_store(
+            &temp.store,
+            "blitz_move_item",
+            &json!({
+                "collection": "Core API",
+                "item": "Users",
+                "target_collection": "Other API"
+            }),
+        )
+        .expect("cross-collection move");
+        let snap3 = temp.store.load().unwrap();
+        let other = snap3.collections.iter().find(|c| c.name == "Other API").unwrap();
+        assert!(other.items.iter().any(|i| i.name() == "Users"));
     }
 
     #[test]

@@ -250,6 +250,14 @@ impl CollectionItem {
         }
     }
 
+    #[cfg(test)]
+    pub fn name(&self) -> &str {
+        match self {
+            Self::Folder(f) => &f.name,
+            Self::Request(r) => &r.name,
+        }
+    }
+
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -627,6 +635,26 @@ pub fn reorder_before(
     } else {
         false
     }
+}
+
+/// Reorder `item_id` to `index` (clamped to sibling slice bounds) within its current parent,
+/// rekeying `sort_key` across siblings.
+pub fn reorder_to_index(
+    collections: &mut [Collection],
+    item_id: Uuid,
+    index: usize,
+) -> bool {
+    let Some(siblings) = find_sibling_list_mut(collections, item_id) else {
+        return false;
+    };
+    let Some(from) = siblings.iter().position(|i| i.id() == item_id) else {
+        return false;
+    };
+    let item = siblings.remove(from);
+    let to = index.min(siblings.len());
+    siblings.insert(to, item);
+    rekey_sort(siblings);
+    true
 }
 
 fn rekey_sort(items: &mut [CollectionItem]) {
